@@ -3,74 +3,77 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
-// Composants Icônes SVG
+// Icônes SVG professionnelles
+const IconPOS = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+);
 const IconStock = () => (
-  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-  </svg>
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
 );
-
-const IconVentes = () => (
-  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-  </svg>
+const IconDepot = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
 );
-
-const IconTiers = () => (
-  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-  </svg>
+const IconFamille = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
 );
-
-const IconFinances = () => (
-  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+const IconMouvement = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
 );
-
-const IconLogistique = () => (
-  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
-  </svg>
+const IconAppro = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
 );
-
-const IconChart = () => (
-  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-  </svg>
+const IconClients = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
 );
-
-const IconUser = () => (
-  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-  </svg>
+const IconFournisseurs = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+);
+const IconRoles = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+);
+const IconComptes = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+);
+const IconCaisses = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+);
+const IconJournal = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+);
+const IconTresorerie = () => (
+  <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 );
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('accueil');
 
+  // Toutes les icônes de tables directement sur la page d'Accueil
   const modulesAccueil = [
-    { name: 'Gestion Stock', desc: 'Articles, dépôts & mouvements', icon: IconStock, href: '/dashboard', bg: 'bg-amber-100 text-amber-700' },
-    { name: 'Ventes & Caisse', desc: 'Caisse & facturation', icon: IconVentes, href: '/dashboard', bg: 'bg-blue-100 text-blue-700' },
-    { name: 'Tiers & Relations', desc: 'Clients & Fournisseurs', icon: IconTiers, href: '/dashboard', bg: 'bg-purple-100 text-purple-700' },
-    { name: 'Finances & Trésor', desc: 'Caisses & Comptes', icon: IconFinances, href: '/dashboard', bg: 'bg-emerald-100 text-emerald-700' },
-    { name: 'Logistique', desc: 'Courses & Flotte', icon: IconLogistique, href: '/dashboard', bg: 'bg-indigo-100 text-indigo-700' },
+    { name: 'Caisse & Vente', desc: 'Interface de facturation', icon: IconPOS, href: '/dashboard', bg: 'bg-blue-100 text-blue-700' },
+    { name: 'Articles & Stock', desc: 'Catalogue produits & prix', icon: IconStock, href: '/dashboard', bg: 'bg-amber-100 text-amber-700' },
+    { name: 'Dépôts & Magasins', desc: 'Entrepôts et emplacements', icon: IconDepot, href: '/dashboard', bg: 'bg-indigo-100 text-indigo-700' },
+    { name: 'Familles & Cat.', desc: 'Classification produits', icon: IconFamille, href: '/dashboard', bg: 'bg-orange-100 text-orange-700' },
+    { name: 'Mouvements Stock', desc: 'Transferts et inventaires', icon: IconMouvement, href: '/dashboard', bg: 'bg-cyan-100 text-cyan-700' },
+    { name: 'Approvisionnements', desc: 'Achats et réceptions', icon: IconAppro, href: '/dashboard', bg: 'bg-emerald-100 text-emerald-700' },
+    { name: 'Fichier Clients', desc: 'Répertoire et crédits', icon: IconClients, href: '/dashboard', bg: 'bg-purple-100 text-purple-700' },
+    { name: 'Fournisseurs', desc: 'Dettes & coordonnées', icon: IconFournisseurs, href: '/dashboard', bg: 'bg-rose-100 text-rose-700' },
+    { name: 'Gestion des Rôles', desc: 'Titres et fonctions', icon: IconRoles, href: '/dashboard', bg: 'bg-teal-100 text-teal-700' },
+    { name: 'Comptes Utilisateurs', desc: 'Permissions & accès', icon: IconComptes, href: '/dashboard', bg: 'bg-violet-100 text-violet-700' },
+    { name: 'Gestion Caisses', desc: 'Caisses physiques', icon: IconCaisses, href: '/dashboard', bg: 'bg-emerald-100 text-emerald-700' },
   ];
 
+  // Toutes les icônes de rapports sur l'onglet Rapports
   const modulesRapports = [
-    { name: 'Rapport Ventes', desc: 'Analyses quotidiennes', icon: IconChart, href: '/dashboard', bg: 'bg-emerald-100 text-emerald-700' },
-    { name: 'État de Caisse', desc: 'Synthèse des flux', icon: IconFinances, href: '/dashboard', bg: 'bg-amber-100 text-amber-700' },
-    { name: 'Inventaire Stock', desc: 'Valorisation des stocks', icon: IconStock, href: '/dashboard', bg: 'bg-blue-100 text-blue-700' },
+    { name: 'Journal des Ventes', desc: 'Consultation tickets émis', icon: IconJournal, href: '/dashboard', bg: 'bg-indigo-100 text-indigo-700' },
+    { name: 'Trésorerie & Comptabilité', desc: 'Grand livre et clôture', icon: IconTresorerie, href: '/dashboard', bg: 'bg-emerald-100 text-emerald-700' },
   ];
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       
-      {/* Carte En-tête / Profil (Fond vert émeraude identique PC/Phone) */}
+      {/* En-tête / Carte Profil */}
       <div className="p-3 md:p-6 max-w-7xl mx-auto w-full">
         <div className="bg-[#005043] rounded-3xl p-4 md:p-6 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
-          
           <div className="flex items-center space-x-3">
             <div className="bg-orange-600 text-white font-black text-xl w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner">
               4TS
@@ -88,7 +91,6 @@ export default function Home() {
               <p className="text-emerald-200/80 text-xs md:text-sm">ID Entreprise : <span className="font-semibold text-white">4TS-TEST</span></p>
             </div>
           </div>
-
           <div>
             <Link 
               href="/souscription" 
@@ -100,17 +102,16 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Contenu Dynamique */}
+      {/* Contenu Principal */}
       <main className="flex-1 px-3 md:px-6 py-2 max-w-7xl mx-auto w-full">
         
         {/* ONGLET ACCUEIL */}
         {activeTab === 'accueil' && (
           <div>
             <h2 className="text-xs md:text-sm font-bold text-slate-500 tracking-wider uppercase mb-3 px-1">
-              ACCUEIL - MODULES DE GESTION
+              ACCUEIL - TOUTES LES TABLES SUPABASE
             </h2>
-            
-            <div className="grid grid-cols-4 md:grid-cols-5 gap-2 md:gap-4 mb-6">
+            <div className="grid grid-cols-4 md:grid-cols-4 gap-2 md:gap-4 mb-6">
               {modulesAccueil.map((item, idx) => {
                 const Icon = item.icon;
                 return (
@@ -139,10 +140,9 @@ export default function Home() {
         {activeTab === 'rapports' && (
           <div>
             <h2 className="text-xs md:text-sm font-bold text-slate-500 tracking-wider uppercase mb-3 px-1">
-              RAPPORTS & ANALYTIQUES
+              RAPPORTS & COMPTABILITÉ
             </h2>
-
-            <div className="grid grid-cols-4 md:grid-cols-5 gap-2 md:gap-4 mb-6">
+            <div className="grid grid-cols-4 md:grid-cols-4 gap-2 md:gap-4 mb-6">
               {modulesRapports.map((item, idx) => {
                 const Icon = item.icon;
                 return (
