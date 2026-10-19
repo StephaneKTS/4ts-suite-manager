@@ -24,6 +24,7 @@ const LISTE_PAYS = [
 export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [entrepriseInfo, setEntrepriseInfo] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [afficherForm, setAfficherForm] = useState(false);
   const [userEnEdition, setUserEnEdition] = useState(null);
@@ -62,12 +63,21 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     mot_de_passe: '',
     id_role: '',
     statut: 'ACTIF',
+    acces_application: true, // Vrai par défaut (consomme une licence)
     permissions: initialiserPermissionsDefaut(),
   });
 
   const chargerDonnees = async () => {
     setChargement(true);
     try {
+      // Récupérer les infos de l'entreprise (notamment la limite d'utilisateurs/licence)
+      const { data: dataEnt } = await supabase
+        .from('entreprises')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .single();
+      setEntrepriseInfo(dataEnt);
+
       const { data: dataRoles } = await supabase
         .from('roles')
         .select('*')
@@ -140,6 +150,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    // Vérification de la limite de licence si l'accès application est activé
+    if (nouveauUser.acces_application) {
+      const nbActuelsAccesApp = utilisateurs.filter(u => u.acces_application && (!userEnEdition || u.id !== userEnEdition.id)).length;
+      const limiteLicence = entrepriseInfo?.limite_utilisateurs || 5; // Limite par défaut
+      if (nbActuelsAccesApp >= limiteLicence) {
+        alert(`❌ Limite de licence atteinte (${limiteLicence} utilisateurs avec accès application maximum). Veuillez passer à une formule supérieure ou enregistrer ce collaborateur en tant qu'intervenant terrain sans accès application.`);
+        return;
+      }
+    }
+
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
 
     try {
@@ -148,10 +168,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         email: nouveauUser.email,
         pays: nouveauUser.pays,
         telephone: numeroComplet,
-        mot_de_passe: nouveauUser.mot_de_passe,
+        mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
         statut: nouveauUser.statut,
-        permissions: nouveauUser.permissions,
+        acces_application: nouveauUser.acces_application,
+        permissions: nouveauUser.acces_application ? nouveauUser.permissions : null,
       };
 
       if (userEnEdition) {
@@ -187,6 +208,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       mot_de_passe: user.mot_de_passe || '',
       id_role: user.id_role || '',
       statut: user.statut || 'ACTIF',
+      acces_application: user.acces_application ?? true,
       permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
     });
     setAfficherForm(true);
@@ -202,17 +224,18 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       mot_de_passe: '',
       id_role: '',
       statut: 'ACTIF',
+      acces_application: true,
       permissions: initialiserPermissionsDefaut(),
     });
     setAfficherForm(false);
   };
 
   const supprimerUtilisateur = async (id) => {
-    if (!confirm('Voulez-vous vraiment supprimer cet utilisateur ?')) return;
+    if (!confirm('Voulez-vous vraiment supprimer cet enregistrement ?')) return;
     try {
       const { error } = await supabase.from('utilisateurs').delete().eq('id', id);
       if (error) throw error;
-      alert('Utilisateur supprimé.');
+      alert('Supprimé avec succès.');
       annulerForm();
       chargerDonnees();
     } catch (err) {
@@ -233,6 +256,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     if (triCol !== colonne) return <span className="text-slate-300 ml-1">↕</span>;
     return <span className="text-orange-600 ml-1">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
   };
+
+  const nbLicencesUtilisees = utilisateurs.filter(u => u.acces_application).length;
+  const limiteLicenceMax = entrepriseInfo?.limite_utilisateurs || 5;
 
   const usersFiltres = utilisateurs
     .filter((u) => {
@@ -260,13 +286,18 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-800 uppercase text-xs">👥 COMPTES UTILISATEURS</h3>
+      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div>
+          <h3 className="font-extrabold text-slate-800 uppercase text-xs">👥 COMPTES & INTERVENANTS</h3>
+          <p className="text-[9.5px] text-slate-500">
+            Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-600' : 'text-emerald-600'}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
+          </p>
+        </div>
         <button
           onClick={() => {
             if (afficherForm) annulerForm();
             else {
-              setNouveauUser({ nom_complet: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', statut: 'ACTIF', permissions: initialiserPermissionsDefaut() });
+              setNouveauUser({ nom_complet: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
               setUserEnEdition(null);
               setAfficherForm(true);
             }
@@ -278,23 +309,42 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       </div>
 
       {afficherForm && (
-        <form onSubmit={enregistrerUtilisateur} className="bg-slate-50 border border-orange-500/40 p-2.5 rounded-xl space-y-2 shadow-2xs">
+        <form onSubmit={enregistrerUtilisateur} className="bg-slate-50 border border-orange-500/40 p-2.5 rounded-xl space-y-2.5 shadow-2xs">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-bold text-orange-600 uppercase text-[10px]">
-              {userEnEdition ? '✏️ Fiche utilisateur' : '➕ Nouvel utilisateur'}
+              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
             </h4>
             <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-0.5">✖</button>
           </div>
 
-          <div>
-            <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom Complet *</label>
-            <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value })} placeholder="Ex: Paul BIYA" className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-xs" />
+          {/* SÉLECTEUR DU TYPE D'ACCÈS (Détermine l'impact sur la licence) */}
+          <div className="bg-amber-50/80 border border-amber-200 p-2 rounded-lg space-y-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={nouveauUser.acces_application}
+                onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
+                className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+              />
+              <span className="font-extrabold text-amber-900 text-[10.5px]">
+                Accès à l'application (Consomme une licence / Connexion active)
+              </span>
+            </label>
+            <p className="text-[9.5px] text-amber-700 pl-6">
+              {nouveauUser.acces_application 
+                ? "✅ Cet utilisateur disposera d'un login/mot de passe et de permissions." 
+                : "ℹ️ Mode Intervenant : Il sera uniquement listé pour l'affectation des données (livraisons, ventes), sans accès de connexion ni impact sur la licence."}
+            </p>
           </div>
 
-          {/* RÔLE ET STATUT SUR LA MÊME LIGNE */}
+          <div>
+            <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom Complet *</label>
+            <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value })} placeholder="Ex: Jean MBOA" className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-xs" />
+          </div>
+
           <div className="grid grid-cols-2 gap-1.5">
             <div>
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Rôle *</label>
+              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Rôle / Fonction *</label>
               <select required value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-orange-700 text-xs">
                 <option value="">-- Rôle --</option>
                 {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
@@ -309,21 +359,25 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             </div>
           </div>
 
-          <div>
-            <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Mot de Passe *</label>
-            <input type="password" required value={nouveauUser.mot_de_passe} onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} placeholder="••••••••" className="w-full bg-white border border-slate-200 rounded p-1 font-mono text-xs" />
-          </div>
+          {/* CHAMPS DE CONNEXION UNIQUEMENT SI ACCÈS APPLICATION ACTIVÉ */}
+          {nouveauUser.acces_application && (
+            <div className="space-y-2 p-2 bg-white rounded-lg border border-slate-200">
+              <div>
+                <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Mot de Passe de Connexion *</label>
+                <input type="password" required={nouveauUser.acces_application} value={nouveauUser.mot_de_passe} onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} placeholder="••••••••" className="w-full bg-slate-50 border border-slate-200 rounded p-1 font-mono text-xs" />
+              </div>
+            </div>
+          )}
 
-          {/* PAYS ET TEL SUR LA MÊME LIGNE */}
           <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100">
             <div>
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Pays *</label>
+              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Pays</label>
               <select value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-slate-800 text-[11px]">
                 {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code}</option>))}
               </select>
             </div>
             <div className="col-span-2">
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Tel({paysActuelObj.longueur})</label>
+              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Téléphone ({paysActuelObj.longueur} chiffres)</label>
               <div className="flex items-center bg-white border border-slate-200 rounded overflow-hidden">
                 <span className="bg-slate-100 px-1.5 py-1 text-[11px] font-bold border-r border-slate-200 shrink-0">{paysActuelObj.indicatif}</span>
                 <input type="text" maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1 font-mono text-[11px] font-bold focus:outline-none" />
@@ -332,47 +386,50 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div>
-            <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Email *</label>
-            <input type="email" required value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value })} placeholder="paul@keita.cm" className="w-full bg-white border border-slate-200 rounded p-1 font-medium text-[11px]" />
+            <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Email</label>
+            <input type="email" value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-200 rounded p-1 font-medium text-[11px]" />
           </div>
 
-          <div className="pt-1.5 border-t border-slate-200 space-y-1.5">
-            <h5 className="font-extrabold text-slate-800 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-              <table className="w-full text-left text-xs table-fixed">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-extrabold">
-                  <tr>
-                    <th className="p-1.5 w-[40%]">Module</th>
-                    <th className="p-1.5 w-[12%] text-center">👁️</th>
-                    <th className="p-1.5 w-[12%] text-center">➕</th>
-                    <th className="p-1.5 w-[12%] text-center">✏️</th>
-                    <th className="p-1.5 w-[12%] text-center">🗑️</th>
-                    <th className="p-1.5 w-[12%] text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[10px]">
-                  {modulesApp.map((m) => {
-                    const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
-                    const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
-                    return (
-                      <tr key={m.id} className="hover:bg-slate-50">
-                        <td className="p-1.5 font-bold text-slate-800 truncate">{m.nom}</td>
-                        <td className="p-1.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer" /></td>
-                        <td className="p-1.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer" /></td>
-                        <td className="p-1.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-3.5 h-3.5 accent-blue-600 rounded cursor-pointer" /></td>
-                        <td className="p-1.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermission(m.id, 'suppression')} className="w-3.5 h-3.5 accent-red-600 rounded cursor-pointer" /></td>
-                        <td className="p-1.5 text-center">
-                          <button type="button" onClick={() => accorderToutModule(m.id, !estToutAccorde)} className={`px-1 py-0.5 rounded text-[8.5px] font-bold ${estToutAccorde ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-                            {estToutAccorde ? 'Aucun' : 'Tous'}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {/* PERMISSIONS UNIQUEMENT SI ACCÈS APPLICATION ACTIVÉ */}
+          {nouveauUser.acces_application && (
+            <div className="pt-1.5 border-t border-slate-200 space-y-1.5">
+              <h5 className="font-extrabold text-slate-800 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                <table className="w-full text-left text-xs table-fixed">
+                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-extrabold">
+                    <tr>
+                      <th className="p-1.5 w-[40%]">Module</th>
+                      <th className="p-1.5 w-[12%] text-center">👁️</th>
+                      <th className="p-1.5 w-[12%] text-center">➕</th>
+                      <th className="p-1.5 w-[12%] text-center">✏️</th>
+                      <th className="p-1.5 w-[12%] text-center">🗑️</th>
+                      <th className="p-1.5 w-[12%] text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[10px]">
+                    {modulesApp.map((m) => {
+                      const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
+                      const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50">
+                          <td className="p-1.5 font-bold text-slate-800 truncate">{m.nom}</td>
+                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer" /></td>
+                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer" /></td>
+                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-3.5 h-3.5 accent-blue-600 rounded cursor-pointer" /></td>
+                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermission(m.id, 'suppression')} className="w-3.5 h-3.5 accent-red-600 rounded cursor-pointer" /></td>
+                          <td className="p-1.5 text-center">
+                            <button type="button" onClick={() => accorderToutModule(m.id, !estToutAccorde)} className={`px-1 py-0.5 rounded text-[8.5px] font-bold ${estToutAccorde ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                              {estToutAccorde ? 'Aucun' : 'Tous'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="pt-2 border-t border-slate-200 flex flex-wrap justify-between items-center gap-1.5">
             <div className="flex items-center gap-1 flex-wrap">
@@ -399,31 +456,38 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-slate-500 px-1">
-            <span>Comptes enregistrés : <strong>{usersFiltres.length}</strong> utilisateur(s)</span>
+            <span>Total répertorié : <strong>{usersFiltres.length}</strong> personne(s)</span>
           </div>
 
           {chargement ? (
             <div className="p-4 text-center text-slate-400">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
-            <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-xl">Aucun utilisateur enregistré.</div>
+            <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-xl">Aucun enregistrement trouvé.</div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs table-fixed">
                 <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[9px] font-extrabold select-none">
                   <tr>
-                    <th onClick={() => gererTri('nom_complet')} className="p-2 w-[55%] cursor-pointer">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
-                    <th onClick={() => gererTri('role')} className="p-2 w-[45%] cursor-pointer">Rôle {rendreFlecheTri('role')}</th>
+                    <th onClick={() => gererTri('nom_complet')} className="p-2 w-[45%] cursor-pointer">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
+                    <th onClick={() => gererTri('role')} className="p-2 w-[30%] cursor-pointer">Rôle {rendreFlecheTri('role')}</th>
+                    <th className="p-2 w-[25%] text-center">Type d'accès</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
                   {usersFiltres.map((u) => {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
+                    const aAcces = u.acces_application ?? true;
                     return (
                       <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition">
                         <td className="p-2 font-extrabold text-slate-800 truncate">{u.nom_complet}</td>
                         <td className="p-2 truncate">
                           <span className="bg-orange-50 text-orange-800 border border-orange-200 px-1.5 py-0.5 rounded font-bold text-[9px]">
                             🛡️ {roleTrouve ? roleTrouve.nom_role : 'Aucun'}
+                          </span>
+                        </td>
+                        <td className="p-2 text-center">
+                          <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] border ${aAcces ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                            {aAcces ? '🟢 Utilisateur App' : '👤 Terrain / Intervenant'}
                           </span>
                         </td>
                       </tr>

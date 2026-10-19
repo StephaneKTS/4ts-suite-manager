@@ -7,6 +7,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [articles, setArticles] = useState([]);
   const [mouvements, setMouvements] = useState([]);
   const [approvisionnements, setApprovisionnements] = useState([]);
+  const [ventesHistoriques, setVentesHistoriques] = useState([]);
   const [familles, setFamilles] = useState([]); 
   const [depots, setDepots] = useState([]);
   const [emplacements, setEmplacements] = useState([]);
@@ -56,6 +57,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       const { data: dataAppro } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId);
       setApprovisionnements(dataAppro || []);
+
+      // Récupération des ventes historiques pour déduire le stock vendu par dépôt
+      const { data: dataVentes } = await supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId);
+      setVentesHistoriques(dataVentes || []);
     } catch (err) {
       console.error('Erreur chargement références :', err.message);
     }
@@ -246,6 +251,25 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       }
     });
 
+    // Prise en compte des ventes enregistrées dans ventes_historiques pour déduire du stock du dépôt
+    ventesHistoriques.forEach((v) => {
+      if (v.id_depot && String(v.id_depot) === String(depotId)) {
+        let articlesVente = [];
+        if (v.details_articles) {
+          if (typeof v.details_articles === 'string') { 
+            try { articlesVente = JSON.parse(v.details_articles); } catch (e) {} 
+          } else if (Array.isArray(v.details_articles)) { 
+            articlesVente = v.details_articles; 
+          }
+        }
+        articlesVente.forEach((ligne) => {
+          if (String(ligne.id || ligne.id_article) === String(articleId)) {
+            stockDepot -= parseInt(ligne.quantite || 0);
+          }
+        });
+      }
+    });
+
     return Math.max(0, stockDepot);
   };
 
@@ -309,6 +333,34 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             quantite: parseInt(ligne.quantite || 0),
             type: 'ACHAT',
             numeroDoc: app.numero_bon || app.numero_commande || 'APPROVISIONNEMENT',
+          });
+        }
+      });
+    });
+
+    // Intégrer également les ventes dans l'historique des flux
+    ventesHistoriques.forEach((v) => {
+      let articlesVente = [];
+      if (v.details_articles) {
+        if (typeof v.details_articles === 'string') {
+          try { articlesVente = JSON.parse(v.details_articles); } catch (e) {}
+        } else if (Array.isArray(v.details_articles)) {
+          articlesVente = v.details_articles;
+        }
+      }
+
+      articlesVente.forEach((ligne) => {
+        const idArt = ligne.id || ligne.id_article;
+        if (String(idArt) === String(articleId)) {
+          const depotObj = depots.find(d => String(d.id) === String(v.id_depot));
+          flux.push({
+            date: v.created_at || new Date().toISOString(),
+            depotSource: depotObj ? depotObj.nom_depot : (v.id_depot || '-'),
+            depotDest: 'Client (Vente)',
+            idDepotConcerne: v.id_depot,
+            quantite: parseInt(ligne.quantite || 0),
+            type: 'VENTE',
+            numeroDoc: v.numero_ticket || 'VENTE CAISSE',
           });
         }
       });

@@ -1,24 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://vtdqodqhkdxanrelxtrq.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '@/app/lib/supabase';
 
 export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [caisses, setCaisses] = useState([]);
-  const [chargement, setChargement] = useState(false);
-  
-  // Formulaire d'ajout / modification
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState({ type: '', text: '' });
+
   const [codeCaisse, setCodeCaisse] = useState('');
   const [nomCaisse, setNomCaisse] = useState('');
-  const [typeCaisse, setTypeCaisse] = useState('PRINCIPALE');
-  const [caisseEnCoursEdition, setCaisseEnCoursEdition] = useState(null);
+  const [natureCaisse, setNatureCaisse] = useState('PRINCIPALE');
+  const [caisseEnEdition, setCaisseEnEdition] = useState(null);
+
+  useEffect(() => {
+    chargerCaisses();
+  }, [entrepriseId]);
 
   const chargerCaisses = async () => {
-    setChargement(true);
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('caisses')
@@ -31,18 +31,14 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     } catch (err) {
       console.error('Erreur chargement caisses :', err.message);
     } finally {
-      setChargement(false);
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    chargerCaisses();
-  }, [entrepriseId]);
-
-  const sauvegarderCaisse = async (e) => {
+  const enregistrerCaisse = async (e) => {
     e.preventDefault();
     if (!codeCaisse.trim() || !nomCaisse.trim()) {
-      alert('⚠️ Veuillez remplir le code et le nom de la caisse.');
+      setMsg({ type: 'error', text: '⚠️ Veuillez remplir le code et le nom de la caisse.' });
       return;
     }
 
@@ -51,39 +47,34 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         id_entreprise: entrepriseId,
         code_caisse: codeCaisse.trim().toUpperCase(),
         nom_caisse: nomCaisse.trim(),
-        type: typeCaisse
+        nature: natureCaisse
       };
 
-      if (caisseEnCoursEdition) {
-        const { error } = await supabase
-          .from('caisses')
-          .update(payload)
-          .eq('id', caisseEnCoursEdition.id);
+      if (caisseEnEdition) {
+        const { error } = await supabase.from('caisses').update(payload).eq('id', caisseEnEdition.id);
         if (error) throw error;
-        alert('✅ Caisse mise à jour avec succès !');
+        setMsg({ type: 'success', text: '✅ Caisse mise à jour avec succès !' });
       } else {
-        const { error } = await supabase
-          .from('caisses')
-          .insert([payload]);
+        const { error } = await supabase.from('caisses').insert([payload]);
         if (error) throw error;
-        alert('✅ Nouvelle caisse déclarée avec succès !');
+        setMsg({ type: 'success', text: '✅ Nouvelle caisse déclarée avec succès !' });
       }
 
       setCodeCaisse('');
       setNomCaisse('');
-      setTypeCaisse('PRINCIPALE');
-      setCaisseEnCoursEdition(null);
+      setNatureCaisse('PRINCIPALE');
+      setCaisseEnEdition(null);
       chargerCaisses();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      setMsg({ type: 'error', text: 'Erreur : ' + err.message });
     }
   };
 
   const editerCaisse = (c) => {
-    setCaisseEnCoursEdition(c);
+    setCaisseEnEdition(c);
     setCodeCaisse(c.code_caisse || '');
     setNomCaisse(c.nom_caisse || '');
-    setTypeCaisse(c.type || 'PRINCIPALE');
+    setNatureCaisse(c.nature || 'PRINCIPALE');
   };
 
   const supprimerCaisse = async (id) => {
@@ -91,126 +82,109 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     try {
       const { error } = await supabase.from('caisses').delete().eq('id', id);
       if (error) throw error;
+      setMsg({ type: 'success', text: 'Caisse supprimée avec succès.' });
       chargerCaisses();
     } catch (err) {
-      alert('Erreur suppression : ' + err.message);
+      setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
     }
   };
 
   return (
-    <div className="space-y-4 text-xs font-sans">
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-        <h2 className="font-black text-sm text-slate-800 uppercase mb-3">
-          {caisseEnCoursEdition ? 'Modifier la Caisse' : 'Déclarer une Nouvelle Caisse'}
-        </h2>
-        
-        <form onSubmit={sauvegarderCaisse} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+    <div className="space-y-4 font-sans text-xs">
+      {msg.text && (
+        <div className={`p-3 rounded-xl font-semibold border ${msg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-rose-50 text-rose-800 border-rose-300'}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <form onSubmit={enregistrerCaisse} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-slate-800 text-sm uppercase">
+          {caisseEnEdition ? '✏️ Modifier la Caisse' : '🏧 Déclarer une Caisse'}
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Code Caisse (ex: C01)</label>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1">Code Caisse (ex: C01)</label>
             <input
               type="text"
               value={codeCaisse}
               onChange={(e) => setCodeCaisse(e.target.value)}
               placeholder="C01"
               required
-              className="w-full bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5 font-mono font-bold text-xs uppercase"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-mono font-bold uppercase"
             />
           </div>
-
-          <div className="sm:col-span-1">
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nom de la Caisse</label>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1">Nom de la Caisse</label>
             <input
               type="text"
               value={nomCaisse}
               onChange={(e) => setNomCaisse(e.target.value)}
-              placeholder="Caisse Principale Boutique"
+              placeholder="Caisse Principale"
               required
-              className="w-full bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5 font-medium text-xs"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold"
             />
           </div>
-
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Type de Caisse</label>
+            <label className="block text-[10px] font-bold text-slate-500 mb-1">Nature de la Caisse</label>
             <select
-              value={typeCaisse}
-              onChange={(e) => setTypeCaisse(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5 font-bold text-xs text-slate-800"
+              value={natureCaisse}
+              onChange={(e) => setNatureCaisse(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-slate-800"
             >
               <option value="PRINCIPALE">PRINCIPALE</option>
               <option value="FACTURATION">FACTURATION</option>
             </select>
           </div>
-
-          <div className="flex items-end gap-2">
-            <button
-              type="submit"
-              className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-1.5 px-3 rounded text-xs transition shadow-2xs"
-            >
-              {caisseEnCoursEdition ? 'Mettre à jour' : 'Enregistrer'}
-            </button>
-            {caisseEnCoursEdition && (
-              <button
-                type="button"
-                onClick={() => { setCaisseEnCoursEdition(null); setCodeCaisse(''); setNomCaisse(''); }}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-2.5 rounded text-xs transition"
-              >
-                Annuler
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-
-      {/* Liste des caisses enregistrées */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-        <div className="p-3 bg-slate-50 border-b border-slate-200 font-black text-slate-700 uppercase text-[11px]">
-          Caisses Déclarées ({caisses.length})
         </div>
 
-        {chargement ? (
-          <div className="p-6 text-center text-slate-400">Chargement...</div>
+        <div className="flex gap-2 pt-2">
+          <button type="submit" className="bg-[#005a5b] hover:bg-[#004748] text-white font-bold px-4 py-2 rounded-xl text-xs transition">
+            {caisseEnEdition ? 'Mettre à jour' : 'Enregistrer la Caisse'}
+          </button>
+          {caisseEnEdition && (
+            <button
+              type="button"
+              onClick={() => { setCaisseEnEdition(null); setCodeCaisse(''); setNomCaisse(''); setNatureCaisse('PRINCIPALE'); }}
+              className="bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs"
+            >
+              Annuler
+            </button>
+          )}
+        </div>
+      </form>
+
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-slate-800 text-sm">Caisses Enregistrées ({caisses.length})</h3>
+        {loading ? (
+          <p className="text-slate-400 text-center py-4">Chargement...</p>
         ) : caisses.length === 0 ? (
-          <div className="p-6 text-center text-slate-400">Aucune caisse enregistrée.</div>
+          <p className="text-slate-400 text-center py-4">Aucune caisse déclarée pour le moment.</p>
         ) : (
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-600 border-b border-slate-200 uppercase text-[10px] font-black">
-              <tr>
-                <th className="p-3">Code Caisse</th>
-                <th className="p-3">Nom</th>
-                <th className="p-3">Type</th>
-                <th className="p-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {caisses.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50/80 transition">
-                  <td className="p-3 font-mono font-black text-orange-600 text-sm">{c.code_caisse}</td>
-                  <td className="p-3 font-bold text-slate-800">{c.nom_caisse}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                      c.type === 'PRINCIPALE' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {caisses.map((c) => (
+              <div key={c.id} className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-mono font-black text-[#005a5b]">{c.code_caisse}</span>
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${
+                      c.nature === 'PRINCIPALE' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {c.type}
+                      {c.nature}
                     </span>
-                  </td>
-                  <td className="p-3 text-right space-x-2">
-                    <button
-                      onClick={() => editerCaisse(c)}
-                      className="text-slate-600 hover:text-orange-600 font-bold px-2 py-1 bg-slate-100 rounded"
-                    >
-                      Modifier
-                    </button>
-                    <button
-                      onClick={() => supprimerCaisse(c.id)}
-                      className="text-rose-600 hover:text-rose-700 font-bold px-2 py-1 bg-rose-50 rounded"
-                    >
-                      Supprimer
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <p className="font-bold text-xs text-slate-800">{c.nom_caisse}</p>
+                </div>
+                <div className="flex justify-end space-x-1 mt-3 pt-2 border-t border-slate-200">
+                  <button onClick={() => editerCaisse(c)} className="text-[10px] text-slate-600 hover:text-orange-600 font-bold px-2 py-1 bg-white rounded border">
+                    Modifier
+                  </button>
+                  <button onClick={() => supprimerCaisse(c.id)} className="text-[10px] text-rose-600 font-bold px-2 py-1 bg-rose-50 rounded">
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

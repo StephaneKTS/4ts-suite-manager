@@ -93,9 +93,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => { chargerDonnees(); }, [entrepriseId, typeOperation]);
 
-  const emplacementsSourceDisponibles = emplacements.filter((emp) => String(emp.id_depot) === String(enTeteDoc.id_depot_source));
-  const emplacementsDestinationDisponibles = emplacements.filter((emp) => String(emp.id_depot) === String(enTeteDoc.id_depot_destination));
-
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
     if (!valeurDepotFlux || !depotCibleId) return false;
     if (String(valeurDepotFlux) === String(depotCibleId)) return true;
@@ -308,6 +305,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                   <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                 </select>
               </div>
+
+              {/* CHAMP AJOUTÉ : DÉPÔT DESTINATAIRE (UNIQUEMENT EN CAS DE TRANSFERT) */}
+              {typeOperation === 'TRANSFERT' && (
+                <div>
+                  <label className="block font-bold text-[7.5px] text-slate-400 mb-0.5">Destination *</label>
+                  <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-blue-600">
+                    <option value="">-- Destination --</option>{depots.filter(dep => String(dep.id) !== String(enTeteDoc.id_depot_source)).map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block font-bold text-[7.5px] text-slate-400 mb-0.5">Motif *</label>
                 <input type="text" disabled={enTeteVerrouille} required value={enTeteDoc.motif} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, motif: e.target.value })} placeholder="Ex: Ajustement..." className="w-full bg-slate-50 border rounded p-1" />

@@ -40,8 +40,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const selectArticleRef = useRef(null);
 
   const genererNumeroDoc = (type, listeDocs) => {
-    const seq = String((listeDocs || []).length + 1).padStart(2, '0');
-    return type === 'FACTURE' ? `APP-${seq}` : `BC-${seq}`;
+    const prefix = type === 'FACTURE' ? 'APP-' : 'BC-';
+    const docsFiltres = (listeDocs || []).filter(d => (d.numero_bon || '').startsWith(prefix));
+    const seq = String(docsFiltres.length + 1).padStart(2, '0');
+    return `${prefix}${seq}`;
   };
 
   const chargerDonnees = async () => {
@@ -214,53 +216,124 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const enregistrerFacture = async (e) => {
     e.preventDefault();
-    if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); return; }
+    if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
+      if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
+      return; 
+    }
     try {
       const payload = {
         id_entreprise: entrepriseId,
         numero_bon: numeroDoc,
-        reference: referenceFournisseur,
         id_fournisseur: idFournisseur,
         id_depot_destination: idDepotDestination,
         montant_total: montantTotalGlobal,
         montant_paye: statutPaiement === 'SOLDE' ? montantTotalGlobal : statutPaiement === 'CREDIT' ? 0 : parseFloat(montantPaye) || 0,
         statut_paiement: statutPaiement,
-        details_articles: lignesValidees.map(l => ({ id_article: l.id_article, designation: l.designation, quantite: Number(l.quantite), prix_achat: Number(l.prix_achat), sous_total: Number(l.quantite) * Number(l.prix_achat) })),
+        details_articles: lignesValidees.map(l => ({ 
+          id_article: l.id_article, 
+          designation: l.designation, 
+          quantite: Number(l.quantite), 
+          prix_achat: Number(l.prix_achat), 
+          sous_total: Number(l.quantite) * Number(l.prix_achat) 
+        })),
       };
-      if (approEnEditionId) { await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId); }
-      else { await supabase.from('approvisionnements').insert([payload]); }
+
+      let error;
+      if (approEnEditionId) { 
+        const res = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId);
+        error = res.error;
+      } else { 
+        const res = await supabase.from('approvisionnements').insert([payload]); 
+        error = res.error;
+      }
+
+      if (error) {
+        console.error("ERREUR SUPABASE DETAILS:", error);
+        alert(`Erreur Supabase : ${error.message}`);
+        return;
+      }
+
       alert(`Facture ${numeroDoc} enregistrée !`);
       setVueActive('liste');
       chargerDonnees();
-    } catch (err) { alert('Erreur : ' + err.message); }
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    }
   };
 
   const enregistrerCommande = async (e) => {
     e.preventDefault();
-    if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); return; }
+    if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
+      if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
+      return; 
+    }
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        numero_commande: numeroDoc,
-        reference: referenceFournisseur,
+        numero_bon: numeroDoc,
         id_fournisseur: idFournisseur,
         id_depot_destination: idDepotDestination,
-        delai_livraison: delaiLivraison,
         montant_total: montantTotalGlobal,
-        statut_commande: 'EN_ATTENTE',
-        details_articles: lignesValidees.map(l => ({ id_article: l.id_article, designation: l.designation, quantite: Number(l.quantite), prix_achat: Number(l.prix_achat), sous_total: Number(l.quantite) * Number(l.prix_achat) })),
+        statut_paiement: 'EN_ATTENTE',
+        details_articles: lignesValidees.map(l => ({ 
+          id_article: l.id_article, 
+          designation: l.designation, 
+          quantite: Number(l.quantite), 
+          prix_achat: Number(l.prix_achat), 
+          sous_total: Number(l.quantite) * Number(l.prix_achat) 
+        })),
       };
-      if (approEnEditionId) { await supabase.from('commandes_fournisseurs').update(payload).eq('id', approEnEditionId); }
-      else { await supabase.from('approvisionnements').insert([{ ...payload, numero_bon: numeroDoc }]); }
+
+      let error;
+      if (approEnEditionId) { 
+        const res = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId);
+        error = res.error;
+      } else { 
+        const res = await supabase.from('approvisionnements').insert([payload]); 
+        error = res.error;
+      }
+
+      if (error) {
+        console.error("ERREUR SUPABASE DETAILS:", error);
+        alert(`Erreur Supabase : ${error.message}`);
+        return;
+      }
+
       alert(`Bon de commande ${numeroDoc} enregistré !`);
       setVueActive('liste');
       chargerDonnees();
-    } catch (err) { alert('Erreur : ' + err.message); }
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    }
+  };
+
+  // 🔄 Fonction pour transformer un bon de commande en facture
+  const transformerEnFacture = async (docId) => {
+    if (!confirm('Voulez-vous transformer ce bon de commande en facture ?')) return;
+    try {
+      // Générer un nouveau numéro de facture basé sur la liste actuelle
+      const nouveauNumFacture = genererNumeroDoc('FACTURE', approvisionnements);
+      
+      const payload = {
+        numero_bon: nouveauNumFacture,
+        statut_paiement: 'SOLDE' // Par défaut soldé lors de la conversion
+      };
+
+      const { error } = await supabase.from('approvisionnements').update(payload).eq('id', docId);
+      if (error) throw error;
+
+      alert(`Succès ! Le bon a été transformé en facture : ${nouveauNumFacture}`);
+      setVueActive('liste');
+      setOngletActif('FACTURE');
+      chargerDonnees();
+    } catch (err) {
+      alert('Erreur lors de la transformation : ' + err.message);
+    }
   };
 
   const ouvrirDocModification = (doc, type) => {
     setApproEnEditionId(doc.id);
-    setNumeroDoc(doc.numero_bon || doc.numero_commande);
+    setNumeroDoc(doc.numero_bon || '');
     setReferenceFournisseur(doc.reference || '');
     setDateDoc(doc.created_at ? doc.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
     setIdFournisseur(doc.id_fournisseur || '');
@@ -278,11 +351,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     setVueActive(type === 'FACTURE' ? 'formulaire_facture' : 'formulaire_commande');
   };
 
-  const supprimerDoc = async (id, type) => {
+  const supprimerDoc = async (id) => {
     if (!confirm('Supprimer ce document ?')) return;
     try {
-      const tableCible = type === 'FACTURE' ? 'approvisionnements' : 'commandes_fournisseurs';
-      await supabase.from(tableCible).delete().eq('id', id);
+      await supabase.from('approvisionnements').delete().eq('id', id);
       alert('Supprimé.');
       chargerDonnees();
     } catch (err) { alert('Erreur : ' + err.message); }
@@ -302,17 +374,18 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     return [...liste].sort((a, b) => {
       let valA = ''; let valB = '';
       if (triCol === 'date') { valA = a.created_at || ''; valB = b.created_at || ''; }
-      else if (triCol === 'numero') { valA = a.numero_bon || a.numero_commande || ''; valB = b.numero_bon || b.numero_commande || ''; }
+      else if (triCol === 'numero') { valA = a.numero_bon || ''; valB = b.numero_bon || ''; }
       else if (triCol === 'fournisseur') { valA = obtenirNomFournisseur(a.id_fournisseur); valB = obtenirNomFournisseur(b.id_fournisseur); }
-      else if (triCol === 'statut') { valA = a.statut_paiement || a.statut_commande || ''; valB = b.statut_paiement || b.statut_commande || ''; }
+      else if (triCol === 'statut') { valA = a.statut_paiement || ''; valB = b.statut_paiement || ''; }
       if (valA < valB) return triOrdre === 'asc' ? -1 : 1;
       if (valA > valB) return triOrdre === 'asc' ? 1 : -1;
       return 0;
     });
   };
 
-  const documentsHistorique = trierListe(approvisionnements.filter(a => !a.numero_commande));
-  const commandesHistorique = trierListe(approvisionnements.filter(a => a.numero_commande));
+  const documentsHistorique = trierListe(approvisionnements.filter(a => (a.numero_bon || '').startsWith('APP')));
+  const commandesHistorique = trierListe(approvisionnements.filter(a => (a.numero_bon || '').startsWith('BC')));
+  
   const enTeteVerrouille = lignesValidees.length > 0;
   const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-1">↕</span> : <span className="text-orange-600 ml-1">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
@@ -348,7 +421,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                         <td className="p-2 text-slate-500 text-[9.5px]">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
                         <td className="p-2 font-mono font-bold text-orange-600 text-[9.5px]">{doc.numero_bon}</td>
                         <td className="p-2 font-black text-slate-800 text-[9.5px] truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'Fournisseur'}</td>
-                        <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'}`}>{doc.statut_paiement}</span></td>
+                        <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'}`}>{doc.statut_paiement || 'SOLDE'}</span></td>
                       </tr>
                     ))
                   )}
@@ -362,10 +435,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
               <table className="w-full text-left text-xs border-collapse table-fixed">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[9px] font-extrabold select-none">
-                    <th onClick={() => gererTri('date')} className="p-2 w-[25%] cursor-pointer">Date {rendreFlecheTri('date')}</th>
-                    <th onClick={() => gererTri('numero')} className="p-2 w-[30%] font-mono cursor-pointer">N° Cmd {rendreFlecheTri('numero')}</th>
-                    <th onClick={() => gererTri('fournisseur')} className="p-2 w-[35%] cursor-pointer">Fournisseur {rendreFlecheTri('fournisseur')}</th>
-                    <th onClick={() => gererTri('statut')} className="p-2 w-[10%] text-center cursor-pointer">Statut {rendreFlecheTri('statut')}</th>
+                    <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer">Date {rendreFlecheTri('date')}</th>
+                    <th onClick={() => gererTri('numero')} className="p-2 w-[25%] font-mono cursor-pointer">N° Cmd {rendreFlecheTri('numero')}</th>
+                    <th onClick={() => gererTri('fournisseur')} className="p-2 w-[30%] cursor-pointer">Fournisseur {rendreFlecheTri('fournisseur')}</th>
+                    <th className="p-2 w-[25%] text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -373,9 +446,17 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                     commandesHistorique.map((cmd) => (
                       <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer">
                         <td className="p-2 text-slate-500 text-[9.5px]">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
-                        <td className="p-2 font-mono font-bold text-blue-600 text-[9.5px]">{cmd.numero_commande}</td>
+                        <td className="p-2 font-mono font-bold text-blue-600 text-[9.5px]">{cmd.numero_bon}</td>
                         <td className="p-2 font-black text-slate-800 text-[9.5px] truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'Fournisseur'}</td>
-                        <td className="p-2 text-center"><span className="px-1.5 py-0.5 rounded font-bold text-[9px] bg-blue-100 text-blue-800">{cmd.statut_commande || 'EN_ATTENTE'}</span></td>
+                        <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            type="button" 
+                            onClick={() => transformerEnFacture(cmd.id)} 
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-1 rounded text-[9px] shadow-xs flex items-center gap-1 mx-auto"
+                          >
+                            🔄 Transformer en Facture
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -390,7 +471,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2 max-w-sm mx-auto text-center">
           <div className="border-b border-slate-100 pb-1.5 flex justify-between items-center">
             <span className="font-extrabold text-slate-800 text-xs uppercase">Type de document</span>
-            <button type="button" onClick={() => setVueActive('liste')} className="text-slate-400 font-black text-xs">✖</button>
+            <button type="button" onClick={() => setVueActive('liste')} className="text-slate-400 font-black text-xs">✕</button>
           </div>
           <div className="grid grid-cols-2 gap-1.5 pt-1">
             <button type="button" onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-200 p-2.5 rounded-xl flex flex-col items-center gap-1">
@@ -499,7 +580,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             </div>
           </div>
           <div className="flex justify-between items-center pt-1.5 border-t border-slate-100">
-            {approEnEditionId ? (<button type="button" onClick={() => { supprimerDoc(approEnEditionId, 'FACTURE'); setVueActive('liste'); }} className="bg-red-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">🗑️ Supprimer</button>) : (<div className="bg-emerald-600 text-white px-2.5 py-1 rounded"><span className="text-[7px] block font-bold">TOTAL</span><span className="text-[11px] font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>)}
+            {approEnEditionId ? (<button type="button" onClick={() => { supprimerDoc(approEnEditionId); setVueActive('liste'); }} className="bg-red-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">🗑️ Supprimer</button>) : (<div className="bg-emerald-600 text-white px-2.5 py-1 rounded"><span className="text-[7px] block font-bold">TOTAL</span><span className="text-[11px] font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>)}
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2.5 py-1 rounded text-[10px]">🖨️ Imprimer</button>
               <button type="button" onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">📤 Partager</button>
@@ -554,7 +635,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             </div>
           )}
           <div className="flex justify-between items-center pt-1.5 border-t border-slate-100">
-            {approEnEditionId ? (<button type="button" onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">🗑️ Supprimer</button>) : (<div className="bg-emerald-600 text-white px-2.5 py-1 rounded"><span className="text-[7px] block font-bold">TOTAL</span><span className="text-[11px] font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>)}
+            {approEnEditionId ? (
+              <div className="flex gap-1">
+                <button type="button" onClick={() => { supprimerDoc(approEnEditionId); setVueActive('liste'); }} className="bg-red-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">🗑️ Supprimer</button>
+                <button type="button" onClick={() => transformerEnFacture(approEnEditionId)} className="bg-emerald-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">🔄 Transformer en Facture</button>
+              </div>
+            ) : (
+              <div className="bg-emerald-600 text-white px-2.5 py-1 rounded"><span className="text-[7px] block font-bold">TOTAL</span><span className="text-[11px] font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>
+            )}
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2.5 py-1 rounded text-[10px]">🖨️ Imprimer</button>
               <button type="button" onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">📤 Partager</button>

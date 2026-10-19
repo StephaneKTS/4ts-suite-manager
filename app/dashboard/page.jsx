@@ -1,246 +1,291 @@
 'use client';
 
 import { useState } from 'react';
+import SimulateurCadre from './components/SimulateurCadre';
+
+// Importation de tous vos composants métiers indépendants
+import GestionCaisses from './components/GestionCaisses';
+import GestionVentesHistoriques from './components/GestionVentesHistoriques';
 import GestionArticles from './components/GestionArticles';
 import GestionDepots from './components/GestionDepots';
-import GestionFamilles from './components/GestionFamilles';
-import GestionFournisseurs from './components/GestionFournisseurs';
 import GestionClients from './components/GestionClients';
 import GestionCategoriesClients from './components/GestionCategoriesClients';
-import GestionMouvements from './components/GestionMouvements';
+import GestionFournisseurs from './components/GestionFournisseurs';
 import GestionApprovisionnements from './components/GestionApprovisionnements';
+import GestionFamilles from './components/GestionFamilles';
+import GestionMouvements from './components/GestionMouvements';
+import GestionJournalCaisse from './components/GestionJournalCaisse';
 import GestionRoles from './components/GestionRoles';
 import GestionUtilisateurs from './components/GestionUtilisateurs';
-import GestionRapports from './components/GestionRapports';
-import GestionVentesHistoriques from './components/GestionVentesHistoriques'; 
-import GestionJournalCaisse from './components/GestionJournalCaisse'; 
-import GestionCaisses from './components/GestionCaisses'; 
 
-export default function DashboardDirect() {
-  const [groupeActif, setGroupeActif] = useState('accueil');
-  const [tableActive, setTableActive] = useState(null);
-  const [deviceMode, setDeviceMode] = useState('full');
+export default function DashboardPrincipal() {
+  const [moduleActif, setModuleActif] = useState(null);
+  const [ongletNavigation, setOngletNavigation] = useState('accueil');
+  const entrepriseId = '4TS-TEST';
 
-  const toutesLesTables = [
-    { id: 'caisse', nom: 'Caisse & Ventes', icon: '🛒' },
-    { id: 'gestion_caisses', nom: 'Déclaration Caisses', icon: '🏧' },
-    { id: 'articles_stock', nom: 'Stock Articles', icon: '📦' },
-    { id: 'depots_stock', nom: 'Dépôts de stock', icon: '🏢' },
-    { id: 'familles_articles', nom: 'Catégories / Familles', icon: '🏷️' },
-    { id: 'mouvements_stock', nom: 'Transferts & Mouvements', icon: '🔄' },
-    { id: 'approvisionnements', nom: 'Achats & Approvisionnements', icon: '📥' },
-    { id: 'clients', nom: 'Gestion des Clients', icon: '👥' },
-    { id: 'categories_clients', nom: 'Grilles Tarifs Clients', icon: '🏷️' },
-    { id: 'fournisseurs', nom: 'Gestion des Fournisseurs', icon: '🤝' },
-    { id: 'roles', nom: 'Gestion des Rôles', icon: '🛡️' },
-    { id: 'utilisateurs', nom: 'Comptes Utilisateurs', icon: '🔐' },
-    { id: 'caisses', nom: 'Trésorerie & Caisse', icon: '💵' },
-  ];
-
-  const tableCouranteObj = toutesLesTables.find(t => t.id === tableActive);
-
-  const getContainerWidth = () => {
-    if (deviceMode === 'mobile') return 'max-w-[420px] border-x-4 border-slate-700 shadow-2xl my-4 rounded-3xl overflow-hidden';
-    if (deviceMode === 'tablet') return 'max-w-[768px] border-x-4 border-slate-700 shadow-2xl my-4 rounded-2xl overflow-hidden';
-    return 'w-full';
-  };
-
-  const getGridCols = () => {
-    if (deviceMode === 'mobile') return 'grid-cols-3 gap-2';
-    if (deviceMode === 'tablet') return 'grid-cols-4 gap-3';
-    return 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4';
+  const rendreModuleActif = () => {
+    switch (moduleActif) {
+      case 'caisses':
+        return <GestionCaisses entrepriseId={entrepriseId} />;
+      case 'ventes':
+        return <GestionVentesHistoriques entrepriseId={entrepriseId} />;
+      case 'articles':
+        return <GestionArticles entrepriseId={entrepriseId} />;
+      case 'depots':
+        return <GestionDepots entrepriseId={entrepriseId} />;
+      case 'clients':
+        return <GestionClients entrepriseId={entrepriseId} />;
+      case 'categories':
+        return <GestionCategoriesClients entrepriseId={entrepriseId} />;
+      case 'fournisseurs':
+        return <GestionFournisseurs entrepriseId={entrepriseId} />;
+      case 'approvisionnements':
+        return <GestionApprovisionnements entrepriseId={entrepriseId} />;
+      case 'familles':
+        return <GestionFamilles entrepriseId={entrepriseId} />;
+      case 'mouvements':
+        return <GestionMouvements entrepriseId={entrepriseId} />;
+      case 'journal':
+      case 'grand_livre':
+      case 'controle':
+        return <GestionJournalCaisse entrepriseId={entrepriseId} />;
+      case 'roles':
+        return <GestionRoles entrepriseId={entrepriseId} />;
+      case 'utilisateurs':
+        return <GestionUtilisateurs entrepriseId={entrepriseId} />;
+      default:
+        return null;
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-800 flex flex-col items-center font-sans">
-      
-      {/* BARRE DU SIMULATEUR APPSHEET / PREVIEW */}
-      <header className="bg-slate-950 text-white w-full py-2.5 px-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50">
-        <div className="flex items-center space-x-2 text-xs font-semibold">
-          <span className="bg-emerald-600 px-2 py-0.5 rounded text-[10px]">4TS PREVIEW</span>
-          <span className="text-slate-400 hidden sm:inline">Simulateur d'affichage</span>
-        </div>
+    <SimulateurCadre>
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-between font-sans pb-16 relative">
         
-        <div className="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 space-x-1">
-          <button 
-            onClick={() => setDeviceMode('mobile')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition ${deviceMode === 'mobile' ? 'bg-orange-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            📱 Phone
-          </button>
-          <button 
-            onClick={() => setDeviceMode('tablet')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition ${deviceMode === 'tablet' ? 'bg-orange-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            📑 Tablette
-          </button>
-          <button 
-            onClick={() => setDeviceMode('full')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition ${deviceMode === 'full' ? 'bg-orange-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-          >
-            💻 Plein Écran
-          </button>
-        </div>
-      </header>
-
-      {/* Cadre de l'Application Simulée */}
-      <div className={`bg-slate-100 flex-1 flex flex-col transition-all duration-300 mx-auto ${getContainerWidth()}`}>
-        
-        {/* En-tête (Vert Émeraude) */}
-        <div className="p-3 sm:p-5 w-full">
-          <div className="bg-[#005043] rounded-2xl p-3.5 sm:p-5 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center space-x-3">
-              <div className="bg-orange-600 text-white font-black text-base sm:text-xl w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shadow-inner flex-shrink-0">
-                4TS
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                  <span className="bg-emerald-500/20 text-emerald-300 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-400/30 whitespace-nowrap">
-                    ● Supabase Direct Cloud
-                  </span>
-                  <span className="bg-orange-500 text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap uppercase">
-                    KEITA SHOP
-                  </span>
+        {/* EN-TÊTE FIGÉ (STICKY) */}
+        <div className="sticky top-0 z-20 bg-emerald-900 border-b border-emerald-700/50 p-4 text-white shadow-md">
+          <div className="space-y-3">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center space-x-3">
+                <div className="bg-orange-600 text-white font-black text-base px-3 py-1.5 rounded-xl shadow">
+                  4TS
                 </div>
-                <h1 className="text-sm sm:text-lg font-bold tracking-tight truncate">THEODORE STEPHANE</h1>
-                <p className="text-emerald-200/80 text-[10px] sm:text-xs">ID Entreprise : <span className="font-semibold text-white">4TS-TEST</span></p>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="bg-emerald-700 text-emerald-150 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                      ● Supabase Direct Cloud
+                    </span>
+                    <span className="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+                      KEITA SHOP
+                    </span>
+                  </div>
+                  <h1 className="text-base font-black tracking-wide mt-1">
+                    THEODORE STEPHANE
+                  </h1>
+                  <p className="text-[11px] text-emerald-200 font-medium">
+                    ID Entreprise : <span className="font-mono font-bold text-white">{entrepriseId}</span>
+                  </p>
+                </div>
               </div>
             </div>
-            <div>
-              <a 
-                href="/souscription" 
-                className="inline-flex items-center space-x-1.5 bg-emerald-900/60 hover:bg-emerald-950 text-emerald-100 text-[10px] sm:text-xs px-3 py-1.5 rounded-lg border border-emerald-600/40 transition whitespace-nowrap"
-              >
-                <span>⚙️ Wizard Souscription</span>
-              </a>
+
+            <div className="flex justify-between items-center pt-2 border-t border-emerald-800">
+              <span className="text-[11px] bg-emerald-800 text-emerald-200 font-bold px-3 py-1 rounded-xl">
+                ⚙️ Wizard Souscription
+              </span>
+              {(moduleActif || ongletNavigation !== 'accueil') && (
+                <button
+                  onClick={() => { setModuleActif(null); setOngletNavigation('accueil'); }}
+                  className="bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-white/20 shadow-xs"
+                >
+                  ← Accueil
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Contenu Principal */}
-        <main className="flex-1 px-3 sm:px-5 py-2 w-full pb-20">
-          
-          {groupeActif === 'accueil' && !tableActive && (
-            <div>
-              <h2 className="text-[10px] sm:text-xs font-bold text-slate-500 tracking-wider uppercase mb-2.5 px-1">
+        {/* CONTENU DE LA PAGE */}
+        <div className="p-4 space-y-4 flex-1">
+          {ongletNavigation === 'rapports' && !moduleActif ? (
+            <div className="space-y-3">
+              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
+                TRÉSORERIE & COMPTABILITÉ DIRECTES
+              </h2>
+
+              <div className="grid grid-cols-1 gap-2.5">
+                <div onClick={() => setModuleActif('journal')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">📝</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-xs">Saisie des Opérations</h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
+                  </div>
+                </div>
+
+                <div onClick={() => setModuleActif('grand_livre')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">📖</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-xs">Grand Livre & Journal</h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Mouvements par période et par compte.</p>
+                  </div>
+                </div>
+
+                <div onClick={() => setModuleActif('controle')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-xs">Contrôle & Clôture</h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Vérification caisse et versement central.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : ongletNavigation === 'profil' && !moduleActif ? (
+            /* AFFICHAGE DÉTAILLÉ DU PROFIL ET DE L'ENTREPRISE */
+            <div className="space-y-4">
+              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
+                INFORMATIONS DU COMPTE & ENTREPRISE
+              </h2>
+
+              <div className="bg-white rounded-2xl p-5 shadow border border-slate-200 space-y-4">
+                <div className="flex items-center space-x-3 pb-3 border-b border-slate-100">
+                  <div className="bg-purple-100 text-purple-700 p-3 rounded-2xl text-2xl font-black">
+                    👤
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-slate-800 text-sm">THEODORE STEPHANE</h3>
+                    <p className="text-xs text-orange-600 font-bold">Commercial Directeur</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex justify-between py-1.5 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Entreprise :</span>
+                    <span className="font-bold text-slate-800">KEITA SHOP (ISMA Logistique)</span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">ID Entreprise :</span>
+                    <span className="font-mono font-bold text-emerald-700">{entrepriseId}</span>
+                  </div>
+                  <div className="flex justify-between py-1.5 border-b border-slate-50">
+                    <span className="text-slate-500 font-medium">Base de données :</span>
+                    <span className="font-bold text-slate-800">Supabase Direct Cloud</span>
+                  </div>
+                  <div className="flex justify-between py-1.5">
+                    <span className="text-slate-500 font-medium">Statut de la session :</span>
+                    <span className="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full text-[10px]">● Actif</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : !moduleActif ? (
+            <div className="space-y-3">
+              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
                 ACCUEIL - TOUTES LES TABLES SUPABASE
               </h2>
-              <div className={`grid ${getGridCols()} mb-6`}>
-                {toutesLesTables.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTableActive(t.id)}
-                    className="bg-white border border-slate-200/90 hover:border-orange-500 rounded-xl p-2 sm:p-3.5 flex flex-col items-center text-center transition shadow-sm hover:shadow-md cursor-pointer group"
-                  >
-                    <span className="text-2xl sm:text-3xl mb-1 flex items-center justify-center transition group-hover:scale-105">
-                      {t.icon}
-                    </span>
-                    <h3 className="dashboard-card-title text-[10px] sm:text-xs font-bold text-slate-800 leading-tight w-full">
-                      {t.nom}
-                    </h3>
-                  </button>
-                ))}
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div onClick={() => setModuleActif('ventes')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">🛒</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Caisse & Ventes</span>
+                </div>
+
+                <div onClick={() => setModuleActif('caisses')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Déclaration Caisses</span>
+                </div>
+
+                <div onClick={() => setModuleActif('articles')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Stock Articles</span>
+                </div>
+
+                <div onClick={() => setModuleActif('depots')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Dépôts de stock</span>
+                </div>
+
+                <div onClick={() => setModuleActif('categories')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Catégories / Familles</span>
+                </div>
+
+                <div onClick={() => setModuleActif('mouvements')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Transferts & Mouvements</span>
+                </div>
+
+                <div onClick={() => setModuleActif('approvisionnements')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Achats & Approvisionnement</span>
+                </div>
+
+                <div onClick={() => setModuleActif('clients')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">👥</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Gestion des Clients</span>
+                </div>
+
+                <div onClick={() => setModuleActif('roles')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Gestion des Rôles</span>
+                </div>
+
+                <div onClick={() => setModuleActif('fournisseurs')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Gestion des Fournisseurs</span>
+                </div>
+
+                <div onClick={() => setModuleActif('utilisateurs')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Comptes Utilisateurs</span>
+                </div>
+
+                <div onClick={() => setModuleActif('journal')} className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">💵</span>
+                  <span className="font-bold text-slate-800 text-[11px] leading-tight">Trésorerie & Caisse</span>
+                </div>
               </div>
             </div>
-          )}
-
-          {groupeActif === 'rapports' && !tableActive && (
-            <GestionRapports entrepriseId="4TS-TEST" />
-          )}
-
-          {groupeActif === 'profil' && !tableActive && (
-            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 max-w-xl mx-auto shadow-sm space-y-3">
-              <h3 className="font-extrabold text-sm sm:text-base text-slate-800">👤 Mon Profil & Espace Entreprise</h3>
-              <p className="text-xs text-slate-500">Informations de l'entreprise, formule d'abonnement et licences.</p>
-              <div className="space-y-2 text-xs pt-2 border-t border-slate-100">
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Utilisateur</span>
-                  <span className="font-semibold text-slate-800">Théodore Stéphane</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Entreprise</span>
-                  <span className="font-semibold text-slate-800">KEITA SHOP (4TS-TEST)</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Licence</span>
-                  <span className="font-bold text-emerald-600">Standard Pro</span>
-                </div>
-              </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow p-4 border border-slate-200">
+              {rendreModuleActif()}
             </div>
           )}
+        </div>
 
-          {tableActive && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 shadow-sm space-y-3">
-              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <button
-                  onClick={() => setTableActive(null)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-xs transition flex items-center shadow-2xs"
-                  title="Retour"
-                >
-                  ⬅️
-                </button>
-                <span className="font-black text-xs sm:text-sm text-slate-700 tracking-wide uppercase">
-                  {tableCouranteObj ? `${tableCouranteObj.icon} ${tableCouranteObj.nom}` : tableActive}
-                </span>
-                <div className="w-6" />
-              </div>
-
-              {tableActive === 'caisse' && <GestionVentesHistoriques entrepriseId="4TS-TEST" />}
-              {tableActive === 'gestion_caisses' && <GestionCaisses entrepriseId="4TS-TEST" />}
-              {tableActive === 'caisses' && <GestionJournalCaisse entrepriseId="4TS-TEST" />}
-              {tableActive === 'articles_stock' && <GestionArticles entrepriseId="4TS-TEST" />}
-              {tableActive === 'depots_stock' && <GestionDepots entrepriseId="4TS-TEST" />}
-              {tableActive === 'familles_articles' && <GestionFamilles entrepriseId="4TS-TEST" />}
-              {tableActive === 'mouvements_stock' && <GestionMouvements entrepriseId="4TS-TEST" />}
-              {tableActive === 'approvisionnements' && <GestionApprovisionnements entrepriseId="4TS-TEST" />}
-              {tableActive === 'clients' && <GestionClients entrepriseId="4TS-TEST" />}
-              {tableActive === 'categories_clients' && <GestionCategoriesClients entrepriseId="4TS-TEST" />}
-              {tableActive === 'fournisseurs' && <GestionFournisseurs entrepriseId="4TS-TEST" />}
-              {tableActive === 'roles' && <GestionRoles entrepriseId="4TS-TEST" />}
-              {tableActive === 'utilisateurs' && <GestionUtilisateurs entrepriseId="4TS-TEST" />}
-
-              {!['caisse', 'gestion_caisses', 'caisses', 'articles_stock', 'depots_stock', 'familles_articles', 'mouvements_stock', 'approvisionnements', 'clients', 'categories_clients', 'fournisseurs', 'roles', 'utilisateurs'].includes(tableActive) && (
-                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
-                  <p className="text-3xl">🗄️</p>
-                  <p className="font-bold text-sm text-slate-700">Module &laquo; {tableActive} &raquo;</p>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Prêt pour l'intégration du composant spécifique.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-        </main>
-
-        {/* Barre de Navigation Fixe en Bas */}
-        <nav className="bg-white border-t border-slate-200 py-2 px-4 flex justify-around items-center text-center sticky bottom-0 z-40 shadow-lg">
-          <button 
-            onClick={() => { setGroupeActif('accueil'); setTableActive(null); }}
-            className={`flex flex-col items-center transition ${groupeActif === 'accueil' && !tableActive ? 'text-orange-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+        {/* BARRE DE NAVIGATION INFÉRIEURE FIXE */}
+        <div className="bg-white border-t border-slate-200 py-2.5 px-6 flex justify-around items-center sticky bottom-0 z-20 shadow-lg">
+          <button
+            onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
+            className={`flex flex-col items-center space-y-0.5 transition ${
+              ongletNavigation === 'accueil' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600'
+            }`}
           >
-            <span className="text-base">🏠</span>
+            <span className="text-lg">🏠</span>
             <span className="text-[10px]">Accueil</span>
           </button>
 
-          <button 
-            onClick={() => { setGroupeActif('rapports'); setTableActive(null); }}
-            className={`flex flex-col items-center transition ${groupeActif === 'rapports' ? 'text-orange-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+          <button
+            onClick={() => { setOngletNavigation('rapports'); setModuleActif(null); }}
+            className={`flex flex-col items-center space-y-0.5 transition ${
+              ongletNavigation === 'rapports' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600'
+            }`}
           >
-            <span className="text-base">📊</span>
+            <span className="text-lg">📊</span>
             <span className="text-[10px]">Rapports</span>
           </button>
 
-          <button 
-            onClick={() => { setGroupeActif('profil'); setTableActive(null); }}
-            className={`flex flex-col items-center transition ${groupeActif === 'profil' ? 'text-orange-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+          <button
+            onClick={() => { setOngletNavigation('profil'); setModuleActif(null); }}
+            className={`flex flex-col items-center space-y-0.5 transition ${
+              ongletNavigation === 'profil' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600'
+            }`}
           >
-            <span className="text-base">👤</span>
+            <span className="text-lg">👤</span>
             <span className="text-[10px]">Mon Profil</span>
           </button>
-        </nav>
+        </div>
 
       </div>
-    </div>
+    </SimulateurCadre>
   );
 }

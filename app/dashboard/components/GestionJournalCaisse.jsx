@@ -45,7 +45,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     setChargement(true);
     try {
       const { data: cData } = await supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId);
-      setCaisses(cData || []);
+      
+      // Filtrer pour exclure les caisses de type "facturation" ou "vente"
+      const caissesFiltrees = (cData || []).filter(c => {
+        const typeCaisse = (c.type_caisse || c.type || '').toLowerCase();
+        return !typeCaisse.includes('facturation') && !typeCaisse.includes('vente');
+      });
+      setCaisses(caissesFiltrees);
 
       const { data: cpData } = await supabase.from('comptes_comptables').select('*').eq('id_entreprise', entrepriseId);
       setComptes(cpData || []);
@@ -197,7 +203,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
             </div>
             {enteteSaisie.id_caisse && (
               <div className="bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-right border border-slate-300">
-                <span className="block text-[10px] uppercase text-slate-500 font-bold">Solde Actuel Caisse (Grisé)</span>
+                <span className="block text-[10px] uppercase text-slate-500 font-bold">SOLDE CAISSE</span>
                 <span className="text-sm font-black text-slate-900">
                   {calculerSoldeCaisse(enteteSaisie.id_caisse).toLocaleString('fr-FR')} F CFA
                 </span>
@@ -332,13 +338,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
             </div>
           </div>
 
-          <div className="flex justify-end pt-3 border-t border-slate-100">
+          <div className="flex flex-col items-end pt-3 border-t border-slate-100">
             <button
               type="submit"
               className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow transition"
             >
-              💾 Enregistrer les Opérations ({utilisateurActif})
+              💾 Valider
             </button>
+            <span className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">
+              {utilisateurActif}
+            </span>
           </div>
         </form>
       )}
