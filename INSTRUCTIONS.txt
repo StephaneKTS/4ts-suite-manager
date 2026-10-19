@@ -1,0 +1,19 @@
+faire quapres selection de larticle que le cuseur aille automatiquement dans la zone quantite pour saisir et apres la saisie de la quantite quand on clique sur la touche entree pour valider le curseur revient la zone de selection de larticle 
+
+
+
+passons a lepuration de cette table tu connais deja le principe je tenvoie les captures et le code actuel tu mets a jour 
+reduire la taille des polices et des cadres pour tout afficher sur la meme ligne et eviter les retours en lignes 
+annuler les commentaires et les descriptions et utiliser plus les boutons sans titre
+permettre en cliquant sur la zone des titre de la colonne dafficher les infos par ordre croissant et decroissant 
+retirer les boutons dactions sur la page principale permettre en cliquant sur une lune ligne dinfos de louvrir et de le modifier et le bouton daction supprimer saffiche en bas du document ou de la fiche 
+dans le bouton dajout ecrire juste nouveau
+
+
+la fiche du tiers n'a plus besoin dafficher la liste en bas, donc reduire la taille des polices et des cadres pour afficher ses infos comme ceci nom-categories-solde
+et regouper ses infos telephone-email-sur un pied de page en permettant un clique sur le numero qui declenche soit lappel soit lenvoie dun message sms ou whatsapp pareil pour email 
+
+
+ajouter la colonne pays lors de la creation dun nouveau tiers ce qui va peremttre d'inserer automatiquement lindicatif de son pays quand on voudra mettre son numero 
+
+jai ajouté la colonne pays dans la base de donnée voici code actuel client il faut mettre a jour en prevoyant au bas de page laffiche en image 01 pour les logo appel sms email et whatsapp

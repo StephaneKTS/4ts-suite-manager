@@ -1,11 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://vtdqodqhkdxanrelxtrq.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '@/app/lib/supabase';
 
 export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [familles, setFamilles] = useState([]);
@@ -14,59 +10,30 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [familleEnEdition, setFamilleEnEdition] = useState(null);
   const [nomFamilleInput, setNomFamilleInput] = useState('');
 
-  // 1. Charger uniquement les familles liées à l'entreprise (id_entreprise)
   const chargerFamilles = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase
-        .from('familles_articles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await supabase.from('familles_articles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       setFamilles(data || []);
-    } catch (err) {
-      console.error('Erreur chargement familles :', err.message);
-    } finally {
-      setChargement(false);
-    }
+    } catch (err) { console.error('Erreur :', err.message); } finally { setChargement(false); }
   };
 
-  useEffect(() => {
-    chargerFamilles();
-  }, []);
+  useEffect(() => { chargerFamilles(); }, []);
 
-  // 2. Enregistrer / Mettre à jour avec les noms de colonnes exacts
   const enregistrerFamille = async (e) => {
     e.preventDefault();
     try {
       if (familleEnEdition) {
-        // Modification (clé primaire = id)
-        const { error } = await supabase
-          .from('familles_articles')
-          .update({ nom_famille: nomFamilleInput })
-          .eq('id', familleEnEdition.id);
-
-        if (error) throw error;
-        alert('Catégorie mise à jour avec succès !');
+        await supabase.from('familles_articles').update({ nom_famille: nomFamilleInput }).eq('id', familleEnEdition.id);
+        alert('Mis à jour !');
       } else {
-        // Enregistrement (champs nom_famille et id_entreprise en minuscules)
-        const { error } = await supabase.from('familles_articles').insert([
-          {
-            nom_famille: nomFamilleInput,
-            id_entreprise: entrepriseId,
-          },
-        ]);
-
-        if (error) throw error;
-        alert('Catégorie / Famille créée avec succès dans Supabase !');
+        await supabase.from('familles_articles').insert([{ nom_famille: nomFamilleInput, id_entreprise: entrepriseId }]);
+        alert('Créé !');
       }
-
       annulerForm();
       chargerFamilles();
-    } catch (err) {
-      alert('Erreur lors de l’enregistrement : ' + err.message);
-    }
+    } catch (err) { alert('Erreur : ' + err.message); }
   };
 
   const ouvrirEdition = (famille) => {
@@ -81,77 +48,36 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     setAfficherForm(false);
   };
 
-  // 3. Supprimer (sur la colonne id)
   const supprimerFamille = async (famille) => {
-    if (!confirm(`Supprimer la catégorie "${famille.nom_famille}" ?`)) return;
+    if (!confirm(`Supprimer "${famille.nom_famille}" ?`)) return;
     try {
-      const { error } = await supabase
-        .from('familles_articles')
-        .delete()
-        .eq('id', famille.id);
-
-      if (error) throw error;
-      alert('Catégorie supprimée avec succès.');
+      await supabase.from('familles_articles').delete().eq('id', famille.id);
+      alert('Supprimé.');
       chargerFamilles();
-    } catch (err) {
-      alert('Erreur de suppression : ' + err.message);
-    }
+    } catch (err) { alert('Erreur : ' + err.message); }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-xs text-slate-500">Organisez vos articles par familles ou catégories de produits.</p>
-        <button
-          onClick={() => (afficherForm ? annulerForm() : setAfficherForm(true))}
-          className="bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow"
-        >
-          {afficherForm ? '✖ Fermer' : '➕ Nouvelle Famille'}
-        </button>
+    <div className="space-y-2.5 font-sans text-xs">
+      <div className="flex justify-between items-center bg-white p-1.5 rounded-xl border border-slate-200 gap-1.5 shadow-2xs">
+        <span className="text-[10px] text-slate-500 font-medium px-1">Gestion des familles.</span>
+        <button onClick={() => (afficherForm ? annulerForm() : setAfficherForm(true))} className="bg-orange-600 text-white font-bold px-3 py-1.5 rounded-lg text-[11px]">{afficherForm ? '✖ Fermer' : '➕ Nouveau'}</button>
       </div>
 
       {afficherForm && (
-        <form onSubmit={enregistrerFamille} className="bg-slate-50 border-2 border-orange-500/40 p-4 rounded-2xl space-y-3">
-          <h4 className="font-bold text-xs text-orange-600 uppercase">
-            {familleEnEdition ? `✏️ Modifier : ${familleEnEdition.nom_famille}` : 'Nouvelle Catégorie'}
-          </h4>
-          <div className="text-xs">
-            <label className="block font-semibold mb-1">Nom de la Famille / Catégorie *</label>
-            <input
-              type="text"
-              required
-              value={nomFamilleInput}
-              onChange={(e) => setNomFamilleInput(e.target.value)}
-              placeholder="Ex: PATISSERIE, BOULANGERIE, BOISSONS"
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5 focus:outline-none focus:border-orange-500"
-            />
-          </div>
-          <div className="pt-2 flex justify-end gap-2">
-            <button type="button" onClick={annulerForm} className="bg-slate-300 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl">Annuler</button>
-            <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow">
-              {familleEnEdition ? 'Mettre à jour' : 'Enregistrer dans Supabase'}
-            </button>
-          </div>
+        <form onSubmit={enregistrerFamille} className="bg-white border-2 border-orange-500/50 p-2.5 rounded-xl space-y-2">
+          <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[11px] text-orange-600 uppercase">{familleEnEdition ? 'Édition' : 'Nouvelle'}</span><button type="button" onClick={annulerForm} className="text-slate-400">✖</button></div>
+          <div><label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Famille</label><input type="text" required value={nomFamilleInput} onChange={(e) => setNomFamilleInput(e.target.value)} className="w-full bg-slate-50 border rounded-lg p-1 text-[10px] font-bold" /></div>
+          <div className="pt-1 flex justify-end gap-1.5"><button type="button" onClick={annulerForm} className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded text-[10px]">Annuler</button><button type="submit" className="bg-emerald-600 text-white font-bold px-4 py-1 rounded text-[10px]">{familleEnEdition ? 'Mettre à jour' : 'Enregistrer'}</button></div>
         </form>
       )}
 
-      {chargement ? (
-        <div className="p-8 text-center text-slate-400 text-xs">Chargement...</div>
-      ) : familles.length === 0 ? (
-        <div className="p-8 text-center text-slate-400 text-xs space-y-2">
-          <p className="text-2xl">🏷️</p>
-          <p className="font-bold">Aucune catégorie enregistrée.</p>
-          <p>Cliquez sur "Nouvelle Famille" pour commencer.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+      {chargement ? (<div className="p-4 text-center text-slate-400">Chargement...</div>) : familles.length === 0 ? (<div className="p-4 text-center text-slate-400 bg-white rounded-xl border">Aucune catégorie.</div>) : (
+        <div className="space-y-1.5">
           {familles.map((fam) => (
-            <div key={fam.id} className="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm flex justify-between items-center">
-              <span className="font-bold text-xs text-slate-800">🏷️ {fam.nom_famille}</span>
-              <div className="flex gap-1">
-                <button onClick={() => ouvrirEdition(fam)} className="p-1.5 border rounded-lg text-xs hover:bg-orange-100 transition">✏️</button>
-                <button onClick={() => supprimerFamille(fam)} className="p-1.5 border rounded-lg text-xs hover:bg-red-100 transition">🗑️</button>
-              </div>
+            <div key={fam.id} className="bg-white border p-2 rounded-xl shadow-2xs flex justify-between items-center">
+              <span className="font-extrabold text-[11px] text-slate-800">🏷️ {fam.nom_famille}</span>
+              <div className="flex gap-1.5"><button onClick={() => ouvrirEdition(fam)} className="p-1 bg-slate-100 rounded">✏️</button><button onClick={() => supprimerFamille(fam)} className="p-1 bg-slate-100 rounded">🗑️</button></div>
             </div>
           ))}
         </div>

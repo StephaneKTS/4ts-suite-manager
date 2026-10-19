@@ -12,329 +12,234 @@ import GestionApprovisionnements from './components/GestionApprovisionnements';
 import GestionRoles from './components/GestionRoles';
 import GestionUtilisateurs from './components/GestionUtilisateurs';
 import GestionRapports from './components/GestionRapports';
+import GestionVentesHistoriques from './components/GestionVentesHistoriques'; 
+import GestionJournalCaisse from './components/GestionJournalCaisse'; 
+import GestionCaisses from './components/GestionCaisses'; // 👈 Import du composant de déclaration des caisses
 
 export default function DashboardDirect() {
   const [groupeActif, setGroupeActif] = useState('accueil');
   const [tableActive, setTableActive] = useState(null);
-  const [vueToutVoir, setVueToutVoir] = useState(false); // Mode plein écran pour toutes les tables
-  const [tiroirOuvert, setTiroirOuvert] = useState(null);
-  const [rechercheToutVoir, setRechercheToutVoir] = useState('');
+  const [deviceMode, setDeviceMode] = useState('full');
 
-  // Liste exhaustive de toutes les tables Supabase
   const toutesLesTables = [
-    { id: 'caisse', nom: 'Caisse & Vente Directe', icon: '🛒', desc: 'Interface de facturation' },
-    { id: 'articles_stock', nom: 'Articles & Stock', icon: '📦', desc: 'Catalogue produits et prix' },
-    { id: 'depots_stock', nom: 'Dépôts & Magasins', icon: '🏢', desc: 'Entrepôts et emplacements' },
-    { id: 'familles_articles', nom: 'Familles & Catégories', icon: '🏷️', desc: 'Classification produits' },
-    { id: 'mouvements_stock', nom: 'Mouvements Stock', icon: '🔄', desc: 'Transferts, inventaires et avaries' },
-    { id: 'approvisionnements', nom: 'Approvisionnements', icon: '📥', desc: 'Achats et réceptions' },
-    { id: 'clients', nom: 'Fichier Clients', icon: '👥', desc: 'Répertoire et crédits clients' },
-    { id: 'categories_clients', nom: 'Catégories Clients', icon: '🏷️', desc: 'Grilles tarifaires, remises et TVA' },
-    { id: 'fournisseurs', nom: 'Fournisseurs', icon: '🤝', desc: 'Dettes et coordonnées fournisseurs' },
-    { id: 'roles', nom: 'Gestion des Rôles', icon: '🛡️', desc: 'Titres et fonctions du personnel' },
-    { id: 'utilisateurs', nom: 'Comptes Utilisateurs', icon: '🔐', desc: 'Permissions et accès par agent' },
-    { id: 'caisses', nom: 'Gestion Caisses', icon: '💵', desc: 'Caisses physiques et trésorerie' },
+    { id: 'caisse', nom: 'Caisse & Ventes', icon: '🛒' },
+    { id: 'gestion_caisses', nom: 'Déclaration Caisses', icon: '🏧' }, // 👈 Tuile ajoutée explicitement ici
+    { id: 'articles_stock', nom: 'Stock Articles', icon: '📦' },
+    { id: 'depots_stock', nom: 'Dépôts de stock', icon: '🏢' },
+    { id: 'familles_articles', nom: 'Catégories / Familles', icon: '🏷️' },
+    { id: 'mouvements_stock', nom: 'Transferts & Mouvements', icon: '🔄' },
+    { id: 'approvisionnements', nom: 'Achats & Approvisionnements', icon: '📥' },
+    { id: 'clients', nom: 'Gestion des Clients', icon: '👥' },
+    { id: 'categories_clients', nom: 'Grilles Tarifs Clients', icon: '🏷️' },
+    { id: 'fournisseurs', nom: 'Gestion des Fournisseurs', icon: '🤝' },
+    { id: 'roles', nom: 'Gestion des Rôles', icon: '🛡️' },
+    { id: 'utilisateurs', nom: 'Comptes Utilisateurs', icon: '🔐' },
+    { id: 'caisses', nom: 'Trésorerie & Caisse', icon: '💵' },
   ];
 
-  // Groupes de gestion de l'Accueil
-  const groupesAccueil = [
-    {
-      id: 'stock',
-      nom: 'Gestion Stock',
-      icon: '📦',
-      desc: 'Articles, dépôts, familles, mouvements et approvisionnements',
-      tables: [
-        { id: 'articles_stock', nom: 'Articles & Stock', icon: '📦', desc: 'Catalogue produits et prix' },
-        { id: 'depots_stock', nom: 'Dépôts & Magasins', icon: '🏢', desc: 'Entrepôts et emplacements' },
-        { id: 'familles_articles', nom: 'Familles & Catégories', icon: '🏷️', desc: 'Classification produits' },
-        { id: 'mouvements_stock', nom: 'Mouvements Stock', icon: '🔄', desc: 'Transferts, inventaires et avaries' },
-        { id: 'approvisionnements', nom: 'Approvisionnements', icon: '📥', desc: 'Achats et réceptions' },
-      ],
-    },
-    {
-      id: 'caisse',
-      nom: 'Ventes & Caisse',
-      icon: '🛒',
-      desc: 'Caisse enregistreuse et facturation directe',
-      tables: [
-        { id: 'caisse', nom: 'Caisse & Vente Directe', icon: '🛒', desc: 'Interface de facturation' },
-      ],
-    },
-    {
-      id: 'tiers',
-      nom: 'Tiers & Relations',
-      icon: '👥',
-      desc: 'Répertoire clients, catégories, fournisseurs, rôles et accès',
-      tables: [
-        { id: 'clients', nom: 'Fichier Clients', icon: '👥', desc: 'Répertoire et crédits clients' },
-        { id: 'categories_clients', nom: 'Catégories Clients', icon: '🏷️', desc: 'Grilles tarifaires, remises et TVA' },
-        { id: 'fournisseurs', nom: 'Fournisseurs', icon: '🤝', desc: 'Dettes et coordonnées fournisseurs' },
-        { id: 'roles', nom: 'Gestion des Rôles', icon: '🛡️', desc: 'Titres et fonctions du personnel' },
-        { id: 'utilisateurs', nom: 'Comptes Utilisateurs', icon: '🔐', desc: 'Permissions et accès par agent' },
-      ],
-    },
-    {
-      id: 'finances',
-      nom: 'Finances & Trésorerie',
-      icon: '💵',
-      desc: 'Caisses physiques, comptes et trésorerie',
-      tables: [
-        { id: 'caisses', nom: 'Gestion Caisses', icon: '💵', desc: 'Caisses physiques et trésorerie' },
-      ],
-    },
-  ];
+  const tableCouranteObj = toutesLesTables.find(t => t.id === tableActive);
 
-  const ClicSurBlocAccueil = (groupe) => {
-    if (groupe.tables && groupe.tables.length === 1) {
-      setTableActive(groupe.tables[0].id);
-      setTiroirOuvert(null);
-    } else {
-      setTiroirOuvert(groupe);
-    }
+  const getContainerWidth = () => {
+    if (deviceMode === 'mobile') return 'max-w-[420px] border-x-4 border-slate-700 shadow-2xl my-4 rounded-3xl overflow-hidden';
+    if (deviceMode === 'tablet') return 'max-w-[768px] border-x-4 border-slate-700 shadow-2xl my-4 rounded-2xl overflow-hidden';
+    return 'w-full';
   };
 
-  const selectionnerSousTable = (tableId) => {
-    setTableActive(tableId);
-    setTiroirOuvert(null);
-    setVueToutVoir(false);
+  const getGridCols = () => {
+    if (deviceMode === 'mobile') return 'grid-cols-3 gap-2';
+    if (deviceMode === 'tablet') return 'grid-cols-4 gap-3';
+    return 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-4';
   };
-
-  const tablesFiltreesToutVoir = toutesLesTables.filter((t) =>
-    t.nom.toLowerCase().includes(rechercheToutVoir.toLowerCase())
-  );
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 p-3 sm:p-6 font-sans pb-28">
-      <div className="max-w-6xl mx-auto space-y-5">
+    <div className="min-h-screen bg-slate-900 text-slate-800 flex flex-col items-center font-sans">
+      
+      {/* BARRE DU SIMULATEUR APPSHEET / PREVIEW */}
+      <header className="bg-slate-950 text-white w-full py-2.5 px-4 flex justify-between items-center border-b border-slate-800 sticky top-0 z-50">
+        <div className="flex items-center space-x-2 text-xs font-semibold">
+          <span className="bg-emerald-600 px-2 py-0.5 rounded text-[10px]">4TS PREVIEW</span>
+          <span className="text-slate-400 hidden sm:inline">Simulateur d'affichage</span>
+        </div>
         
-        {/* En-tête de l'application */}
-        <div className="bg-[#005a5b] text-white p-4 sm:p-6 rounded-3xl shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-lg">
-              4TS
+        <div className="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700 space-x-1">
+          <button 
+            onClick={() => setDeviceMode('mobile')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition ${deviceMode === 'mobile' ? 'bg-orange-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+          >
+            📱 Phone
+          </button>
+          <button 
+            onClick={() => setDeviceMode('tablet')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition ${deviceMode === 'tablet' ? 'bg-orange-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+          >
+            📑 Tablette
+          </button>
+          <button 
+            onClick={() => setDeviceMode('full')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition ${deviceMode === 'full' ? 'bg-orange-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+          >
+            💻 Plein Écran
+          </button>
+        </div>
+      </header>
+
+      {/* Cadre de l'Application Simulée */}
+      <div className={`bg-slate-100 flex-1 flex flex-col transition-all duration-300 mx-auto ${getContainerWidth()}`}>
+        
+        {/* En-tête (Vert Émeraude) */}
+        <div className="p-3 sm:p-5 w-full">
+          <div className="bg-[#005043] rounded-2xl p-3.5 sm:p-5 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="bg-orange-600 text-white font-black text-base sm:text-xl w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shadow-inner flex-shrink-0">
+                4TS
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  <span className="bg-emerald-500/20 text-emerald-300 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-400/30 whitespace-nowrap">
+                    ● Supabase Direct Cloud
+                  </span>
+                  <span className="bg-orange-500 text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap uppercase">
+                    KEITA SHOP
+                  </span>
+                </div>
+                <h1 className="text-sm sm:text-lg font-bold tracking-tight truncate">THEODORE STEPHANE</h1>
+                <p className="text-emerald-200/80 text-[10px] sm:text-xs">ID Entreprise : <span className="font-semibold text-white">4TS-TEST</span></p>
+              </div>
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                  ● Supabase Direct Cloud
-                </span>
-                <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                  KEITA SHOP
-                </span>
-              </div>
-              <h1 className="text-lg sm:text-xl font-extrabold text-white mt-1">THEODORE STEPHANE</h1>
-              <p className="text-emerald-100 text-xs">ID Entreprise : <code className="text-orange-300 font-bold">4TS-TEST</code></p>
+              <a 
+                href="/souscription" 
+                className="inline-flex items-center space-x-1.5 bg-emerald-900/60 hover:bg-emerald-950 text-emerald-100 text-[10px] sm:text-xs px-3 py-1.5 rounded-lg border border-emerald-600/40 transition whitespace-nowrap"
+              >
+                <span>⚙️ Wizard Souscription</span>
+              </a>
             </div>
           </div>
-
-          <a href="/souscription" className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition border border-white/20 flex items-center gap-2">
-            ⚙️ Wizard Souscription
-          </a>
         </div>
 
-        {/* CONTENU PRINCIPAL ACCUEIL (Mode Cartes de Blocs) */}
-        {groupeActif === 'accueil' && !tableActive && !vueToutVoir && (
-          <div className="space-y-4">
-            <h2 className="text-xs font-black uppercase tracking-wider text-slate-500 px-1">
-              ACCUEIL - MODULES DE GESTION
-            </h2>
+        {/* Contenu Principal */}
+        <main className="flex-1 px-3 sm:px-5 py-2 w-full pb-20">
+          
+          {groupeActif === 'accueil' && !tableActive && (
+            <div>
+              <h2 className="text-[10px] sm:text-xs font-bold text-slate-500 tracking-wider uppercase mb-2.5 px-1">
+                ACCUEIL - TOUTES LES TABLES SUPABASE
+              </h2>
+              <div className={`grid ${getGridCols()} mb-6`}>
+                {toutesLesTables.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTableActive(t.id)}
+                    className="bg-white border border-slate-200/90 hover:border-orange-500 rounded-xl p-2 sm:p-3.5 flex flex-col items-center text-center transition shadow-sm hover:shadow-md cursor-pointer group"
+                  >
+                    <span className="text-2xl sm:text-3xl mb-1 flex items-center justify-center transition group-hover:scale-105">
+                      {t.icon}
+                    </span>
+                    <h3 className="text-[10px] sm:text-xs font-bold text-slate-800 leading-tight truncate w-full">
+                      {t.nom}
+                    </h3>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-              {groupesAccueil.map((g) => (
-                <button
-                  key={g.id}
-                  onClick={() => ClicSurBlocAccueil(g)}
-                  className="bg-white hover:bg-slate-50 border border-slate-200 p-5 rounded-3xl flex flex-col items-center text-center gap-3 shadow-sm hover:shadow-md transition duration-200"
-                >
-                  <span className="text-4xl p-3 bg-slate-100 rounded-2xl">{g.icon}</span>
-                  <div>
-                    <span className="font-extrabold text-sm text-slate-800 block">{g.nom}</span>
-                    <span className="text-[11px] text-slate-400 mt-1 block leading-snug">{g.desc}</span>
-                  </div>
-                </button>
-              ))}
+          {groupeActif === 'rapports' && !tableActive && (
+            <GestionRapports entrepriseId="4TS-TEST" />
+          )}
 
-              {/* ICONE TOUT VOIR (Plein Écran) */}
-              <button
-                onClick={() => setVueToutVoir(true)}
-                className="bg-gradient-to-b from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white p-5 rounded-3xl flex flex-col items-center text-center gap-3 shadow-md hover:shadow-lg transition duration-200"
-              >
-                <span className="text-4xl p-3 bg-white/20 rounded-2xl">🎛️</span>
-                <div>
-                  <span className="font-extrabold text-sm block">Tout Voir</span>
-                  <span className="text-[11px] text-orange-100 mt-1 block leading-snug">Voir toutes les tables en plein écran</span>
+          {groupeActif === 'profil' && !tableActive && (
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 max-w-xl mx-auto shadow-sm space-y-3">
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-800">👤 Mon Profil & Espace Entreprise</h3>
+              <p className="text-xs text-slate-500">Informations de l'entreprise, formule d'abonnement et licences.</p>
+              <div className="space-y-2 text-xs pt-2 border-t border-slate-100">
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Utilisateur</span>
+                  <span className="font-semibold text-slate-800">Théodore Stéphane</span>
                 </div>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* VUE PLEIN ÉCRAN : TOUT VOIR */}
-        {groupeActif === 'accueil' && vueToutVoir && !tableActive && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">🎛️</span>
-                <h2 className="text-sm font-extrabold uppercase text-slate-800">Toutes les Tables Supabase</h2>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Entreprise</span>
+                  <span className="font-semibold text-slate-800">KEITA SHOP (4TS-TEST)</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Licence</span>
+                  <span className="font-bold text-emerald-600">Standard Pro</span>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  setVueToutVoir(false);
-                  setRechercheToutVoir('');
-                }}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-xl text-xs transition"
-              >
-                ⬅️ Retour aux modules
-              </button>
             </div>
+          )}
 
-            {/* Barre de recherche */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Rechercher une table..."
-                value={rechercheToutVoir}
-                onChange={(e) => setRechercheToutVoir(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 pl-11 text-sm text-slate-800 focus:outline-none focus:border-orange-500 shadow-sm"
-              />
-              <span className="absolute left-4 top-3.5 text-slate-400">🔍</span>
-            </div>
-
-            {/* Grille Plein Écran de toutes les tables */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {tablesFiltreesToutVoir.map((t) => (
+          {tableActive && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 shadow-sm space-y-3">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <button
-                  key={t.id}
-                  onClick={() => selectionnerSousTable(t.id)}
-                  className="bg-white hover:bg-orange-50 hover:border-orange-200 border border-slate-200 p-4 rounded-2xl flex flex-col items-center text-center gap-2 transition shadow-sm"
+                  onClick={() => setTableActive(null)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-xs transition flex items-center shadow-2xs"
+                  title="Retour"
                 >
-                  <span className="text-3xl p-2.5 bg-slate-100 rounded-2xl">{t.icon}</span>
-                  <div>
-                    <span className="font-extrabold text-xs text-slate-800 block leading-tight">{t.nom}</span>
-                    <span className="text-[10px] text-slate-400 block mt-1 line-clamp-1">{t.desc}</span>
-                  </div>
+                  ⬅️
                 </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* CONTENU ONGLET RAPPORTS */}
-        {groupeActif === 'rapports' && !tableActive && (
-          <GestionRapports entrepriseId="4TS-TEST" />
-        )}
-
-        {/* CONTENU ONGLET MON PROFIL */}
-        {groupeActif === 'profil' && !tableActive && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-            <h3 className="font-extrabold text-lg text-slate-800">👤 Mon Profil & Espace Entreprise</h3>
-            <p className="text-xs text-slate-500">Informations de l'entreprise, formule d'abonnement et licences.</p>
-          </div>
-        )}
-
-        {/* ZONE DE CONTENU D'UNE TABLE ACTIVE SÉLECTIONNÉE */}
-        {tableActive && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <button
-                onClick={() => setTableActive(null)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1"
-              >
-                ⬅️ Retour au tableau de bord
-              </button>
-              <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200">
-                ● Connecté à Supabase
-              </span>
-            </div>
-
-            {/* Injections des composants */}
-            {tableActive === 'articles_stock' && <GestionArticles entrepriseId="4TS-TEST" />}
-            {tableActive === 'depots_stock' && <GestionDepots entrepriseId="4TS-TEST" />}
-            {tableActive === 'familles_articles' && <GestionFamilles entrepriseId="4TS-TEST" />}
-            {tableActive === 'mouvements_stock' && <GestionMouvements entrepriseId="4TS-TEST" />}
-            {tableActive === 'approvisionnements' && <GestionApprovisionnements entrepriseId="4TS-TEST" />}
-            {tableActive === 'clients' && <GestionClients entrepriseId="4TS-TEST" />}
-            {tableActive === 'categories_clients' && <GestionCategoriesClients entrepriseId="4TS-TEST" />}
-            {tableActive === 'fournisseurs' && <GestionFournisseurs entrepriseId="4TS-TEST" />}
-            {tableActive === 'roles' && <GestionRoles entrepriseId="4TS-TEST" />}
-            {tableActive === 'utilisateurs' && <GestionUtilisateurs entrepriseId="4TS-TEST" />}
-
-            {!['articles_stock', 'depots_stock', 'familles_articles', 'mouvements_stock', 'approvisionnements', 'clients', 'categories_clients', 'fournisseurs', 'roles', 'utilisateurs'].includes(tableActive) && (
-              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
-                <p className="text-3xl">🗄️</p>
-                <p className="font-bold text-sm text-slate-700">Table Supabase &laquo; {tableActive} &raquo;</p>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Prêt pour l'intégration du composant spécifique.
-                </p>
+                <span className="font-black text-xs sm:text-sm text-slate-700 tracking-wide uppercase">
+                  {tableCouranteObj ? `${tableCouranteObj.icon} ${tableCouranteObj.nom}` : tableActive}
+                </span>
+                <div className="w-6" />
               </div>
-            )}
-          </div>
-        )}
 
-      </div>
+              {tableActive === 'caisse' && <GestionVentesHistoriques entrepriseId="4TS-TEST" />}
+              {tableActive === 'gestion_caisses' && <GestionCaisses entrepriseId="4TS-TEST" />}
+              {tableActive === 'caisses' && <GestionJournalCaisse entrepriseId="4TS-TEST" />}
+              {tableActive === 'articles_stock' && <GestionArticles entrepriseId="4TS-TEST" />}
+              {tableActive === 'depots_stock' && <GestionDepots entrepriseId="4TS-TEST" />}
+              {tableActive === 'familles_articles' && <GestionFamilles entrepriseId="4TS-TEST" />}
+              {tableActive === 'mouvements_stock' && <GestionMouvements entrepriseId="4TS-TEST" />}
+              {tableActive === 'approvisionnements' && <GestionApprovisionnements entrepriseId="4TS-TEST" />}
+              {tableActive === 'clients' && <GestionClients entrepriseId="4TS-TEST" />}
+              {tableActive === 'categories_clients' && <GestionCategoriesClients entrepriseId="4TS-TEST" />}
+              {tableActive === 'fournisseurs' && <GestionFournisseurs entrepriseId="4TS-TEST" />}
+              {tableActive === 'roles' && <GestionRoles entrepriseId="4TS-TEST" />}
+              {tableActive === 'utilisateurs' && <GestionUtilisateurs entrepriseId="4TS-TEST" />}
 
-      {/* BOTTOM SHEET / TIROIR DU BAS (Pour les blocs multi-tables) */}
-      {tiroirOuvert && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs p-0 sm:p-4">
-          <div className="bg-white w-full max-w-xl rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{tiroirOuvert.icon}</span>
-                <h3 className="font-extrabold text-base text-slate-800">{tiroirOuvert.nom}</h3>
-              </div>
-              <button
-                onClick={() => setTiroirOuvert(null)}
-                className="text-slate-400 hover:text-slate-600 font-black p-1 text-sm"
-              >
-                ✕
-              </button>
+              {!['caisse', 'gestion_caisses', 'caisses', 'articles_stock', 'depots_stock', 'familles_articles', 'mouvements_stock', 'approvisionnements', 'clients', 'categories_clients', 'fournisseurs', 'roles', 'utilisateurs'].includes(tableActive) && (
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                  <p className="text-3xl">🗄️</p>
+                  <p className="font-bold text-sm text-slate-700">Module &laquo; {tableActive} &raquo;</p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Prêt pour l'intégration du composant spécifique.
+                  </p>
+                </div>
+              )}
             </div>
+          )}
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {tiroirOuvert.tables.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => selectionnerSousTable(t.id)}
-                  className="bg-slate-50 hover:bg-orange-50 hover:border-orange-200 border border-slate-200 p-3 rounded-2xl flex flex-col items-center text-center gap-1.5 transition"
-                >
-                  <span className="text-2xl">{t.icon}</span>
-                  <span className="font-extrabold text-xs text-slate-800 leading-tight">{t.nom}</span>
-                  <span className="text-[10px] text-slate-400 line-clamp-1">{t.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+        </main>
 
-      {/* BARRE DE NAVIGATION FIXE DU BAS */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 py-2 px-4 shadow-2xl z-40">
-        <div className="max-w-md mx-auto flex justify-between items-center">
-          {[
-            { id: 'accueil', icon: '🏠', label: 'Accueil' },
-            { id: 'rapports', icon: '📊', label: 'Rapports' },
-            { id: 'profil', icon: '👤', label: 'Mon Profil' },
-          ].map((item) => {
-            const actif = groupeActif === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setGroupeActif(item.id);
-                  setTableActive(null);
-                  setTiroirOuvert(null);
-                  setVueToutVoir(false);
-                }}
-                className={`flex flex-col items-center gap-1 transition px-4 py-1 rounded-xl ${
-                  actif ? 'text-orange-600 font-extrabold scale-105' : 'text-slate-400 hover:text-slate-600 font-medium'
-                }`}
-              >
-                <span className="text-xl">{item.icon}</span>
-                <span className="text-[10px]">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Barre de Navigation Fixe en Bas */}
+        <nav className="bg-white border-t border-slate-200 py-2 px-4 flex justify-around items-center text-center sticky bottom-0 z-40 shadow-lg">
+          <button 
+            onClick={() => { setGroupeActif('accueil'); setTableActive(null); }}
+            className={`flex flex-col items-center transition ${groupeActif === 'accueil' && !tableActive ? 'text-orange-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <span className="text-base">🏠</span>
+            <span className="text-[10px]">Accueil</span>
+          </button>
+
+          <button 
+            onClick={() => { setGroupeActif('rapports'); setTableActive(null); }}
+            className={`flex flex-col items-center transition ${groupeActif === 'rapports' ? 'text-orange-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <span className="text-base">📊</span>
+            <span className="text-[10px]">Rapports</span>
+          </button>
+
+          <button 
+            onClick={() => { setGroupeActif('profil'); setTableActive(null); }}
+            className={`flex flex-col items-center transition ${groupeActif === 'profil' ? 'text-orange-600 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            <span className="text-base">👤</span>
+            <span className="text-[10px]">Mon Profil</span>
+          </button>
+        </nav>
+
       </div>
     </div>
   );

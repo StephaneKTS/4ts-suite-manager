@@ -1,11 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://vtdqodqhkdxanrelxtrq.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '@/app/lib/supabase';
 
 export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [articles, setArticles] = useState([]);
@@ -15,10 +11,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [depots, setDepots] = useState([]);
   const [emplacements, setEmplacements] = useState([]);
 
-  // Navigation interne : 'catalogue' | 'historique'
   const [modeVue, setModeVue] = useState('catalogue');
 
-  // Filtres Historique Article
   const [articleHistoriqueId, setArticleHistoriqueId] = useState('');
   const [depotHistoriqueFiltre, setDepotHistoriqueFiltre] = useState('TOUS');
   const [dateDebut, setDateDebut] = useState('');
@@ -32,13 +26,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [depotFiltre, setDepotFiltre] = useState('TOUS');
   const [emplacementFiltre, setEmplacementFiltre] = useState('TOUS');
 
+  // États pour la gestion du tri du catalogue
+  const [colonneTri, setColonneTri] = useState('Designation');
+  const [ordreTri, setOrdreTri] = useState('asc');
+
   const [nouveauArticle, setNouveauArticle] = useState({
     Code_Barre: '',
     Designation: '',
     Famille: '',
     Prix_Achat: 0,
     Prix_Vente: 0,
-    Quantite_Stock: 0,
     Seuil_Alerte: 5,
     Disponible_Menu_QR: true,
   });
@@ -54,11 +51,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const { data: dataEmp } = await supabase.from('emplacements_stock').select('*');
       setEmplacements(dataEmp || []);
 
-      // 1. Charger les Mouvements de stock
       const { data: dataMvt } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId);
       setMouvements(dataMvt || []);
 
-      // 2. Charger les Approvisionnements (Achats fournisseurs)
       const { data: dataAppro } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId);
       setApprovisionnements(dataAppro || []);
     } catch (err) {
@@ -146,7 +141,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       Famille: article.Famille || article.famille || '',
       Prix_Achat: article.Prix_Achat || article.prix_achat || 0,
       Prix_Vente: article.Prix_Vente || article.prix_vente || 0,
-      Quantite_Stock: article.Quantite_Stock ?? article.quantite_stock ?? 0,
       Seuil_Alerte: article.Seuil_Alerte || article.seuil_alerte || 5,
       Disponible_Menu_QR: article.Disponible_Menu_QR ?? true,
     });
@@ -161,7 +155,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       Famille: '',
       Prix_Achat: 0,
       Prix_Vente: 0,
-      Quantite_Stock: 0,
       Seuil_Alerte: 5,
       Disponible_Menu_QR: true,
     });
@@ -273,12 +266,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // --- OBTENTION DE L'HISTORIQUE DU PLUS ANCIEN AU PLUS NOUVEAU ---
   const obtenirHistoriqueFluxArticle = (articleId) => {
     if (!articleId) return [];
     let flux = [];
 
-    // 1. Mouvements de stock
     mouvements
       .filter((m) => String(m.id_article) === String(articleId))
       .forEach((m) => {
@@ -296,7 +287,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         });
       });
 
-    // 2. Approvisionnements
     approvisionnements.forEach((app) => {
       let articlesAppro = [];
       if (app.details_articles) {
@@ -324,16 +314,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       });
     });
 
-    // Tri chronologique croissant : DU PLUS ANCIEN AU PLUS NOUVEAU
     flux.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    // Filtrage par dépôt si demandé
     let fluxFiltres = flux;
     if (depotHistoriqueFiltre !== 'TOUS') {
       fluxFiltres = flux.filter(f => correspondAuDepot(f.idDepotConcerne, depotHistoriqueFiltre));
     }
 
-    // Filtrage par date début / fin
     if (dateDebut) {
       fluxFiltres = fluxFiltres.filter(f => f.date.split('T')[0] >= dateDebut);
     }
@@ -341,7 +328,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       fluxFiltres = fluxFiltres.filter(f => f.date.split('T')[0] <= dateFin);
     }
 
-    // Calcul cumulatif du stock au fil des mouvements
     let stockCourant = 0;
     const fluxAvecStock = fluxFiltres.map(f => {
       const typeMvt = f.type;
@@ -355,12 +341,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       return { ...f, stockApres: stockCourant };
     });
 
-    // On retourne la liste dans l'ordre du plus ancien au plus récent
     return fluxAvecStock;
   };
 
-  const supprimerArticle = async (article) => {
-    const artId = article.id_article || article.id;
+  const supprimerArticleDepuisFormulaire = async () => {
+    if (!articleEnEdition) return;
+    const artId = articleEnEdition.id_article || articleEnEdition.id;
     const stockGlobalActuel = calculerStockParFiltre(artId);
 
     if (stockGlobalActuel > 0) {
@@ -371,23 +357,56 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     if (!confirm(`Supprimer définitivement cet article ?`)) return;
 
     try {
-      const targetId = article.id_article || article.id;
       const { error } = await supabase
         .from('articles_stock')
         .delete()
-        .eq(article.id_article ? 'id_article' : 'id', targetId);
+        .eq(articleEnEdition.id_article ? 'id_article' : 'id', artId);
 
       if (error) throw error;
       alert('Article supprimé.');
+      annulerForm();
       chargerArticles();
     } catch (err) {
       alert('Erreur : ' + err.message);
     }
   };
 
-  const articlesAffiches = articles.filter((art) => {
+  const articlesFiltres = articles.filter((art) => {
     const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
     return matchFamille;
+  });
+
+  const gererTri = (colonne) => {
+    if (colonneTri === colonne) {
+      setOrdreTri(ordreTri === 'asc' ? 'desc' : 'asc');
+    } else {
+      setColonneTri(colonne);
+      setOrdreTri('asc');
+    }
+  };
+
+  const articlesAffiches = [...articlesFiltres].sort((a, b) => {
+    let valA, valB;
+    const aId = a.id_article || a.id;
+    const bId = b.id_article || b.id;
+
+    if (colonneTri === 'Designation') {
+      valA = String(a.Designation || a.designation || '').toLowerCase();
+      valB = String(b.Designation || b.designation || '').toLowerCase();
+    } else if (colonneTri === 'Stock') {
+      valA = calculerStockParFiltre(aId);
+      valB = calculerStockParFiltre(bId);
+    } else if (colonneTri === 'Prix_Achat') {
+      valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
+      valB = parseFloat(b.Prix_Achat || b.prix_achat || 0);
+    } else if (colonneTri === 'Prix_Vente') {
+      valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
+      valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
+    }
+
+    if (valA < valB) return ordreTri === 'asc' ? -1 : 1;
+    if (valA > valB) return ordreTri === 'asc' ? 1 : -1;
+    return 0;
   });
 
   const emplacementsDisponibles = depotFiltre === 'TOUS' 
@@ -398,68 +417,52 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const historiqueFlux = obtenirHistoriqueFluxArticle(articleHistoriqueId);
 
   return (
-    <div className="space-y-4 text-xs">
-      {/* Barre de navigation entre Catalogue et Historique Article */}
-      <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-2">
+    <div className="space-y-2.5 font-sans text-xs">
+      
+      <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
-          onClick={() => setModeVue('catalogue')}
-          className={`flex-1 py-2 px-4 rounded-xl font-extrabold transition ${
-            modeVue === 'catalogue' ? 'bg-orange-600 text-white shadow' : 'bg-white text-slate-700 hover:bg-slate-50'
+          onClick={() => {
+            setModeVue('catalogue');
+            if (!afficherForm) setAfficherForm(true);
+          }}
+          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition whitespace-nowrap border ${
+            modeVue === 'catalogue' && afficherForm 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-2xs' 
+              : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'
           }`}
         >
-          📦 Catalogue Articles ({articles.length})
+          ＋ Nouveau ({articles.length})
         </button>
         <button
           type="button"
-          onClick={() => setModeVue('historique')}
-          className={`flex-1 py-2 px-4 rounded-xl font-extrabold transition ${
-            modeVue === 'historique' ? 'bg-orange-600 text-white shadow' : 'bg-white text-slate-700 hover:bg-slate-50'
+          onClick={() => {
+            setModeVue('historique');
+            setAfficherForm(false);
+          }}
+          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition whitespace-nowrap border ${
+            modeVue === 'historique' 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-2xs' 
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
           }`}
         >
-          🔍 Interroger l'Historique & Détails
+          🔍 Historique
         </button>
       </div>
 
       {modeVue === 'catalogue' && (
         <>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <p className="text-slate-500">Catalogue produits, prix et suivi des stocks par dépôt et emplacement.</p>
-            <button
-              onClick={() => (afficherForm ? annulerForm() : setAfficherForm(true))}
-              className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-4 py-2 rounded-xl transition shadow"
-            >
-              {afficherForm ? '✖ Fermer' : '➕ Ajouter un article'}
-            </button>
-          </div>
-
           {afficherForm && (
-            <form onSubmit={enregistrerArticle} className="bg-slate-50 border-2 border-orange-500/40 p-4 rounded-2xl space-y-3">
-              <h4 className="font-bold text-orange-600 uppercase">
-                {articleEnEdition ? `✏️ Modifier l'article` : 'Nouveau Produit'}
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1">Désignation *</label>
-                  <input
-                    type="text"
-                    required
-                    value={nouveauArticle.Designation}
-                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value })}
-                    placeholder="Ex: EXTRA FESCO ANANAS"
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold mb-1">Famille / Catégorie *</label>
+            <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-2.5 rounded-xl shadow-xs space-y-2">
+              <div className="flex justify-between items-center pb-1 border-b border-slate-100">
+                <div className="flex-1 max-w-[200px]">
                   <select
                     required
                     value={nouveauArticle.Famille}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Famille: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-700"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-[11px] font-bold text-orange-600 focus:outline-none"
                   >
-                    <option value="">-- Sélectionner une Famille --</option>
+                    <option value="">-- Sélectionner Famille --</option>
                     {familles.map((fam) => (
                       <option key={fam.id} value={fam.id}>
                         🏷️ {fam.nom_famille || fam.Nom_Famille}
@@ -467,280 +470,316 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     ))}
                   </select>
                 </div>
+                <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✖</button>
+              </div>
 
-                <div>
-                  <label className="block font-semibold mb-1">Code Barre</label>
-                  <input
-                    type="text"
-                    value={nouveauArticle.Code_Barre}
-                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value })}
-                    placeholder="Ex: 600123"
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
-                  />
-                </div>
+              <div>
+                <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">Désignation *</label>
+                <input
+                  type="text"
+                  required
+                  value={nouveauArticle.Designation}
+                  onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value })}
+                  placeholder="Ex: JUS DE PAPAYE 250ML"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-extrabold text-slate-800 whitespace-nowrap truncate"
+                />
+              </div>
 
+              <div className="grid grid-cols-4 gap-1.5 items-end">
                 <div>
-                  <label className="block font-semibold mb-1">Prix d'Achat</label>
+                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">P.A</label>
                   <input
                     type="number"
                     value={nouveauArticle.Prix_Achat}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Achat: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-bold"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Prix de Vente *</label>
+                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">P.V *</label>
                   <input
                     type="number"
                     required
                     value={nouveauArticle.Prix_Vente}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-bold text-emerald-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1 text-slate-400">Quantité en stock</label>
+                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">S.Alerte</label>
                   <input
                     type="number"
-                    disabled
-                    value={nouveauArticle.Quantite_Stock}
-                    className="w-full bg-slate-200 text-slate-500 border border-slate-300 rounded-xl p-2.5 font-bold cursor-not-allowed"
+                    value={nouveauArticle.Seuil_Alerte}
+                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Seuil_Alerte: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-bold text-slate-700"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">Code-Barres</label>
+                  <input
+                    type="text"
+                    value={nouveauArticle.Code_Barre}
+                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value })}
+                    placeholder="600123"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-mono"
                   />
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-end gap-2">
-                <button type="button" onClick={annulerForm} className="bg-slate-300 text-slate-700 font-bold px-4 py-2.5 rounded-xl">Annuler</button>
-                <button type="submit" className="bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl shadow">
-                  {articleEnEdition ? 'Mettre à jour' : 'Enregistrer'}
-                </button>
+              <div className="pt-1 flex justify-between items-center">
+                {articleEnEdition ? (
+                  <button 
+                    type="button" 
+                    onClick={supprimerArticleDepuisFormulaire} 
+                    className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold px-3 py-1 rounded-lg text-[10px]"
+                  >
+                    🗑️ Supprimer
+                  </button>
+                ) : <div />}
+
+                <div className="flex gap-1.5">
+                  <button type="button" onClick={annulerForm} className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded-lg text-[10px]">Annuler</button>
+                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-1 rounded-lg shadow-2xs text-[10px]">
+                    {articleEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                  </button>
+                </div>
               </div>
             </form>
           )}
 
-          {/* Barres de filtres */}
-          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-white p-1.5 rounded-xl border border-slate-200 grid grid-cols-3 gap-1.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Filtrer par Famille :</label>
+              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Famille</label>
               <select
                 value={familleFiltre}
                 onChange={(e) => setFamilleFiltre(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-700 text-[10px]"
               >
-                <option value="TOUTES">Toutes les Familles ({articles.length})</option>
+                <option value="TOUTES">Toutes</option>
                 {familles.map((fam) => (
                   <option key={fam.id} value={fam.id}>
-                    🏷️ {fam.nom_famille || fam.Nom_Famille}
+                    {fam.nom_famille || fam.Nom_Famille}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Filtrer par Dépôt :</label>
+              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Dépôt</label>
               <select
                 value={depotFiltre}
                 onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-700 text-[10px]"
               >
-                <option value="TOUS">Tous les Dépôts ({depots.length})</option>
+                <option value="TOUS">Tous</option>
                 {depots.map((dep) => (
                   <option key={dep.id} value={dep.id}>
-                    🏢 {dep.nom_depot || dep.Nom_Depot}
+                    {dep.nom_depot || dep.Nom_Depot}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Filtrer par Emplacement :</label>
+              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Emplacement</label>
               <select
                 value={emplacementFiltre}
                 onChange={(e) => setEmplacementFiltre(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-700 text-[10px]"
               >
-                <option value="TOUS">Tous les Emplacements</option>
+                <option value="TOUS">Tous</option>
                 {emplacementsDisponibles.map((emp) => (
                   <option key={emp.id} value={emp.nom_emplacement}>
-                    📍 {emp.nom_emplacement}
+                    {emp.nom_emplacement}
                   </option>
                 ))}
               </select>
             </div>
           </div>
 
-          <div className="flex justify-between items-center text-[11px] text-slate-500 px-1">
-            <span>Affichage : <strong>{articlesAffiches.length}</strong> article(s) trouvé(s)</span>
-          </div>
-
-          {/* Tableau des articles */}
-          {chargement ? (
-            <div className="p-8 text-center text-slate-400">Chargement des articles...</div>
-          ) : articlesAffiches.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 bg-white border border-slate-200 rounded-2xl">
-              Aucun article trouvé avec ces filtres.
-            </div>
-          ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+            <table className="w-full text-left text-xs border-collapse table-fixed">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[9px] font-extrabold tracking-wider">
+                  <th 
+                    onClick={() => gererTri('Designation')} 
+                    className="p-2 w-[44%] cursor-pointer hover:bg-slate-100 select-none"
+                  >
+                    Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
+                  </th>
+                  <th 
+                    onClick={() => gererTri('Stock')} 
+                    className="p-2 w-[13%] text-center cursor-pointer hover:bg-slate-100 select-none"
+                  >
+                    Stock {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
+                  </th>
+                  <th 
+                    onClick={() => gererTri('Prix_Achat')} 
+                    className="p-2 w-[15%] text-right cursor-pointer hover:bg-slate-100 select-none"
+                  >
+                    P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
+                  </th>
+                  <th 
+                    onClick={() => gererTri('Prix_Vente')} 
+                    className="p-2 w-[15%] text-right cursor-pointer hover:bg-slate-100 select-none"
+                  >
+                    P.V {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
+                  </th>
+                  <th className="p-2 w-[13%] text-center">⚙️</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {chargement ? (
                   <tr>
-                    <th className="p-3">Désignation</th>
-                    <th className="p-3">Famille / Catégorie</th>
-                    <th className="p-3">Code Barre</th>
-                    <th className="p-3">Prix Achat</th>
-                    <th className="p-3">Prix Vente</th>
-                    <th className="p-3">Stock Actuel</th>
-                    <th className="p-3 text-center">Actions</th>
+                    <td colSpan="5" className="p-3 text-center text-slate-400">Chargement...</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {articlesAffiches.map((art) => {
+                ) : articlesAffiches.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="p-3 text-center text-slate-400">Aucun article.</td>
+                  </tr>
+                ) : (
+                  articlesAffiches.map((art) => {
                     const artId = art.id_article || art.id;
-                    const familleTrouvee = familles.find((f) => String(f.id) === String(art.Famille || art.famille));
                     const stockVal = calculerStockParFiltre(artId);
 
                     return (
-                      <tr key={artId} className="hover:bg-slate-50">
-                        <td className="p-3 font-bold text-slate-800">{art.Designation || art.designation}</td>
-                        <td className="p-3">
-                          <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2.5 py-1 rounded-lg font-bold text-[10px]">
-                            🏷️ {familleTrouvee ? (familleTrouvee.nom_famille || familleTrouvee.Nom_Famille) : 'Général'}
-                          </span>
+                      <tr key={artId} className="hover:bg-slate-50 transition">
+                        <td className="p-2 font-black text-slate-800 text-[9.5px] whitespace-nowrap truncate">
+                          {art.Designation || art.designation}
                         </td>
-                        <td className="p-3 font-mono text-slate-500">{art.Code_Barre || art.code_barre || '-'}</td>
-                        <td className="p-3">{art.Prix_Achat || art.prix_achat ? `${art.Prix_Achat || art.prix_achat}` : '-'}</td>
-                        <td className="p-3 font-extrabold text-emerald-600">{art.Prix_Vente || art.prix_vente}</td>
-                        <td className="p-3 font-bold">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] ${stockVal > 0 ? 'bg-emerald-100 text-emerald-700 font-black text-sm' : 'bg-slate-100 text-slate-500'}`}>
+                        <td className="p-2 text-center whitespace-nowrap">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${stockVal > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-400'}`}>
                             {stockVal}
                           </span>
                         </td>
-                        <td className="p-3 text-center">
-                          <div className="flex justify-center gap-1">
-                            <button onClick={() => ouvrirEdition(art)} className="p-1.5 border border-slate-300 rounded-lg hover:bg-orange-100" title="Modifier">✏️</button>
-                            <button onClick={() => supprimerArticle(art)} className="p-1.5 border border-slate-300 rounded-lg hover:bg-red-100" title="Supprimer">🗑️</button>
-                          </div>
+                        <td className="p-2 text-right font-medium text-slate-600 text-[10px] whitespace-nowrap">
+                          {art.Prix_Achat || art.prix_achat || 0}
+                        </td>
+                        <td className="p-2 text-right font-black text-emerald-600 text-[10px] whitespace-nowrap">
+                          {art.Prix_Vente || art.prix_vente || 0}
+                        </td>
+                        <td className="p-2 text-center whitespace-nowrap">
+                          <button 
+                            onClick={() => ouvrirEdition(art)} 
+                            className="p-1 bg-slate-100 hover:bg-orange-100 border border-slate-200 rounded text-[11px]" 
+                            title="Modifier"
+                          >
+                            ✏️
+                          </button>
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
-      {/* VUE HISTORIQUE ARTICLE */}
       {modeVue === 'historique' && (
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-          <h4 className="font-extrabold text-slate-800 text-sm uppercase flex items-center gap-2">
-            <span>🔍</span> HISTORIQUE ARTICLE
-          </h4>
+        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+          <div>
+            <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Article</label>
+            <select
+              value={articleHistoriqueId}
+              onChange={(e) => setArticleHistoriqueId(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-800 text-xs"
+            >
+              {articles.map((art) => (
+                <option key={art.id_article || art.id} value={art.id_article || art.id}>
+                  {art.Designation || art.designation}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <div className="grid grid-cols-3 gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Sélectionner un Article *</label>
-              <select
-                value={articleHistoriqueId}
-                onChange={(e) => setArticleHistoriqueId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800"
-              >
-                {articles.map((art) => (
-                  <option key={art.id_article || art.id} value={art.id_article || art.id}>
-                    📦 {art.Designation || art.designation}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Filtrer par Dépôt :</label>
+              <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Dépôt</label>
               <select
                 value={depotHistoriqueFiltre}
                 onChange={(e) => setDepotHistoriqueFiltre(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-800"
+                className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-slate-700 text-[10px]"
               >
-                <option value="TOUS">Tous les dépôts ({depots.length})</option>
+                <option value="TOUS">Tous</option>
                 {depots.map((dep) => (
                   <option key={dep.id} value={dep.id}>
-                    🏢 {dep.nom_depot || dep.Nom_Depot}
+                    {dep.nom_depot || dep.Nom_Depot}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Date Début :</label>
+              <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Du</label>
               <input
                 type="date"
                 value={dateDebut}
                 onChange={(e) => setDateDebut(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-medium"
+                className="w-full bg-white border border-slate-200 rounded p-0.5 font-medium text-[9px]"
               />
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Date Fin :</label>
+              <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Au</label>
               <input
                 type="date"
                 value={dateFin}
                 onChange={(e) => setDateFin(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-medium"
+                className="w-full bg-white border border-slate-200 rounded p-0.5 font-medium text-[9px]"
               />
             </div>
           </div>
 
-          <div className="bg-orange-50/50 border border-orange-200 p-4 rounded-2xl flex justify-between items-center">
-            <h5 className="font-extrabold text-slate-800 uppercase">
-              📦 ARTICLE : {articleSelectionneObj ? (articleSelectionneObj.Designation || articleSelectionneObj.designation) : ''}
+          <div className="bg-orange-50 border border-orange-200 p-1.5 rounded-lg flex justify-between items-center">
+            <h5 className="font-extrabold text-slate-800 text-[11px] truncate">
+              {articleSelectionneObj ? (articleSelectionneObj.Designation || articleSelectionneObj.designation) : ''}
             </h5>
-            <span className="text-xs font-bold text-slate-600">{historiqueFlux.length} mouvement(s) trouvé(s)</span>
+            <span className="text-[9px] font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded shadow-2xs">
+              {historiqueFlux.length} mvt(s)
+            </span>
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-xs">
+          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Date / Heure</th>
-                  <th className="p-3">Dépôt Source</th>
-                  <th className="p-3">Dépôt Dest.</th>
-                  <th className="p-3">Quantité</th>
-                  <th className="p-3 text-blue-600">STOCK</th>
-                  <th className="p-3 text-orange-600 font-mono">N° Document</th>
-                  <th className="p-3">Opérateur</th>
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 uppercase text-[8px] font-extrabold text-slate-500">
+                  <th className="p-1.5">Date</th>
+                  <th className="p-1.5">Trajet</th>
+                  <th className="p-1.5 text-center">Qte</th>
+                  <th className="p-1.5 text-center text-blue-600">Stock</th>
+                  <th className="p-1.5 text-orange-600 font-mono">Doc</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 text-[10px]">
                 {historiqueFlux.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="p-8 text-center text-slate-400">Aucun historique de mouvement pour cet article.</td>
+                    <td colSpan="5" className="p-3 text-center text-slate-400">Aucun mouvement.</td>
                   </tr>
                 ) : (
                   historiqueFlux.map((flux, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
-                      <td className="p-3 text-slate-500 font-mono">
-                        {new Date(flux.date).toLocaleString('fr-FR')}
-                      </td>
-                      <td className="p-3 font-semibold">{flux.depotSource}</td>
-                      <td className="p-3 text-slate-500">{flux.depotDest}</td>
-                      <td className="p-3 font-black text-slate-800">{flux.quantite}</td>
-                      <td className="p-3 font-black text-blue-600">{flux.stockApres}</td>
-                      <td className="p-3 font-mono font-bold text-orange-600">{flux.numeroDoc}</td>
-                      <td className="p-3 text-slate-600 font-medium">THÉODORE STÉPHANE</td>
+                      <td className="p-1.5 font-mono text-slate-500 text-[9px] whitespace-nowrap">{new Date(flux.date).toLocaleDateString('fr-FR')}</td>
+                      <td className="p-1.5 font-semibold text-[9px] whitespace-nowrap">{flux.depotSource} → {flux.depotDest}</td>
+                      <td className="p-1.5 text-center font-black text-slate-800">{flux.quantite}</td>
+                      <td className="p-1.5 text-center font-black text-blue-600">{flux.stockApres}</td>
+                      <td className="p-1.5 font-mono font-bold text-orange-600 text-[9px] whitespace-nowrap">{flux.numeroDoc}</td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+
         </div>
       )}
+
     </div>
   );
 }

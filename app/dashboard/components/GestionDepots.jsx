@@ -13,11 +13,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const [afficherFormDepot, setAfficherFormDepot] = useState(false);
   const [depotEnEdition, setDepotEnEdition] = useState(null);
 
-  // Dépôt ouvert et ses emplacements stockés en base
   const [depotOuvertId, setDepotOuvertId] = useState(null);
   const [emplacementsParDepot, setEmplacementsParDepot] = useState({});
 
-  // Formulaire Dépôt
   const [nouveauDepot, setNouveauDepot] = useState({
     nom_depot: '',
     adresse_localisation: '',
@@ -25,9 +23,12 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     est_depot_par_defaut: false,
   });
 
-  // Formulaire Emplacement
   const [nouveauNomEmplacement, setNouveauNomEmplacement] = useState('');
   const [responsableEmplacement, setResponsableEmplacement] = useState('');
+
+  // Modale de recherche pour le responsable d'emplacement
+  const [modalRespOuverte, setModalRespOuverte] = useState(false);
+  const [rechercheResp, setRechercheResp] = useState('');
 
   const listePersonnel = [
     { id: '1', nom: 'THÉODORE STÉPHANE' },
@@ -35,11 +36,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     { id: '3', nom: 'RESPONSABLE MAGASIN A' },
   ];
 
-  // 1. Charger les dépôts et leurs emplacements depuis Supabase
   const chargerDepotsEtEmplacements = async () => {
     setChargement(true);
     try {
-      // Charger les dépôts
       const { data: dataDepots, error: errDepots } = await supabase
         .from('depots_stock')
         .select('*')
@@ -48,14 +47,12 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       if (errDepots) throw errDepots;
       setDepots(dataDepots || []);
 
-      // Charger tous les emplacements de l'entreprise
       const { data: dataEmpls, error: errEmpls } = await supabase
         .from('emplacements_stock')
         .select('*');
 
       if (errEmpls) throw errEmpls;
 
-      // Organiser les emplacements par ID de dépôt
       const mapEmplacements = {};
       (dataEmpls || []).forEach((emp) => {
         if (!mapEmplacements[emp.id_depot]) {
@@ -76,7 +73,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     chargerDepotsEtEmplacements();
   }, [entrepriseId]);
 
-  // 2. Enregistrer / Mettre à jour un Dépôt
   const enregistrerDepot = async (e) => {
     e.preventDefault();
     try {
@@ -153,12 +149,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // 3. Ouvrir / Fermer la vue des emplacements d'un dépôt
   const toggleDepotEmplacements = (depotId) => {
     setDepotOuvertId(depotOuvertId === depotId ? null : depotId);
   };
 
-  // 4. Enregistrer un Emplacement directement dans Supabase
   const ajouterEmplacement = async (e, depot) => {
     e.preventDefault();
     if (!nouveauNomEmplacement.trim()) return;
@@ -176,17 +170,16 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       ]);
 
       if (error) throw error;
-      alert('Emplacement enregistré avec succès dans Supabase !');
+      alert('Emplacement enregistré avec succès !');
 
       setNouveauNomEmplacement('');
       setResponsableEmplacement('');
-      chargerDepotsEtEmplacements(); // Rechargement automatique pour persister l'affichage
+      chargerDepotsEtEmplacements();
     } catch (err) {
       alert('Erreur lors de l’ajout de l’emplacement : ' + err.message);
     }
   };
 
-  // 5. Supprimer un emplacement de Supabase
   const supprimerEmplacement = async (empId) => {
     if (!confirm('Supprimer cet emplacement ?')) return;
 
@@ -200,102 +193,105 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
+  const personnelFiltreModal = listePersonnel.filter(p => 
+    p.nom.toLowerCase().includes(rechercheResp.toLowerCase())
+  );
+
   return (
-    <div className="space-y-4">
-      {/* En-tête */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <p className="text-xs text-slate-500">
-          Cliquez sur un dépôt pour ouvrir, ajouter et enregistrer ses emplacements de façon permanente.
-        </p>
+    <div className="space-y-2.5 font-sans text-xs">
+      {/* En-tête avec bouton "Nouveau" aligné à droite */}
+      <div className="flex justify-between items-center bg-white p-1.5 rounded-xl border border-slate-200 gap-1.5 shadow-2xs">
+        <span className="text-[10px] text-slate-500 font-medium truncate px-1">
+          Gestion des dépôts et emplacements.
+        </span>
         <button
           onClick={() => (afficherFormDepot ? annulerFormDepot() : setAfficherFormDepot(true))}
-          className="bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow"
+          className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] transition whitespace-nowrap shadow-2xs shrink-0"
         >
-          {afficherFormDepot ? '✖ Fermer' : '➕ Créer un Dépôt'}
+          {afficherFormDepot ? '✖ Fermer' : '➕ Nouveau'}
         </button>
       </div>
 
-      {/* Formulaire Dépôt */}
+      {/* Formulaire Dépôt Épuré */}
       {afficherFormDepot && (
-        <form onSubmit={enregistrerDepot} className="bg-slate-50 border-2 border-orange-500/40 p-4 rounded-2xl space-y-3">
-          <h4 className="font-bold text-xs text-orange-600 uppercase">
-            {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot}` : 'Nouveau Dépôt / Magasin'}
-          </h4>
+        <form onSubmit={enregistrerDepot} className="bg-white border-2 border-orange-500/50 p-2.5 rounded-xl shadow-xs space-y-2">
+          <div className="flex justify-between items-center pb-1 border-b border-slate-100">
+            <span className="font-extrabold text-[11px] text-orange-600 uppercase">
+              {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot}` : 'Nouveau Dépôt / Magasin'}
+            </span>
+            <button type="button" onClick={annulerFormDepot} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✖</button>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[10px]">
             <div>
-              <label className="block font-semibold mb-1">Nom du Dépôt *</label>
+              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Nom Dépôt *</label>
               <input
                 type="text"
                 required
                 value={nouveauDepot.nom_depot}
                 onChange={(e) => setNouveauDepot({ ...nouveauDepot, nom_depot: e.target.value })}
                 placeholder="Ex: MAGASIN PRINCIPAL"
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-[10px] font-bold text-slate-800"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Localisation / Adresse</label>
+              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Localisation</label>
               <input
                 type="text"
                 value={nouveauDepot.adresse_localisation}
                 onChange={(e) => setNouveauDepot({ ...nouveauDepot, adresse_localisation: e.target.value })}
-                placeholder="Ex: Yaoundé - Bastos"
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+                placeholder="Ex: Yaoundé"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-[10px] font-medium"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1">Responsable du Dépôt (Facultatif)</label>
+              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Responsable</label>
               <select
                 value={nouveauDepot.responsable_depot}
                 onChange={(e) => setNouveauDepot({ ...nouveauDepot, responsable_depot: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-700"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-700 text-[10px]"
               >
-                <option value="">-- Aucun responsable / En attente --</option>
+                <option value="">-- Choisir --</option>
                 {listePersonnel.map((p) => (
-                  <option key={p.id} value={p.nom}>
-                    👤 {p.nom}
-                  </option>
+                  <option key={p.id} value={p.nom}>{p.nom}</option>
                 ))}
               </select>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-1.5 pt-0.5">
             <input
               type="checkbox"
               id="est_depot_par_defaut_chk"
               checked={nouveauDepot.est_depot_par_defaut}
               onChange={(e) => setNouveauDepot({ ...nouveauDepot, est_depot_par_defaut: e.target.checked })}
-              className="w-4 h-4 text-orange-600 rounded"
+              className="w-3.5 h-3.5 text-orange-600 rounded"
             />
-            <label htmlFor="est_depot_par_defaut_chk" className="text-xs font-semibold text-slate-700">
-              ⭐ Définir comme Dépôt Principal (Par défaut)
+            <label htmlFor="est_depot_par_defaut_chk" className="text-[10px] font-bold text-slate-700">
+              ⭐ Dépôt Principal (Par défaut)
             </label>
           </div>
 
-          <div className="pt-2 flex justify-end gap-2">
-            <button type="button" onClick={annulerFormDepot} className="bg-slate-300 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl">Annuler</button>
-            <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow">
-              {depotEnEdition ? 'Mettre à jour' : 'Enregistrer dans Supabase'}
+          <div className="pt-1 flex justify-end gap-1.5">
+            <button type="button" onClick={annulerFormDepot} className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded-lg text-[10px]">Annuler</button>
+            <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-1 rounded-lg text-[10px] shadow-2xs">
+              {depotEnEdition ? 'Mettre à jour' : 'Enregistrer'}
             </button>
           </div>
         </form>
       )}
 
-      {/* Grille des Dépôts */}
+      {/* Liste des Dépôts */}
       {chargement ? (
-        <div className="p-8 text-center text-slate-400 text-xs">Chargement des dépôts...</div>
+        <div className="p-4 text-center text-slate-400 text-xs">Chargement...</div>
       ) : depots.length === 0 ? (
-        <div className="p-8 text-center text-slate-400 text-xs space-y-2">
-          <p className="text-2xl">🏢</p>
-          <p className="font-bold">Aucun dépôt créé.</p>
-          <p>Cliquez sur "Créer un Dépôt" pour commencer.</p>
+        <div className="p-4 text-center text-slate-400 text-xs bg-white rounded-xl border border-slate-200">
+          Aucun dépôt enregistré.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {depots.map((dep) => {
             const estOuvert = depotOuvertId === dep.id;
             const emplacements = emplacementsParDepot[dep.id] || [];
@@ -303,47 +299,44 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
             return (
               <div
                 key={dep.id}
-                className={`bg-white border rounded-2xl transition duration-200 overflow-hidden shadow-sm ${
-                  estOuvert ? 'border-orange-500 ring-2 ring-orange-500/20' : 'border-slate-200 hover:border-slate-300'
+                className={`bg-white border rounded-xl transition overflow-hidden shadow-2xs ${
+                  estOuvert ? 'border-orange-500 ring-1 ring-orange-500/20' : 'border-slate-200'
                 }`}
               >
-                {/* Carte Dépôt (Cliquable) */}
+                {/* Ligne Dépôt compacte sur une seule ligne (Sans texte localisation superflu) */}
                 <div
                   onClick={() => toggleDepotEmplacements(dep.id)}
-                  className="p-4 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 transition"
+                  className="p-2 cursor-pointer flex items-center justify-between gap-2 hover:bg-slate-50 transition"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="p-2.5 bg-orange-50 text-orange-600 rounded-xl text-xl">🏢</div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h5 className="font-extrabold text-sm text-slate-800">{dep.nom_depot}</h5>
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="text-base shrink-0">🏢</span>
+                    <div className="truncate">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-extrabold text-[11px] text-slate-800 truncate">{dep.nom_depot}</span>
                         {dep.est_depot_par_defaut && (
-                          <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-200">
-                            ⭐ Principal
-                          </span>
+                          <span className="bg-amber-100 text-amber-800 text-[8px] font-bold px-1.5 py-0.2 rounded-full shrink-0">Principal</span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        📍 {dep.adresse_localisation || 'Localisation non spécifiée'} • 👤 Resp :{' '}
-                        <strong className="text-orange-600">{dep.responsable_depot || 'Non assigné'}</strong>
+                      <p className="text-[9px] text-slate-500 truncate">
+                        👤 <strong className="text-orange-600">{dep.responsable_depot || 'Non assigné'}</strong>
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center">
-                    <span className="text-xs font-bold bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl border border-slate-200">
-                      📍 {emplacements.length} Emplacement(s) {estOuvert ? '▼' : '▶'}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg whitespace-nowrap shadow-2xs">
+                      📍 {emplacements.length} Empl. {estOuvert ? '▼' : '▶'}
                     </span>
                     <button
                       onClick={(e) => ouvrirEdition(e, dep)}
-                      className="p-1.5 border rounded-lg hover:bg-orange-100 text-xs transition"
+                      className="p-1 bg-slate-100 hover:bg-orange-100 border border-slate-200 rounded text-[11px]"
                       title="Modifier"
                     >
                       ✏️
                     </button>
                     <button
                       onClick={(e) => supprimerDepot(e, dep)}
-                      className="p-1.5 border rounded-lg hover:bg-red-100 text-xs transition"
+                      className="p-1 bg-slate-100 hover:bg-red-100 border border-slate-200 rounded text-[11px]"
                       title="Supprimer"
                     >
                       🗑️
@@ -351,79 +344,68 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                   </div>
                 </div>
 
-                {/* Section Emplacements Internes reliée à Supabase */}
+                {/* Section Emplacements Internes */}
                 {estOuvert && (
-                  <div className="bg-orange-50/60 border-t border-orange-200 p-4 space-y-3 text-xs">
+                  <div className="bg-slate-50 border-t border-slate-200 p-2.5 space-y-2 text-[10px]">
                     <div className="flex justify-between items-center">
-                      <h6 className="font-extrabold text-orange-900 uppercase tracking-wider text-[11px]">
-                        📍 Emplacements enregistrés dans "{dep.nom_depot}" :
-                      </h6>
-                      <span className="text-[10px] text-orange-700 font-semibold">
-                        ID Dépôt Parent : {dep.id}
+                      <span className="font-extrabold text-slate-700 uppercase tracking-wider text-[9px]">
+                        EMPLACEMENT
                       </span>
                     </div>
 
-                    {/* Formulaire d'ajout persistant */}
+                    {/* Formulaire d'ajout emplacement compact */}
                     <form
                       onSubmit={(e) => ajouterEmplacement(e, dep)}
-                      className="bg-white p-3 rounded-xl border border-orange-200 flex flex-col sm:flex-row gap-2 items-end shadow-sm"
+                      className="bg-white p-2 rounded-lg border border-slate-200 flex gap-1.5 items-end shadow-2xs"
                     >
                       <div className="flex-1">
-                        <label className="block font-semibold mb-1 text-slate-700">Nom de l'Emplacement / Rayon *</label>
+                        <label className="block text-[8px] text-slate-400 font-bold mb-0.5">Emplacement</label>
                         <input
                           type="text"
                           required
                           value={nouveauNomEmplacement}
                           onChange={(e) => setNouveauNomEmplacement(e.target.value)}
-                          placeholder="Ex: RAYON ORNELLA, CHAMBRE FROIDE A1"
-                          className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:outline-none focus:border-orange-500"
+                          placeholder="Ex: RAYON A1"
+                          className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-800"
                         />
                       </div>
 
                       <div className="flex-1">
-                        <label className="block font-semibold mb-1 text-slate-700">Responsable Dédié (Facultatif)</label>
-                        <select
-                          value={responsableEmplacement}
-                          onChange={(e) => setResponsableEmplacement(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-700 focus:outline-none"
+                        <label className="block text-[8px] text-slate-400 font-bold mb-0.5">Responsable</label>
+                        <div 
+                          onClick={() => setModalRespOuverte(true)} 
+                          className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-800 cursor-pointer truncate"
                         >
-                          <option value="">Utiliser le resp. du dépôt ({dep.responsable_depot || 'Non assigné'})</option>
-                          {listePersonnel.map((p) => (
-                            <option key={p.id} value={p.nom}>
-                              👤 {p.nom}
-                            </option>
-                          ))}
-                        </select>
+                          {responsableEmplacement ? responsableEmplacement : `-- Choisir --`}
+                        </div>
                       </div>
 
                       <button
                         type="submit"
-                        className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-4 py-2 rounded-lg transition shadow shrink-0"
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs shrink-0 flex items-center gap-1"
                       >
-                        💾 Enregistrer l'emplacement
+                        <span>➕</span> Ajouter
                       </button>
                     </form>
 
-                    {/* Liste des emplacements enregistrés en base */}
+                    {/* Grille des emplacements */}
                     {emplacements.length === 0 ? (
-                      <div className="p-4 bg-white/60 border border-dashed border-orange-300 rounded-xl text-center text-slate-400 italic">
-                        Aucun emplacement enregistré dans Supabase pour ce dépôt.
-                      </div>
+                      <p className="text-center text-slate-400 py-2 italic text-[10px]">Aucun emplacement.</p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                         {emplacements.map((emp) => (
                           <div
                             key={emp.id}
-                            className="bg-white border border-orange-200 p-3 rounded-xl shadow-sm flex justify-between items-center"
+                            className="bg-white border border-slate-200 p-1.5 rounded-lg shadow-2xs flex justify-between items-center"
                           >
-                            <div>
-                              <p className="font-extrabold text-slate-800">📦 {emp.nom_emplacement}</p>
-                              <p className="text-[10px] text-slate-500 mt-0.5">👤 Resp : {emp.responsable_emplacement}</p>
+                            <div className="truncate pr-1">
+                              <p className="font-extrabold text-slate-800 text-[10px] truncate">📦 {emp.nom_emplacement}</p>
+                              <p className="text-[8px] text-slate-400 truncate">👤 {emp.responsable_emplacement}</p>
                             </div>
                             <button
                               onClick={() => supprimerEmplacement(emp.id)}
-                              className="text-slate-400 hover:text-red-600 p-1 rounded transition"
-                              title="Supprimer l'emplacement"
+                              className="text-slate-400 hover:text-red-600 p-0.5 rounded text-[10px] shrink-0"
+                              title="Supprimer"
                             >
                               🗑️
                             </button>
@@ -436,6 +418,45 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODALE DE RECHERCHE DE RESPONSABLE */}
+      {modalRespOuverte && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2.5 max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <span className="font-extrabold text-xs text-slate-800 uppercase">SÉLECTIONNER UN RESPONSABLE</span>
+              <button type="button" onClick={() => setModalRespOuverte(false)} className="text-slate-400 font-black text-xs">✕</button>
+            </div>
+            <input 
+              type="text" 
+              autoFocus 
+              placeholder="Rechercher..." 
+              value={rechercheResp} 
+              onChange={(e) => setRechercheResp(e.target.value)} 
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold" 
+            />
+            <div className="overflow-y-auto space-y-1 flex-1 max-h-60">
+              {personnelFiltreModal.length === 0 ? (
+                <p className="text-center text-slate-400 py-6 text-xs">Aucun responsable trouvé.</p>
+              ) : (
+                personnelFiltreModal.map((p) => (
+                  <div 
+                    key={p.id} 
+                    onClick={() => { 
+                      setResponsableEmplacement(p.nom); 
+                      setModalRespOuverte(false); 
+                      setRechercheResp(''); 
+                    }} 
+                    className="p-2.5 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded-xl flex justify-between items-center cursor-pointer transition"
+                  >
+                    <span className="font-extrabold text-slate-800 text-[11px]">👤 {p.nom}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
