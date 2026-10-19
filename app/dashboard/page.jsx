@@ -14,7 +14,7 @@ import GestionUtilisateurs from './components/GestionUtilisateurs';
 import GestionRapports from './components/GestionRapports';
 import GestionVentesHistoriques from './components/GestionVentesHistoriques'; 
 import GestionJournalCaisse from './components/GestionJournalCaisse'; 
-import GestionCaisses from './components/GestionCaisses'; // 👈 Import du composant de déclaration des caisses
+import GestionCaisses from './components/GestionCaisses'; 
 
 export default function DashboardDirect() {
   const [groupeActif, setGroupeActif] = useState('accueil');
@@ -23,7 +23,7 @@ export default function DashboardDirect() {
 
   const toutesLesTables = [
     { id: 'caisse', nom: 'Caisse & Ventes', icon: '🛒' },
-    { id: 'gestion_caisses', nom: 'Déclaration Caisses', icon: '🏧' }, // 👈 Tuile ajoutée explicitement ici
+    { id: 'gestion_caisses', nom: 'Déclaration Caisses', icon: '🏧' },
     { id: 'articles_stock', nom: 'Stock Articles', icon: '📦' },
     { id: 'depots_stock', nom: 'Dépôts de stock', icon: '🏢' },
     { id: 'familles_articles', nom: 'Catégories / Familles', icon: '🏷️' },
@@ -135,7 +135,7 @@ export default function DashboardDirect() {
                     <span className="text-2xl sm:text-3xl mb-1 flex items-center justify-center transition group-hover:scale-105">
                       {t.icon}
                     </span>
-                    <h3 className="text-[10px] sm:text-xs font-bold text-slate-800 leading-tight truncate w-full">
+                    <h3 className="dashboard-card-title text-[10px] sm:text-xs font-bold text-slate-800 leading-tight w-full">
                       {t.nom}
                     </h3>
                   </button>

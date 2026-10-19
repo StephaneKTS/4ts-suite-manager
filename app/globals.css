@@ -37,3 +37,10 @@ body {
     font-size: 13px !important;
   }
 }
+
+/* --- AUTORISER LE RETOUR À LA LIGNE DES TITRES SUR LE DASHBOARD --- */
+.dashboard-card-title {
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
