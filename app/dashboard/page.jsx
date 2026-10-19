@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import SimulateurCadre from './components/SimulateurCadre';
 
 // Importation de tous vos composants métiers indépendants
 import GestionCaisses from './components/GestionCaisses';
@@ -45,239 +46,254 @@ export default function DashboardPrincipal() {
     }
   };
 
-  return (
-    <div className={isDark ? 'dark' : ''}>
-      {/* CONTENEUR PLEIN ÉCRAN RESPONSIVE (SANS CADRE DE TÉLÉPHONE CONTRAIGNANT) */}
-      <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col justify-between font-sans relative selection:bg-orange-500 selection:text-white">
-        
-        {/* EN-TÊTE FIXE (STICKY) EN HAUT */}
-        <div className="sticky top-0 z-30 bg-emerald-900 dark:bg-slate-900 border-b border-emerald-700/50 dark:border-slate-800 p-3.5 text-white shadow-md">
-          <div className="max-w-4xl mx-auto space-y-2.5">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center space-x-3">
-                <div className="bg-orange-600 text-white font-black text-sm px-2.5 py-1 rounded-xl shadow">
-                  4TS
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="bg-emerald-700 dark:bg-slate-800 text-emerald-150 text-[9px] font-bold px-2 py-0.5 rounded-full">
-                      ● Supabase Direct Cloud
-                    </span>
-                    <span className="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-                      KEITA SHOP
-                    </span>
-                  </div>
-                  <h1 className="text-sm font-black tracking-wide mt-0.5">
-                    THEODORE STEPHANE
-                  </h1>
-                </div>
+  // Contenu principal de l'application mutualisé
+  const contenuApp = (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col justify-between font-sans pb-16 relative transition-colors duration-200">
+      
+      {/* EN-TÊTE FIGÉ (STICKY) AVEC BOUTON CLAIR / SOMBRE */}
+      <div className="sticky top-0 z-20 bg-emerald-900 dark:bg-slate-900 border-b border-emerald-700/50 dark:border-slate-800 p-4 text-white shadow-md transition-colors duration-200">
+        <div className="space-y-3">
+          <div className="flex justify-between items-start">
+            <div className="flex items-center space-x-3">
+              <div className="bg-orange-600 text-white font-black text-base px-3 py-1.5 rounded-xl shadow">
+                4TS
               </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="bg-emerald-700 dark:bg-slate-800 text-emerald-150 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                    ● Supabase Direct Cloud
+                  </span>
+                  <span className="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+                    KEITA SHOP
+                  </span>
+                </div>
+                <h1 className="text-base font-black tracking-wide mt-1">
+                  THEODORE STEPHANE
+                </h1>
+                <p className="text-[11px] text-emerald-200 dark:text-slate-400 font-medium">
+                  ID Entreprise : <span className="font-mono font-bold text-white">{entrepriseId}</span>
+                </p>
+              </div>
+            </div>
 
-              {/* BOUTON DE BASCULE CLAIR / SOMBRE BIEN VISIBLE */}
+            {/* BOUTON DE BASCULE CLAIR / SOMBRE */}
+            <button
+              onClick={() => setIsDark(!isDark)}
+              className="bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition shadow border border-white/20 dark:border-slate-700 flex items-center gap-1.5 shrink-0"
+              title="Changer de thème"
+            >
+              {isDark ? '☀️ Clair' : '🌙 Sombre'}
+            </button>
+          </div>
+
+          <div className="flex justify-between items-center pt-2 border-t border-emerald-800 dark:border-slate-800">
+            <span className="text-[11px] bg-emerald-800 dark:bg-slate-800 text-emerald-200 dark:text-slate-300 font-bold px-3 py-1 rounded-xl">
+              ⚙️ Wizard Souscription
+            </span>
+            {(moduleActif || ongletNavigation !== 'accueil') && (
               <button
-                onClick={() => setIsDark(!isDark)}
-                className="bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-white p-2 rounded-xl text-sm transition shadow border border-white/20 dark:border-slate-700 flex items-center justify-center shrink-0"
-                title="Changer de thème"
+                onClick={() => { setModuleActif(null); setOngletNavigation('accueil'); }}
+                className="bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-white/20 dark:border-slate-700 shadow-xs"
               >
-                {isDark ? '☀️ Clair' : '🌙 Sombre'}
+                ← Accueil
               </button>
-            </div>
-
-            <div className="flex justify-between items-center pt-2 border-t border-emerald-800 dark:border-slate-800 text-xs">
-              <span className="bg-emerald-800 dark:bg-slate-800 text-emerald-200 dark:text-slate-300 font-bold px-2.5 py-1 rounded-lg">
-                ID : <span className="font-mono text-white">{entrepriseId}</span>
-              </span>
-              {(moduleActif || ongletNavigation !== 'accueil') && (
-                <button
-                  onClick={() => { setModuleActif(null); setOngletNavigation('accueil'); }}
-                  className="bg-white/10 hover:bg-white/20 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold px-3 py-1 rounded-lg text-[11px] transition border border-white/20 dark:border-slate-700 shadow-xs"
-                >
-                  ← Accueil
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* CONTENU PRINCIPAL DÉFILANT */}
-        <div className="flex-1 max-w-4xl w-full mx-auto p-3 sm:p-4 pb-20 space-y-4">
-          {ongletNavigation === 'rapports' && !moduleActif ? (
-            <div className="space-y-3">
-              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
-                TRÉSORERIE & COMPTABILITÉ DIRECTES
-              </h2>
+      {/* CONTENU DE LA PAGE */}
+      <div className="p-4 space-y-4 flex-1">
+        {ongletNavigation === 'rapports' && !moduleActif ? (
+          <div className="space-y-3">
+            <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
+              TRÉSORERIE & COMPTABILITÉ DIRECTES
+            </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div onClick={() => setModuleActif('journal')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
-                  <span className="text-2xl group-hover:scale-110 transition">📝</span>
-                  <div>
-                    <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-xs">Saisie des Opérations</h3>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
-                  </div>
+            <div className="grid grid-cols-1 gap-2.5">
+              <div onClick={() => setModuleActif('journal')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                <span className="text-2xl group-hover:scale-110 transition">📝</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-xs">Saisie des Opérations</h3>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
                 </div>
+              </div>
 
-                <div onClick={() => setModuleActif('grand_livre')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
-                  <span className="text-2xl group-hover:scale-110 transition">📖</span>
-                  <div>
-                    <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-xs">Grand Livre & Journal</h3>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Mouvements par période et par compte.</p>
-                  </div>
+              <div onClick={() => setModuleActif('grand_livre')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                <span className="text-2xl group-hover:scale-110 transition">📖</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-xs">Grand Livre & Journal</h3>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Mouvements par période et par compte.</p>
                 </div>
+              </div>
 
-                <div onClick={() => setModuleActif('controle')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
-                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
-                  <div>
-                    <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-xs">Contrôle & Clôture</h3>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Vérification caisse et versement central.</p>
-                  </div>
+              <div onClick={() => setModuleActif('controle')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-xs">Contrôle & Clôture</h3>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Vérification caisse et versement central.</p>
                 </div>
               </div>
             </div>
-          ) : ongletNavigation === 'profil' && !moduleActif ? (
-            <div className="space-y-4">
-              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
-                INFORMATIONS DU COMPTE & ENTREPRISE
-              </h2>
+          </div>
+        ) : ongletNavigation === 'profil' && !moduleActif ? (
+          <div className="space-y-4">
+            <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
+              INFORMATIONS DU COMPTE & ENTREPRISE
+            </h2>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow border border-slate-200 dark:border-slate-800 space-y-4">
-                <div className="flex items-center space-x-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <div className="bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 p-3 rounded-2xl text-2xl font-black">
-                    👤
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-sm">THEODORE STEPHANE</h3>
-                    <p className="text-xs text-orange-600 font-bold">Commercial Directeur</p>
-                  </div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow border border-slate-200 dark:border-slate-800 space-y-4">
+              <div className="flex items-center space-x-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 p-3 rounded-2xl text-2xl font-black">
+                  👤
                 </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-sm">THEODORE STEPHANE</h3>
+                  <p className="text-xs text-orange-600 font-bold">Commercial Directeur</p>
+                </div>
+              </div>
 
-                <div className="space-y-2.5 text-xs">
-                  <div className="flex justify-between py-1.5 border-b border-slate-50 dark:border-slate-800">
-                    <span className="text-slate-500 dark:text-slate-400 font-medium">Entreprise :</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">KEITA SHOP (ISMA Logistique)</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 border-b border-slate-50 dark:border-slate-800">
-                    <span className="text-slate-500 dark:text-slate-400 font-medium">ID Entreprise :</span>
-                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{entrepriseId}</span>
-                  </div>
-                  <div className="flex justify-between py-1.5 border-b border-slate-50 dark:border-slate-800">
-                    <span className="text-slate-500 dark:text-slate-400 font-medium">Base de données :</span>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">Supabase Direct Cloud</span>
-                  </div>
-                  <div className="flex justify-between py-1.5">
-                    <span className="text-slate-500 dark:text-slate-400 font-medium">Statut de la session :</span>
-                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full text-[10px]">● Actif</span>
-                  </div>
+              <div className="space-y-2.5 text-xs">
+                <div className="flex justify-between py-1.5 border-b border-slate-50 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Entreprise :</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">KEITA SHOP (ISMA Logistique)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-50 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">ID Entreprise :</span>
+                  <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">{entrepriseId}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-50 dark:border-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Base de données :</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">Supabase Direct Cloud</span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Statut de la session :</span>
+                  <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-bold px-2 py-0.5 rounded-full text-[10px]">● Actif</span>
                 </div>
               </div>
             </div>
-          ) : !moduleActif ? (
-            <div className="space-y-3">
-              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
-                ACCUEIL - TOUTES LES TABLES SUPABASE
-              </h2>
+          </div>
+        ) : !moduleActif ? (
+          <div className="space-y-3">
+            <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-wider px-1">
+              ACCUEIL - TOUTES LES TABLES SUPABASE
+            </h2>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                <div onClick={() => setModuleActif('ventes')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
-                  <span className="text-2xl group-hover:scale-110 transition">🛒</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Caisse & Ventes</span>
-                </div>
+            <div className="grid grid-cols-3 gap-2.5">
+              <div onClick={() => setModuleActif('ventes')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">🛒</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Caisse & Ventes</span>
+              </div>
 
-                <div onClick={() => setModuleActif('caisses')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
-                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Déclaration Caisses</span>
-                </div>
+              <div onClick={() => setModuleActif('caisses')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Déclaration Caisses</span>
+              </div>
 
-                <div onClick={() => setModuleActif('articles')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Stock Articles</span>
-                </div>
+              <div onClick={() => setModuleActif('articles')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Stock Articles</span>
+              </div>
 
-                <div onClick={() => setModuleActif('depots')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🏢</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Dépôts de stock</span>
-                </div>
+              <div onClick={() => setModuleActif('depots')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Dépôts de stock</span>
+              </div>
 
-                <div onClick={() => setModuleActif('categories')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Catégories / Familles</span>
-                </div>
+              <div onClick={() => setModuleActif('categories')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Catégories / Familles</span>
+              </div>
 
-                <div onClick={() => setModuleActif('mouvements')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Transferts & Mouvements</span>
-                </div>
+              <div onClick={() => setModuleActif('mouvements')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Transferts & Mouvements</span>
+              </div>
 
-                <div onClick={() => setModuleActif('approvisionnements')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
-                </div>
+              <div onClick={() => setModuleActif('approvisionnements')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
+              </div>
 
-                <div onClick={() => setModuleActif('clients')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">👥</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Gestion des Clients</span>
-                </div>
+              <div onClick={() => setModuleActif('clients')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">👥</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Gestion des Clients</span>
+              </div>
 
-                <div onClick={() => setModuleActif('roles')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
-                </div>
+              <div onClick={() => setModuleActif('roles')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
+              </div>
 
-                <div onClick={() => setModuleActif('fournisseurs')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🤝</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Gestion des Fournisseurs</span>
-                </div>
+              <div onClick={() => setModuleActif('fournisseurs')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Gestion des Fournisseurs</span>
+              </div>
 
-                <div onClick={() => setModuleActif('utilisateurs')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
-                </div>
+              <div onClick={() => setModuleActif('utilisateurs')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
+              </div>
 
-                <div onClick={() => setModuleActif('journal')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">💵</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Trésorerie & Caisse</span>
-                </div>
+              <div onClick={() => setModuleActif('journal')} className="bg-white dark:bg-slate-900 hover:bg-orange-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-orange-300 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">💵</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] leading-tight">Trésorerie & Caisse</span>
               </div>
             </div>
-          ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-4 border border-slate-200 dark:border-slate-800">
-              {rendreModuleActif()}
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow p-4 border border-slate-200 dark:border-slate-800">
+            {rendreModuleActif()}
+          </div>
+        )}
+      </div>
 
-        {/* BARRE DE NAVIGATION INFÉRIEURE FIXE */}
-        <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-2xl transition-colors duration-200">
-          <button
-            onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
-            className={`flex flex-col items-center space-y-0.5 transition ${
-              ongletNavigation === 'accueil' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-            }`}
-          >
-            <span className="text-lg">🏠</span>
-            <span className="text-[10px]">Accueil</span>
-          </button>
+      {/* BARRE DE NAVIGATION INFÉRIEURE FIXE */}
+      <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-lg transition-colors duration-200">
+        <button
+          onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
+          className={`flex flex-col items-center space-y-0.5 transition ${
+            ongletNavigation === 'accueil' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+          }`}
+        >
+          <span className="text-lg">🏠</span>
+          <span className="text-[10px]">Accueil</span>
+        </button>
 
-          <button
-            onClick={() => { setOngletNavigation('rapports'); setModuleActif(null); }}
-            className={`flex flex-col items-center space-y-0.5 transition ${
-              ongletNavigation === 'rapports' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-            }`}
-          >
-            <span className="text-lg">📊</span>
-            <span className="text-[10px]">Rapports</span>
-          </button>
+        <button
+          onClick={() => { setOngletNavigation('rapports'); setModuleActif(null); }}
+          className={`flex flex-col items-center space-y-0.5 transition ${
+            ongletNavigation === 'rapports' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+          }`}
+        >
+          <span className="text-lg">📊</span>
+          <span className="text-[10px]">Rapports</span>
+        </button>
 
-          <button
-            onClick={() => { setOngletNavigation('profil'); setModuleActif(null); }}
-            className={`flex flex-col items-center space-y-0.5 transition ${
-              ongletNavigation === 'profil' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-            }`}
-          >
-            <span className="text-lg">👤</span>
-            <span className="text-[10px]">Mon Profil</span>
-          </button>
-        </div>
+        <button
+          onClick={() => { setOngletNavigation('profil'); setModuleActif(null); }}
+          className={`flex flex-col items-center space-y-0.5 transition ${
+            ongletNavigation === 'profil' && !moduleActif ? 'text-orange-600 font-extrabold' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+          }`}
+        >
+          <span className="text-lg">👤</span>
+          <span className="text-[10px]">Mon Profil</span>
+        </button>
+      </div>
 
+    </div>
+  );
+
+  return (
+    <div className={isDark ? 'dark' : ''}>
+      {/* On applique la classe 'dark' au conteneur englobant pour que le mode sombre s'active partout */}
+      <div className="hidden md:block">
+        <SimulateurCadre>
+          {contenuApp}
+        </SimulateurCadre>
+      </div>
+      <div className="block md:hidden">
+        {contenuApp}
       </div>
     </div>
   );
