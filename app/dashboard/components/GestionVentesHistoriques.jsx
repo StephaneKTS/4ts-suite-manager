@@ -644,6 +644,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                             type="number"
                             value={item.quantite}
                             onChange={(e) => modifierQuantite(item.id, Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
                             onKeyDown={handleKeyDownQuantite}
                             className="w-10 bg-slate-50 border border-slate-200 rounded text-center font-bold font-mono text-[10px] text-slate-900"
                           />
@@ -677,6 +678,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       min="0"
                       value={valeurRemise}
                       onChange={(e) => setValeurRemise(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       className="w-14 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-center text-[10px] font-mono font-bold text-slate-900"
                     />
                   </div>
@@ -899,7 +901,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 type="text"
                 autoFocus
                 value={rechercheArticleInput}
-                onChange={(e) => setRechercheArticleInput(e.target.value)}
+                onChange={(e) => setSearchArticleInput(e.target.value)}
                 placeholder="Rechercher un article..."
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
               />
