@@ -12,6 +12,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
   const [nombreMoisChoisi, setNombreMoisChoisi] = useState(1);
   
   const PRIX_UNITAIRE_MOIS = 5000;
+  const LISTE_MODULES_PRINCIPAUX = ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'];
 
   const chargerInfosEntreprise = async () => {
     setChargement(true);
@@ -136,6 +137,13 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   };
 
+  // Récupération sécurisée des modules souscrits et du module actif depuis l'objet entreprise
+  const modulesSouscrits = Array.isArray(entreprise?.modules_souscrits) 
+    ? entreprise.modules_souscrits 
+    : (typeof entreprise?.modules_souscrits === 'string' ? entreprise.modules_souscrits.split(',').map(m => m.trim()) : ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE']);
+  
+  const moduleActifCourant = (entreprise?.module_actif || entreprise?.module_courant || 'BOUTIQUE').toUpperCase();
+
   if (chargement) {
     return <div className="p-6 text-center text-slate-500 font-bold text-xs">Chargement de l'espace de souscription...</div>;
   }
@@ -151,6 +159,47 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
         <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[10px] border border-orange-200">
           {entreprise?.nom_entreprise || 'Mon Entreprise'}
         </span>
+      </div>
+
+      {/* SECTION INTERCALAIRE : MODULES SOUSCRITS ET MODULE ACTIF */}
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+        <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">🧩 Modules & État de l'Entreprise</h4>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          
+          {/* Modules Souscrits */}
+          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5">
+            <span className="block font-black text-[9px] text-slate-500 uppercase">Modules souscrits :</span>
+            <div className="flex flex-wrap gap-1">
+              {LISTE_MODULES_PRINCIPAUX.map((mod) => {
+                const estSouscrit = modulesSouscrits.includes(mod) || modulesSouscrits.includes(mod.toLowerCase());
+                return (
+                  <span 
+                    key={mod} 
+                    className={`px-2 py-0.5 rounded font-black text-[9.5px] border ${
+                      estSouscrit 
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                        : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                    }`}
+                  >
+                    {mod}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Module Actif */}
+          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5 flex flex-col justify-center">
+            <span className="block font-black text-[9px] text-slate-500 uppercase">Module Actif :</span>
+            <div>
+              <span className="bg-orange-100 text-orange-900 border border-orange-300 px-2.5 py-1 rounded-lg font-black text-xs inline-block shadow-2xs">
+                ⚡ {moduleActifCourant}
+              </span>
+            </div>
+          </div>
+
+        </div>
       </div>
 
       {/* SECTION 1 : CONFIGURATION MÉTIER */}
