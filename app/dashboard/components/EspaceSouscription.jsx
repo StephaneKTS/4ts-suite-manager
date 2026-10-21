@@ -25,7 +25,6 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
       if (error) throw error;
       if (data) {
         setEntreprise(data);
-        // On initialise le compteur de sélection à 1 par défaut pour une nouvelle tranche d'achat
         setNombreUtilisateursChoisi(1);
         if (data.duree_abonnement_mois) setNombreMoisChoisi(data.duree_abonnement_mois);
       }
@@ -90,7 +89,6 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
   };
 
   const souscrireSurMesure = async () => {
-    // 🧮 Calcul du cumul : Ancien nombre d'utilisateurs en base + les nouvelles licences achetées
     const ancienTotalUtilisateurs = parseInt(entreprise?.limite_utilisateurs || 1);
     const nouveauTotalCumule = ancienTotalUtilisateurs + parseInt(nombreUtilisateursChoisi);
 
@@ -100,7 +98,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
       const payloadMiseAJour = {
         statut_licence: 'ACTIF',
         duree_abonnement_mois: nombreMoisChoisi,
-        limite_utilisateurs: nouveauTotalCumule, // 🚀 Application du cumul direct
+        limite_utilisateurs: nouveauTotalCumule,
       };
 
       let query = supabase.from('entreprises').update(payloadMiseAJour);
@@ -190,52 +188,53 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
         </form>
       </div>
 
-      {/* SECTION 2 : STATUT DE L'ABONNEMENT ACTUEL */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
-        <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">📊 Statut de votre Licence</h4>
+      {/* SECTION 2 : STATUT DE L'ABONNEMENT ACTUEL (3 ÉLÉMENTS SUR LA MÊME LIGNE) */}
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+        <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">📊 STATUT DE VOTRE LICENCE</h4>
         
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-col items-center text-center">
-            <span className="text-[9px] font-black uppercase text-slate-500">Statut Licence</span>
-            <span className={`mt-1 px-2 py-0.5 rounded font-black text-xs border ${obtenirStyleStatut(entreprise?.statut_licence)}`}>
+        <div className="grid grid-cols-3 gap-1.5">
+          <div className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col items-center text-center">
+            <span className="text-[9px] font-black uppercase text-slate-500">Licence</span>
+            <span className={`mt-1 px-2 py-0.5 rounded font-black text-[11px] border ${obtenirStyleStatut(entreprise?.statut_licence)}`}>
               {entreprise?.statut_licence || 'ACTIF'}
             </span>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-col items-center text-center">
-            <span className="text-[9px] font-black uppercase text-slate-500">Durée d'abonnement</span>
-            <span className="mt-1 font-black text-slate-900 text-xs">
+          <div className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col items-center text-center">
+            <span className="text-[9px] font-black uppercase text-slate-500">Durée</span>
+            <span className="mt-1 font-black text-slate-900 text-xs truncate">
               {entreprise?.duree_abonnement_mois || 1} Mois
             </span>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-col items-center text-center">
-            <span className="text-[9px] font-black uppercase text-slate-500">Limite Utilisateurs</span>
-            <span className="mt-1 font-black text-orange-600 text-xs">
-              {entreprise?.limite_utilisateurs || 1} Utilisateurs
+          <div className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col items-center text-center">
+            <span className="text-[9px] font-black uppercase text-slate-500">Limite User</span>
+            <span className="mt-1 font-black text-orange-600 text-xs truncate">
+              {entreprise?.limite_utilisateurs || 1}
             </span>
           </div>
         </div>
       </div>
 
-      {/* SECTION 3 : PERSONNALISATION DE LA SOUSCRIPTION (SUR-MESURE) */}
-      <div className="bg-white p-3.5 rounded-xl border-2 border-orange-500/50 shadow-md space-y-3">
-        <h4 className="font-black text-[11px] text-orange-700 uppercase border-b pb-1">⚙️ Personnaliser votre abonnement sur-mesure</h4>
-        <p className="text-[10px] text-slate-600 leading-tight">
+      {/* SECTION 3 : PERSONNALISATION DE LA SOUSCRIPTION (SUR-MESURE) - LIGNES COMPACTES */}
+      <div className="bg-white p-3 rounded-xl border-2 border-orange-500/50 shadow-md space-y-2.5">
+        <h4 className="font-black text-[10px] text-orange-700 uppercase border-b pb-1">⚙️ PERSONNALISER VOTRE ABONNEMENT SUR-MESURE</h4>
+        <p className="text-[9.5px] text-slate-600 leading-tight">
           Ajustez ci-dessous le nombre d'utilisateurs <span className="text-emerald-700 font-black">Réductions : 3 Mois (-5%), 6 Mois (-10%), 9 Mois (-15%), 12 Mois (-20%) !</span>
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          {/* Sélection Nombre d'Utilisateurs (Compteur + / -) */}
-          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5">
-            <label className="block font-black text-[10px] text-slate-700 uppercase">
-              👥 Utilisateurs à ajouter : <span className="text-orange-600">{nombreUtilisateursChoisi}</span>
+        {/* UTILISATEURS À AJOUTER ET DURÉE SUR LA MÊME LIGNE */}
+        <div className="grid grid-cols-2 gap-2">
+          
+          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
+            <label className="block font-black text-[9px] text-slate-700 uppercase truncate">
+              👥 UTILISATEURS À AJOUTER : <span className="text-orange-600">{nombreUtilisateursChoisi}</span>
             </label>
             <div className="flex items-center justify-between bg-white border border-slate-300 rounded-lg p-1 shadow-xs">
               <button
                 type="button"
                 onClick={() => setNombreUtilisateursChoisi(prev => Math.max(1, prev - 1))}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1 rounded-md text-xs transition"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-0.5 rounded-md text-xs transition"
               >
                 -
               </button>
@@ -243,20 +242,19 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
               <button
                 type="button"
                 onClick={() => setNombreUtilisateursChoisi(prev => prev + 1)}
-                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1 rounded-md text-xs transition"
+                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-0.5 rounded-md text-xs transition"
               >
                 +
               </button>
             </div>
           </div>
 
-          {/* Sélection Durée en Mois (Compteur + / -) */}
-          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5">
-            <label className="block font-black text-[10px] text-slate-700 uppercase flex justify-between items-center">
-              <span>📅 Durée : <span className="text-orange-600">{nombreMoisChoisi} Mois</span></span>
+          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
+            <label className="block font-black text-[9px] text-slate-700 uppercase flex justify-between items-center truncate">
+              <span>📅 DURÉE : <span className="text-orange-600">{nombreMoisChoisi} MOIS</span></span>
               {tauxReduction > 0 && (
-                <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-black">
-                  -{tauxReduction * 100}% PROMO
+                <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-black">
+                  -{tauxReduction * 100}%
                 </span>
               )}
             </label>
@@ -264,7 +262,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
               <button
                 type="button"
                 onClick={() => setNombreMoisChoisi(prev => Math.max(1, prev - 1))}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1 rounded-md text-xs transition"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-0.5 rounded-md text-xs transition"
               >
                 -
               </button>
@@ -272,32 +270,28 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
               <button
                 type="button"
                 onClick={() => setNombreMoisChoisi(prev => prev + 1)}
-                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1 rounded-md text-xs transition"
+                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-0.5 rounded-md text-xs transition"
               >
                 +
               </button>
             </div>
           </div>
+
         </div>
 
-        {/* RÉSUMÉ ET VALIDATION */}
-        <div className="bg-orange-50 border border-orange-200 p-3 rounded-xl flex items-center justify-between gap-2 mt-2">
-          <div>
-            <span className="block text-[9px] font-black text-orange-900 uppercase">Montant Total Estimé</span>
-            <span className="text-sm font-black text-orange-700 font-mono">{montantTotalCalculé.toLocaleString()} FCFA</span>
-          </div>
-
+        {/* BOUTON DE MISE À JOUR ÉPURÉ SANS MONTANT */}
+        <div className="pt-1">
           <button
             type="button"
             onClick={souscrireSurMesure}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-2 rounded-xl transition shadow-xs text-xs"
+            className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 rounded-xl transition shadow-xs text-xs uppercase tracking-wide"
           >
             Mettre à jour l'abonnement 🚀
           </button>
         </div>
       </div>
 
-      {/* SECTION 4 : HISTORIQUE DES PAIEMENTS */}
+      {/* SECTION 4 : HISTORIQUE DES PAIEMENTS (SANS MONTANT NI STATUT) */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
         <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">📜 Historique des Paiements</h4>
         
@@ -305,20 +299,14 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
           <table className="w-full text-left text-xs table-fixed">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
-                <th className="p-2.5 w-[30%]">Date</th>
-                <th className="p-2.5 w-[30%]">Expire le</th>
-                <th className="p-2.5 w-[20%] text-right">Montant</th>
-                <th className="p-2.5 w-[20%] text-center">Statut</th>
+                <th className="p-2.5 w-[50%]">Date</th>
+                <th className="p-2.5 w-[50%]">Expire le</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-[10px]">
               <tr>
                 <td className="p-2.5 font-mono text-slate-600">10/01/2026</td>
                 <td className="p-2.5 font-black text-emerald-700 font-mono">{obtenirDateExpiration()}</td>
-                <td className="p-2.5 text-right font-black font-mono text-slate-900">{montantTotalCalculé.toLocaleString()} FCFA</td>
-                <td className="p-2.5 text-center">
-                  <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-black text-[9px]">PAYÉ</span>
-                </td>
               </tr>
             </tbody>
           </table>
