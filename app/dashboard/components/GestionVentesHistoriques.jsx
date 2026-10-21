@@ -562,19 +562,19 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
           {/* ZONE PRINCIPALE : PANIER ET ARTICLES */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             
-            {/* COLONNE GAUCHE : RECHERCHE ARTICLE AVEC STOCK DU DÉPÔT */}
+            {/* COLONNE GAUCHE : RECHERCHE ARTICLE AVEC TAILLE AUGMENTÉE */}
             <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col h-[380px]">
               <div className="flex justify-between items-center mb-2 gap-1">
-                <span className="font-extrabold text-slate-700 text-[10px] uppercase">Articles</span>
+                <span className="font-extrabold text-slate-700 text-[11px] uppercase">Articles</span>
                 <button
                   onClick={() => setAfficherModalArticle(true)}
-                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-2 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
+                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-2.5 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
                 >
                   🔍 recherche
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                 {articlesStock.length === 0 ? (
                   <p className="text-center text-slate-400 py-16 text-[10px]">Aucun article disponible.</p>
                 ) : (
@@ -589,17 +589,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       <div
                         key={artId}
                         onClick={() => !estEpuise && ajouterAuPanier(art)}
-                        className={`p-1.5 border rounded flex justify-between items-center transition gap-2 ${
+                        className={`p-2.5 border rounded-lg flex justify-between items-center transition gap-2 shadow-2xs ${
                           estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 border-slate-200 cursor-pointer'
                         }`}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className={`font-bold truncate ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
-                          <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
+                          <p className={`font-black text-xs truncate ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
+                          <p className={`text-[10px] font-mono mt-0.5 ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
                             Stock : {artStock} {estEpuise ? '(Épuisé)' : ''}
                           </p>
                         </div>
-                        <span className={`font-black font-mono text-xs whitespace-nowrap ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
+                        <span className={`font-black font-mono text-sm whitespace-nowrap ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
                           {artPrix.toLocaleString('fr-FR')}
                         </span>
                       </div>
