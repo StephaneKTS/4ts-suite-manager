@@ -415,7 +415,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const commandesHistorique = trierListe(bonsCommandes);
   
   const enTeteVerrouille = lignesValidees.length > 0;
-  const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-1">↕</span> : <span className="text-orange-600 ml-1">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
+  const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
   return (
     <div className="space-y-2.5 font-sans text-xs">
@@ -468,23 +468,23 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         <div className="space-y-2.5">
           {ongletActif === 'FACTURE' && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-              <table className="w-full text-left text-xs border-collapse table-fixed">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider select-none">
-                    <th onClick={() => gererTri('date')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200">Date {rendreFlecheTri('date')}</th>
-                    <th onClick={() => gererTri('numero')} className="p-2.5 w-[30%] font-mono cursor-pointer hover:bg-slate-200">N° Facture {rendreFlecheTri('numero')}</th>
-                    <th onClick={() => gererTri('fournisseur')} className="p-2.5 w-[35%] cursor-pointer hover:bg-slate-200">Fournisseur {rendreFlecheTri('fournisseur')}</th>
-                    <th onClick={() => gererTri('statut')} className="p-2.5 w-[10%] text-center cursor-pointer hover:bg-slate-200">Statut {rendreFlecheTri('statut')}</th>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
+                    <th onClick={() => gererTri('date')} className="p-2 w-[18%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                    <th onClick={() => gererTri('numero')} className="p-2 w-[22%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">FACT. {rendreFlecheTri('numero')}</th>
+                    <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">FOURNISSEUR {rendreFlecheTri('fournisseur')}</th>
+                    <th onClick={() => gererTri('statut')} className="p-2 w-[18%] text-right cursor-pointer hover:bg-slate-200 whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                <tbody className="divide-y divide-slate-100 text-[10px]">
                   {documentsHistorique.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucune facture enregistrée.</td></tr>) : (
                     documentsHistorique.map((doc) => (
                       <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'FACTURE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                        <td className="p-2.5 text-slate-700 font-bold">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
-                        <td className="p-2.5 font-mono font-black text-orange-600">{doc.numero_bon}</td>
-                        <td className="p-2.5 font-black text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'Fournisseur'}</td>
-                        <td className="p-2.5 text-center"><span className={`px-2 py-0.5 rounded font-black text-[9.5px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>{doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}</span></td>
+                        <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
+                        <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numero_bon}</td>
+                        <td className="p-2 font-black text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'Fournisseur'}</td>
+                        <td className="p-2 text-right whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>{doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}</span></td>
                       </tr>
                     ))
                   )}
@@ -495,21 +495,21 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
           {ongletActif === 'COMMANDE' && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-              <table className="w-full text-left text-xs border-collapse table-fixed">
+              <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider select-none">
-                    <th onClick={() => gererTri('date')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200">Date {rendreFlecheTri('date')}</th>
-                    <th onClick={() => gererTri('numero')} className="p-2.5 w-[35%] font-mono cursor-pointer hover:bg-slate-200">N° Cmd {rendreFlecheTri('numero')}</th>
-                    <th onClick={() => gererTri('fournisseur')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200">Fournisseur {rendreFlecheTri('fournisseur')}</th>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
+                    <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                    <th onClick={() => gererTri('numero')} className="p-2 w-[35%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
+                    <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">FOURNISSEUR {rendreFlecheTri('fournisseur')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                <tbody className="divide-y divide-slate-100 text-[10px]">
                   {commandesHistorique.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande.</td></tr>) : (
                     commandesHistorique.map((cmd) => (
                       <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                        <td className="p-2.5 text-slate-700 font-bold">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
-                        <td className="p-2.5 font-mono font-black text-blue-600">{cmd.numero_commande}</td>
-                        <td className="p-2.5 font-black text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'Fournisseur'}</td>
+                        <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
+                        <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{cmd.numero_commande}</td>
+                        <td className="p-2 font-black text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'Fournisseur'}</td>
                       </tr>
                     ))
                   )}
@@ -596,7 +596,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
           </div>
           {lignesValidees.length > 0 && (
             <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs table-fixed">
+              <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
                     <th className="p-2 w-[45%]">Article</th>
@@ -697,7 +697,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
           </div>
           {lignesValidees.length > 0 && (
             <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs table-fixed">
+              <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
                     <th className="p-2 w-[45%]">Article</th><th className="p-2 w-[15%] text-center">Qté</th><th className="p-2 w-[20%] text-right">P. Estimé</th><th className="p-2 w-[15%] text-right">Total</th><th className="p-2 w-[5%] text-center">⚙️</th>
