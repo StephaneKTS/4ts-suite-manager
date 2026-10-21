@@ -26,8 +26,8 @@ export default function ConnexionEntreprise() {
     setLoading(true);
     setErrorMsg('');
 
-    // TRÈS IMPORTANT : Nettoyage radical des espaces invisibles ajoutés par les claviers mobiles
-    const cleanIdentifiant = identifiant ? identifiant.trim() : '';
+    // NORMALISATION TOTALE : Suppression des espaces et conversion en minuscules pour contrer le mobile
+    const cleanIdentifiant = identifiant ? identifiant.trim().toLowerCase() : '';
     const cleanPin = pinCode ? pinCode.trim() : '';
 
     try {
@@ -133,9 +133,12 @@ export default function ConnexionEntreprise() {
             <input
               type="text"
               required
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
               value={identifiant}
               onChange={(e) => setIdentifiant(e.target.value)}
-              placeholder="ex: 4TS-982100 ou collaborateur@isma.com"
+              placeholder="ex: 4TS-234321 ou collaborateur@isma.com"
               className="w-full bg-[#0d1b2a] border border-blue-900 rounded-xl px-3.5 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>
@@ -148,6 +151,8 @@ export default function ConnexionEntreprise() {
               <input
                 type={showPin ? "text" : "password"}
                 required
+                autoCapitalize="none"
+                autoCorrect="off"
                 value={pinCode}
                 onChange={(e) => setPinCode(e.target.value)}
                 placeholder="••••••••"
