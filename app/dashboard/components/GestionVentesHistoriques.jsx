@@ -25,6 +25,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   const [modeSaisie, setModeSaisie] = useState(true);
 
+  // État pour le tri alphabétique ('ASC' pour A-Z, 'DESC' pour Z-A)
+  const [ordreAlphabetique, setOrdreAlphabetique] = useState('ASC');
+
   // En-tête du ticket, caisse et dépôt
   const [caisseId, setCaisseId] = useState('');
   const [depotId, setDepotId] = useState('');
@@ -41,7 +44,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [rechercheClientInput, setRechercheClientInput] = useState('');
   
   const [afficherModalArticle, setAfficherModalArticle] = useState(false);
-  const [rechercheArticleInput, setRechercheArticleInput] = useState('');
+  const [rechercheArticleInput, setSearchArticleInput] = useState('');
 
   // 🕒 Gestion des tickets en attente
   const [ticketsEnAttente, setTicketsEnAttente] = useState([]);
@@ -443,7 +446,19 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   });
 
   const clientsFiltres = clientsList.filter(c => (c.nom_client || '').toLowerCase().includes(rechercheClientInput.toLowerCase()));
-  const articlesFiltres = articlesStock.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
+
+  // Tri alphabétique dynamique appliqué sur les articles
+  const articlesTries = [...articlesStock].sort((a, b) => {
+    const nomA = (a.Designation || a.nom || '').toLowerCase();
+    const nomB = (b.Designation || b.nom || '').toLowerCase();
+    if (ordreAlphabetique === 'ASC') {
+      return nomA.localeCompare(nomB);
+    } else {
+      return nomB.localeCompare(nomA);
+    }
+  });
+
+  const articlesFiltres = articlesTries.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
 
   return (
     <div className="space-y-2 text-[10px] font-sans">
@@ -562,23 +577,33 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
           {/* ZONE PRINCIPALE : PANIER ET ARTICLES */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             
-            {/* COLONNE GAUCHE : RECHERCHE ARTICLE AVEC TAILLE AUGMENTÉE */}
+            {/* COLONNE GAUCHE : RECHERCHE ARTICLE AVEC BOUTON DE TRI ALPHABÉTIQUE */}
             <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col h-[380px]">
               <div className="flex justify-between items-center mb-2 gap-1">
                 <span className="font-extrabold text-slate-700 text-[11px] uppercase">Articles</span>
-                <button
-                  onClick={() => setAfficherModalArticle(true)}
-                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-2.5 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
-                >
-                  🔍 recherche
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setOrdreAlphabetique(ordreAlphabetique === 'ASC' ? 'DESC' : 'ASC')}
+                    title={ordreAlphabetique === 'ASC' ? 'Tri alphabétique A-Z (cliquer pour inverser)' : 'Tri alphabétique Z-A (cliquer pour inverser)'}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded text-[10px] transition border border-slate-200 shadow-2xs flex items-center gap-0.5"
+                  >
+                    <span>{ordreAlphabetique === 'ASC' ? 'A-Z' : 'Z-A'}</span>
+                    <span>{ordreAlphabetique === 'ASC' ? '▲' : '▼'}</span>
+                  </button>
+                  <button
+                    onClick={() => setAfficherModalArticle(true)}
+                    className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-2.5 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
+                  >
+                    🔍 recherche
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-                {articlesStock.length === 0 ? (
+                {articlesFiltres.length === 0 ? (
                   <p className="text-center text-slate-400 py-16 text-[10px]">Aucun article disponible.</p>
                 ) : (
-                  articlesStock.map((art) => {
+                  articlesFiltres.map((art) => {
                     const artId = art.id_article || art.id;
                     const artDes = art.Designation || art.nom;
                     const artPrix = Number(art.Prix_Vente || art.prix_vente || 0);

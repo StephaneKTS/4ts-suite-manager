@@ -481,15 +481,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION (BOUTONS DE VUE : ARTICLES & STAT) */}
-      <div className="flex flex-col sm:flex-row gap-1.5 w-full">
+      {/* BARRE DE NAVIGATION (ARTICLES ET STAT SUR LA MÊME LIGNE) */}
+      <div className="grid grid-cols-2 gap-1.5 w-full">
         <button
           type="button"
           onClick={() => {
             setModeVue('catalogue');
             annulerForm();
           }}
-          className={`w-full sm:flex-1 px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
+          className={`w-full px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
             modeVue === 'catalogue' && !afficherForm 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
@@ -504,7 +504,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             setModeVue('statistiques');
             annulerForm();
           }}
-          className={`w-full sm:flex-1 px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
+          className={`w-full px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
             modeVue === 'statistiques' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
@@ -753,7 +753,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           ) : (
             /* VUE CATALOGUE TABLEAU SEULEMENT */
             <>
-              <div className="bg-white p-2.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-1.5 shadow-2xs">
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
                 <div>
                   <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Famille</label>
                   <select
@@ -770,36 +770,39 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Dépôt</label>
-                  <select
-                    value={depotFiltre}
-                    onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                  >
-                    <option value="TOUS">Tous</option>
-                    {depots.map((dep) => (
-                      <option key={dep.id} value={dep.id}>
-                        {dep.nom_depot || dep.Nom_Depot}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* DÉPÔT ET EMPLACEMENT SUR LA MÊME LIGNE */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Dépôt</label>
+                    <select
+                      value={depotFiltre}
+                      onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                    >
+                      <option value="TOUS">Tous</option>
+                      {depots.map((dep) => (
+                        <option key={dep.id} value={dep.id}>
+                          {dep.nom_depot || dep.Nom_Depot}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Emplacement</label>
-                  <select
-                    value={emplacementFiltre}
-                    onChange={(e) => setEmplacementFiltre(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                  >
-                    <option value="TOUS">Tous</option>
-                    {emplacementsDisponibles.map((emp) => (
-                      <option key={emp.id} value={emp.nom_emplacement}>
-                        {emp.nom_emplacement}
-                      </option>
-                    ))}
-                  </select>
+                  <div>
+                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Emplacement</label>
+                    <select
+                      value={emplacementFiltre}
+                      onChange={(e) => setEmplacementFiltre(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                    >
+                      <option value="TOUS">Tous</option>
+                      {emplacementsDisponibles.map((emp) => (
+                        <option key={emp.id} value={emp.nom_emplacement}>
+                          {emp.nom_emplacement}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -809,15 +812,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
                       <th 
                         onClick={() => gererTri('Designation')} 
-                        className="p-2.5 w-[52%] cursor-pointer hover:bg-slate-200 select-none truncate"
+                        className="p-2.5 w-[46%] cursor-pointer hover:bg-slate-200 select-none truncate"
                       >
                         Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         onClick={() => gererTri('Stock')} 
-                        className="p-2.5 w-[16%] text-center cursor-pointer hover:bg-slate-200 select-none truncate"
+                        className="p-2.5 w-[22%] text-center cursor-pointer hover:bg-slate-200 select-none truncate"
                       >
-                        Stock {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
+                        STOCK {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         onClick={() => gererTri('Prix_Achat')} 
@@ -945,13 +948,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-800 uppercase text-[10px]">📈 Historique chronologique et dynamique :</h4>
                   <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-                    <table className="w-full text-left text-xs table-fixed">
+                    <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
-                          <th className="p-2.5 w-[25%]">Date</th>
-                          <th className="p-2.5 w-[25%]">Mouvement</th>
-                          <th className="p-2.5 w-[25%] text-right">QTÉ</th>
-                          <th className="p-2.5 w-[25%] text-right">STOCK</th>
+                          <th className="p-2.5 w-[22%]">Date</th>
+                          <th className="p-2.5 w-[36%]">Mouvement</th>
+                          <th className="p-2.5 w-[22%] text-right">QTÉ</th>
+                          <th className="p-2.5 w-[20%] text-right">STOCK</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-[10.5px]">
@@ -966,18 +969,18 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                             return (
                               <tr key={i} className="hover:bg-slate-50 transition">
-                                <td className="p-2.5 font-mono text-slate-600 font-bold">
+                                <td className="p-2.5 font-mono text-slate-600 font-bold whitespace-nowrap">
                                   {f.date ? new Date(f.date).toLocaleDateString('fr-FR') : '-'}
                                 </td>
-                                <td className="p-2.5 font-bold text-slate-900 truncate">
-                                  <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[9.5px] border border-orange-200">
+                                <td className="p-2.5 font-bold text-slate-900">
+                                  <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[9.5px] border border-orange-200 inline-block whitespace-nowrap">
                                     {codeMvt}
                                   </span>
                                 </td>
-                                <td className={`p-2.5 text-right font-black font-mono ${estNegatif ? 'text-red-600' : 'text-emerald-700'}`}>
+                                <td className={`p-2.5 text-right font-black font-mono whitespace-nowrap ${estNegatif ? 'text-red-600' : 'text-emerald-700'}`}>
                                   {estNegatif ? f.qteDelta : `+${f.qteDelta}`}
                                 </td>
-                                <td className="p-2.5 text-right font-black font-mono text-slate-900">
+                                <td className="p-2.5 text-right font-black font-mono text-slate-900 whitespace-nowrap">
                                   {f.stockProgressif}
                                 </td>
                               </tr>
