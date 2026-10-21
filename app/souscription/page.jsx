@@ -20,6 +20,8 @@ export default function SouscriptionWizard() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [typeOffre, setTypeOffre] = useState('entreprise'); // 'personnel' ou 'entreprise'
+
   const [formData, setFormData] = useState({
     entrepriseId: '',
     nomEntreprise: '',
@@ -59,14 +61,19 @@ export default function SouscriptionWizard() {
     let sousTotalInstallation = 0;
     let sousTotalMensuelPerUser = 0;
 
-    Object.keys(modules).forEach((mod) => {
-      if (modules[mod]) {
-        sousTotalInstallation += TARIFS_MODULES[mod].installation;
-        sousTotalMensuelPerUser += TARIFS_MODULES[mod].mensuelPerUser;
-      }
-    });
+    if (typeOffre === 'personnel') {
+      sousTotalInstallation = 10000; // Frais fixes uniques pour l'offre perso
+      sousTotalMensuelPerUser = 3000; // Forfait mensuel allégé
+    } else {
+      Object.keys(modules).forEach((mod) => {
+        if (modules[mod]) {
+          sousTotalInstallation += TARIFS_MODULES[mod].installation;
+          sousTotalMensuelPerUser += TARIFS_MODULES[mod].mensuelPerUser;
+        }
+      });
+    }
 
-    const nbUsers = Math.max(1, parseInt(formData.utilisateurs) || 1);
+    const nbUsers = typeOffre === 'personnel' ? 1 : Math.max(1, parseInt(formData.utilisateurs) || 1);
     const nbMois = Math.max(1, parseInt(formData.duree) || 1);
 
     const totalAbonnementBrut = sousTotalMensuelPerUser * nbUsers * nbMois;
@@ -76,10 +83,12 @@ export default function SouscriptionWizard() {
     else if (nbMois >= 6) remiseDureePct = 0.10;
     else if (nbMois >= 3) remiseDureePct = 0.05;
 
-    let remiseUsersPct = 0;
-    if (nbUsers >= 50) remiseUsersPct = 0.15;
-    else if (nbUsers >= 20) remiseUsersPct = 0.10;
-    else if (nbUsers >= 10) remiseUsersPct = 0.05;
+    let remiseUsersPct = typeOffre === 'personnel' ? 0 : 0;
+    if (typeOffre === 'entreprise') {
+      if (nbUsers >= 50) remiseUsersPct = 0.15;
+      else if (nbUsers >= 20) remiseUsersPct = 0.10;
+      else if (nbUsers >= 10) remiseUsersPct = 0.05;
+    }
 
     const remiseTotalPct = remiseDureePct + remiseUsersPct;
     const montantRemise = totalAbonnementBrut * remiseTotalPct;
@@ -115,11 +124,13 @@ export default function SouscriptionWizard() {
     setErrorMsg('');
 
     try {
+      const cleanEmail = formData.email ? formData.email.trim() : '';
       const supabase = getSupabaseClient();
+      
       const { data, error: fetchErr } = await supabase
         .from('entreprises')
         .select('email')
-        .eq('email', formData.email.trim())
+        .eq('email', cleanEmail)
         .maybeSingle();
 
       if (fetchErr) {
@@ -157,7 +168,7 @@ export default function SouscriptionWizard() {
     e.preventDefault();
     setErrorMsg('');
 
-    const pin = formData.pinCode;
+    const pin = formData.pinCode ? formData.pinCode.trim() : '';
     const regexComplexite = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
 
     if (!regexComplexite.test(pin)) {
@@ -181,15 +192,17 @@ export default function SouscriptionWizard() {
     try {
       const espacesList = Object.keys(modules).filter((m) => modules[m]);
       const supabase = getSupabaseClient();
+      const cleanEmail = formData.email ? formData.email.trim() : '';
+      const cleanPin = formData.pinCode ? formData.pinCode.trim() : '';
 
       const { error } = await supabase.from('entreprises').insert([
         {
           id_entreprise: formData.entrepriseId,
           nom_entreprise: formData.nomEntreprise,
-          email: formData.email.trim(),
+          email: cleanEmail,
           telephone: formData.telephone,
-          mot_de_passe: formData.pinCode,
-          code_pin_activation: formData.pinCode,
+          mot_de_passe: cleanPin,
+          code_pin_activation: cleanPin,
           espaces_souscrits: espacesList,
           duree_abonnement_mois: facturation.nbMois,
           limite_utilisateurs: facturation.nbUsers,
@@ -242,12 +255,12 @@ export default function SouscriptionWizard() {
               <div>
                 <h2 className="text-2xl font-bold text-slate-800">Félicitations pour votre souscription !</h2>
                 <p className="text-slate-600 text-sm mt-1">
-                  Votre entreprise <strong>{formData.nomEntreprise}</strong> est enregistrée sur le système <strong>4TS Suite Manager</strong>.
+                  Votre espace <strong>{formData.nomEntreprise}</strong> est enregistré sur le système <strong>4TS Suite Manager</strong>.
                 </p>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left text-sm space-y-2">
-                <p><strong>ID Unique Entreprise :</strong> <span className="text-[#005a5b] font-mono font-bold">{formData.entrepriseId}</span></p>
+                <p><strong>ID Unique :</strong> <span className="text-[#005a5b] font-mono font-bold">{formData.entrepriseId}</span></p>
                 <p><strong>Administrateur :</strong> {formData.email}</p>
                 <p><strong>Modules :</strong> {Object.keys(modules).filter(m => modules[m]).join(', ')}</p>
               </div>
@@ -267,7 +280,7 @@ export default function SouscriptionWizard() {
                 <form onSubmit={handleStep1Submit} className="space-y-5">
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                      ID Unique Entreprise (Généré par le système)
+                      ID Unique (Généré par le système)
                     </label>
                     <input
                       type="text"
@@ -279,7 +292,7 @@ export default function SouscriptionWizard() {
 
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-orange-600 mb-1.5">
-                      Nom de votre Entreprise <span className="text-orange-500">*</span>
+                      Nom de votre Entreprise / Activité <span className="text-orange-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -287,7 +300,7 @@ export default function SouscriptionWizard() {
                       required
                       value={formData.nomEntreprise}
                       onChange={handleChange}
-                      placeholder="Ex: ISMA Logistique"
+                      placeholder="Ex: ISMA Logistique ou Mon Activité"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
                     />
                   </div>
@@ -373,6 +386,35 @@ export default function SouscriptionWizard() {
 
               {step === 3 && (
                 <form onSubmit={handleStep3Submit} className="space-y-5">
+                  
+                  {/* SÉLECTEUR DE TYPE D'OFFRE (Personnel vs Entreprise) */}
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-orange-600 mb-2">
+                      Type d'utilisation <span className="text-orange-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div
+                        onClick={() => { setTypeOffre('personnel'); setFormData({...formData, utilisateurs: 1}); }}
+                        className={`p-3 rounded-xl border text-center cursor-pointer transition select-none ${
+                          typeOffre === 'personnel' ? 'border-[#005a5b] bg-[#005a5b]/10 font-bold text-[#005a5b] shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600'
+                        }`}
+                      >
+                        <div className="text-sm">👤 Personnel (Solo)</div>
+                        <div className="text-[10px] text-slate-500 font-normal">1 Utilisateur unique</div>
+                      </div>
+
+                      <div
+                        onClick={() => setTypeOffre('entreprise')}
+                        className={`p-3 rounded-xl border text-center cursor-pointer transition select-none ${
+                          typeOffre === 'entreprise' ? 'border-[#005a5b] bg-[#005a5b]/10 font-bold text-[#005a5b] shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600'
+                        }`}
+                      >
+                        <div className="text-sm">🏢 Entreprise</div>
+                        <div className="text-[10px] text-slate-500 font-normal">Multi-utilisateurs</div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                       Code PIN d'Activation <span className="text-orange-500">*</span>
@@ -421,9 +463,11 @@ export default function SouscriptionWizard() {
                             />
                             <span className="text-sm">{mod}</span>
                           </div>
-                          <span className="text-[10px] text-slate-400 font-normal">
-                            +{TARIFS_MODULES[mod].installation.toLocaleString()} F
-                          </span>
+                          {typeOffre === 'entreprise' && (
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              +{TARIFS_MODULES[mod].installation.toLocaleString()} F
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -452,9 +496,12 @@ export default function SouscriptionWizard() {
                         type="number"
                         name="utilisateurs"
                         min="1"
-                        value={formData.utilisateurs}
+                        disabled={typeOffre === 'personnel'}
+                        value={typeOffre === 'personnel' ? 1 : formData.utilisateurs}
                         onChange={handleChange}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
+                        className={`w-full border rounded-xl px-3.5 py-3 text-sm ${
+                          typeOffre === 'personnel' ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-300 font-bold' : 'bg-slate-50 text-slate-800 border-slate-200 focus:bg-white focus:ring-2 focus:ring-[#005a5b]'
+                        }`}
                       />
                     </div>
                   </div>
@@ -468,6 +515,12 @@ export default function SouscriptionWizard() {
                       <span>Abonnement :</span>
                       <span className="font-semibold">{facturation.abonnementBrut.toLocaleString()} XAF</span>
                     </div>
+                    {facturation.remisePct > 0 && (
+                      <div className="flex justify-between text-emerald-600 font-bold">
+                        <span>Remise ({facturation.remisePct}%) :</span>
+                        <span>-{facturation.montantRemise.toLocaleString()} XAF</span>
+                      </div>
+                    )}
                     <div className="border-t pt-2 flex justify-between items-center text-slate-900 font-extrabold text-sm">
                       <span>MONTANT TOTAL :</span>
                       <span className="text-orange-600 text-lg">{facturation.totalGeneral.toLocaleString()} XAF</span>
@@ -487,9 +540,10 @@ export default function SouscriptionWizard() {
                 <form onSubmit={handleFinalPayment} className="space-y-6">
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left space-y-1.5 text-xs text-slate-700">
                     <p className="text-[11px] text-slate-400 uppercase font-bold mb-2">Récapitulatif de la commande</p>
-                    <p><strong>Entreprise :</strong> {formData.nomEntreprise} (<span className="font-mono text-[#005a5b] font-bold">{formData.entrepriseId}</span>)</p>
+                    <p><strong>Profil :</strong> {typeOffre === 'personnel' ? 'Personnel (Solo)' : 'Entreprise'}</p>
+                    <p><strong>Nom :</strong> {formData.nomEntreprise} (<span className="font-mono text-[#005a5b] font-bold">{formData.entrepriseId}</span>)</p>
                     <p><strong>Espaces souscrits :</strong> {Object.keys(modules).filter(m => modules[m]).join(', ')}</p>
-                    <p><strong>Période & Volume :</strong> {facturation.nbMois} Mois — {facturation.nbUsers} Utilisateurs</p>
+                    <p><strong>Période & Volume :</strong> {facturation.nbMois} Mois — {facturation.nbUsers} Utilisateur(s)</p>
                     <p className="text-sm pt-1"><strong>Montant Net à Payer :</strong> <span className="text-orange-600 font-extrabold text-base">{facturation.totalGeneral.toLocaleString()} XAF</span></p>
                   </div>
 
