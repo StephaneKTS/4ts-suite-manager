@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
 import SimulateurCadre from './components/SimulateurCadre';
 
 // Importation de tous vos composants métiers indépendants
@@ -17,11 +19,53 @@ import GestionMouvements from './components/GestionMouvements';
 import GestionJournalCaisse from './components/GestionJournalCaisse';
 import GestionRoles from './components/GestionRoles';
 import GestionUtilisateurs from './components/GestionUtilisateurs';
+import EspaceSouscription from './components/EspaceSouscription';
 
-export default function DashboardPrincipal() {
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const entrepriseIdUrl = searchParams.get('entreprise') || '4TS-TEST';
+
+  const [entrepriseId, setEntrepriseId] = useState(entrepriseIdUrl);
+  const [infosEntreprise, setInfosEntreprise] = useState({
+    nom_entreprise: 'CHARGEMENT...',
+    email: '',
+    espaces_souscrits: []
+  });
+
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
-  const entrepriseId = '4TS-TEST';
+
+  // Charger les informations réelles de l'entreprise depuis Supabase
+  useEffect(() => {
+    async function fetchEntrepriseData() {
+      try {
+        const { data, error } = await supabase
+          .from('entreprises')
+          .select('*')
+          .eq('id_entreprise', entrepriseIdUrl)
+          .maybeSingle();
+
+        if (data) {
+          setInfosEntreprise(data);
+          setEntrepriseId(data.id_entreprise);
+        } else {
+          setInfosEntreprise({
+            nom_entreprise: 'KEITA SHOP',
+            email: 'bureauisma26@gmail.com',
+            espaces_souscrits: ['Boutique']
+          });
+        }
+      } catch (err) {
+        console.error("Erreur de récupération entreprise :", err);
+      }
+    }
+
+    fetchEntrepriseData();
+  }, [entrepriseIdUrl]);
 
   const rendreModuleActif = () => {
     switch (moduleActif) {
@@ -41,59 +85,48 @@ export default function DashboardPrincipal() {
         return <GestionJournalCaisse entrepriseId={entrepriseId} />;
       case 'roles': return <GestionRoles entrepriseId={entrepriseId} />;
       case 'utilisateurs': return <GestionUtilisateurs entrepriseId={entrepriseId} />;
+      case 'souscription': return <EspaceSouscription entrepriseId={entrepriseId} />;
       default: return null;
     }
   };
 
-  // Contenu principal de l'application avec un fond aux teintes bleues inspirées du logo 4TS
   const contenuApp = (
-    <div className="min-h-screen bg-[#0d1b2a] text-slate-100 flex flex-col justify-between font-sans pb-16 relative">
+    <div className="min-h-screen bg-[#0d1b2a] text-slate-100 flex flex-col font-sans relative overflow-y-auto">
       
-      {/* EN-TÊTE FIGÉ (STICKY) */}
-      <div className="sticky top-0 z-20 bg-[#1b263b] border-b border-blue-900/50 p-4 text-white shadow-md">
-        <div className="space-y-3">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center space-x-3">
-              <div className="bg-orange-600 text-white font-black text-base px-3 py-1.5 rounded-xl shadow">
-                4TS
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="bg-blue-600 text-blue-100 text-[9px] font-bold px-2 py-0.5 rounded-full">
-                    ● Supabase Direct Cloud
-                  </span>
-                  <span className="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-                    KEITA SHOP
-                  </span>
-                </div>
-                <h1 className="text-base font-black tracking-wide mt-1 text-white">
-                  THEODORE STEPHANE
-                </h1>
-                <p className="text-[11px] text-blue-300 font-medium">
-                  ID Entreprise : <span className="font-mono font-bold text-white">{entrepriseId}</span>
-                </p>
-              </div>
-            </div>
+      {/* EN-TÊTE ÉPURÉ ET PROFESSIONNEL */}
+      <div className="sticky top-0 z-20 bg-[#1b263b] border-b border-blue-900/50 px-4 py-3 text-white shadow-md shrink-0 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="bg-orange-600 text-white font-black text-sm px-2.5 py-1 rounded-lg shadow-xs">
+            4TS
           </div>
+          <div>
+            <h1 className="text-sm font-black tracking-tight text-white uppercase leading-none">
+              {infosEntreprise.nom_entreprise}
+            </h1>
+            <p className="text-[10px] text-blue-300 font-mono mt-1">
+              ID : {entrepriseId}
+            </p>
+          </div>
+        </div>
 
-          <div className="flex justify-between items-center pt-2 border-t border-blue-900/40">
-            <span className="text-[11px] bg-blue-950 text-blue-200 font-bold px-3 py-1 rounded-xl border border-blue-800/50">
-              ⚙️ Wizard Souscription
+        <div>
+          {(moduleActif || ongletNavigation !== 'accueil') ? (
+            <button
+              onClick={() => { setModuleActif(null); setOngletNavigation('accueil'); }}
+              className="bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-white/20 shadow-xs"
+            >
+              ← Accueil
+            </button>
+          ) : (
+            <span className="text-[10px] bg-blue-950 text-emerald-400 font-bold px-2.5 py-1 rounded-full border border-blue-800/50">
+              ● En ligne
             </span>
-            {(moduleActif || ongletNavigation !== 'accueil') && (
-              <button
-                onClick={() => { setModuleActif(null); setOngletNavigation('accueil'); }}
-                className="bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-white/20 shadow-xs"
-              >
-                ← Accueil
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* CONTENU DE LA PAGE */}
-      <div className="p-4 space-y-4 flex-1">
+      {/* CONTENU DE LA PAGE AVEC ESPACE SUFFISANT EN BAS (pb-24) */}
+      <div className="p-4 space-y-4 flex-1 pb-24">
         {ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-3">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
@@ -127,7 +160,6 @@ export default function DashboardPrincipal() {
             </div>
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
-          /* AFFICHAGE DÉTAILLÉ DU PROFIL ET DE L'ENTREPRISE */
           <div className="space-y-4">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
               INFORMATIONS DU COMPTE & ENTREPRISE
@@ -139,15 +171,15 @@ export default function DashboardPrincipal() {
                   👤
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-100 text-sm">THEODORE STEPHANE</h3>
-                  <p className="text-xs text-orange-400 font-bold">Commercial Directeur</p>
+                  <h3 className="font-extrabold text-slate-100 text-sm">Administrateur</h3>
+                  <p className="text-xs text-orange-400 font-bold">{infosEntreprise.email || 'Admin'}</p>
                 </div>
               </div>
 
               <div className="space-y-2.5 text-xs">
                 <div className="flex justify-between py-1.5 border-b border-blue-900/30">
                   <span className="text-blue-200/70 font-medium">Entreprise :</span>
-                  <span className="font-bold text-slate-200">KEITA SHOP (ISMA Logistique)</span>
+                  <span className="font-bold text-slate-200 uppercase">{infosEntreprise.nom_entreprise}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-blue-900/30">
                   <span className="text-blue-200/70 font-medium">ID Entreprise :</span>
@@ -161,6 +193,32 @@ export default function DashboardPrincipal() {
                   <span className="text-blue-200/70 font-medium">Statut de la session :</span>
                   <span className="bg-blue-950 text-blue-400 font-bold px-2 py-0.5 rounded-full text-[10px]">● Actif</span>
                 </div>
+              </div>
+
+              <div className="pt-3 border-t border-blue-900/40 space-y-2.5">
+                <button
+                  onClick={() => setModuleActif('souscription')}
+                  className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold p-3 rounded-xl transition flex items-center justify-between shadow-xs text-xs"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>💳</span> Espace de Souscription & Paramètres
+                  </span>
+                  <span>→</span>
+                </button>
+
+                {/* Bouton de Déconnexion */}
+                <button
+                  onClick={() => {
+                    if (confirm('Voulez-vous vraiment vous déconnecter de l’application ?')) {
+                      localStorage.removeItem('entrepriseId');
+                      localStorage.removeItem('utilisateurConnecte');
+                      window.location.href = '/connexion';
+                    }
+                  }}
+                  className="w-full bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800 font-bold p-3 rounded-xl transition flex items-center justify-center gap-2 shadow-xs text-xs"
+                >
+                  <span>🚪</span> Se déconnecter de la session
+                </button>
               </div>
             </div>
           </div>
@@ -178,7 +236,7 @@ export default function DashboardPrincipal() {
 
               <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Déclaration Caisses</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Création Caisse</span>
               </div>
 
               <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -191,14 +249,19 @@ export default function DashboardPrincipal() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Dépôts de stock</span>
               </div>
 
+              <div onClick={() => setModuleActif('familles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Familles d'Articles</span>
+              </div>
+
               <div onClick={() => setModuleActif('categories')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Catégories / Familles</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Catégories Clients</span>
               </div>
 
               <div onClick={() => setModuleActif('mouvements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Transferts & Mouvements</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Mouvement Stock</span>
               </div>
 
               <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -240,7 +303,7 @@ export default function DashboardPrincipal() {
       </div>
 
       {/* BARRE DE NAVIGATION INFÉRIEURE FIXE */}
-      <div className="bg-[#1b263b] border-t border-blue-900/60 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-lg">
+      <div className="bg-[#1b263b] border-t border-blue-900/60 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-lg shrink-0">
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
           className={`flex flex-col items-center space-y-0.5 transition ${
@@ -286,5 +349,13 @@ export default function DashboardPrincipal() {
         {contenuApp}
       </div>
     </div>
+  );
+}
+
+export default function DashboardPrincipal() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0d1b2a] text-white flex items-center justify-center">Chargement du dashboard...</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }

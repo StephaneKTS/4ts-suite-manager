@@ -16,4 +16,9 @@ et regouper ses infos telephone-email-sur un pied de page en permettant un cliqu
 
 ajouter la colonne pays lors de la creation dun nouveau tiers ce qui va peremttre d'inserer automatiquement lindicatif de son pays quand on voudra mettre son numero 
 
-jai ajouté la colonne pays dans la base de donnée voici code actuel client il faut mettre a jour en prevoyant au bas de page laffiche en image 01 pour les logo appel sms email et whatsapp
+jai ajouté la colonne pays dans la base de donnée voici code actuel client il faut mettre a jour en prevoyant au bas de page laffiche en image 01 pour les logo appel sms email et WhatsApp
+
+AJOUTER LE BOUTON LISTE ET PERMETREEN CLIQUANT SUR UNE LIGNE OUVRIR LELEMENT AVEC LA POSSIBILITE DE MODIFIER ET SUPPRIMER ENLEVER LA COLONNE DES ACTIONS SUR CET ECRAN PRINCIPALE JE TENVOIE LE CODE ACTUEL A METTRE A JOUR   LA COULEUR DES ECRITURES QUI SE CONFONDENT AVEC LA COULEUR DE FOND 
+
+
+souvient toi quon aviat ajouter statistiques articles ici avec calcul dynamique et evolutif et du stock mais ce nest plus la il faut remettre avec une barre de selection de larticle quon veut interroger sans rien casser de ce qui marche deja bien soit bien concentré pour bien le faire 

@@ -52,12 +52,13 @@ export async function POST(request) {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.message || "Erreur lors de l'envoi via Brevo.");
+      console.error("DÉTAIL ERREUR BREVO (API Response) :", JSON.stringify(errorData, null, 2));
+      throw new Error(errorData.message || JSON.stringify(errorData) || "Erreur lors de l'envoi via Brevo.");
     }
 
     return NextResponse.json({ success: true, message: "E-mail OTP envoyé avec succès !" });
   } catch (err) {
-    console.error("Erreur API Send OTP :", err);
+    console.error("Erreur API Send OTP (Catch) :", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

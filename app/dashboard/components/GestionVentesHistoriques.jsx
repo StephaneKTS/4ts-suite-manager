@@ -171,18 +171,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       });
     });
     ventesHistoriques.forEach((v) => {
-      if (v.id_depot && String(v.id_depot) === String(depotId)) {
-        let articlesVente = [];
-        if (v.details_articles) {
-          if (typeof v.details_articles === 'string') { try { articlesVente = JSON.parse(v.details_articles); } catch (e) {} }
-          else if (Array.isArray(v.details_articles)) { articlesVente = v.details_articles; }
-        }
-        articlesVente.forEach((ligne) => {
-          if (String(ligne.id || ligne.id_article) === String(articleId)) {
-            flux.push({ date: v.created_at || '', depot_source: v.id_depot, depot_destination: null, quantite: parseInt(ligne.quantite || 0), type: 'VENTE' });
-          }
-        });
+      let articlesVente = [];
+      if (v.details_articles) {
+        if (typeof v.details_articles === 'string') { try { articlesVente = JSON.parse(v.details_articles); } catch (e) {} }
+        else if (Array.isArray(v.details_articles)) { articlesVente = v.details_articles; }
       }
+      articlesVente.forEach((ligne) => {
+        if (String(ligne.id || ligne.id_article) === String(articleId)) {
+          flux.push({ date: v.created_at || '', depot_source: v.id_depot, depot_destination: null, quantite: parseInt(ligne.quantite || 0), type: 'SORTIE' });
+        }
+      });
     });
     flux.sort((a, b) => new Date(a.date) - new Date(b.date));
     return flux;
@@ -367,22 +365,53 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
     let nomClientFacture = nomClientLibre.trim() || clientNomSelectionne || 'Clients Divers';
 
+    // Payload de base structuré selon les colonnes confirmées
+    const payloadVente = {
+      id_entreprise: entrepriseId,
+      numero_ticket: numeroTicket,
+      mode_paiement: modePaiementTicket,
+      total_montant: totalFinal,
+      montant_regle: totalFinal,
+      details_articles: panier,
+      id_caisse: caisseId || null,
+      id_depot: depotId || null,
+      nom_client: nomClientFacture,
+      id_client: clientId ? parseInt(clientId) : null
+    };
+
     try {
-      const payload = {
-        id_entreprise: entrepriseId,
-        numero_ticket: numeroTicket,
-        mode_paiement: modePaiementTicket,
-        total_montant: totalFinal,
-        montant_regle: totalFinal,
-        details_articles: panier,
-        id_caisse: caisseId || null,
-        id_depot: depotId || null
-      };
+      let { error: errVente } = await supabase.from('ventes_historiques').insert([payloadVente]);
 
-      const { error } = await supabase.from('ventes_historiques').insert([payload]);
-      if (error) throw error;
+      // Repli dynamique si la colonne nom_client / id_client est temporairement absente
+      if (errVente && errVente.message.includes('column')) {
+        console.warn("Retrait dynamique des colonnes client absentes de la table :", errVente.message);
+        delete payloadVente.nom_client;
+        delete payloadVente.id_client;
 
-      alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré avec succès !`);
+        const resFallback = await supabase.from('ventes_historiques').insert([payloadVente]);
+        if (resFallback.error) throw resFallback.error;
+      } else if (errVente) {
+        throw errVente;
+      }
+
+      for (const item of panier) {
+        const payloadMouvement = {
+          id_entreprise: entrepriseId,
+          type_mouvement: 'SORTIE',
+          id_depot_source: depotId,
+          id_depot_destination: null,
+          id_article: parseInt(item.id),
+          quantite: item.quantite,
+          motif_remarque: `Vente Ticket ${numeroTicket} (${nomClientFacture})`
+        };
+
+        const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
+        if (errMvt) {
+          console.error("Erreur enregistrement mouvement stock associé à la vente:", errMvt.message);
+        }
+      }
+
+      alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré et stock mis à jour avec succès !`);
       setPanier([]);
       setNomClientLibre('');
       setValeurRemise(0);
@@ -408,7 +437,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   const ventesFiltrees = ventes.filter((v) => {
     const numTicket = (v.numero_ticket || '').toLowerCase();
-    const matchQuery = numTicket.includes(recherche.toLowerCase());
+    const nomClientVente = (v.nom_client || '').toLowerCase();
+    const query = recherche.toLowerCase();
+    const matchQuery = numTicket.includes(query) || nomClientVente.includes(query);
     const matchPaiement = filtreModePaiement === 'TOUS' || (v.mode_paiement || '').toUpperCase() === filtreModePaiement.toUpperCase();
     return matchQuery && matchPaiement;
   });
@@ -453,7 +484,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <select
                   value={caisseId}
                   onChange={(e) => changerCaisseSelectionnee(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-bold text-[10px] text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-bold text-[10px] text-slate-900"
                 >
                   {caissesList.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -469,7 +500,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   type="date"
                   value={dateJour}
                   onChange={(e) => setDateJour(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-mono font-bold text-[10px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-mono font-bold text-[10px] text-slate-900"
                 />
               </div>
 
@@ -491,7 +522,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <select
                   value={depotId}
                   onChange={(e) => setDepotId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-bold text-[10px] text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-bold text-[10px] text-slate-900"
                 >
                   {depotsList.length === 0 ? (
                     <option value="">Aucun dépôt</option>
@@ -509,7 +540,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CLIENT</label>
                 <div
                   onClick={() => setAfficherModalClient(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-[10px] text-slate-800 cursor-pointer flex justify-between items-center h-[24px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[24px]"
                 >
                   <span className="truncate">{clientNomSelectionne}</span>
                   <span className="text-[9px] text-slate-400">🔍</span>
@@ -523,7 +554,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   value={nomClientLibre}
                   onChange={(e) => setNomClientLibre(e.target.value)}
                   placeholder="Nom libre..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[10px] font-medium"
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[10px] font-bold text-slate-900 placeholder:text-slate-400"
                 />
               </div>
             </div>
@@ -565,8 +596,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                         }`}
                       >
                         <div>
-                          <p className={`font-bold ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{artDes}</p>
-                          <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-500'}`}>
+                          <p className={`font-bold ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
+                          <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
                             Stock : {artStock} {estEpuise ? '(Épuisé)' : ''}
                           </p>
                         </div>
@@ -588,7 +619,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   <select
                     value={modePaiementTicket}
                     onChange={(e) => setModePaiementTicket(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-700"
+                    className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-900"
                   >
                     <option value="ESPECES">Espèces</option>
                     <option value="MOBILE_MONEY">Mobile Money</option>
@@ -604,21 +635,21 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     panier.map((item) => (
                       <div key={item.id} className="pt-1 flex justify-between items-center text-[10px]">
                         <div>
-                          <p className="font-bold text-slate-800">{item.designation}</p>
-                          <p className="text-[9px] text-slate-500 font-mono">
+                          <p className="font-bold text-slate-900">{item.designation}</p>
+                          <p className="text-[9px] text-slate-600 font-mono font-bold">
                             {Number(item.prix_unitaire).toLocaleString('fr-FR')} F x {item.quantite}
                           </p>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-4 h-4 bg-slate-100 rounded font-bold">-</button>
+                          <button onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">-</button>
                           <input
                             type="number"
                             value={item.quantite}
                             onChange={(e) => modifierQuantite(item.id, Number(e.target.value))}
                             onKeyDown={handleKeyDownQuantite}
-                            className="w-10 bg-slate-50 border border-slate-200 rounded text-center font-bold font-mono text-[10px]"
+                            className="w-10 bg-slate-50 border border-slate-200 rounded text-center font-bold font-mono text-[10px] text-slate-900"
                           />
-                          <button onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-4 h-4 bg-slate-100 rounded font-bold">+</button>
+                          <button onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">+</button>
                           <span className="font-black text-emerald-700 font-mono ml-1 w-14 text-right">
                             {Number(item.quantite * item.prix_unitaire).toLocaleString('fr-FR')} F
                           </span>
@@ -638,7 +669,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     <select
                       value={typeRemise}
                       onChange={(e) => setTypeRemise(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[8px] font-bold text-slate-600"
+                      className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[8px] font-bold text-slate-800"
                     >
                       <option value="POURCENTAGE">Remise % :</option>
                       <option value="MONTANT">Remise (F) :</option>
@@ -648,16 +679,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       min="0"
                       value={valeurRemise}
                       onChange={(e) => setValeurRemise(e.target.value)}
-                      className="w-14 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-center text-[10px] font-mono font-bold"
+                      className="w-14 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-center text-[10px] font-mono font-bold text-slate-900"
                     />
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold text-slate-500">TVA :</span>
+                    <span className="text-[9px] font-bold text-slate-700">TVA :</span>
                     <select
                       value={appliquerTva}
                       onChange={(e) => setAppliquerTva(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold text-slate-700"
+                      className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold text-slate-900"
                     >
                       <option value="NON">Non</option>
                       <option value="OUI">Oui ({tauxTvaClient}%)</option>
@@ -685,7 +716,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 {/* LIGNE 3 : NAP, CFA & BOUTONS ANNULER / VALIDER */}
                 <div className="flex justify-between items-center pt-1 border-t border-slate-100">
                   <div>
-                    <span className="text-[8px] uppercase text-slate-400 font-bold block">NAP :</span>
+                    <span className="text-[8px] uppercase text-slate-500 font-bold block">NAP :</span>
                     <span className="font-black text-emerald-700 font-mono text-xs">
                       {totalFinal.toLocaleString('fr-FR')} CFA
                     </span>
@@ -722,13 +753,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               type="text"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
-              placeholder="Rechercher ticket..."
-              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-medium"
+              placeholder="Rechercher ticket ou client..."
+              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
             />
             <select
               value={filtreModePaiement}
               onChange={(e) => setFiltreModePaiement(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-700"
+              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-900"
             >
               <option value="TOUS">Tous modes</option>
               <option value="ESPECES">Espèces</option>
@@ -750,7 +781,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   <tr>
                     <th className="p-2">Date</th>
                     <th className="p-2">N° Ticket</th>
-                    <th className="p-2">Mode</th>
+                    <th className="p-2">Client</th>
                     <th className="p-2">Articles</th>
                     <th className="p-2 text-right">Montant</th>
                   </tr>
@@ -758,18 +789,19 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <tbody className="divide-y divide-slate-100 text-[10px]">
                   {ventesFiltrees.map((v) => {
                     const detailsArr = Array.isArray(v.details_articles) ? v.details_articles : [];
+                    const nomClientVente = v.nom_client || 'Client Divers';
                     return (
                       <tr
                         key={v.id}
                         onClick={() => setTicketSelectionne(v)}
                         className="hover:bg-slate-50/80 cursor-pointer transition"
                       >
-                        <td className="p-2 text-slate-500 font-mono text-[9px]">
+                        <td className="p-2 text-slate-600 font-mono text-[9px] font-bold">
                           {v.created_at ? new Date(v.created_at).toLocaleDateString('fr-FR') : '-'}
                         </td>
                         <td className="p-2 font-mono font-bold text-orange-600">{v.numero_ticket || '-'}</td>
-                        <td className="p-2 font-bold text-slate-700">{v.mode_paiement || 'Espèces'}</td>
-                        <td className="p-2 text-slate-600">{detailsArr.length} article(s)</td>
+                        <td className="p-2 font-bold text-slate-900 truncate">{nomClientVente}</td>
+                        <td className="p-2 text-slate-700 font-bold">{detailsArr.length} article(s)</td>
                         <td className="p-2 text-right font-black text-emerald-700 font-mono">
                           {Number(v.montant_regle || v.total_montant || 0).toLocaleString('fr-FR')} CFA
                         </td>
@@ -801,8 +833,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     className="p-2 bg-slate-50 hover:bg-amber-50 border border-slate-200 rounded flex justify-between items-center transition"
                   >
                     <div>
-                      <p className="font-bold text-slate-800 text-[10px]">{t.numeroTicket} - {t.client}</p>
-                      <p className="text-[9px] text-slate-500 font-mono">{t.panier.length} article(s) • Heure : {t.date}</p>
+                      <p className="font-bold text-slate-900 text-[10px]">{t.numeroTicket} - {t.client}</p>
+                      <p className="text-[9px] text-slate-600 font-mono font-bold">{t.panier.length} article(s) • Heure : {t.date}</p>
                     </div>
                     <button
                       onClick={() => rappelerTicket(t)}
@@ -833,7 +865,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 value={rechercheClientInput}
                 onChange={(e) => setRechercheClientInput(e.target.value)}
                 placeholder="Rechercher un client..."
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-medium"
+                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
               />
               <div className="space-y-1 pt-1">
                 {clientsFiltres.length === 0 ? (
@@ -846,8 +878,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       className="p-2 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded flex justify-between items-center cursor-pointer transition"
                     >
                       <div>
-                        <p className="font-bold text-slate-800 text-[10px]">{c.nom_client}</p>
-                        <p className="text-[9px] text-slate-500 font-mono">{c.telephone || 'Sans téléphone'}</p>
+                        <p className="font-bold text-slate-900 text-[10px]">{c.nom_client}</p>
+                        <p className="text-[9px] text-slate-600 font-mono font-bold">{c.telephone || 'Sans téléphone'}</p>
                       </div>
                       <span className="font-bold text-orange-600 text-[10px]">Sélectionner</span>
                     </div>
@@ -874,7 +906,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 value={rechercheArticleInput}
                 onChange={(e) => setRechercheArticleInput(e.target.value)}
                 placeholder="Rechercher un article..."
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-medium"
+                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
               />
               <div className="space-y-1 pt-1">
                 {articlesFiltres.length === 0 ? (
@@ -896,8 +928,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                         }`}
                       >
                         <div>
-                          <p className={`font-bold text-[10px] ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{artDes}</p>
-                          <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-500'}`}>
+                          <p className={`font-bold text-[10px] ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
+                          <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
                             Stock : {artStock} {estEpuise ? '(Épuisé)' : ''}
                           </p>
                         </div>
@@ -917,7 +949,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       {/* MODAL FICHE TICKET EXISTANT */}
       {ticketSelectionne && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
-          <div className="bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px]">
               <span className="font-bold font-mono">Ticket #{ticketSelectionne.numero_ticket}</span>
               <button onClick={() => setTicketSelectionne(null)} className="text-slate-400 hover:text-white font-bold">✕</button>
@@ -925,17 +957,39 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
             <div className="p-3 overflow-y-auto space-y-2 font-mono text-[10px] bg-slate-50">
               <div className="space-y-1">
-                <span className="text-[9px] text-slate-400 uppercase font-bold">Détails des articles :</span>
+                <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Détails des articles :</span>
                 {Array.isArray(ticketSelectionne.details_articles) && ticketSelectionne.details_articles.length > 0 ? (
-                  <div className="space-y-1 divide-y divide-slate-200">
-                    {ticketSelectionne.details_articles.map((item, idx) => (
-                      <div key={idx} className="pt-1 flex justify-between text-[10px]">
-                        <span>{item.quantite}x {item.designation}</span>
-                        <span className="font-bold">
-                          {Number((item.quantite || 1) * (item.prix_unitaire || 0)).toLocaleString('fr-FR')} CFA
-                        </span>
-                      </div>
-                    ))}
+                  <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 uppercase text-[8px] font-black border-b border-slate-200">
+                          <th className="p-1.5 w-[12%] text-center">QTE</th>
+                          <th className="p-1.5 w-[48%]">ARTICLE</th>
+                          <th className="p-1.5 w-[20%] text-right">P.V</th>
+                          <th className="p-1.5 w-[20%] text-right">P.T</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-[9.5px]">
+                        {ticketSelectionne.details_articles.map((item, idx) => {
+                          const qte = Number(item.quantite || 1);
+                          const pv = Number(item.prix_unitaire || item.prix_vente || 0);
+                          const pt = qte * pv;
+
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50 transition">
+                              <td className="p-1.5 text-center font-bold text-slate-900">{qte}x</td>
+                              <td className="p-1.5 font-bold text-slate-900 truncate">{item.designation}</td>
+                              <td className="p-1.5 text-right text-slate-600 font-bold whitespace-nowrap">
+                                {pv.toLocaleString('fr-FR')}
+                              </td>
+                              <td className="p-1.5 text-right font-black text-emerald-700 whitespace-nowrap">
+                                {pt.toLocaleString('fr-FR')}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (
                   <p className="text-slate-400 italic text-[10px]">Aucun détail d'article.</p>
@@ -944,7 +998,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
               <div className="pt-2 border-t border-dashed border-slate-300 flex justify-between font-black text-[11px] text-slate-900">
                 <span>TOTAL :</span>
-                <span className="text-emerald-700">
+                <span className="text-emerald-700 font-mono">
                   {Number(ticketSelectionne.total_montant || 0).toLocaleString('fr-FR')} CFA
                 </span>
               </div>
@@ -960,7 +1014,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               <div className="flex gap-1">
                 <button
                   onClick={() => window.print()}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded text-[10px] transition"
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-2 py-1 rounded text-[10px] transition"
                 >
                   🖨️ Imprimer
                 </button>

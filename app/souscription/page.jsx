@@ -257,12 +257,10 @@ export default function SouscriptionWizard() {
 
               <div className="space-y-3 pt-2">
                 <a
-                  href="http://localhost:3000" 
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={`/dashboard?entreprise=${formData.entrepriseId}`}
                   className="block w-full bg-[#005a5b] hover:bg-[#004243] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition text-center"
                 >
-                  Accéder à mon espace Web (Local / Vercel)
+                  Accéder à mon espace Web ({formData.entrepriseId})
                 </a>
 
                 <div className="text-xs text-slate-600 bg-amber-50 p-4 rounded-xl border border-amber-200 text-left space-y-2">

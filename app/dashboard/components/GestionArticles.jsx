@@ -8,18 +8,21 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [mouvements, setMouvements] = useState([]);
   const [approvisionnements, setApprovisionnements] = useState([]);
   const [ventesHistoriques, setVentesHistoriques] = useState([]);
-  const [familles, setFamilles] = useState([]); 
-  const [depots, setDepots] = useState([]);
+  const [depots, setDepots] = useState([]); 
   const [emplacements, setEmplacements] = useState([]);
+  const [familles, setFamilles] = useState([]);
+  const [entrepriseInfo, setEntrepriseInfo] = useState(null);
 
-  const [modeVue, setModeVue] = useState('catalogue');
+  const [modeVue, setModeVue] = useState('catalogue'); // 'catalogue' ou 'statistiques'
+  const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
+  const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
 
-  const [articleHistoriqueId, setArticleHistoriqueId] = useState('');
-  const [depotHistoriqueFiltre, setDepotHistoriqueFiltre] = useState('TOUS');
-  const [dateDebut, setDateDebut] = useState('');
-  const [dateFin, setDateFin] = useState('');
+  // États pour la modale de sélection d'article
+  const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
+  const [rechercheModalArticle, setRechercheModalArticle] = useState('');
 
   const [chargement, setChargement] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [afficherForm, setAfficherForm] = useState(false);
   const [articleEnEdition, setArticleEnEdition] = useState(null);
 
@@ -27,7 +30,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [depotFiltre, setDepotFiltre] = useState('TOUS');
   const [emplacementFiltre, setEmplacementFiltre] = useState('TOUS');
 
-  // États pour la gestion du tri du catalogue
+  // Gestion du tri
   const [colonneTri, setColonneTri] = useState('Designation');
   const [ordreTri, setOrdreTri] = useState('asc');
 
@@ -38,27 +41,56 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     Prix_Achat: 0,
     Prix_Vente: 0,
     Seuil_Alerte: 5,
+    Photo: '',
     Disponible_Menu_QR: true,
+    date_peremption: '',
   });
 
+  // 🛡️ CORRECTION ABSOLUE : CHARGEMENT STRICTEMENT ISOLÉ PAR ENTREPRISE (Y COMPRIS LES FAMILLES)
   const chargerDonneesReference = async () => {
     try {
-      const { data: dataFam } = await supabase.from('familles_articles').select('*').order('nom_famille', { ascending: true });
+      const { data: dataEnt } = await supabase
+        .from('entreprises')
+        .select('*')
+        .or(`id.eq.${entrepriseId},id_entreprise.eq.${entrepriseId},code_entreprise.eq.${entrepriseId}`)
+        .single();
+      
+      if (dataEnt) setInfosEntreprise(dataEnt);
+
+      // Familles d'articles strictement filtrées par entreprise
+      const { data: dataFam } = await supabase
+        .from('familles_articles')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .order('nom_famille', { ascending: true });
       setFamilles(dataFam || []);
 
-      const { data: dataDep } = await supabase.from('depots_stock').select('*');
-      setDepots(dataDep || []);
+      // 1. Dépôts strictement filtrés par ID entreprise
+      const { data: dataDep } = await supabase
+        .from('depots_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId);
+      const listeDepots = dataDep || [];
+      setDepots(listeDepots);
 
-      const { data: dataEmp } = await supabase.from('emplacements_stock').select('*');
-      setEmplacements(dataEmp || []);
+      // 2. Emplacements strictement filtrés via les dépôts appartenant à cette entreprise
+      const depotIds = listeDepots.map(d => d.id);
+      if (depotIds.length > 0) {
+        const { data: dataEmp } = await supabase
+          .from('emplacements_stock')
+          .select('*')
+          .in('id_depot', depotIds);
+        setEmplacements(dataEmp || []);
+      } else {
+        setEmplacements([]);
+      }
 
-      const { data: dataMvt } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId);
-      setMouvements(dataMvt || []);
+      const { data: dataMvts } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId);
+      setMouvements(dataMvts || []);
 
-      const { data: dataAppro } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId);
-      setApprovisionnements(dataAppro || []);
+      const { data: dataApp } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId);
+      setApprovisionnements(dataApp || []);
 
-      // Récupération des ventes historiques pour déduire le stock vendu par dépôt
       const { data: dataVentes } = await supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId);
       setVentesHistoriques(dataVentes || []);
     } catch (err) {
@@ -66,19 +98,26 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
+  // 🛡️ ISOLATION MULTI-TENANT STRICTE DES ARTICLES
   const chargerArticles = async () => {
     setChargement(true);
     try {
       const { data, error } = await supabase
         .from('articles_stock')
         .select('*')
+        .eq('ID_Entreprise', entrepriseId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      const listArticles = data || [];
-      setArticles(listArticles);
-      if (listArticles.length > 0 && !articleHistoriqueId) {
-        setArticleHistoriqueId(listArticles[0].id_article || listArticles[0].id);
+      const liste = data || [];
+      setArticles(liste);
+      
+      if (liste.length > 0) {
+        if (!articleSelectionneStatId || !liste.some(a => String(a.id_article || a.id) === String(articleSelectionneStatId))) {
+          setArticleSelectionneStatId(String(liste[0].id_article || liste[0].id));
+        }
+      } else {
+        setArticleSelectionneStatId('');
       }
     } catch (err) {
       console.error('Erreur chargement articles :', err.message);
@@ -92,47 +131,221 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     chargerArticles();
   }, [entrepriseId]);
 
+  const isGestionPerissablesActive = () => {
+    if (!entrepriseInfo) return false;
+    if (entrepriseInfo.gestion_perissables === true) return true;
+    if (entrepriseInfo.options_config && entrepriseInfo.options_config.gestion_perissables === true) return true;
+    return false;
+  };
+
+  const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
+    if (!valeurDepotFlux || !depotCibleId) return false;
+    if (String(valeurDepotFlux) === String(depotCibleId)) return true;
+    const depotObj = depots.find((d) => String(d.id) === String(depotCibleId));
+    if (depotObj && depotObj.nom_depot && String(valeurDepotFlux).trim().toUpperCase() === String(depotObj.nom_depot).trim().toUpperCase()) return true;
+    return false;
+  };
+
+  const obtenirTousLesFluxArticle = (articleId, depotCibleId = 'TOUS') => {
+    let flux = [];
+    
+    mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
+      if (depotCibleId === 'TOUS' || correspondAuDepot(m.id_depot_source, depotCibleId) || correspondAuDepot(m.id_depot_destination, depotCibleId)) {
+        flux.push({ 
+          date: m.created_at || '', 
+          depot_source: m.id_depot_source, 
+          depot_destination: m.id_depot_destination, 
+          quantite: parseInt(m.quantite || 0), 
+          type: (m.type_mouvement || '').toUpperCase(),
+          remarque: m.motif_remarque || '',
+          referenceObjet: null
+        });
+      }
+    });
+
+    approvisionnements.forEach((app) => {
+      if (depotCibleId === 'TOUS' || correspondAuDepot(app.id_depot_destination, depotCibleId)) {
+        let articlesAppro = [];
+        if (app.details_articles) {
+          if (typeof app.details_articles === 'string') { try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} }
+          else if (Array.isArray(app.details_articles)) { articlesAppro = app.details_articles; }
+        }
+        articlesAppro.forEach((ligne) => {
+          if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
+            flux.push({ 
+              date: app.created_at || '', 
+              depot_source: app.id_depot_destination, 
+              depot_destination: null, 
+              quantite: parseInt(ligne.quantite || 0), 
+              type: 'APPROVISIONNEMENT',
+              remarque: '',
+              referenceObjet: app 
+            });
+          }
+        });
+      }
+    });
+
+    flux.sort((a, b) => new Date(a.date) - new Date(b.date));
+    return flux;
+  };
+
+  const calculerStockPourUnDepot = (articleId, depotId) => {
+    let stockDepot = 0;
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId);
+    
+    fluxArticle.forEach((m) => {
+      const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
+      const matchDepotDest = correspondAuDepot(m.depot_destination, depotId);
+      const qte = m.quantite; 
+      const typeMvt = m.type;
+
+      if (typeMvt === 'INVENTAIRE' && matchDepotSource) { 
+        stockDepot = qte; 
+        return; 
+      }
+      if (typeMvt === 'TRANSFERT') { 
+        if (matchDepotDest) stockDepot += qte; 
+        if (matchDepotSource) stockDepot -= qte; 
+        return; 
+      }
+      if (typeMvt === 'ENTREE' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
+        if (matchDepotSource || matchDepotDest) stockDepot += qte;
+      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+        if (matchDepotSource) stockDepot -= qte;
+      } else {
+        if (matchDepotSource || matchDepotDest) stockDepot += qte;
+      }
+    });
+
+    return Math.max(0, stockDepot);
+  };
+
+  const calculerStockParFiltre = (articleId) => {
+    if (depotFiltre !== 'TOUS') {
+      return calculerStockPourUnDepot(articleId, depotFiltre);
+    } else {
+      let totalGlobal = 0;
+      depots.forEach(dep => {
+        totalGlobal += calculerStockPourUnDepot(articleId, dep.id);
+      });
+      if (depots.length === 0) {
+        const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
+        totalGlobal = parseInt(artObj?.Quantite_Stock || 0);
+      }
+      return totalGlobal;
+    }
+  };
+
+  const obtenirCodeMouvement = (mouvementObj) => {
+    const t = (mouvementObj.type || '').toUpperCase();
+    const remarque = (mouvementObj.remarque || '').toUpperCase();
+
+    if (t.includes('APPROVISIONNEMENT') && mouvementObj.referenceObjet) {
+      const app = mouvementObj.referenceObjet;
+      if (app.numero_approvisionnement) return app.numero_approvisionnement;
+      if (app.reference) return app.reference;
+      if (app.code) return app.code;
+      const indexApp = approvisionnements.findIndex(a => a.id === app.id);
+      if (indexApp !== -1) {
+        return `APP-${String(indexApp + 1).padStart(2, '0')}`;
+      }
+      return 'APP';
+    }
+
+    if (t.includes('SORTIE') || t.includes('VENTE')) {
+      const matchTicket = remarque.match(/TICKET\s+([A-Z0-9-]+)/i);
+      if (matchTicket && matchTicket[1]) {
+        return matchTicket[1];
+      }
+      for (const v of ventesHistoriques) {
+        if (v.numero_ticket && remarque.includes(v.numero_ticket.toUpperCase())) {
+          return v.numero_ticket;
+        }
+      }
+      return 'MS';
+    }
+
+    if (t.includes('ENTREE') || t.includes('ACHAT') || t.includes('FACTURE')) return 'ME';
+    if (t.includes('INVENTAIRE')) return 'INV';
+    if (t.includes('TRANSFERT')) return 'TR';
+    if (t.includes('AVARIE')) return 'AV';
+    return t.substring(0, 3);
+  };
+
+  const gererUploadImage = async (e) => {
+    try {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      setUploadingPhoto(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `articles/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('articles-photos')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setNouveauArticle(prev => ({ ...prev, Photo: reader.result }));
+          setUploadingPhoto(false);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('articles-photos')
+        .getPublicUrl(filePath);
+
+      setNouveauArticle(prev => ({ ...prev, Photo: urlData.publicUrl }));
+    } catch (err) {
+      alert('Erreur chargement photo : ' + err.message);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const enregistrerArticle = async (e) => {
     e.preventDefault();
     try {
+      const payloadArticle = {
+        Designation: nouveauArticle.Designation,
+        Code_Barre: nouveauArticle.Code_Barre,
+        Famille: nouveauArticle.Famille,
+        Prix_Achat: parseFloat(nouveauArticle.Prix_Achat) || 0,
+        Prix_Vente: parseFloat(nouveauArticle.Prix_Vente) || 0,
+        Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte) || 5,
+        Photo: nouveauArticle.Photo,
+        Disponible_Menu_QR: nouveauArticle.Disponible_Menu_QR,
+        date_peremption: isGestionPerissablesActive() && nouveauArticle.date_peremption ? nouveauArticle.date_peremption : null
+      };
+
       if (articleEnEdition) {
         const targetId = articleEnEdition.id_article || articleEnEdition.id;
         const { error } = await supabase
           .from('articles_stock')
-          .update({
-            Designation: nouveauArticle.Designation,
-            Code_Barre: nouveauArticle.Code_Barre,
-            Famille: nouveauArticle.Famille,
-            Prix_Achat: parseFloat(nouveauArticle.Prix_Achat) || 0,
-            Prix_Vente: parseFloat(nouveauArticle.Prix_Vente) || 0,
-            Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte) || 5,
-            Disponible_Menu_QR: nouveauArticle.Disponible_Menu_QR,
-          })
-          .eq(articleEnEdition.id_article ? 'id_article' : 'id', targetId);
+          .update(payloadArticle)
+          .eq(articleEnEdition.id_article ? 'id_article' : 'id', targetId)
+          .eq('ID_Entreprise', entrepriseId);
 
         if (error) throw error;
         alert('Article mis à jour avec succès !');
       } else {
-        const { error } = await supabase.from('articles_stock').insert([
-          {
-            Designation: nouveauArticle.Designation,
-            Code_Barre: nouveauArticle.Code_Barre,
-            Famille: nouveauArticle.Famille,
-            Prix_Achat: parseFloat(nouveauArticle.Prix_Achat) || 0,
-            Prix_Vente: parseFloat(nouveauArticle.Prix_Vente) || 0,
-            Quantite_Stock: 0,
-            Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte) || 5,
-            Disponible_Menu_QR: nouveauArticle.Disponible_Menu_QR ?? true,
-            ID_Entreprise: entrepriseId,
-          },
-        ]);
+        payloadArticle.Quantite_Stock = 0;
+        payloadArticle.ID_Entreprise = entrepriseId;
 
+        const { error } = await supabase.from('articles_stock').insert([payloadArticle]);
         if (error) throw error;
         alert('Article créé avec succès !');
       }
 
       annulerForm();
       chargerArticles();
+      chargerDonneesReference();
     } catch (err) {
       alert('Erreur : ' + err.message);
     }
@@ -147,7 +360,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       Prix_Achat: article.Prix_Achat || article.prix_achat || 0,
       Prix_Vente: article.Prix_Vente || article.prix_vente || 0,
       Seuil_Alerte: article.Seuil_Alerte || article.seuil_alerte || 5,
+      Photo: article.Photo || article.photo || '',
       Disponible_Menu_QR: article.Disponible_Menu_QR ?? true,
+      date_peremption: article.date_peremption || '',
     });
     setAfficherForm(true);
   };
@@ -161,239 +376,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       Prix_Achat: 0,
       Prix_Vente: 0,
       Seuil_Alerte: 5,
+      Photo: '',
       Disponible_Menu_QR: true,
+      date_peremption: '',
     });
     setAfficherForm(false);
-  };
-
-  const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
-    if (!valeurDepotFlux || !depotCibleId) return false;
-    if (String(valeurDepotFlux) === String(depotCibleId)) return true;
-
-    const depotObj = depots.find((d) => String(d.id) === String(depotCibleId));
-    if (depotObj && (depotObj.nom_depot || depotObj.nom || depotObj.libelle)) {
-      const nomDepotCible = depotObj.nom_depot || depotObj.nom || depotObj.libelle;
-      if (String(valeurDepotFlux).trim().toUpperCase() === String(nomDepotCible).trim().toUpperCase()) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  const calculerStockPourUnDepot = (articleId, depotId) => {
-    let stockDepot = 0;
-
-    const mvtArticle = mouvements
-      .filter((m) => String(m.id_article) === String(articleId))
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-    mvtArticle.forEach((m) => {
-      const matchDepotSource = String(m.id_depot_source || m.id_depot) === String(depotId);
-      const matchDepotDest = String(m.id_depot_destination) === String(depotId);
-      const qte = parseInt(m.quantite || 0);
-      const typeMvt = (m.type_mouvement || '').toUpperCase();
-
-      if (typeMvt === 'INVENTAIRE' && matchDepotSource) {
-        stockDepot = qte;
-        return;
-      }
-
-      if (typeMvt === 'TRANSFERT') {
-        if (matchDepotDest) stockDepot += qte;
-        if (matchDepotSource) stockDepot -= qte;
-        return;
-      }
-
-      if (
-        typeMvt.includes('ENTREE') || 
-        typeMvt.includes('ACHAT') || 
-        typeMvt.includes('APPROVISIONNEMENT')
-      ) {
-        if (matchDepotSource || matchDepotDest) {
-          stockDepot += qte;
-        }
-      } else if (
-        typeMvt.includes('SORTIE') || 
-        typeMvt.includes('VENTE') || 
-        typeMvt.includes('AVARIES')
-      ) {
-        if (matchDepotSource) {
-          stockDepot -= qte;
-        }
-      } else {
-        if (matchDepotSource || matchDepotDest) {
-          stockDepot += qte;
-        }
-      }
-    });
-
-    approvisionnements.forEach((app) => {
-      const matchDepotDest = String(app.id_depot_destination) === String(depotId);
-      if (matchDepotDest && app.details_articles) {
-        let details = [];
-        try {
-          details = typeof app.details_articles === 'string' 
-            ? JSON.parse(app.details_articles) 
-            : app.details_articles;
-        } catch (e) {
-          details = [];
-        }
-
-        if (Array.isArray(details)) {
-          details.forEach((item) => {
-            const idArtInDetails = item.id_article || item.id;
-            if (String(idArtInDetails) === String(articleId)) {
-              const qteAchetee = parseInt(item.quantite || item.Quantite || 0);
-              stockDepot += qteAchetee;
-            }
-          });
-        }
-      }
-    });
-
-    // Prise en compte des ventes enregistrées dans ventes_historiques pour déduire du stock du dépôt
-    ventesHistoriques.forEach((v) => {
-      if (v.id_depot && String(v.id_depot) === String(depotId)) {
-        let articlesVente = [];
-        if (v.details_articles) {
-          if (typeof v.details_articles === 'string') { 
-            try { articlesVente = JSON.parse(v.details_articles); } catch (e) {} 
-          } else if (Array.isArray(v.details_articles)) { 
-            articlesVente = v.details_articles; 
-          }
-        }
-        articlesVente.forEach((ligne) => {
-          if (String(ligne.id || ligne.id_article) === String(articleId)) {
-            stockDepot -= parseInt(ligne.quantite || 0);
-          }
-        });
-      }
-    });
-
-    return Math.max(0, stockDepot);
-  };
-
-  const calculerStockParFiltre = (articleId) => {
-    if (depotFiltre !== 'TOUS') {
-      return calculerStockPourUnDepot(articleId, depotFiltre);
-    } else {
-      if (depots.length === 0) {
-        const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
-        return parseInt(artObj?.Quantite_Stock ?? artObj?.quantite_stock ?? 0);
-      }
-
-      let sommeTotaleDepots = 0;
-      depots.forEach((dep) => {
-        sommeTotaleDepots += calculerStockPourUnDepot(articleId, dep.id);
-      });
-      return sommeTotaleDepots;
-    }
-  };
-
-  const obtenirHistoriqueFluxArticle = (articleId) => {
-    if (!articleId) return [];
-    let flux = [];
-
-    mouvements
-      .filter((m) => String(m.id_article) === String(articleId))
-      .forEach((m) => {
-        const depotSrcObj = depots.find(d => String(d.id) === String(m.id_depot_source || m.id_depot));
-        const depotDstObj = depots.find(d => String(d.id) === String(m.id_depot_destination));
-
-        flux.push({
-          date: m.created_at || new Date().toISOString(),
-          depotSource: depotSrcObj ? depotSrcObj.nom_depot : (m.id_depot_source || m.id_depot || '-'),
-          depotDest: depotDstObj ? depotDstObj.nom_depot : (m.id_depot_destination || '-'),
-          idDepotConcerne: m.id_depot_source || m.id_depot || m.id_depot_destination,
-          quantite: parseInt(m.quantite || 0),
-          type: (m.type_mouvement || 'MOUVEMENT').toUpperCase(),
-          numeroDoc: m.numero_mouvement || m.numero_bon || m.reference || m.ref_document || (m.type_mouvement || 'MOUVEMENT').toUpperCase(),
-        });
-      });
-
-    approvisionnements.forEach((app) => {
-      let articlesAppro = [];
-      if (app.details_articles) {
-        if (typeof app.details_articles === 'string') {
-          try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {}
-        } else if (Array.isArray(app.details_articles)) {
-          articlesAppro = app.details_articles;
-        }
-      }
-
-      articlesAppro.forEach((ligne) => {
-        const idArt = ligne.id_article || ligne.article_id || ligne.id;
-        if (String(idArt) === String(articleId)) {
-          const depotObj = depots.find(d => String(d.id) === String(app.id_depot_destination));
-          flux.push({
-            date: app.created_at || new Date().toISOString(),
-            depotSource: depotObj ? depotObj.nom_depot : (app.id_depot_destination || '-'),
-            depotDest: '-',
-            idDepotConcerne: app.id_depot_destination,
-            quantite: parseInt(ligne.quantite || 0),
-            type: 'ACHAT',
-            numeroDoc: app.numero_bon || app.numero_commande || 'APPROVISIONNEMENT',
-          });
-        }
-      });
-    });
-
-    // Intégrer également les ventes dans l'historique des flux
-    ventesHistoriques.forEach((v) => {
-      let articlesVente = [];
-      if (v.details_articles) {
-        if (typeof v.details_articles === 'string') {
-          try { articlesVente = JSON.parse(v.details_articles); } catch (e) {}
-        } else if (Array.isArray(v.details_articles)) {
-          articlesVente = v.details_articles;
-        }
-      }
-
-      articlesVente.forEach((ligne) => {
-        const idArt = ligne.id || ligne.id_article;
-        if (String(idArt) === String(articleId)) {
-          const depotObj = depots.find(d => String(d.id) === String(v.id_depot));
-          flux.push({
-            date: v.created_at || new Date().toISOString(),
-            depotSource: depotObj ? depotObj.nom_depot : (v.id_depot || '-'),
-            depotDest: 'Client (Vente)',
-            idDepotConcerne: v.id_depot,
-            quantite: parseInt(ligne.quantite || 0),
-            type: 'VENTE',
-            numeroDoc: v.numero_ticket || 'VENTE CAISSE',
-          });
-        }
-      });
-    });
-
-    flux.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    let fluxFiltres = flux;
-    if (depotHistoriqueFiltre !== 'TOUS') {
-      fluxFiltres = flux.filter(f => correspondAuDepot(f.idDepotConcerne, depotHistoriqueFiltre));
-    }
-
-    if (dateDebut) {
-      fluxFiltres = fluxFiltres.filter(f => f.date.split('T')[0] >= dateDebut);
-    }
-    if (dateFin) {
-      fluxFiltres = fluxFiltres.filter(f => f.date.split('T')[0] <= dateFin);
-    }
-
-    let stockCourant = 0;
-    const fluxAvecStock = fluxFiltres.map(f => {
-      const typeMvt = f.type;
-      if (typeMvt.includes('ENTREE') || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
-        stockCourant += f.quantite;
-      } else if (typeMvt.includes('SORTIE') || typeMvt.includes('VENTE') || typeMvt.includes('AVARIES')) {
-        stockCourant -= f.quantite;
-      } else {
-        stockCourant += f.quantite;
-      }
-      return { ...f, stockApres: stockCourant };
-    });
-
-    return fluxAvecStock;
   };
 
   const supprimerArticleDepuisFormulaire = async () => {
@@ -412,7 +399,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const { error } = await supabase
         .from('articles_stock')
         .delete()
-        .eq(articleEnEdition.id_article ? 'id_article' : 'id', artId);
+        .eq(articleEnEdition.id_article ? 'id_article' : 'id', artId)
+        .eq('ID_Entreprise', entrepriseId);
 
       if (error) throw error;
       alert('Article supprimé.');
@@ -465,370 +453,606 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     ? emplacements 
     : emplacements.filter(emp => String(emp.id_depot) === String(depotFiltre));
 
-  const articleSelectionneObj = articles.find(a => String(a.id_article || a.id) === String(articleHistoriqueId));
-  const historiqueFlux = obtenirHistoriqueFluxArticle(articleHistoriqueId);
+  const articlesModalFiltres = articles.filter(art => {
+    const nom = (art.Designation || art.designation || '').toLowerCase();
+    return nom.includes(rechercheModalArticle.toLowerCase());
+  });
+
+  const articleStatObjet = articles.find(a => String(a.id_article || a.id) === String(articleSelectionneStatId));
 
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
+      {/* EN-TÊTE EXPLICITE DE LA TABLE */}
+      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+          <span>📦</span> GESTION DES ARTICLES {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables Actif</span>}
+        </h3>
+        <button
+          type="button"
+          onClick={() => {
+            if (afficherForm) {
+              annulerForm();
+            } else {
+              setModeVue('catalogue');
+              annulerForm();
+              setAfficherForm(true);
+            }
+          }}
+          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+        >
+          {afficherForm ? '✖' : 'Nouveau'}
+        </button>
+      </div>
+
+      {/* BARRE DE NAVIGATION (BOUTONS DE VUE : CATALOGUE & STATISTIQUES) */}
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
           onClick={() => {
             setModeVue('catalogue');
-            if (!afficherForm) setAfficherForm(true);
+            annulerForm();
           }}
-          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition whitespace-nowrap border ${
-            modeVue === 'catalogue' && afficherForm 
-              ? 'bg-orange-600 text-white border-orange-600 shadow-2xs' 
-              : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+            modeVue === 'catalogue' && !afficherForm 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          ＋ Nouveau ({articles.length})
+          📋 Liste des Articles ({articles.length})
         </button>
+
         <button
           type="button"
           onClick={() => {
-            setModeVue('historique');
-            setAfficherForm(false);
+            setModeVue('statistiques');
+            annulerForm();
           }}
-          className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition whitespace-nowrap border ${
-            modeVue === 'historique' 
-              ? 'bg-orange-600 text-white border-orange-600 shadow-2xs' 
-              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+            modeVue === 'statistiques' 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          🔍 Historique
+          📊 Statistiques Articles
         </button>
       </div>
 
       {modeVue === 'catalogue' && (
         <>
-          {afficherForm && (
-            <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-2.5 rounded-xl shadow-xs space-y-2">
-              <div className="flex justify-between items-center pb-1 border-b border-slate-100">
-                <div className="flex-1 max-w-[200px]">
-                  <select
-                    required
-                    value={nouveauArticle.Famille}
-                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Famille: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-[11px] font-bold text-orange-600 focus:outline-none"
-                  >
-                    <option value="">-- Sélectionner Famille --</option>
-                    {familles.map((fam) => (
-                      <option key={fam.id} value={fam.id}>
-                        🏷️ {fam.nom_famille || fam.Nom_Famille}
-                      </option>
-                    ))}
-                  </select>
+          {afficherForm ? (
+            /* FORMULAIRE D'AJOUT / ÉDITION */
+            <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
+              
+              <div className="pb-1 border-b border-slate-100">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block font-black text-[10px] text-slate-700 uppercase">Famille *</label>
+                  <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
                 </div>
-                <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-1">✖</button>
+                <select
+                  required
+                  value={nouveauArticle.Famille}
+                  onChange={(e) => setNouveauArticle({ ...nouveauArticle, Famille: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-orange-700 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  <option value="">-- Sélectionner Famille --</option>
+                  {familles.map((fam) => (
+                    <option key={fam.id} value={fam.id}>
+                      🏷️ {fam.nom_famille || fam.Nom_Famille}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">Désignation *</label>
+                <label className="block font-black text-[10px] text-slate-700 uppercase mb-0.5">Désignation *</label>
                 <input
                   type="text"
                   required
                   value={nouveauArticle.Designation}
                   onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value })}
                   placeholder="Ex: JUS DE PAPAYE 250ML"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-extrabold text-slate-800 whitespace-nowrap truncate"
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>
 
-              <div className="grid grid-cols-4 gap-1.5 items-end">
+              {/* 1ère ligne : P.A, P.V, S.ALERTE */}
+              <div className="grid grid-cols-3 gap-1.5 items-end">
                 <div>
-                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">P.A</label>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A</label>
                   <input
                     type="number"
                     value={nouveauArticle.Prix_Achat}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Achat: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-bold"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">P.V *</label>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.V *</label>
                   <input
                     type="number"
                     required
                     value={nouveauArticle.Prix_Vente}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-bold text-emerald-600"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-emerald-700 shadow-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">S.Alerte</label>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">S.Alerte</label>
                   <input
                     type="number"
                     value={nouveauArticle.Seuil_Alerte}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Seuil_Alerte: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-bold text-slate-700"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs"
                   />
                 </div>
+              </div>
 
+              {/* 2ème ligne : CODE-BARRES & DATE PÉREMPTION */}
+              <div className={`grid ${isGestionPerissablesActive() ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5 items-end`}>
                 <div>
-                  <label className="block font-bold text-[9px] text-slate-400 uppercase mb-0.5">Code-Barres</label>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Code-Barres</label>
                   <input
                     type="text"
                     value={nouveauArticle.Code_Barre}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value })}
                     placeholder="600123"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs font-mono"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 font-mono shadow-xs"
                   />
+                </div>
+
+                {isGestionPerissablesActive() && (
+                  <div>
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date Péremption</label>
+                    <input
+                      type="date"
+                      value={nouveauArticle.date_peremption}
+                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, date_peremption: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION PHOTO */}
+              <div className="pt-2 border-t border-slate-100 space-y-1">
+                <label className="block font-black text-[10px] text-slate-700 uppercase">Photo de l'article</label>
+                
+                {nouveauArticle.Photo ? (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-3">
+                    <div className="shrink-0">
+                      <img
+                        src={nouveauArticle.Photo}
+                        alt="Photo de l'article"
+                        className="w-20 h-20 object-cover rounded-xl border-2 border-orange-500 shadow-xs"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <label className="bg-white hover:bg-orange-50 text-orange-600 border border-orange-300 px-3.5 py-1.5 rounded-lg font-black text-xs cursor-pointer flex items-center justify-center gap-1 transition shadow-xs">
+                        <span>📷 {uploadingPhoto ? 'Envoi...' : 'Modifier'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={gererUploadImage}
+                          className="hidden"
+                          disabled={uploadingPhoto}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setNouveauArticle({ ...nouveauArticle, Photo: '' })}
+                        className="text-red-600 hover:text-red-800 font-extrabold text-[10px] text-center underline"
+                      >
+                        Retirer la photo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5 items-center">
+                    <input
+                      type="text"
+                      value={nouveauArticle.Photo}
+                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, Photo: e.target.value })}
+                      placeholder="https://lien-image.com/photo.jpg"
+                      className="flex-1 min-w-0 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none truncate"
+                    />
+
+                    <label 
+                      className="bg-slate-100 hover:bg-orange-100 text-slate-800 border border-slate-300 px-3 py-1.5 rounded-lg font-black text-xs cursor-pointer flex items-center justify-center transition shrink-0 shadow-xs"
+                      title="Prendre ou joindre une photo"
+                    >
+                      <span>📷 Joindre / Filmer</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={gererUploadImage}
+                        className="hidden"
+                        disabled={uploadingPhoto}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* OPTION SCAN QR CODE */}
+              <div className="pt-1.5 border-t border-slate-100">
+                <div className="bg-orange-50/70 border border-orange-200/80 rounded-xl p-2 flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="qrCheck"
+                    checked={nouveauArticle.Disponible_Menu_QR}
+                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Disponible_Menu_QR: e.target.checked })}
+                    className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
+                  />
+                  <label htmlFor="qrCheck" className="text-[11px] font-black text-slate-900 cursor-pointer select-none leading-tight">
+                    📱 Visible au Scan Code QR par les clients
+                  </label>
                 </div>
               </div>
 
-              <div className="pt-1 flex justify-between items-center">
+              {/* LIGNE STOCK PAR DÉPÔT ET TOTAL (EN ÉDITION) */}
+              {articleEnEdition && (() => {
+                const articleId = articleEnEdition.id_article || articleEnEdition.id;
+                const stockTotal = calculerStockParFiltre(articleId);
+
+                const depotsAvecStock = depots.filter((dep) => {
+                  const stockDep = calculerStockPourUnDepot(articleId, dep.id);
+                  return stockDep > 0;
+                });
+
+                return (
+                  <div className="pt-1.5 border-t border-slate-100">
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 flex items-center gap-2 overflow-x-auto text-[10px]">
+                      <span className="font-black text-orange-600 uppercase shrink-0">📦 STOCK :</span>
+                      
+                      <div className="flex items-center gap-4 whitespace-nowrap overflow-x-auto py-1">
+                        <div className="flex flex-col items-center bg-orange-100/75 border border-orange-300 px-3 py-1 rounded-lg shadow-2xs shrink-0">
+                          <span className="font-black text-orange-900 uppercase text-[9px]">TOTAL</span>
+                          <span className="text-orange-950 font-black text-xs">{stockTotal}</span>
+                        </div>
+
+                        {depotsAvecStock.map((dep) => {
+                          const stockDep = calculerStockPourUnDepot(articleId, dep.id);
+                          return (
+                            <div key={dep.id} className="flex flex-col items-center bg-white border border-slate-200 px-3 py-1 rounded-lg shadow-2xs shrink-0">
+                              <span className="font-bold text-slate-700 uppercase text-[9px]">{dep.nom_depot || dep.Nom_Depot}</span>
+                              <span className="text-emerald-800 font-black text-xs">{stockDep}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* BARRE D'ACTION */}
+              <div className="pt-2 flex justify-between items-center border-t border-slate-200">
                 {articleEnEdition ? (
                   <button 
                     type="button" 
                     onClick={supprimerArticleDepuisFormulaire} 
-                    className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold px-3 py-1 rounded-lg text-[10px]"
+                    className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded-lg text-xs shadow-xs"
                   >
                     🗑️ Supprimer
                   </button>
                 ) : <div />}
 
                 <div className="flex gap-1.5">
-                  <button type="button" onClick={annulerForm} className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded-lg text-[10px]">Annuler</button>
-                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-1 rounded-lg shadow-2xs text-[10px]">
+                  <button type="button" onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
+                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded-lg shadow-xs text-xs">
                     {articleEnEdition ? 'Mettre à jour' : 'Enregistrer'}
                   </button>
                 </div>
               </div>
             </form>
-          )}
-
-          <div className="bg-white p-1.5 rounded-xl border border-slate-200 grid grid-cols-3 gap-1.5">
-            <div>
-              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Famille</label>
-              <select
-                value={familleFiltre}
-                onChange={(e) => setFamilleFiltre(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-700 text-[10px]"
-              >
-                <option value="TOUTES">Toutes</option>
-                {familles.map((fam) => (
-                  <option key={fam.id} value={fam.id}>
-                    {fam.nom_famille || fam.Nom_Famille}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Dépôt</label>
-              <select
-                value={depotFiltre}
-                onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-700 text-[10px]"
-              >
-                <option value="TOUS">Tous</option>
-                {depots.map((dep) => (
-                  <option key={dep.id} value={dep.id}>
-                    {dep.nom_depot || dep.Nom_Depot}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Emplacement</label>
-              <select
-                value={emplacementFiltre}
-                onChange={(e) => setEmplacementFiltre(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-700 text-[10px]"
-              >
-                <option value="TOUS">Tous</option>
-                {emplacementsDisponibles.map((emp) => (
-                  <option key={emp.id} value={emp.nom_emplacement}>
-                    {emp.nom_emplacement}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-            <table className="w-full text-left text-xs border-collapse table-fixed">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[9px] font-extrabold tracking-wider">
-                  <th 
-                    onClick={() => gererTri('Designation')} 
-                    className="p-2 w-[44%] cursor-pointer hover:bg-slate-100 select-none"
+          ) : (
+            /* VUE CATALOGUE TABLEAU SEULEMENT */
+            <>
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 grid grid-cols-3 gap-1.5 shadow-2xs">
+                <div>
+                  <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Famille</label>
+                  <select
+                    value={familleFiltre}
+                    onChange={(e) => setFamilleFiltre(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
                   >
-                    Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th 
-                    onClick={() => gererTri('Stock')} 
-                    className="p-2 w-[13%] text-center cursor-pointer hover:bg-slate-100 select-none"
-                  >
-                    Stock {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th 
-                    onClick={() => gererTri('Prix_Achat')} 
-                    className="p-2 w-[15%] text-right cursor-pointer hover:bg-slate-100 select-none"
-                  >
-                    P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th 
-                    onClick={() => gererTri('Prix_Vente')} 
-                    className="p-2 w-[15%] text-right cursor-pointer hover:bg-slate-100 select-none"
-                  >
-                    P.V {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th className="p-2 w-[13%] text-center">⚙️</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {chargement ? (
-                  <tr>
-                    <td colSpan="5" className="p-3 text-center text-slate-400">Chargement...</td>
-                  </tr>
-                ) : articlesAffiches.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="p-3 text-center text-slate-400">Aucun article.</td>
-                  </tr>
-                ) : (
-                  articlesAffiches.map((art) => {
-                    const artId = art.id_article || art.id;
-                    const stockVal = calculerStockParFiltre(artId);
+                    <option value="TOUTES">Toutes</option>
+                    {familles.map((fam) => (
+                      <option key={fam.id} value={fam.id}>
+                        {fam.nom_famille || fam.Nom_Famille}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                    return (
-                      <tr key={artId} className="hover:bg-slate-50 transition">
-                        <td className="p-2 font-black text-slate-800 text-[9.5px] whitespace-nowrap truncate">
-                          {art.Designation || art.designation}
-                        </td>
-                        <td className="p-2 text-center whitespace-nowrap">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${stockVal > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-400'}`}>
-                            {stockVal}
-                          </span>
-                        </td>
-                        <td className="p-2 text-right font-medium text-slate-600 text-[10px] whitespace-nowrap">
-                          {art.Prix_Achat || art.prix_achat || 0}
-                        </td>
-                        <td className="p-2 text-right font-black text-emerald-600 text-[10px] whitespace-nowrap">
-                          {art.Prix_Vente || art.prix_vente || 0}
-                        </td>
-                        <td className="p-2 text-center whitespace-nowrap">
-                          <button 
-                            onClick={() => ouvrirEdition(art)} 
-                            className="p-1 bg-slate-100 hover:bg-orange-100 border border-slate-200 rounded text-[11px]" 
-                            title="Modifier"
-                          >
-                            ✏️
-                          </button>
-                        </td>
+                <div>
+                  <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Dépôt</label>
+                  <select
+                    value={depotFiltre}
+                    onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                  >
+                    <option value="TOUS">Tous</option>
+                    {depots.map((dep) => (
+                      <option key={dep.id} value={dep.id}>
+                        {dep.nom_depot || dep.Nom_Depot}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Emplacement</label>
+                  <select
+                    value={emplacementFiltre}
+                    onChange={(e) => setEmplacementFiltre(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                  >
+                    <option value="TOUS">Tous</option>
+                    {emplacementsDisponibles.map((emp) => (
+                      <option key={emp.id} value={emp.nom_emplacement}>
+                        {emp.nom_emplacement}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                <table className="w-full text-left text-xs border-collapse table-fixed">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
+                      <th 
+                        onClick={() => gererTri('Designation')} 
+                        className="p-2.5 w-[52%] cursor-pointer hover:bg-slate-200 select-none"
+                      >
+                        Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
+                      </th>
+                      <th 
+                        onClick={() => gererTri('Stock')} 
+                        className="p-2.5 w-[16%] text-center cursor-pointer hover:bg-slate-200 select-none"
+                      >
+                        Stock {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
+                      </th>
+                      <th 
+                        onClick={() => gererTri('Prix_Achat')} 
+                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none"
+                      >
+                        P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
+                      </th>
+                      <th 
+                        onClick={() => gererTri('Prix_Vente')} 
+                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none"
+                      >
+                        P.V {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {chargement ? (
+                      <tr>
+                        <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                    ) : articlesAffiches.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun article dans cette entreprise.</td>
+                      </tr>
+                    ) : (
+                      articlesAffiches.map((art) => {
+                        const artId = art.id_article || art.id;
+                        const stockVal = calculerStockParFiltre(artId);
+
+                        return (
+                          <tr 
+                            key={artId} 
+                            onClick={() => ouvrirEdition(art)}
+                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                          >
+                            <td className="p-2.5 font-black text-slate-900 text-[10px] whitespace-nowrap truncate">
+                              {art.Designation || art.designation}
+                            </td>
+                            <td className="p-2.5 text-center whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockVal > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500 font-bold'}`}>
+                                {stockVal}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap">
+                              {art.Prix_Achat || art.prix_achat || 0}
+                            </td>
+                            <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap">
+                              {art.Prix_Vente || art.prix_vente || 0}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
       )}
 
-      {modeVue === 'historique' && (
-        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-          <div>
-            <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Article</label>
-            <select
-              value={articleHistoriqueId}
-              onChange={(e) => setArticleHistoriqueId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-800 text-xs"
-            >
-              {articles.map((art) => (
-                <option key={art.id_article || art.id} value={art.id_article || art.id}>
-                  {art.Designation || art.designation}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-3 gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+      {modeVue === 'statistiques' && (
+        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          
+          {/* BARRE DE SÉLECTION DU DÉPÔT ET DE L'ARTICLE */}
+          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Dépôt</label>
+              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT</label>
               <select
-                value={depotHistoriqueFiltre}
-                onChange={(e) => setDepotHistoriqueFiltre(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-slate-700 text-[10px]"
+                value={depotStatFiltre}
+                onChange={(e) => setDepotStatFiltre(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
               >
-                <option value="TOUS">Tous</option>
+                <option value="TOUS">Tous les dépôts</option>
                 {depots.map((dep) => (
                   <option key={dep.id} value={dep.id}>
-                    {dep.nom_depot || dep.Nom_Depot}
+                    🏢 {dep.nom_depot || dep.Nom_Depot}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Du</label>
-              <input
-                type="date"
-                value={dateDebut}
-                onChange={(e) => setDateDebut(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded p-0.5 font-medium text-[9px]"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-400 text-[8px] uppercase mb-0.5">Au</label>
-              <input
-                type="date"
-                value={dateFin}
-                onChange={(e) => setDateFin(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded p-0.5 font-medium text-[9px]"
-              />
+              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">ARTICLE</label>
+              <div
+                onClick={() => {
+                  setRechercheModalArticle('');
+                  setAfficherModalSelectionArticle(true);
+                }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+              >
+                <span className="truncate">
+                  {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner un article --'}
+                </span>
+                <span className="text-[10px] text-slate-400">🔍</span>
+              </div>
             </div>
           </div>
 
-          <div className="bg-orange-50 border border-orange-200 p-1.5 rounded-lg flex justify-between items-center">
-            <h5 className="font-extrabold text-slate-800 text-[11px] truncate">
-              {articleSelectionneObj ? (articleSelectionneObj.Designation || articleSelectionneObj.designation) : ''}
-            </h5>
-            <span className="text-[9px] font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded shadow-2xs">
-              {historiqueFlux.length} mvt(s)
-            </span>
-          </div>
+          {articleStatObjet ? (() => {
+            const artId = String(articleStatObjet.id_article || articleStatObjet.id);
+            const fluxArt = obtenirTousLesFluxArticle(artId, depotStatFiltre);
 
-          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 uppercase text-[8px] font-extrabold text-slate-500">
-                  <th className="p-1.5">Date</th>
-                  <th className="p-1.5">Trajet</th>
-                  <th className="p-1.5 text-center">Qte</th>
-                  <th className="p-1.5 text-center text-blue-600">Stock</th>
-                  <th className="p-1.5 text-orange-600 font-mono">Doc</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[10px]">
-                {historiqueFlux.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="p-3 text-center text-slate-400">Aucun mouvement.</td>
-                  </tr>
+            let stockCourant = 0;
+            const fluxAvecStockProgressif = fluxArt.map((f) => {
+              const estSortie = f.type.includes('SORTIE') || f.type.includes('AVARIES');
+              const qteDelta = estSortie ? -f.quantite : f.quantite;
+              
+              if (f.type === 'INVENTAIRE') {
+                stockCourant = f.quantite;
+              } else {
+                stockCourant += qteDelta;
+              }
+
+              return {
+                ...f,
+                qteDelta,
+                stockProgressif: Math.max(0, stockCourant)
+              };
+            });
+
+            return (
+              <div className="space-y-3">
+
+                <div className="space-y-1">
+                  <h4 className="font-black text-slate-800 uppercase text-[10px]">📈 Historique chronologique et dynamique :</h4>
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                    <table className="w-full text-left text-xs table-fixed">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
+                          <th className="p-2.5 w-[25%]">Date</th>
+                          <th className="p-2.5 w-[25%]">Mouvement</th>
+                          <th className="p-2.5 w-[25%] text-right">QTÉ</th>
+                          <th className="p-2.5 w-[25%] text-right">STOCK</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                        {fluxAvecStockProgressif.length === 0 ? (
+                          <tr>
+                            <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré pour cet article.</td>
+                          </tr>
+                        ) : (
+                          fluxAvecStockProgressif.map((f, i) => {
+                            const codeMvt = obtenirCodeMouvement(f);
+                            const estNegatif = f.qteDelta < 0;
+
+                            return (
+                              <tr key={i} className="hover:bg-slate-50 transition">
+                                <td className="p-2.5 font-mono text-slate-600 font-bold">
+                                  {f.date ? new Date(f.date).toLocaleDateString('fr-FR') : '-'}
+                                </td>
+                                <td className="p-2.5 font-bold text-slate-900 truncate">
+                                  <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[9.5px] border border-orange-200">
+                                    {codeMvt}
+                                  </span>
+                                </td>
+                                <td className={`p-2.5 text-right font-black font-mono ${estNegatif ? 'text-red-600' : 'text-emerald-700'}`}>
+                                  {estNegatif ? f.qteDelta : `+${f.qteDelta}`}
+                                </td>
+                                <td className="p-2.5 text-right font-black font-mono text-slate-900">
+                                  {f.stockProgressif}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+            );
+          })() : (
+            <div className="p-6 text-center text-slate-500 font-bold">Veuillez sélectionner un article.</div>
+          )}
+
+        </div>
+      )}
+
+      {/* MODAL DE SÉLECTION D'ARTICLE */}
+      {afficherModalSelectionArticle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase">SÉLECTIONNER UN ARTICLE</span>
+              <button
+                onClick={() => setAfficherModalSelectionArticle(false)}
+                className="text-slate-300 hover:text-white font-black text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 space-y-2 overflow-y-auto bg-slate-50">
+              <input
+                type="text"
+                autoFocus
+                value={rechercheModalArticle}
+                onChange={(e) => setRechercheModalArticle(e.target.value)}
+                placeholder="Rechercher..."
+                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+              />
+
+              <div className="space-y-1.5 pt-1">
+                {articlesModalFiltres.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun article trouvé.</p>
                 ) : (
-                  historiqueFlux.map((flux, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="p-1.5 font-mono text-slate-500 text-[9px] whitespace-nowrap">{new Date(flux.date).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-1.5 font-semibold text-[9px] whitespace-nowrap">{flux.depotSource} → {flux.depotDest}</td>
-                      <td className="p-1.5 text-center font-black text-slate-800">{flux.quantite}</td>
-                      <td className="p-1.5 text-center font-black text-blue-600">{flux.stockApres}</td>
-                      <td className="p-1.5 font-mono font-bold text-orange-600 text-[9px] whitespace-nowrap">{flux.numeroDoc}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  articlesModalFiltres.map((art) => {
+                    const idA = String(art.id_article || art.id);
+                    const nomArt = art.Designation || art.designation || '';
+                    const stockArt = depotStatFiltre === 'TOUS' ? calculerStockParFiltre(idA) : calculerStockPourUnDepot(idA, depotStatFiltre);
 
+                    return (
+                      <div
+                        key={idA}
+                        onClick={() => {
+                          setArticleSelectionneStatId(idA);
+                          setAfficherModalSelectionArticle(false);
+                        }}
+                        className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <span className="font-black text-slate-900 text-xs">{nomArt}</span>
+                        <span className="font-bold text-emerald-700 font-mono text-xs">Stock : {stockArt}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

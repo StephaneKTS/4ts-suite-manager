@@ -6,82 +6,340 @@ import { supabase } from '@/app/lib/supabase';
 export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
-  const [afficherForm, setAfficherForm] = useState(false);
-  const [familleEnEdition, setFamilleEnEdition] = useState(null);
-  const [nomFamilleInput, setNomFamilleInput] = useState('');
+  const [modeAffichage, setModeAffichage] = useState('LISTE'); // 'LISTE' ou 'SAISIE'
+  const [familleSelectionnee, setFamilleSelectionnee] = useState(null);
+  
+  const [nouveauFamille, setNouveauFamille] = useState({
+    nom_famille: '',
+    description: '',
+  });
 
   const chargerFamilles = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase.from('familles_articles').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('familles_articles')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
       setFamilles(data || []);
-    } catch (err) { console.error('Erreur :', err.message); } finally { setChargement(false); }
+    } catch (err) {
+      console.error('Erreur :', err.message);
+    } finally {
+      setChargement(false);
+    }
   };
 
-  useEffect(() => { chargerFamilles(); }, []);
+  useEffect(() => {
+    chargerFamilles();
+  }, [entrepriseId]);
 
   const enregistrerFamille = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!nouveauFamille.nom_famille.trim()) {
+      alert('⚠️ Veuillez renseigner le nom de la famille.');
+      return;
+    }
+
     try {
-      if (familleEnEdition) {
-        await supabase.from('familles_articles').update({ nom_famille: nomFamilleInput }).eq('id', familleEnEdition.id);
-        alert('Mis à jour !');
+      if (familleSelectionnee) {
+        const { error } = await supabase
+          .from('familles_articles')
+          .update({
+            nom_famille: nouveauFamille.nom_famille.trim(),
+            description: nouveauFamille.description.trim(),
+          })
+          .eq('id', familleSelectionnee.id);
+
+        if (error) throw error;
+        alert('Famille mise à jour avec succès !');
       } else {
-        await supabase.from('familles_articles').insert([{ nom_famille: nomFamilleInput, id_entreprise: entrepriseId }]);
-        alert('Créé !');
+        const { error } = await supabase.from('familles_articles').insert([
+          {
+            nom_famille: nouveauFamille.nom_famille.trim(),
+            description: nouveauFamille.description.trim(),
+            id_entreprise: entrepriseId,
+          },
+        ]);
+
+        if (error) throw error;
+        alert('Famille créée avec succès !');
       }
-      annulerForm();
+      reinitialiser();
       chargerFamilles();
-    } catch (err) { alert('Erreur : ' + err.message); }
+      setModeAffichage('LISTE');
+    } catch (err) {
+      alert('Erreur : ' + err.message);
+    }
   };
 
-  const ouvrirEdition = (famille) => {
-    setFamilleEnEdition(famille);
-    setNomFamilleInput(famille.nom_famille || '');
-    setAfficherForm(true);
+  const reinitialiser = () => {
+    setFamilleSelectionnee(null);
+    setNouveauFamille({ nom_famille: '', description: '' });
   };
 
-  const annulerForm = () => {
-    setFamilleEnEdition(null);
-    setNomFamilleInput('');
-    setAfficherForm(false);
+  const ouvrirFicheDetail = (famille) => {
+    setFamilleSelectionnee(famille);
+    setNouveauFamille({
+      nom_famille: famille.nom_famille || '',
+      description: famille.description || '',
+    });
   };
 
-  const supprimerFamille = async (famille) => {
-    if (!confirm(`Supprimer "${famille.nom_famille}" ?`)) return;
+  const supprimerFamille = async () => {
+    if (!familleSelectionnee) return;
+
     try {
-      await supabase.from('familles_articles').delete().eq('id', famille.id);
-      alert('Supprimé.');
+      // 1. Récupérer tous les articles pour vérifier s'ils sont rattachés à cette famille
+      const { data: tousLesArticles, error: errArticles } = await supabase
+        .from('articles_stock')
+        .select('*');
+
+      if (errArticles) throw errArticles;
+
+      const idFamilleStr = String(familleSelectionnee.id);
+      const nomFamilleStr = String(familleSelectionnee.nom_famille || '').trim().toUpperCase();
+
+      // 2. Filtrer les articles appartenant à cette famille
+      const articlesRattaches = (tousLesArticles || []).filter((art) => {
+        const valIdFamille = String(art.id_famille || art.famille_id || art.Famille || art.famille || '');
+        const valNomFamille = String(art.nom_famille || art.libelle_famille || '').trim().toUpperCase();
+
+        return valIdFamille === idFamilleStr || valIdFamille.toUpperCase() === nomFamilleStr || valNomFamille === nomFamilleStr;
+      });
+
+      // 3. BLOCAGE STRICT DE LA SUPPRESSION SI DES ARTICLES Y SONT RATTACHÉS
+      if (articlesRattaches.length > 0) {
+        const exempleArticle = articlesRattaches[0].Designation || articlesRattaches[0].designation || 'Article';
+        alert(`❌ SUPPRESSION BLOQUÉE : Cette famille ("${familleSelectionnee.nom_famille}") contient encore ${articlesRattaches.length} article(s) rattaché(s) (ex: "${exempleArticle}"). Vous devez d'abord réaffecter ou supprimer ces articles avant de pouvoir supprimer cette famille.`);
+        return;
+      }
+
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement la famille "${familleSelectionnee.nom_famille}" ?`)) return;
+
+      const { error } = await supabase.from('familles_articles').delete().eq('id', familleSelectionnee.id);
+      if (error) throw error;
+
+      alert('Famille supprimée avec succès.');
+      reinitialiser();
       chargerFamilles();
-    } catch (err) { alert('Erreur : ' + err.message); }
+    } catch (err) {
+      alert('Erreur : ' + err.message);
+    }
   };
 
   return (
     <div className="space-y-2.5 font-sans text-xs">
-      <div className="flex justify-between items-center bg-white p-1.5 rounded-xl border border-slate-200 gap-1.5 shadow-2xs">
-        <span className="text-[10px] text-slate-500 font-medium px-1">Gestion des familles.</span>
-        <button onClick={() => (afficherForm ? annulerForm() : setAfficherForm(true))} className="bg-orange-600 text-white font-bold px-3 py-1.5 rounded-lg text-[11px]">{afficherForm ? '✖ Fermer' : '➕ Nouveau'}</button>
+      
+      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
+      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+          <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES
+        </h3>
+        <button
+          type="button"
+          onClick={() => {
+            if (modeAffichage === 'SAISIE') {
+              reinitialiser();
+              setModeAffichage('LISTE');
+            } else {
+              reinitialiser();
+              setModeAffichage('SAISIE');
+            }
+          }}
+          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+        >
+          {modeAffichage === 'SAISIE' ? '✖' : 'Nouveau'}
+        </button>
       </div>
 
-      {afficherForm && (
-        <form onSubmit={enregistrerFamille} className="bg-white border-2 border-orange-500/50 p-2.5 rounded-xl space-y-2">
-          <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[11px] text-orange-600 uppercase">{familleEnEdition ? 'Édition' : 'Nouvelle'}</span><button type="button" onClick={annulerForm} className="text-slate-400">✖</button></div>
-          <div><label className="block font-bold text-[8px] uppercase text-slate-400 mb-0.5">Famille</label><input type="text" required value={nomFamilleInput} onChange={(e) => setNomFamilleInput(e.target.value)} className="w-full bg-slate-50 border rounded-lg p-1 text-[10px] font-bold" /></div>
-          <div className="pt-1 flex justify-end gap-1.5"><button type="button" onClick={annulerForm} className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded text-[10px]">Annuler</button><button type="submit" className="bg-emerald-600 text-white font-bold px-4 py-1 rounded text-[10px]">{familleEnEdition ? 'Mettre à jour' : 'Enregistrer'}</button></div>
+      {/* BARRE DE NAVIGATION (BOUTONS DE VUE LISTE) */}
+      <div className="flex justify-start items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            reinitialiser();
+            setModeAffichage('LISTE');
+          }}
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+            modeAffichage === 'LISTE' 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          📋 Liste des Familles ({familles.length})
+        </button>
+      </div>
+
+      {/* MODE 1 : SAISIE / AJOUT DE FAMILLE */}
+      {modeAffichage === 'SAISIE' && (
+        <form onSubmit={enregistrerFamille} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
+          <div className="flex justify-between items-center pb-1 border-b border-slate-100">
+            <span className="font-extrabold text-[11px] text-orange-600 uppercase">
+              Nouvelle famille d'articles
+            </span>
+            <button type="button" onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✖</button>
+          </div>
+
+          <div className="space-y-2 text-[11px]">
+            <div>
+              <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">
+                Nom de la famille *
+              </label>
+              <input
+                type="text"
+                required
+                value={nouveauFamille.nom_famille}
+                onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value })}
+                placeholder="Ex: BOISSONS, LAIT BEBE..."
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">
+                Description
+              </label>
+              <input
+                type="text"
+                value={nouveauFamille.description}
+                onChange={(e) => setNouveauFamille({ ...nouveauFamille, description: e.target.value })}
+                placeholder="Description optionnelle..."
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end gap-1.5 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => {
+                reinitialiser();
+                setModeAffichage('LISTE');
+              }}
+              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded text-[10px]"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs"
+            >
+              ✅ Enregistrer
+            </button>
+          </div>
         </form>
       )}
 
-      {chargement ? (<div className="p-4 text-center text-slate-400">Chargement...</div>) : familles.length === 0 ? (<div className="p-4 text-center text-slate-400 bg-white rounded-xl border">Aucune catégorie.</div>) : (
-        <div className="space-y-1.5">
-          {familles.map((fam) => (
-            <div key={fam.id} className="bg-white border p-2 rounded-xl shadow-2xs flex justify-between items-center">
-              <span className="font-extrabold text-[11px] text-slate-800">🏷️ {fam.nom_famille}</span>
-              <div className="flex gap-1.5"><button onClick={() => ouvrirEdition(fam)} className="p-1 bg-slate-100 rounded">✏️</button><button onClick={() => supprimerFamille(fam)} className="p-1 bg-slate-100 rounded">🗑️</button></div>
-            </div>
-          ))}
+      {/* MODE 2 : LISTE DES FAMILLES */}
+      {modeAffichage === 'LISTE' && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs table-fixed">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
+                  <th className="p-2.5 w-[45%]">Famille</th>
+                  <th className="p-2.5 w-[55%]">Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                {chargement ? (
+                  <tr>
+                    <td colSpan="2" className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
+                  </tr>
+                ) : familles.length === 0 ? (
+                  <tr>
+                    <td colSpan="2" className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
+                  </tr>
+                ) : (
+                  familles.map((fam) => (
+                    <tr
+                      key={fam.id}
+                      onClick={() => ouvrirFicheDetail(fam)}
+                      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                    >
+                      <td className="p-2.5 font-black text-slate-900 truncate">
+                        🏷️ {fam.nom_famille}
+                      </td>
+                      <td className="p-2.5 font-extrabold text-slate-700 truncate">
+                        {fam.description || '-'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+
+      {/* MODAL FICHE DETAIL (MODIFICATION & SUPPRESSION) */}
+      {familleSelectionnee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden flex flex-col">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-xs font-black">
+              <span>🏷️ MODIFIER LA FAMILLE</span>
+              <button onClick={reinitialiser} className="text-slate-300 hover:text-white font-black text-xs">✕</button>
+            </div>
+
+            <div className="p-3 space-y-2.5 text-[11px] bg-slate-50">
+              <div>
+                <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">
+                  Nom de la famille *
+                </label>
+                <input
+                  type="text"
+                  value={nouveauFamille.nom_famille}
+                  onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-black text-slate-900 text-xs shadow-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">
+                  Description
+                </label>
+                <input
+                  type="text"
+                  value={nouveauFamille.description}
+                  onChange={(e) => setNouveauFamille({ ...nouveauFamille, description: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={supprimerFamille}
+                className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
+              >
+                🗑️ Supprimer
+              </button>
+              
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={reinitialiser}
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
+                >
+                  Fermer
+                </button>
+                <button
+                  type="button"
+                  onClick={enregistrerFamille}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3.5 py-1.5 rounded text-[10px] shadow-xs"
+                >
+                  ✅ Mettre à jour
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

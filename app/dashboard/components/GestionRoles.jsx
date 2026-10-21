@@ -96,13 +96,42 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     setAfficherForm(false);
   };
 
-  const supprimerRole = async (id) => {
-    if (!confirm('Voulez-vous vraiment supprimer ce rôle ?')) return;
+  const supprimerRole = async () => {
+    if (!roleEnEdition) return;
 
     try {
-      const { error } = await supabase.from('roles').delete().eq('id', id);
+      // 1. Interrogation de la table utilisateurs pour vérifier si des collaborateurs possèdent ce rôle
+      const { data: tousLesUsers, error: errUsers } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId);
+
+      if (errUsers) throw errUsers;
+
+      const idRoleStr = String(roleEnEdition.id);
+      const nomRoleStr = String(roleEnEdition.nom_role || '').trim().toUpperCase();
+
+      // 2. Filtrer les utilisateurs rattachés (par id_role ou par nom de rôle texte)
+      const usersRattaches = (tousLesUsers || []).filter((u) => {
+        const valIdRole = String(u.id_role || u.role_id || '');
+        const valNomRole = String(u.nom_role || u.role || '').trim().toUpperCase();
+
+        return valIdRole === idRoleStr || valNomRole === nomRoleStr;
+      });
+
+      // 3. Blocage immédiat si des utilisateurs y sont rattachés
+      if (usersRattaches.length > 0) {
+        const exempleUser = usersRattaches[0].nom_complet || 'Collaborateur';
+        alert(`❌ SUPPRESSION BLOQUÉE : Ce rôle ("${roleEnEdition.nom_role}") est actuellement affecté à ${usersRattaches.length} utilisateur(s) (ex: "${exempleUser}"). Vous devez d'abord réaffecter ces utilisateurs à un autre rôle avant de pouvoir supprimer celui-ci.`);
+        return;
+      }
+
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement le rôle "${roleEnEdition.nom_role}" ?`)) return;
+
+      const { error } = await supabase.from('roles').delete().eq('id', roleEnEdition.id);
       if (error) throw error;
-      alert('Rôle supprimé.');
+
+      alert('Rôle supprimé avec succès.');
       annulerForm();
       chargerRoles();
     } catch (err) {
@@ -120,8 +149,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const rendreFlecheTri = (colonne) => {
-    if (triCol !== colonne) return <span className="text-slate-300 ml-1">↕</span>;
-    return <span className="text-orange-600 ml-1">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
+    if (triCol !== colonne) return <span className="text-slate-400 ml-1">↕</span>;
+    return <span className="text-orange-600 ml-1 font-bold">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
   };
 
   const rolesFiltres = roles
@@ -150,10 +179,14 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
-      {/* En-tête avec bouton Nouveau */}
+      
+      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ)[cite: 27, 28] */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-800 uppercase text-xs">🛡️ GESTION DES RÔLES</h3>
+        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+          <span>🛡️</span> GESTION DES RÔLES
+        </h3>
         <button
+          type="button"
           onClick={() => {
             if (afficherForm) {
               annulerForm();
@@ -163,49 +196,64 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               setAfficherForm(true);
             }
           }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs"
+          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
         >
           {afficherForm ? '✖' : 'Nouveau'}
         </button>
       </div>
 
+      {/* BARRE DE NAVIGATION (BOUTON LISTE)[cite: 27, 28] */}
+      <div className="flex justify-start items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => annulerForm()}
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+            !afficherForm 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          📋 Liste ({roles.length})
+        </button>
+      </div>
+
       {/* Formulaire de création / modification */}
       {afficherForm && (
-        <form onSubmit={enregistrerRole} className="bg-slate-50 border border-orange-500/40 p-2.5 rounded-xl space-y-2 shadow-2xs">
+        <form onSubmit={enregistrerRole} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-            <h4 className="font-bold text-orange-600 uppercase text-[10px]">
+            <h4 className="font-black text-orange-600 uppercase text-[11px]">
               {roleEnEdition ? '✏️ Fiche du rôle' : '➕ Nouveau rôle'}
             </h4>
             <button
               type="button"
               onClick={annulerForm}
-              className="text-slate-400 hover:text-slate-600 font-bold text-xs p-0.5"
+              className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5"
             >
               ✖
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom du Rôle / Fonction *</label>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom du Rôle / Fonction *</label>
               <input
                 type="text"
                 required
                 value={nouveauRole.nom_role}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value })}
                 placeholder="Ex: Caissier, Livreur..."
-                className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-xs"
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Description / Notes</label>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Description / Notes</label>
               <input
                 type="text"
                 value={nouveauRole.description}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, description: e.target.value })}
                 placeholder="Ex: Responsable des encaissements"
-                className="w-full bg-white border border-slate-200 rounded p-1 font-medium text-xs"
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
               />
             </div>
           </div>
@@ -214,21 +262,21 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             {roleEnEdition ? (
               <button
                 type="button"
-                onClick={() => supprimerRole(roleEnEdition.id)}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold px-2.5 py-1 rounded text-[10px]"
+                onClick={supprimerRole}
+                className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
               >
                 🗑️ Supprimer
               </button>
             ) : <div />}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={annulerForm}
-                className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded text-[10px]"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
               >
                 Annuler
               </button>
-              <button type="submit" className="bg-emerald-600 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs">
+              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
                 {roleEnEdition ? 'Mettre à jour' : 'Enregistrer'}
               </button>
             </div>
@@ -239,35 +287,35 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       {/* Tableau de la liste */}
       {!afficherForm && (
         <>
-          <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+          <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
             <input
               type="text"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
               placeholder="Rechercher par nom de rôle..."
-              className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none shadow-xs"
             />
           </div>
 
-          <div className="flex justify-between items-center text-[10px] text-slate-500 px-1">
+          <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
             <span>Répertoire : <strong>{rolesFiltres.length}</strong> rôle(s)</span>
           </div>
 
           {chargement ? (
-            <div className="p-4 text-center text-slate-400">Chargement...</div>
+            <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : rolesFiltres.length === 0 ? (
-            <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-xl">
+            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
               Aucun rôle enregistré.
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs table-fixed">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[9px] font-extrabold select-none">
+                <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                   <tr>
-                    <th onClick={() => gererTri('nom_role')} className="p-2 w-[40%] cursor-pointer hover:bg-slate-100 transition">
+                    <th onClick={() => gererTri('nom_role')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200 transition">
                       Intitulé du Rôle {rendreFlecheTri('nom_role')}
                     </th>
-                    <th onClick={() => gererTri('description')} className="p-2 w-[60%] cursor-pointer hover:bg-slate-100 transition">
+                    <th onClick={() => gererTri('description')} className="p-2.5 w-[60%] cursor-pointer hover:bg-slate-200 transition">
                       Description {rendreFlecheTri('description')}
                     </th>
                   </tr>
@@ -277,15 +325,15 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                     <tr
                       key={r.id}
                       onClick={() => ouvrirEdition(r)}
-                      className="hover:bg-orange-50/70 cursor-pointer transition"
+                      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                       title="Cliquer pour modifier"
                     >
-                      <td className="p-2 font-extrabold text-slate-800 truncate">
-                        <span className="bg-slate-100 text-slate-800 border border-slate-300 px-1.5 py-0.5 rounded font-bold text-[9px]">
+                      <td className="p-2.5 font-black text-slate-900 truncate">
+                        <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
                           🛡️ {r.nom_role}
                         </span>
                       </td>
-                      <td className="p-2 text-slate-600 truncate">{r.description || '-'}</td>
+                      <td className="p-2.5 font-extrabold text-slate-700 truncate">{r.description || '-'}</td>
                     </tr>
                   ))}
                 </tbody>

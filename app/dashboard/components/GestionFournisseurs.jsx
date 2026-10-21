@@ -24,6 +24,7 @@ const LISTE_PAYS = [
 export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [fournisseurs, setFournisseurs] = useState([]);
   const [approvisionnements, setApprovisionnements] = useState([]);
+  const [bonsCommandes, setBonsCommandes] = useState([]);
   const [articles, setArticles] = useState([]);
   const [depots, setDepots] = useState([]);
   const [chargement, setChargement] = useState(false);
@@ -77,6 +78,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId);
       setApprovisionnements(dataAppro || []);
+
+      const { data: dataBC } = await supabase
+        .from('bons_commande_fournisseurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId);
+      setBonsCommandes(dataBC || []);
 
       const { data: dataArticles } = await supabase.from('articles_stock').select('*');
       setArticles(dataArticles || []);
@@ -209,17 +216,64 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     setAfficherForm(false);
   };
 
-  const supprimerFournisseur = async (id) => {
-    if (!confirm('Voulez-vous vraiment supprimer ce fournisseur ?')) return;
+  const supprimerFournisseur = async () => {
+    if (!fournisseurEnEdition) return;
 
     try {
-      const { error } = await supabase.from('fournisseurs').delete().eq('id', id);
+      setChargement(true);
+      const fournisseurIdStr = String(fournisseurEnEdition.id);
+      const fournisseurNomStr = String(fournisseurEnEdition.nom_fournisseur || '').trim().toUpperCase();
+
+      // Interrogation DIRECTE et simultanée de approvisionnements et bons_commande_fournisseurs
+      const [resAppro, resBC] = await Promise.all([
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId),
+        supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId)
+      ]);
+
+      if (resAppro.error) throw resAppro.error;
+      if (resBC.error) throw resBC.error;
+
+      const approDb = resAppro.data || [];
+      const bcDb = resBC.data || [];
+
+      // Vérification rigoureuse dans les factures d'achat (approvisionnements)
+      const approRattaches = approDb.filter((app) => {
+        const idFournApp = String(app.id_fournisseur || '');
+        const nomFournApp = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase();
+        return idFournApp === fournisseurIdStr || (fournisseurNomStr !== '' && nomFournApp === fournisseurNomStr);
+      });
+
+      // Vérification rigoureuse dans les bons de commande
+      const bcRattaches = bcDb.filter((bc) => {
+        const idFournBc = String(bc.id_fournisseur || '');
+        const nomFournBc = String(bc.nom_fournisseur || bc.fournisseur || '').trim().toUpperCase();
+        return idFournBc === fournisseurIdStr || (fournisseurNomStr !== '' && nomFournBc === fournisseurNomStr);
+      });
+
+      const totalOperations = approRattaches.length + bcRattaches.length;
+
+      // BLOCAGE STRICT si des achats ou commandes existent
+      if (totalOperations > 0) {
+        alert(`❌ SUPPRESSION BLOQUÉE : Ce fournisseur ("${fournisseurEnEdition.nom_fournisseur}") a déjà ${totalOperations} facture(s) d'achat ou bon(s) de commande enregistré(s) à son compte. Pour des raisons comptables et de traçabilité, il est strictement impossible de le supprimer.`);
+        setChargement(false);
+        return;
+      }
+
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement le fournisseur "${fournisseurEnEdition.nom_fournisseur}" ?`)) {
+        setChargement(false);
+        return;
+      }
+
+      const { error } = await supabase.from('fournisseurs').delete().eq('id', fournisseurEnEdition.id);
       if (error) throw error;
-      alert('Fournisseur supprimé.');
+
+      alert('Fournisseur supprimé avec succès.');
       annulerForm();
       chargerFournisseursEtDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setChargement(false);
     }
   };
 
@@ -248,8 +302,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const rendreFlecheTri = (colonne) => {
-    if (triCol !== colonne) return <span className="text-slate-300 ml-1">↕</span>;
-    return <span className="text-orange-600 ml-1">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
+    if (triCol !== colonne) return <span className="text-slate-400 ml-1">↕</span>;
+    return <span className="text-orange-600 ml-1 font-bold">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
   };
 
   const gererTriHistorique = (colonne) => {
@@ -262,8 +316,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const rendreFlecheTriHistorique = (colonne) => {
-    if (triHistCol !== colonne) return <span className="text-slate-300 ml-1">↕</span>;
-    return <span className="text-orange-600 ml-1">{triHistOrdre === 'asc' ? '↑' : '↓'}</span>;
+    if (triHistCol !== colonne) return <span className="text-slate-400 ml-1">↕</span>;
+    return <span className="text-orange-600 ml-1 font-bold">{triHistOrdre === 'asc' ? '↑' : '↓'}</span>;
   };
 
   const fournisseursFiltres = fournisseurs
@@ -411,12 +465,35 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
+      
+      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
+      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+          <span>🏢</span> GESTION DES FOURNISSEURS
+        </h3>
+        <button
+          type="button"
+          onClick={() => {
+            if (afficherForm) {
+              annulerForm();
+            } else {
+              setNouveauFournisseur({ nom_fournisseur: '', pays: 'cmr', telephone: '', email: '', adresse: '', solde_dette: 0 });
+              setFournisseurEnEdition(null);
+              setAfficherForm(true);
+            }
+          }}
+          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+        >
+          {afficherForm ? '✖' : 'Nouveau'}
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
         <button
           type="button"
           onClick={() => setOngletActif('repertoire')}
           className={`py-1.5 px-3 rounded-lg font-bold transition text-center ${
-            ongletActif === 'repertoire' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-700 hover:bg-slate-50'
+            ongletActif === 'repertoire' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
           👥 Fournisseurs ({fournisseurs.length})
@@ -425,7 +502,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           type="button"
           onClick={() => setOngletActif('historique')}
           className={`py-1.5 px-3 rounded-lg font-bold transition text-center ${
-            ongletActif === 'historique' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-700 hover:bg-slate-50'
+            ongletActif === 'historique' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
           🔍 Historique
@@ -434,97 +511,78 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
       {ongletActif === 'repertoire' && (
         <>
-          <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <h3 className="font-extrabold text-slate-800 uppercase text-xs">👥 GESTION DES FOURNISSEURS</h3>
-            <button
-              onClick={() => {
-                if (afficherForm) {
-                  annulerForm();
-                } else {
-                  setNouveauFournisseur({ nom_fournisseur: '', pays: 'cmr', telephone: '', email: '', adresse: '', solde_dette: 0 });
-                  setFournisseurEnEdition(null);
-                  setAfficherForm(true);
-                }
-              }}
-              className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs"
-            >
-              {afficherForm ? '✖' : 'Nouveau'}
-            </button>
-          </div>
-
           {afficherForm && (
-            <form onSubmit={enregistrerFournisseur} className="bg-slate-50 border border-orange-500/40 p-2.5 rounded-xl space-y-2 shadow-2xs">
+            <form onSubmit={enregistrerFournisseur} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-                <h4 className="font-bold text-orange-600 uppercase text-[10px]">
+                <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
                   {fournisseurEnEdition ? '✏️ Fiche du fournisseur' : '➕ Nouveau fournisseur'}
                 </h4>
                 <button
                   type="button"
                   onClick={annulerForm}
-                  className="text-slate-400 hover:text-slate-600 font-bold text-xs p-0.5"
+                  className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5"
                 >
                   ✖
                 </button>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div>
-                  <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom / Raison Sociale *</label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom / Raison Sociale *</label>
                   <input
                     type="text"
                     required
                     value={nouveauFournisseur.nom_fournisseur}
                     onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, nom_fournisseur: e.target.value })}
                     placeholder="Ex: SARL FESCO"
-                    className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-xs"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
                   />
                 </div>
 
                 {fournisseurEnEdition && (
                   <div>
-                    <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Solde Dette</label>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Solde Dette</label>
                     <input
                       type="text"
                       disabled
                       value={`${Number(nouveauFournisseur.solde_dette || 0).toLocaleString('fr-FR')} F`}
-                      className="w-full bg-slate-200 text-red-600 border border-slate-200 rounded p-1 font-black text-xs cursor-not-allowed"
+                      className="w-full bg-slate-100 text-red-700 border border-slate-300 rounded p-1.5 font-black text-xs cursor-not-allowed"
                     />
                   </div>
                 )}
 
                 <div>
-                  <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Adresse</label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse</label>
                   <input
                     type="text"
                     value={nouveauFournisseur.adresse}
                     onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, adresse: e.target.value })}
                     placeholder="Ex: Douala - Akwa"
-                    className="w-full bg-white border border-slate-200 rounded p-1 font-medium text-xs"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
                   />
                 </div>
               </div>
 
-              {/* PAYS ET TEL SUR LA MÊME LIGNE */}
-              <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100">
+              <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-200">
                 <div>
-                  <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Pays *</label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays *</label>
                   <select
                     value={nouveauFournisseur.pays}
                     onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, pays: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-slate-800 text-[11px]"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs"
                   >
                     {LISTE_PAYS.map((p) => (
-                      <option key={p.code} value={p.code}>{p.code}</option>
+                      <option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>
                     ))}
                   </select>
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">
-                    Tel({paysActuelObj.longueur}) *
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
+                    Tel ({paysActuelObj.longueur} chiffres) *
                   </label>
-                  <div className="flex items-center bg-white border border-slate-200 rounded overflow-hidden">
-                    <span className="bg-slate-100 px-1.5 py-1 text-[11px] font-bold border-r border-slate-200 shrink-0">
+                  <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">
                       {paysActuelObj.indicatif}
                     </span>
                     <input
@@ -534,20 +592,20 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       value={nouveauFournisseur.telephone}
                       onChange={gererSaisieTelephone}
                       placeholder="6XXXXXXXX"
-                      className="w-full p-1 font-mono text-[11px] font-bold focus:outline-none"
+                      className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none"
                     />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Email</label>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email</label>
                 <input
                   type="email"
                   value={nouveauFournisseur.email}
                   onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, email: e.target.value })}
                   placeholder="contact@email.com"
-                  className="w-full bg-white border border-slate-200 rounded p-1 font-medium text-[11px]"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] shadow-xs"
                 />
               </div>
 
@@ -564,7 +622,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                     </>
                   )}
                   {nouveauFournisseur.email && (
-                    <a href={`mailto:${nouveauFournisseur.email}`} className="bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="Email">📧 Email</a>
+                    <a href={`mailto:${nouveauFournisseur.email}`} className="bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-300 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="Email">📧 Email</a>
                   )}
                 </div>
 
@@ -572,13 +630,13 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   {fournisseurEnEdition && (
                     <button
                       type="button"
-                      onClick={() => supprimerFournisseur(fournisseurEnEdition.id)}
-                      className="bg-red-600 hover:bg-red-700 text-white font-bold px-2.5 py-1 rounded text-[10px]"
+                      onClick={supprimerFournisseur}
+                      className="bg-red-600 hover:bg-red-700 text-white font-black px-2.5 py-1.5 rounded text-[10px] shadow-xs"
                     >
                       🗑️ Supprimer
                     </button>
                   )}
-                  <button type="submit" className="bg-emerald-600 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs">
+                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
                     {fournisseurEnEdition ? 'Mettre à jour' : 'Enregistrer'}
                   </button>
                 </div>
@@ -588,35 +646,35 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
           {!afficherForm && (
             <>
-              <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+              <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
                 <input
                   type="text"
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value)}
                   placeholder="Rechercher par nom ou téléphone..."
-                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
                 />
               </div>
 
-              <div className="flex justify-between items-center text-[10px] text-slate-500 px-1">
+              <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
                 <span>Répertoire : <strong>{fournisseursFiltres.length}</strong> fournisseur(s)</span>
               </div>
 
               {chargement ? (
-                <div className="p-4 text-center text-slate-400">Chargement...</div>
+                <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
               ) : fournisseursFiltres.length === 0 ? (
-                <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-xl">
+                <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
                   Aucun fournisseur enregistré.
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                   <table className="w-full text-left text-xs table-fixed">
-                    <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[9px] font-extrabold select-none">
+                    <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                       <tr>
-                        <th onClick={() => gererTri('nom_fournisseur')} className="p-2 w-[70%] cursor-pointer hover:bg-slate-100 transition">
+                        <th onClick={() => gererTri('nom_fournisseur')} className="p-2.5 w-[70%] cursor-pointer hover:bg-slate-200 transition">
                           Nom / Raison Sociale {rendreFlecheTri('nom_fournisseur')}
                         </th>
-                        <th onClick={() => gererTri('solde_dette')} className="p-2 w-[30%] text-right cursor-pointer hover:bg-slate-100 transition whitespace-nowrap">
+                        <th onClick={() => gererTri('solde_dette')} className="p-2.5 w-[30%] text-right cursor-pointer hover:bg-slate-200 transition whitespace-nowrap">
                           Solde Dette {rendreFlecheTri('solde_dette')}
                         </th>
                       </tr>
@@ -628,11 +686,11 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                           <tr 
                             key={f.id} 
                             onClick={() => ouvrirEdition(f)}
-                            className="hover:bg-orange-50/70 cursor-pointer transition"
+                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                             title="Cliquer pour modifier"
                           >
-                            <td className="p-2 font-extrabold text-slate-800 truncate">{f.nom_fournisseur}</td>
-                            <td className="p-2 text-right font-black text-red-600 whitespace-nowrap">
+                            <td className="p-2.5 font-black text-slate-900 truncate">{f.nom_fournisseur}</td>
+                            <td className="p-2.5 text-right font-black text-red-600 whitespace-nowrap">
                               {soldeDetteCalcule.toLocaleString('fr-FR')} F
                             </td>
                           </tr>
@@ -649,17 +707,17 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
       {ongletActif === 'historique' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
-          <h4 className="font-extrabold text-slate-800 text-xs uppercase flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+          <h4 className="font-black text-slate-900 text-xs uppercase flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
             <span>🔍</span> HISTORIQUE FOURNISSEUR
           </h4>
 
-          <div className="space-y-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
+          <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
             <div>
-              <label className="block font-bold text-slate-500 mb-0.5 text-[9px]">Fournisseur *</label>
+              <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Fournisseur *</label>
               <select
                 value={fournisseurHistoriqueId}
                 onChange={(e) => setFournisseurHistoriqueId(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-slate-800 text-xs"
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
               >
                 {fournisseurs.map((f) => (
                   <option key={f.id} value={f.id}>🏢 {f.nom_fournisseur}</option>
@@ -667,50 +725,50 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold text-slate-500 mb-0.5 text-[9px]">Date Début :</label>
+                <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Date Début :</label>
                 <input
                   type="date"
                   value={dateDebut}
                   onChange={(e) => setDateDebut(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded p-1 text-xs"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-500 mb-0.5 text-[9px]">Date Fin :</label>
+                <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Date Fin :</label>
                 <input
                   type="date"
                   value={dateFin}
                   onChange={(e) => setDateFin(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded p-1 text-xs"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-orange-50/70 border border-orange-200 p-2 rounded-lg flex justify-between items-center text-[10px]">
-            <span className="font-extrabold text-slate-800 uppercase">
+          <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl flex justify-between items-center text-[10px]">
+            <span className="font-black text-slate-900 uppercase">
               🏢 FOURNISSEUR : {fournisseurSelectionneObj ? fournisseurSelectionneObj.nom_fournisseur : 'Aucun'}
             </span>
-            <span className="font-bold text-slate-600">{resultatHistorique.lignes.length} facture(s)</span>
+            <span className="font-extrabold text-slate-700">{resultatHistorique.lignes.length} facture(s)</span>
           </div>
 
           <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
             <table className="w-full text-left text-xs table-fixed">
-              <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[9px] font-extrabold select-none">
+              <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                 <tr>
-                  <th onClick={() => gererTriHistorique('date')} className="p-2 w-[25%] cursor-pointer hover:bg-slate-100 transition">
+                  <th onClick={() => gererTriHistorique('date')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
                     Date {rendreFlecheTriHistorique('date')}
                   </th>
-                  <th onClick={() => gererTriHistorique('numeroFacture')} className="p-2 w-[30%] cursor-pointer hover:bg-slate-100 transition font-mono">
+                  <th onClick={() => gererTriHistorique('numeroFacture')} className="p-2.5 w-[30%] cursor-pointer hover:bg-slate-200 transition font-mono">
                     N° Facture {rendreFlecheTriHistorique('numeroFacture')}
                   </th>
-                  <th onClick={() => gererTriHistorique('montant')} className="p-2 w-[25%] cursor-pointer hover:bg-slate-100 transition">
+                  <th onClick={() => gererTriHistorique('montant')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
                     Montant {rendreFlecheTriHistorique('montant')}
                   </th>
-                  <th onClick={() => gererTriHistorique('statut')} className="p-2 w-[20%] text-center cursor-pointer hover:bg-slate-100 transition">
+                  <th onClick={() => gererTriHistorique('statut')} className="p-2.5 w-[20%] text-center cursor-pointer hover:bg-slate-200 transition">
                     Statut {rendreFlecheTriHistorique('statut')}
                   </th>
                 </tr>
@@ -718,22 +776,22 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               <tbody className="divide-y divide-slate-100 text-[10px]">
                 {resultatHistorique.lignes.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="p-4 text-center text-slate-400">Aucun historique d'achat.</td>
+                    <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun historique d'achat.</td>
                   </tr>
                 ) : (
                   resultatHistorique.lignes.map((ligne, idx) => (
                     <tr 
                       key={idx} 
                       onClick={() => setFactureSelectionnee(ligne.dataOrigine)}
-                      className="hover:bg-orange-50/70 cursor-pointer transition"
+                      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                       title="Cliquer pour ouvrir la facture"
                     >
-                      <td className="p-2 text-slate-500 font-mono">{new Date(ligne.date).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-2 font-mono font-bold text-orange-600 truncate">{ligne.numeroFacture}</td>
-                      <td className="p-2 font-black text-slate-800">{ligne.montant.toLocaleString('fr-FR')} F</td>
-                      <td className="p-2 text-center">
-                        <span className={`px-1.5 py-0.5 rounded font-bold text-[8px] ${
-                          ligne.statut === 'Soldé' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                      <td className="p-2.5 text-slate-800 font-mono font-bold">{new Date(ligne.date).toLocaleDateString('fr-FR')}</td>
+                      <td className="p-2.5 font-mono font-black text-orange-600 truncate">{ligne.numeroFacture}</td>
+                      <td className="p-2.5 font-black text-slate-900">{ligne.montant.toLocaleString('fr-FR')} F</td>
+                      <td className="p-2.5 text-center">
+                        <span className={`px-2 py-0.5 rounded font-black text-[9px] ${
+                          ligne.statut === 'Soldé' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 border border-red-200'
                         }`}>
                           {ligne.statut}
                         </span>
@@ -745,8 +803,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             </table>
           </div>
 
-          <div className="bg-emerald-700 text-white p-2.5 rounded-xl flex justify-between items-center shadow">
-            <span className="font-extrabold text-[10px] uppercase tracking-wider">SOLDE GLOBAL DU COMPTE :</span>
+          <div className="bg-emerald-700 text-white p-3 rounded-xl flex justify-between items-center shadow-xs">
+            <span className="font-black text-[10px] uppercase tracking-wider">SOLDE GLOBAL DU COMPTE :</span>
             <span className="text-xs font-black text-white font-mono">
               {resultatHistorique.soldeGlobal.toLocaleString('fr-FR')} F CFA
             </span>
@@ -759,8 +817,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
               <div>
-                <h3 className="font-extrabold text-xs uppercase">📄 FACTURE FOURNISSEUR</h3>
-                <p className="text-[10px] text-orange-400 font-mono font-bold">
+                <h3 className="font-black text-xs uppercase">📄 FACTURE FOURNISSEUR</h3>
+                <p className="text-[10px] text-orange-400 font-mono font-extrabold">
                   N° {factureSelectionnee.numero_bon || factureSelectionnee.numero_commande || 'FACTURE'}
                 </p>
               </div>
@@ -773,24 +831,24 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               </button>
             </div>
 
-            <div className="p-3 overflow-y-auto flex-1 space-y-2 text-[10.5px]">
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+            <div className="p-3 overflow-y-auto flex-1 space-y-2 text-[10.5px] bg-slate-50">
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
                 <table className="w-full text-left text-xs table-fixed">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-[8.5px] uppercase font-extrabold text-slate-500">
+                  <thead className="bg-slate-100 border-b border-slate-200 text-[9px] uppercase font-black text-slate-800">
                     <tr>
-                      <th className="p-1.5 w-[45%]">Article</th>
-                      <th className="p-1.5 w-[15%] text-center">Qté</th>
-                      <th className="p-1.5 w-[20%] text-right">P.U</th>
-                      <th className="p-1.5 w-[20%] text-right">Total</th>
+                      <th className="p-2 w-[45%]">Article</th>
+                      <th className="p-2 w-[15%] text-center">Qté</th>
+                      <th className="p-2 w-[20%] text-right">P.U</th>
+                      <th className="p-2 w-[20%] text-right">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10px]">
                     {obtenirLignesFactureDetail(factureSelectionnee).map((line, i) => (
                       <tr key={i}>
-                        <td className="p-1.5 font-bold truncate">{line.designation}</td>
-                        <td className="p-1.5 text-center font-black text-orange-600">{line.qte}</td>
-                        <td className="p-1.5 text-right">{line.prixUnitaire.toLocaleString('fr-FR')}</td>
-                        <td className="p-1.5 text-right font-black text-emerald-600">{line.sousTotal.toLocaleString('fr-FR')}</td>
+                        <td className="p-2 font-black text-slate-900 truncate">{line.designation}</td>
+                        <td className="p-2 text-center font-black text-orange-600">{line.qte}</td>
+                        <td className="p-2 text-right font-bold text-slate-800">{line.prixUnitaire.toLocaleString('fr-FR')}</td>
+                        <td className="p-2 text-right font-black text-emerald-700">{line.sousTotal.toLocaleString('fr-FR')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -801,27 +859,27 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 const totauxFacture = calculerTotauxFacture(factureSelectionnee);
 
                 return (
-                  <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl space-y-1.5">
-                    <div className="flex justify-between text-[10px] font-bold">
-                      <span className="text-slate-500">Total : {totauxFacture.montantTotal.toLocaleString('fr-FR')} F</span>
-                      <span className="text-emerald-600">Payé : {totauxFacture.montantRegle.toLocaleString('fr-FR')} F</span>
-                      <span className="text-red-600">Reste : {totauxFacture.resteAPayer.toLocaleString('fr-FR')} F</span>
+                  <div className="bg-white border border-slate-200 p-3 rounded-xl space-y-2 shadow-xs">
+                    <div className="flex justify-between text-[10px] font-black">
+                      <span className="text-slate-700">Total : {totauxFacture.montantTotal.toLocaleString('fr-FR')} F</span>
+                      <span className="text-emerald-700">Payé : {totauxFacture.montantRegle.toLocaleString('fr-FR')} F</span>
+                      <span className="text-red-700">Reste : {totauxFacture.resteAPayer.toLocaleString('fr-FR')} F</span>
                     </div>
 
                     {totauxFacture.resteAPayer > 0 && (
-                      <form onSubmit={enregistrerReglementFacture} className="flex gap-1.5 pt-1">
+                      <form onSubmit={enregistrerReglementFacture} className="flex gap-2 pt-1 border-t border-slate-100">
                         <input
                           type="number"
                           step="0.01"
                           placeholder="Montant règlement / avance"
                           value={montantReglementSaisi}
                           onChange={(e) => setMontantReglementSaisi(e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-bold"
+                          className="w-full bg-white border border-slate-300 rounded p-1.5 text-[10px] font-extrabold text-slate-900 shadow-xs"
                           required
                         />
                         <button
                           type="submit"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded text-[10px] shrink-0"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3 py-1.5 rounded text-[10px] shrink-0 shadow-xs"
                         >
                           Valider Règlement
                         </button>
@@ -832,18 +890,18 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               })()}
             </div>
 
-            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
+            <div className="p-3 bg-white border-t border-slate-200 flex justify-between items-center">
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="bg-slate-800 text-white font-bold px-3 py-1 rounded text-[10px]"
+                className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
               >
                 🖨️ Imprimer
               </button>
               <button
                 type="button"
                 onClick={() => setFactureSelectionnee(null)}
-                className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded text-[10px]"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
               >
                 Fermer
               </button>

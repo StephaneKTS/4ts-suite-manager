@@ -63,14 +63,13 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     mot_de_passe: '',
     id_role: '',
     statut: 'ACTIF',
-    acces_application: true, // Vrai par défaut (consomme une licence)
+    acces_application: true,
     permissions: initialiserPermissionsDefaut(),
   });
 
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      // Récupérer les infos de l'entreprise (notamment la limite d'utilisateurs/licence)
       const { data: dataEnt } = await supabase
         .from('entreprises')
         .select('*')
@@ -150,10 +149,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    // Vérification de la limite de licence si l'accès application est activé
     if (nouveauUser.acces_application) {
       const nbActuelsAccesApp = utilisateurs.filter(u => u.acces_application && (!userEnEdition || u.id !== userEnEdition.id)).length;
-      const limiteLicence = entrepriseInfo?.limite_utilisateurs || 5; // Limite par défaut
+      const limiteLicence = entrepriseInfo?.limite_utilisateurs || 5;
       if (nbActuelsAccesApp >= limiteLicence) {
         alert(`❌ Limite de licence atteinte (${limiteLicence} utilisateurs avec accès application maximum). Veuillez passer à une formule supérieure ou enregistrer ce collaborateur en tant qu'intervenant terrain sans accès application.`);
         return;
@@ -230,12 +228,49 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     setAfficherForm(false);
   };
 
-  const supprimerUtilisateur = async (id) => {
-    if (!confirm('Voulez-vous vraiment supprimer cet enregistrement ?')) return;
+  const supprimerUtilisateur = async () => {
+    if (!userEnEdition) return;
+
     try {
-      const { error } = await supabase.from('utilisateurs').delete().eq('id', id);
+      const nomUserStr = String(userEnEdition.nom_complet || '').trim().toUpperCase();
+      const idUserStr = String(userEnEdition.id);
+
+      const [resMvts, resVentes, resAppro] = await Promise.all([
+        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId),
+        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId),
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId)
+      ]);
+
+      const mouvements = resMvts.data || [];
+      const ventes = resVentes.data || [];
+      const approvisionnements = resAppro.data || [];
+
+      const operationsRattachees = [
+        ...mouvements.filter(m => {
+          const op = String(m.operateur || m.utilisateur || m.id_utilisateur || '').trim().toUpperCase();
+          return op === nomUserStr || op === idUserStr;
+        }),
+        ...ventes.filter(v => {
+          const op = String(v.operateur || v.utilisateur || v.id_utilisateur || '').trim().toUpperCase();
+          return op === nomUserStr || op === idUserStr;
+        }),
+        ...approvisionnements.filter(a => {
+          const op = String(a.operateur || a.utilisateur || a.id_utilisateur || '').trim().toUpperCase();
+          return op === nomUserStr || op === idUserStr;
+        })
+      ];
+
+      if (operationsRattachees.length > 0) {
+        alert(`❌ SUPPRESSION BLOQUÉE : Cet utilisateur ("${userEnEdition.nom_complet}") a déjà effectué au moins une opération ou action enregistrée dans l'application (${operationsRattachees.length} trouvée(s)). Pour des raisons de traçabilité comptable et de stock, il est impossible de le supprimer.`);
+        return;
+      }
+
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement le collaborateur "${userEnEdition.nom_complet}" ?`)) return;
+
+      const { error } = await supabase.from('utilisateurs').delete().eq('id', userEnEdition.id);
       if (error) throw error;
-      alert('Supprimé avec succès.');
+
+      alert('Collaborateur supprimé avec succès.');
       annulerForm();
       chargerDonnees();
     } catch (err) {
@@ -253,8 +288,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const rendreFlecheTri = (colonne) => {
-    if (triCol !== colonne) return <span className="text-slate-300 ml-1">↕</span>;
-    return <span className="text-orange-600 ml-1">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
+    if (triCol !== colonne) return <span className="text-slate-400 ml-1">↕</span>;
+    return <span className="text-orange-600 ml-1 font-bold">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
   };
 
   const nbLicencesUtilisees = utilisateurs.filter(u => u.acces_application).length;
@@ -286,39 +321,59 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
-      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+      
+      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
+      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div>
-          <h3 className="font-extrabold text-slate-800 uppercase text-xs">👥 COMPTES & INTERVENANTS</h3>
-          <p className="text-[9.5px] text-slate-500">
-            Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-600' : 'text-emerald-600'}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
+          <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+            <span>👥</span> COMPTES & INTERVENANTS
+          </h3>
+          <p className="text-[9.5px] text-slate-600 font-bold mt-0.5">
+            Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-600' : 'text-emerald-700'}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
           </p>
         </div>
         <button
+          type="button"
           onClick={() => {
-            if (afficherForm) annulerForm();
-            else {
+            if (afficherForm) {
+              annulerForm();
+            } else {
               setNouveauUser({ nom_complet: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
               setUserEnEdition(null);
               setAfficherForm(true);
             }
           }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs"
+          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
         >
           {afficherForm ? '✖' : 'Nouveau'}
         </button>
       </div>
 
+      {/* BARRE DE NAVIGATION (BOUTON LISTE) */}
+      <div className="flex justify-start items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => annulerForm()}
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+            !afficherForm 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          📋 Liste ({utilisateurs.length})
+        </button>
+      </div>
+
       {afficherForm && (
-        <form onSubmit={enregistrerUtilisateur} className="bg-slate-50 border border-orange-500/40 p-2.5 rounded-xl space-y-2.5 shadow-2xs">
+        <form onSubmit={enregistrerUtilisateur} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[60vh] overflow-y-auto pr-2 pb-24">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-            <h4 className="font-bold text-orange-600 uppercase text-[10px]">
+            <h4 className="font-black text-orange-600 uppercase text-[11px]">
               {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
             </h4>
-            <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-600 font-bold text-xs p-0.5">✖</button>
+            <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
           </div>
 
-          {/* SÉLECTEUR DU TYPE D'ACCÈS (Détermine l'impact sur la licence) */}
-          <div className="bg-amber-50/80 border border-amber-200 p-2 rounded-lg space-y-1">
+          <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-xl space-y-1 shadow-2xs">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -326,11 +381,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
                 className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
               />
-              <span className="font-extrabold text-amber-900 text-[10.5px]">
+              <span className="font-black text-amber-950 text-[11px]">
                 Accès à l'application (Consomme une licence / Connexion active)
               </span>
             </label>
-            <p className="text-[9.5px] text-amber-700 pl-6">
+            <p className="text-[10px] text-amber-900 font-bold pl-6">
               {nouveauUser.acces_application 
                 ? "✅ Cet utilisateur disposera d'un login/mot de passe et de permissions." 
                 : "ℹ️ Mode Intervenant : Il sera uniquement listé pour l'affectation des données (livraisons, ventes), sans accès de connexion ni impact sur la licence."}
@@ -338,72 +393,70 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div>
-            <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom Complet *</label>
-            <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value })} placeholder="Ex: Jean MBOA" className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-xs" />
+            <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom Complet *</label>
+            <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value })} placeholder="Ex: Jean MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs" />
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Rôle / Fonction *</label>
-              <select required value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-orange-700 text-xs">
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
+              <select required value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs">
                 <option value="">-- Rôle --</option>
                 {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
               </select>
             </div>
             <div>
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Statut</label>
-              <select value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-slate-700 text-xs">
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+              <select value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
                 <option value="ACTIF">🟢 Actif</option>
                 <option value="INACTIF">🔴 Inactif</option>
               </select>
             </div>
           </div>
 
-          {/* CHAMPS DE CONNEXION UNIQUEMENT SI ACCÈS APPLICATION ACTIVÉ */}
           {nouveauUser.acces_application && (
-            <div className="space-y-2 p-2 bg-white rounded-lg border border-slate-200">
+            <div className="space-y-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
               <div>
-                <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Mot de Passe de Connexion *</label>
-                <input type="password" required={nouveauUser.acces_application} value={nouveauUser.mot_de_passe} onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} placeholder="••••••••" className="w-full bg-slate-50 border border-slate-200 rounded p-1 font-mono text-xs" />
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
+                <input type="password" required={nouveauUser.acces_application} value={nouveauUser.mot_de_passe} onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} placeholder="••••••••" className="w-full bg-white border border-slate-300 rounded p-1.5 font-mono font-extrabold text-slate-900 text-xs shadow-xs" />
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100">
+          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
             <div>
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Pays</label>
-              <select value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-200 rounded p-1 font-bold text-slate-800 text-[11px]">
-                {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code}</option>))}
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
+              <select value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
               </select>
             </div>
             <div className="col-span-2">
-              <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Téléphone ({paysActuelObj.longueur} chiffres)</label>
-              <div className="flex items-center bg-white border border-slate-200 rounded overflow-hidden">
-                <span className="bg-slate-100 px-1.5 py-1 text-[11px] font-bold border-r border-slate-200 shrink-0">{paysActuelObj.indicatif}</span>
-                <input type="text" maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1 font-mono text-[11px] font-bold focus:outline-none" />
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
+              <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
+                <input type="text" maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
               </div>
             </div>
           </div>
 
           <div>
-            <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Email</label>
-            <input type="email" value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-200 rounded p-1 font-medium text-[11px]" />
+            <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email</label>
+            <input type="email" value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] shadow-xs" />
           </div>
 
-          {/* PERMISSIONS UNIQUEMENT SI ACCÈS APPLICATION ACTIVÉ */}
           {nouveauUser.acces_application && (
-            <div className="pt-1.5 border-t border-slate-200 space-y-1.5">
-              <h5 className="font-extrabold text-slate-800 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+            <div className="pt-2 border-t border-slate-200 space-y-2">
+              <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
                 <table className="w-full text-left text-xs table-fixed">
-                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 text-[10px] uppercase font-extrabold">
+                  <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black">
                     <tr>
-                      <th className="p-1.5 w-[40%]">Module</th>
-                      <th className="p-1.5 w-[12%] text-center">👁️</th>
-                      <th className="p-1.5 w-[12%] text-center">➕</th>
-                      <th className="p-1.5 w-[12%] text-center">✏️</th>
-                      <th className="p-1.5 w-[12%] text-center">🗑️</th>
-                      <th className="p-1.5 w-[12%] text-center">Action</th>
+                      <th className="p-2 w-[40%]">Module</th>
+                      <th className="p-2 w-[12%] text-center">👁️</th>
+                      <th className="p-2 w-[12%] text-center">➕</th>
+                      <th className="p-2 w-[12%] text-center">✏️</th>
+                      <th className="p-2 w-[12%] text-center">🗑️</th>
+                      <th className="p-2 w-[12%] text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10px]">
@@ -412,13 +465,13 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                       const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
                       return (
                         <tr key={m.id} className="hover:bg-slate-50">
-                          <td className="p-1.5 font-bold text-slate-800 truncate">{m.nom}</td>
-                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer" /></td>
-                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer" /></td>
-                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-3.5 h-3.5 accent-blue-600 rounded cursor-pointer" /></td>
-                          <td className="p-1.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermission(m.id, 'suppression')} className="w-3.5 h-3.5 accent-red-600 rounded cursor-pointer" /></td>
-                          <td className="p-1.5 text-center">
-                            <button type="button" onClick={() => accorderToutModule(m.id, !estToutAccorde)} className={`px-1 py-0.5 rounded text-[8.5px] font-bold ${estToutAccorde ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                          <td className="p-2 font-black text-slate-900 truncate">{m.nom}</td>
+                          <td className="p-2 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
+                          <td className="p-2 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
+                          <td className="p-2 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
+                          <td className="p-2 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermission(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
+                          <td className="p-2 text-center">
+                            <button type="button" onClick={() => accorderToutModule(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
                               {estToutAccorde ? 'Aucun' : 'Tous'}
                             </button>
                           </td>
@@ -435,15 +488,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             <div className="flex items-center gap-1 flex-wrap">
               {nouveauUser.telephone && nouveauUser.telephone.length === paysActuelObj.longueur && (
                 <>
-                  <a href={`tel:${getTelephoneComplet()}`} className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold px-2 py-1 rounded text-[9.5px]">📞 Appel</a>
+                  <a href={`tel:${getTelephoneComplet()}`} className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold px-2.5 py-1 rounded text-[9.5px]">📞 Appel</a>
                   <a href={`https://wa.me/${obtenirNumWhatsapp(getTelephoneComplet())}`} target="_blank" rel="noopener noreferrer" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold px-2.5 py-1 rounded text-[9.5px]">WhatsApp</a>
                 </>
               )}
-              {nouveauUser.email && (<a href={`mailto:${nouveauUser.email}`} className="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded text-[9.5px]">📧 Email</a>)}
+              {nouveauUser.email && (<a href={`mailto:${nouveauUser.email}`} className="bg-slate-100 text-slate-800 font-bold px-2.5 py-1 rounded text-[9.5px]">📧 Email</a>)}
             </div>
-            <div className="flex items-center gap-1">
-              {userEnEdition && (<button type="button" onClick={() => supprimerUtilisateur(userEnEdition.id)} className="bg-red-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">🗑️ Supprimer</button>)}
-              <button type="submit" className="bg-emerald-600 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs">{userEnEdition ? 'Mettre à jour' : 'Enregistrer'}</button>
+            <div className="flex items-center gap-1.5">
+              {userEnEdition && (<button type="button" onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs">🗑️ Supprimer</button>)}
+              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">{userEnEdition ? 'Mettre à jour' : 'Enregistrer'}</button>
             </div>
           </div>
         </form>
@@ -451,26 +504,26 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
       {!afficherForm && (
         <>
-          <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher par nom ou email..." className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 text-xs focus:outline-none" />
+          <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher par nom ou email..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none shadow-xs" />
           </div>
 
-          <div className="flex justify-between items-center text-[10px] text-slate-500 px-1">
+          <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
             <span>Total répertorié : <strong>{usersFiltres.length}</strong> personne(s)</span>
           </div>
 
           {chargement ? (
-            <div className="p-4 text-center text-slate-400">Chargement...</div>
+            <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
-            <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-xl">Aucun enregistrement trouvé.</div>
+            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">Aucun enregistrement trouvé.</div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs table-fixed">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[9px] font-extrabold select-none">
+                <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                   <tr>
-                    <th onClick={() => gererTri('nom_complet')} className="p-2 w-[45%] cursor-pointer">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
-                    <th onClick={() => gererTri('role')} className="p-2 w-[30%] cursor-pointer">Rôle {rendreFlecheTri('role')}</th>
-                    <th className="p-2 w-[25%] text-center">Type d'accès</th>
+                    <th onClick={() => gererTri('nom_complet')} className="p-2.5 w-[45%] cursor-pointer hover:bg-slate-200">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
+                    <th onClick={() => gererTri('role')} className="p-2.5 w-[30%] cursor-pointer hover:bg-slate-200">Rôle {rendreFlecheTri('role')}</th>
+                    <th className="p-2.5 w-[25%] text-center">Type d'accès</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
@@ -478,15 +531,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
                     const aAcces = u.acces_application ?? true;
                     return (
-                      <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition">
-                        <td className="p-2 font-extrabold text-slate-800 truncate">{u.nom_complet}</td>
-                        <td className="p-2 truncate">
-                          <span className="bg-orange-50 text-orange-800 border border-orange-200 px-1.5 py-0.5 rounded font-bold text-[9px]">
+                      <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                        <td className="p-2.5 font-black text-slate-900 truncate">{u.nom_complet}</td>
+                        <td className="p-2.5 truncate">
+                          <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
                             🛡️ {roleTrouve ? roleTrouve.nom_role : 'Aucun'}
                           </span>
                         </td>
-                        <td className="p-2 text-center">
-                          <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] border ${aAcces ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                        <td className="p-2.5 text-center">
+                          <span className={`px-2 py-0.5 rounded font-black text-[9.5px] border ${aAcces ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
                             {aAcces ? '🟢 Utilisateur App' : '👤 Terrain / Intervenant'}
                           </span>
                         </td>
