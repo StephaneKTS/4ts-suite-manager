@@ -4,9 +4,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+};
 
 export default function ConnexionEntreprise() {
   const router = useRouter();
@@ -21,7 +25,12 @@ export default function ConnexionEntreprise() {
     setLoading(true);
     setErrorMsg('');
 
+    // Nettoyage impératif pour enlever les espaces automatiques des claviers mobiles
+    const cleanIdentifiant = identifiant.trim();
+    const cleanPin = pinCode.trim();
+
     try {
+      const supabase = getSupabaseClient();
       let entrepriseIdCible = null;
       let nomEntrepriseTrouvee = '';
 
@@ -29,7 +38,7 @@ export default function ConnexionEntreprise() {
       const { data: entrepriseData, error: entrepriseErr } = await supabase
         .from('entreprises')
         .select('*')
-        .or(`id_entreprise.eq.${identifiant},email.eq.${identifiant},code_entreprise.eq.${identifiant}`)
+        .or(`id_entreprise.eq.${cleanIdentifiant},email.eq.${cleanIdentifiant},code_entreprise.eq.${cleanIdentifiant}`)
         .maybeSingle();
 
       if (entrepriseErr) {
@@ -38,17 +47,17 @@ export default function ConnexionEntreprise() {
 
       if (entrepriseData) {
         // C'est un compte entreprise (Admin)
-        if (entrepriseData.mot_de_passe !== pinCode && entrepriseData.code_pin_activation !== pinCode) {
+        if (entrepriseData.mot_de_passe !== cleanPin && entrepriseData.code_pin_activation !== cleanPin) {
           throw new Error("Code PIN ou mot de passe incorrect.");
         }
-        entrepriseIdCible = entrepriseData.id_entreprise || identifiant;
+        entrepriseIdCible = entrepriseData.id_entreprise || cleanIdentifiant;
         nomEntrepriseTrouvee = entrepriseData.nom_entreprise;
       } else {
         // 2. RECHERCHE DANS LA TABLE DES UTILISATEURS (Collaborateurs)
         const { data: utilisateurData, error: utilisateurErr } = await supabase
           .from('utilisateurs')
           .select('*')
-          .eq('email', identifiant.trim())
+          .eq('email', cleanIdentifiant)
           .maybeSingle();
 
         if (utilisateurErr) {
@@ -60,7 +69,7 @@ export default function ConnexionEntreprise() {
         }
 
         // Vérification du mot de passe dans la colonne 'mot_de_passe' de la table utilisateurs
-        if (utilisateurData.mot_de_passe !== pinCode) {
+        if (utilisateurData.mot_de_passe && utilisateurData.mot_de_passe !== cleanPin) {
           throw new Error("Mot de passe ou code PIN collaborateur incorrect.");
         }
 
