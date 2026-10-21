@@ -11,7 +11,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [depots, setDepots] = useState([]); 
   const [emplacements, setEmplacements] = useState([]);
   const [familles, setFamilles] = useState([]);
-  const [entrepriseInfo, setEntrepriseInfo] = useState(null);
+  const [entrepriseInfo, setInfosEntreprise] = useState(null);
 
   const [modeVue, setModeVue] = useState('catalogue'); // 'catalogue' ou 'statistiques'
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
@@ -46,7 +46,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     date_peremption: '',
   });
 
-  // 🛡️ CORRECTION ABSOLUE : CHARGEMENT STRICTEMENT ISOLÉ PAR ENTREPRISE (Y COMPRIS LES FAMILLES)
   const chargerDonneesReference = async () => {
     try {
       const { data: dataEnt } = await supabase
@@ -57,7 +56,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       
       if (dataEnt) setInfosEntreprise(dataEnt);
 
-      // Familles d'articles strictement filtrées par entreprise
       const { data: dataFam } = await supabase
         .from('familles_articles')
         .select('*')
@@ -65,7 +63,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .order('nom_famille', { ascending: true });
       setFamilles(dataFam || []);
 
-      // 1. Dépôts strictement filtrés par ID entreprise
       const { data: dataDep } = await supabase
         .from('depots_stock')
         .select('*')
@@ -73,7 +70,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
 
-      // 2. Emplacements strictement filtrés via les dépôts appartenant à cette entreprise
       const depotIds = listeDepots.map(d => d.id);
       if (depotIds.length > 0) {
         const { data: dataEmp } = await supabase
@@ -98,7 +94,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // 🛡️ ISOLATION MULTI-TENANT STRICTE DES ARTICLES
   const chargerArticles = async () => {
     setChargement(true);
     try {
@@ -464,9 +459,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     <div className="space-y-2.5 font-sans text-xs">
       
       {/* EN-TÊTE EXPLICITE DE LA TABLE */}
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>📦</span> GESTION DES ARTICLES {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables Actif</span>}
+      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-wrap">
+          <span>📦</span> GESTION DES ARTICLES 
+          {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables Actif</span>}
         </h3>
         <button
           type="button"
@@ -479,27 +475,27 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               setAfficherForm(true);
             }
           }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0"
         >
           {afficherForm ? '✖' : 'Nouveau'}
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION (BOUTONS DE VUE : CATALOGUE & STATISTIQUES) */}
-      <div className="flex justify-start items-center gap-1.5">
+      {/* BARRE DE NAVIGATION (BOUTONS DE VUE : ARTICLES & STAT) */}
+      <div className="flex flex-col sm:flex-row gap-1.5 w-full">
         <button
           type="button"
           onClick={() => {
             setModeVue('catalogue');
             annulerForm();
           }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+          className={`w-full sm:flex-1 px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
             modeVue === 'catalogue' && !afficherForm 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste des Articles ({articles.length})
+          📄 Articles ({articles.length})
         </button>
 
         <button
@@ -508,13 +504,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             setModeVue('statistiques');
             annulerForm();
           }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+          className={`w-full sm:flex-1 px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
             modeVue === 'statistiques' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📊 Statistiques Articles
+          📊 Stat
         </button>
       </div>
 
@@ -655,13 +651,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex gap-1.5 items-center">
+                  <div className="flex gap-1.5 items-center flex-wrap">
                     <input
                       type="text"
                       value={nouveauArticle.Photo}
                       onChange={(e) => setNouveauArticle({ ...nouveauArticle, Photo: e.target.value })}
                       placeholder="https://lien-image.com/photo.jpg"
-                      className="flex-1 min-w-0 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none truncate"
+                      className="flex-1 min-w-[150px] bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none truncate"
                     />
 
                     <label 
@@ -757,7 +753,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           ) : (
             /* VUE CATALOGUE TABLEAU SEULEMENT */
             <>
-              <div className="bg-white p-2.5 rounded-xl border border-slate-200 grid grid-cols-3 gap-1.5 shadow-2xs">
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-1.5 shadow-2xs">
                 <div>
                   <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Famille</label>
                   <select
@@ -813,25 +809,25 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
                       <th 
                         onClick={() => gererTri('Designation')} 
-                        className="p-2.5 w-[52%] cursor-pointer hover:bg-slate-200 select-none"
+                        className="p-2.5 w-[52%] cursor-pointer hover:bg-slate-200 select-none truncate"
                       >
                         Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         onClick={() => gererTri('Stock')} 
-                        className="p-2.5 w-[16%] text-center cursor-pointer hover:bg-slate-200 select-none"
+                        className="p-2.5 w-[16%] text-center cursor-pointer hover:bg-slate-200 select-none truncate"
                       >
                         Stock {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         onClick={() => gererTri('Prix_Achat')} 
-                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none"
+                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none truncate"
                       >
                         P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         onClick={() => gererTri('Prix_Vente')} 
-                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none"
+                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none truncate"
                       >
                         P.V {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
@@ -865,10 +861,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                                 {stockVal}
                               </span>
                             </td>
-                            <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap">
+                            <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap truncate">
                               {art.Prix_Achat || art.prix_achat || 0}
                             </td>
-                            <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap">
+                            <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap truncate">
                               {art.Prix_Vente || art.prix_vente || 0}
                             </td>
                           </tr>
@@ -1044,8 +1040,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         }}
                         className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
                       >
-                        <span className="font-black text-slate-900 text-xs">{nomArt}</span>
-                        <span className="font-bold text-emerald-700 font-mono text-xs">Stock : {stockArt}</span>
+                        <span className="font-black text-slate-900 text-xs truncate mr-2">{nomArt}</span>
+                        <span className="font-bold text-emerald-700 font-mono text-xs shrink-0">Stock : {stockArt}</span>
                       </div>
                     );
                   })
