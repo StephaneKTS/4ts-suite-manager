@@ -32,7 +32,9 @@ export default function ConnexionEntreprise() {
         .or(`id_entreprise.eq.${identifiant},email.eq.${identifiant},code_entreprise.eq.${identifiant}`)
         .maybeSingle();
 
-      if (entrepriseErr) throw entrepriseErr;
+      if (entrepriseErr) {
+        console.error("Erreur recherche entreprise:", entrepriseErr);
+      }
 
       if (entrepriseData) {
         // C'est un compte entreprise (Admin)
@@ -43,28 +45,27 @@ export default function ConnexionEntreprise() {
         nomEntrepriseTrouvee = entrepriseData.nom_entreprise;
       } else {
         // 2. RECHERCHE DANS LA TABLE DES UTILISATEURS (Collaborateurs)
-        // Vérifiez que le nom de votre table est bien 'utilisateurs' ou ajustez-le si besoin
         const { data: utilisateurData, error: utilisateurErr } = await supabase
           .from('utilisateurs')
           .select('*')
-          .eq('email', identifiant)
+          .eq('email', identifiant.trim())
           .maybeSingle();
 
-        if (utilisateurErr) throw utilisateurErr;
-
-        if (!utilisateurData) {
-          throw new Error("Aucune entreprise ni aucun compte utilisateur trouvé avec cet identifiant ou cet e-mail.");
+        if (utilisateurErr) {
+          console.error("Erreur recherche utilisateur:", utilisateurErr);
         }
 
-        // Vérification du mot de passe de l'utilisateur
-        // (On compare avec mot_de_passe ou code_pin selon votre structure en base)
-        const mdpUtilisateur = utilisateurData.mot_de_passe || utilisateurData.pin_code || utilisateurData.code_pin;
-        if (mdpUtilisateur !== pinCode) {
+        if (!utilisateurData) {
+          throw new Error("Aucune entreprise ni aucun compte utilisateur trouvé avec cet e-mail ou identifiant.");
+        }
+
+        // Vérification du mot de passe dans la colonne 'mot_de_passe' de la table utilisateurs
+        if (utilisateurData.mot_de_passe !== pinCode) {
           throw new Error("Mot de passe ou code PIN collaborateur incorrect.");
         }
 
-        // Récupération de l'entreprise rattachée à cet utilisateur
-        entrepriseIdCible = utilisateurData.id_entreprise || utilisateurData.entreprise_id;
+        // Récupération de l'entreprise rattachée à cet utilisateur via la colonne 'id_entreprise'
+        entrepriseIdCible = utilisateurData.id_entreprise;
 
         if (!entrepriseIdCible) {
           throw new Error("Ce compte utilisateur n'est rattaché à aucun identifiant d'entreprise.");
