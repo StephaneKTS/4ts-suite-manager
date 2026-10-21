@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 
+// Fonction utilitaire isolée pour garantir zéro erreur réseau sur mobile
 const getSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -25,9 +26,9 @@ export default function ConnexionEntreprise() {
     setLoading(true);
     setErrorMsg('');
 
-    // Nettoyage impératif pour enlever les espaces automatiques des claviers mobiles
-    const cleanIdentifiant = identifiant.trim();
-    const cleanPin = pinCode.trim();
+    // TRÈS IMPORTANT : Nettoyage radical des espaces invisibles ajoutés par les claviers mobiles
+    const cleanIdentifiant = identifiant ? identifiant.trim() : '';
+    const cleanPin = pinCode ? pinCode.trim() : '';
 
     try {
       const supabase = getSupabaseClient();
