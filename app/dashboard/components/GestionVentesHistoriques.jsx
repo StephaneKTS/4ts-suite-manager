@@ -365,7 +365,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
     let nomClientFacture = nomClientLibre.trim() || clientNomSelectionne || 'Clients Divers';
 
-    // Payload de base structuré selon les colonnes confirmées
     const payloadVente = {
       id_entreprise: entrepriseId,
       numero_ticket: numeroTicket,
@@ -382,7 +381,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
     try {
       let { error: errVente } = await supabase.from('ventes_historiques').insert([payloadVente]);
 
-      // Repli dynamique si la colonne nom_client / id_client est temporairement absente
       if (errVente && errVente.message.includes('column')) {
         console.warn("Retrait dynamique des colonnes client absentes de la table :", errVente.message);
         delete payloadVente.nom_client;
@@ -458,7 +456,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
             modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
           }`}
         >
-          🛒 Caisse & Vente Directe
+          🛒 Caiss
         </button>
         <button
           onClick={() => setModeSaisie(false)}
@@ -466,7 +464,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
             !modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
           }`}
         >
-          📋 Historique des Tickets ({ventes.length})
+          📋 Tickets ({ventes.length})
         </button>
       </div>
 
@@ -566,13 +564,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
             
             {/* COLONNE GAUCHE : RECHERCHE ARTICLE AVEC STOCK DU DÉPÔT */}
             <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col h-[380px]">
-              <div className="flex justify-between items-center mb-2">
-                <span className="font-extrabold text-slate-700 text-[10px] uppercase">Articles (Stock Dépôt)</span>
+              <div className="flex justify-between items-center mb-2 gap-1">
+                <span className="font-extrabold text-slate-700 text-[10px] uppercase">Articles</span>
                 <button
                   onClick={() => setAfficherModalArticle(true)}
-                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-2 py-1 rounded text-[10px] shadow-2xs"
+                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-2 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
                 >
-                  🔍 Rechercher Article
+                  🔍 recherche
                 </button>
               </div>
 
@@ -591,18 +589,18 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       <div
                         key={artId}
                         onClick={() => !estEpuise && ajouterAuPanier(art)}
-                        className={`p-1.5 border rounded flex justify-between items-center transition ${
+                        className={`p-1.5 border rounded flex justify-between items-center transition gap-2 ${
                           estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 border-slate-200 cursor-pointer'
                         }`}
                       >
-                        <div>
-                          <p className={`font-bold ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className={`font-bold truncate ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
                           <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
                             Stock : {artStock} {estEpuise ? '(Épuisé)' : ''}
                           </p>
                         </div>
-                        <span className={`font-black font-mono text-xs ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
-                          {artPrix.toLocaleString('fr-FR')} F
+                        <span className={`font-black font-mono text-xs whitespace-nowrap ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
+                          {artPrix.toLocaleString('fr-FR')}
                         </span>
                       </div>
                     );
@@ -782,13 +780,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     <th className="p-2">Date</th>
                     <th className="p-2">N° Ticket</th>
                     <th className="p-2">Client</th>
-                    <th className="p-2">Articles</th>
                     <th className="p-2 text-right">Montant</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10px]">
                   {ventesFiltrees.map((v) => {
-                    const detailsArr = Array.isArray(v.details_articles) ? v.details_articles : [];
                     const nomClientVente = v.nom_client || 'Client Divers';
                     return (
                       <tr
@@ -801,7 +797,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                         </td>
                         <td className="p-2 font-mono font-bold text-orange-600">{v.numero_ticket || '-'}</td>
                         <td className="p-2 font-bold text-slate-900 truncate">{nomClientVente}</td>
-                        <td className="p-2 text-slate-700 font-bold">{detailsArr.length} article(s)</td>
                         <td className="p-2 text-right font-black text-emerald-700 font-mono">
                           {Number(v.montant_regle || v.total_montant || 0).toLocaleString('fr-FR')} CFA
                         </td>
@@ -934,7 +929,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                           </p>
                         </div>
                         <span className={`font-black font-mono text-[10px] ${estEpuise ? 'text-slate-400' : 'text-orange-600'}`}>
-                          {artPrix.toLocaleString('fr-FR')} CFA
+                          {artPrix.toLocaleString('fr-FR')}
                         </span>
                       </div>
                     );

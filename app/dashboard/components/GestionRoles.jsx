@@ -20,7 +20,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const [nouveauRole, setNouveauRole] = useState({
     nom_role: '',
-    description: '',
   });
 
   const chargerRoles = async () => {
@@ -47,13 +46,17 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerRole = async (e) => {
     e.preventDefault();
+    if (!nouveauRole.nom_role.trim()) {
+      alert('⚠️ Veuillez renseigner le nom du rôle.');
+      return;
+    }
+
     try {
       if (roleEnEdition) {
         const { error } = await supabase
           .from('roles')
           .update({
-            nom_role: nouveauRole.nom_role,
-            description: nouveauRole.description,
+            nom_role: nouveauRole.nom_role.trim(),
           })
           .eq('id', roleEnEdition.id);
 
@@ -62,7 +65,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       } else {
         const { error } = await supabase.from('roles').insert([
           {
-            ...nouveauRole,
+            nom_role: nouveauRole.nom_role.trim(),
             id_entreprise: entrepriseId,
           },
         ]);
@@ -82,7 +85,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     setRoleEnEdition(role);
     setNouveauRole({
       nom_role: role.nom_role || '',
-      description: role.description || '',
     });
     setAfficherForm(true);
   };
@@ -91,7 +93,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     setRoleEnEdition(null);
     setNouveauRole({
       nom_role: '',
-      description: '',
     });
     setAfficherForm(false);
   };
@@ -100,7 +101,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     if (!roleEnEdition) return;
 
     try {
-      // 1. Interrogation de la table utilisateurs pour vérifier si des collaborateurs possèdent ce rôle
       const { data: tousLesUsers, error: errUsers } = await supabase
         .from('utilisateurs')
         .select('*')
@@ -111,7 +111,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       const idRoleStr = String(roleEnEdition.id);
       const nomRoleStr = String(roleEnEdition.nom_role || '').trim().toUpperCase();
 
-      // 2. Filtrer les utilisateurs rattachés (par id_role ou par nom de rôle texte)
       const usersRattaches = (tousLesUsers || []).filter((u) => {
         const valIdRole = String(u.id_role || u.role_id || '');
         const valNomRole = String(u.nom_role || u.role || '').trim().toUpperCase();
@@ -119,7 +118,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         return valIdRole === idRoleStr || valNomRole === nomRoleStr;
       });
 
-      // 3. Blocage immédiat si des utilisateurs y sont rattachés
       if (usersRattaches.length > 0) {
         const exempleUser = usersRattaches[0].nom_complet || 'Collaborateur';
         alert(`❌ SUPPRESSION BLOQUÉE : Ce rôle ("${roleEnEdition.nom_role}") est actuellement affecté à ${usersRattaches.length} utilisateur(s) (ex: "${exempleUser}"). Vous devez d'abord réaffecter ces utilisateurs à un autre rôle avant de pouvoir supprimer celui-ci.`);
@@ -156,21 +154,12 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const rolesFiltres = roles
     .filter((r) => {
       const nom = (r.nom_role || '').toLowerCase();
-      const desc = (r.description || '').toLowerCase();
       const query = recherche.toLowerCase();
-      return nom.includes(query) || desc.includes(query);
+      return nom.includes(query);
     })
     .sort((a, b) => {
-      let valA = '';
-      let valB = '';
-
-      if (triCol === 'nom_role') {
-        valA = a.nom_role || '';
-        valB = b.nom_role || '';
-      } else if (triCol === 'description') {
-        valA = a.description || '';
-        valB = b.description || '';
-      }
+      let valA = a.nom_role || '';
+      let valB = b.nom_role || '';
 
       if (valA < valB) return triOrdre === 'asc' ? -1 : 1;
       if (valA > valB) return triOrdre === 'asc' ? 1 : -1;
@@ -180,7 +169,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ)[cite: 27, 28] */}
+      {/* EN-TÊTE EXPLICITE DE LA TABLE */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
           <span>🛡️</span> GESTION DES RÔLES
@@ -191,7 +180,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             if (afficherForm) {
               annulerForm();
             } else {
-              setNouveauRole({ nom_role: '', description: '' });
+              setNouveauRole({ nom_role: '' });
               setRoleEnEdition(null);
               setAfficherForm(true);
             }
@@ -202,7 +191,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION (BOUTON LISTE)[cite: 27, 28] */}
+      {/* BARRE DE NAVIGATION (BOUTON LISTE) */}
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
@@ -233,7 +222,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <div>
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom du Rôle / Fonction *</label>
               <input
@@ -243,17 +232,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value })}
                 placeholder="Ex: Caissier, Livreur..."
                 className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Description / Notes</label>
-              <input
-                type="text"
-                value={nouveauRole.description}
-                onChange={(e) => setNouveauRole({ ...nouveauRole, description: e.target.value })}
-                placeholder="Ex: Responsable des encaissements"
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
               />
             </div>
           </div>
@@ -312,11 +290,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               <table className="w-full text-left text-xs table-fixed">
                 <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                   <tr>
-                    <th onClick={() => gererTri('nom_role')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200 transition">
+                    <th onClick={() => gererTri('nom_role')} className="p-2.5 w-full cursor-pointer hover:bg-slate-200 transition">
                       Intitulé du Rôle {rendreFlecheTri('nom_role')}
-                    </th>
-                    <th onClick={() => gererTri('description')} className="p-2.5 w-[60%] cursor-pointer hover:bg-slate-200 transition">
-                      Description {rendreFlecheTri('description')}
                     </th>
                   </tr>
                 </thead>
@@ -333,7 +308,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                           🛡️ {r.nom_role}
                         </span>
                       </td>
-                      <td className="p-2.5 font-extrabold text-slate-700 truncate">{r.description || '-'}</td>
                     </tr>
                   ))}
                 </tbody>

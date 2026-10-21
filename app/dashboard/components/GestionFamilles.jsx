@@ -11,7 +11,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   
   const [nouveauFamille, setNouveauFamille] = useState({
     nom_famille: '',
-    description: '',
   });
 
   const chargerFamilles = async () => {
@@ -49,7 +48,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
           .from('familles_articles')
           .update({
             nom_famille: nouveauFamille.nom_famille.trim(),
-            description: nouveauFamille.description.trim(),
           })
           .eq('id', familleSelectionnee.id);
 
@@ -59,7 +57,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         const { error } = await supabase.from('familles_articles').insert([
           {
             nom_famille: nouveauFamille.nom_famille.trim(),
-            description: nouveauFamille.description.trim(),
             id_entreprise: entrepriseId,
           },
         ]);
@@ -77,14 +74,13 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
   const reinitialiser = () => {
     setFamilleSelectionnee(null);
-    setNouveauFamille({ nom_famille: '', description: '' });
+    setNouveauFamille({ nom_famille: '' });
   };
 
   const ouvrirFicheDetail = (famille) => {
     setFamilleSelectionnee(famille);
     setNouveauFamille({
       nom_famille: famille.nom_famille || '',
-      description: famille.description || '',
     });
   };
 
@@ -92,7 +88,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     if (!familleSelectionnee) return;
 
     try {
-      // 1. Récupérer tous les articles pour vérifier s'ils sont rattachés à cette famille
       const { data: tousLesArticles, error: errArticles } = await supabase
         .from('articles_stock')
         .select('*');
@@ -102,7 +97,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       const idFamilleStr = String(familleSelectionnee.id);
       const nomFamilleStr = String(familleSelectionnee.nom_famille || '').trim().toUpperCase();
 
-      // 2. Filtrer les articles appartenant à cette famille
       const articlesRattaches = (tousLesArticles || []).filter((art) => {
         const valIdFamille = String(art.id_famille || art.famille_id || art.Famille || art.famille || '');
         const valNomFamille = String(art.nom_famille || art.libelle_famille || '').trim().toUpperCase();
@@ -110,7 +104,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         return valIdFamille === idFamilleStr || valIdFamille.toUpperCase() === nomFamilleStr || valNomFamille === nomFamilleStr;
       });
 
-      // 3. BLOCAGE STRICT DE LA SUPPRESSION SI DES ARTICLES Y SONT RATTACHÉS
       if (articlesRattaches.length > 0) {
         const exempleArticle = articlesRattaches[0].Designation || articlesRattaches[0].designation || 'Article';
         alert(`❌ SUPPRESSION BLOQUÉE : Cette famille ("${familleSelectionnee.nom_famille}") contient encore ${articlesRattaches.length} article(s) rattaché(s) (ex: "${exempleArticle}"). Vous devez d'abord réaffecter ou supprimer ces articles avant de pouvoir supprimer cette famille.`);
@@ -180,7 +173,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
               Nouvelle famille d'articles
             </span>
-            <button type="button" onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✖</button>
+            <button type="button" onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
           </div>
 
           <div className="space-y-2 text-[11px]">
@@ -194,19 +187,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 value={nouveauFamille.nom_famille}
                 onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value })}
                 placeholder="Ex: BOISSONS, LAIT BEBE..."
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">
-                Description
-              </label>
-              <input
-                type="text"
-                value={nouveauFamille.description}
-                onChange={(e) => setNouveauFamille({ ...nouveauFamille, description: e.target.value })}
-                placeholder="Description optionnelle..."
                 className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
               />
             </div>
@@ -240,18 +220,17 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             <table className="w-full text-left text-xs table-fixed">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
-                  <th className="p-2.5 w-[45%]">Famille</th>
-                  <th className="p-2.5 w-[55%]">Description</th>
+                  <th className="p-2.5 w-full">Famille</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-[10.5px]">
                 {chargement ? (
                   <tr>
-                    <td colSpan="2" className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
+                    <td className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
                   </tr>
                 ) : familles.length === 0 ? (
                   <tr>
-                    <td colSpan="2" className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
+                    <td className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
                   </tr>
                 ) : (
                   familles.map((fam) => (
@@ -262,9 +241,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                     >
                       <td className="p-2.5 font-black text-slate-900 truncate">
                         🏷️ {fam.nom_famille}
-                      </td>
-                      <td className="p-2.5 font-extrabold text-slate-700 truncate">
-                        {fam.description || '-'}
                       </td>
                     </tr>
                   ))
@@ -294,18 +270,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   value={nouveauFamille.nom_famille}
                   onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value })}
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-black text-slate-900 text-xs shadow-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">
-                  Description
-                </label>
-                <input
-                  type="text"
-                  value={nouveauFamille.description}
-                  onChange={(e) => setNouveauFamille({ ...nouveauFamille, description: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
                 />
               </div>
             </div>

@@ -322,7 +322,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
+      {/* EN-TÊTE EXPLICITE DE LA TABLE */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div>
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -349,7 +349,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION (BOUTON LISTE) */}
+      {/* BARRE DE NAVIGATION */}
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
@@ -448,15 +448,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             <div className="pt-2 border-t border-slate-200 space-y-2">
               <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
               <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-                <table className="w-full text-left text-xs table-fixed">
+                <table className="w-full text-left text-xs">
                   <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black">
                     <tr>
-                      <th className="p-2 w-[40%]">Module</th>
-                      <th className="p-2 w-[12%] text-center">👁️</th>
-                      <th className="p-2 w-[12%] text-center">➕</th>
-                      <th className="p-2 w-[12%] text-center">✏️</th>
-                      <th className="p-2 w-[12%] text-center">🗑️</th>
-                      <th className="p-2 w-[12%] text-center">Action</th>
+                      <th className="p-2">Module</th>
+                      <th className="p-2 text-center">👁️</th>
+                      <th className="p-2 text-center">➕</th>
+                      <th className="p-2 text-center">✏️</th>
+                      <th className="p-2 text-center">🗑️</th>
+                      <th className="p-2 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10px]">
@@ -465,7 +465,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                       const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
                       return (
                         <tr key={m.id} className="hover:bg-slate-50">
-                          <td className="p-2 font-black text-slate-900 truncate">{m.nom}</td>
+                          <td className="p-2 font-black text-slate-950">{m.nom}</td>
                           <td className="p-2 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
                           <td className="p-2 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
                           <td className="p-2 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
@@ -518,12 +518,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">Aucun enregistrement trouvé.</div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-              <table className="w-full text-left text-xs table-fixed">
+              <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                   <tr>
-                    <th onClick={() => gererTri('nom_complet')} className="p-2.5 w-[45%] cursor-pointer hover:bg-slate-200">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
-                    <th onClick={() => gererTri('role')} className="p-2.5 w-[30%] cursor-pointer hover:bg-slate-200">Rôle {rendreFlecheTri('role')}</th>
-                    <th className="p-2.5 w-[25%] text-center">Type d'accès</th>
+                    <th onClick={() => gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:bg-slate-200">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
+                    <th onClick={() => gererTri('role')} className="p-2.5 cursor-pointer hover:bg-slate-200">Rôle {rendreFlecheTri('role')}</th>
+                    <th className="p-2.5 text-center">Type d'accès</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
@@ -532,15 +532,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     const aAcces = u.acces_application ?? true;
                     return (
                       <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                        <td className="p-2.5 font-black text-slate-900 truncate">{u.nom_complet}</td>
-                        <td className="p-2.5 truncate">
-                          <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
+                        <td className="p-2.5 font-black text-slate-900">{u.nom_complet}</td>
+                        <td className="p-2.5">
+                          <span className="inline-block bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap">
                             🛡️ {roleTrouve ? roleTrouve.nom_role : 'Aucun'}
                           </span>
                         </td>
                         <td className="p-2.5 text-center">
-                          <span className={`px-2 py-0.5 rounded font-black text-[9.5px] border ${aAcces ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
-                            {aAcces ? '🟢 Utilisateur App' : '👤 Terrain / Intervenant'}
+                          <span className={`inline-block px-2 py-0.5 rounded font-black text-[9.5px] border whitespace-nowrap ${aAcces ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                            {aAcces ? '🟢 Utilisateur' : '👤 Terrain'}
                           </span>
                         </td>
                       </tr>

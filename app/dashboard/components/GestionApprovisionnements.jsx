@@ -420,10 +420,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
+      {/* EN-TÊTE HARMONISÉ */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>📦</span> GESTION DES APPROVISIONNEMENTS
+          <span>📦</span> APPROVISIONNEMENTS
         </h3>
         {vueActive === 'liste' ? (
           <button
@@ -444,7 +444,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         )}
       </div>
 
-      {/* BARRE DE NAVIGATION (BOUTONS DE VUE LISTE) */}
+      {/* BARRE DE NAVIGATION : FACTURES & COMMANDES */}
       {vueActive === 'liste' && (
         <div className="flex justify-start items-center gap-1.5">
           <button 
@@ -452,14 +452,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             onClick={() => { setOngletActif('FACTURE'); setVueActive('liste'); }} 
             className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'FACTURE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
           >
-            📥 Factures Achat ({documentsHistorique.length})
+            📥 Factures ({documentsHistorique.length})
           </button>
           <button 
             type="button" 
             onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
             className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
           >
-            📋 Bons de Commande ({commandesHistorique.length})
+            📋 Commandes ({commandesHistorique.length})
           </button>
         </div>
       )}
