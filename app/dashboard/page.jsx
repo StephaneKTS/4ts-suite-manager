@@ -91,10 +91,10 @@ function DashboardContent() {
   };
 
   const contenuApp = (
-    <div className="min-h-screen bg-[#0d1b2a] text-slate-100 flex flex-col font-sans relative overflow-y-auto">
+    <div className="min-h-screen bg-[#0d1b2a] text-slate-100 flex flex-col font-sans relative overflow-y-auto w-full max-w-full">
       
       {/* EN-TÊTE ÉPURÉ ET PROFESSIONNEL */}
-      <div className="sticky top-0 z-20 bg-[#1b263b] border-b border-blue-900/50 px-4 py-3 text-white shadow-md shrink-0 flex items-center justify-between">
+      <div className="sticky top-0 z-20 bg-[#1b263b] border-b border-blue-900/50 px-2 sm:px-4 py-3 text-white shadow-md shrink-0 flex items-center justify-between w-full">
         <div className="flex items-center space-x-3">
           <div className="bg-orange-600 text-white font-black text-sm px-2.5 py-1 rounded-lg shadow-xs">
             4TS
@@ -125,15 +125,15 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* CONTENU DE LA PAGE AVEC ESPACE SUFFISANT EN BAS (pb-24) */}
-      <div className="p-4 space-y-4 flex-1 pb-24">
+      {/* CONTENU DE LA PAGE AVEC ESPACE SUFFISANT EN BAS (pb-24) ET PLEINE LARGEUR */}
+      <div className="p-1 sm:p-2.5 space-y-3 flex-1 pb-24 w-full">
         {ongletNavigation === 'rapports' && !moduleActif ? (
-          <div className="space-y-3">
+          <div className="space-y-3 w-full">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
               TRÉSORERIE & COMPTABILITÉ DIRECTES
             </h2>
 
-            <div className="grid grid-cols-1 gap-2.5">
+            <div className="grid grid-cols-1 gap-2.5 w-full">
               <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
                 <span className="text-2xl group-hover:scale-110 transition">📝</span>
                 <div>
@@ -160,12 +160,12 @@ function DashboardContent() {
             </div>
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
-          <div className="space-y-4">
+          <div className="space-y-4 w-full">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
               INFORMATIONS DU COMPTE & ENTREPRISE
             </h2>
 
-            <div className="bg-[#1b263b] rounded-2xl p-5 shadow border border-blue-900/60 space-y-4">
+            <div className="bg-[#1b263b] rounded-2xl p-5 shadow border border-blue-900/60 space-y-4 w-full">
               <div className="flex items-center space-x-3 pb-3 border-b border-blue-900/40">
                 <div className="bg-blue-950 text-blue-300 p-3 rounded-2xl text-2xl font-black">
                   👤
@@ -223,87 +223,87 @@ function DashboardContent() {
             </div>
           </div>
         ) : !moduleActif ? (
-          <div className="space-y-3">
+          <div className="space-y-3 w-full">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
               ACCUEIL - TOUTES LES TABLES SUPABASE
             </h2>
 
-            <div className="grid grid-cols-3 gap-2.5">
-              <div onClick={() => setModuleActif('ventes')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+            <div className="grid grid-cols-3 gap-2 w-full">
+              <div onClick={() => setModuleActif('ventes')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🛒</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Caisse & Ventes</span>
               </div>
 
-              <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+              <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🏧</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Création Caisse</span>
               </div>
 
-              <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">📦</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Stock Articles</span>
               </div>
 
-              <div onClick={() => setModuleActif('depots')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('depots')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🏢</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Dépôts de stock</span>
               </div>
 
-              <div onClick={() => setModuleActif('familles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('familles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Familles d'Articles</span>
               </div>
 
-              <div onClick={() => setModuleActif('categories')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('categories')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Catégories Clients</span>
               </div>
 
-              <div onClick={() => setModuleActif('mouvements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('mouvements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🔄</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Mouvement Stock</span>
               </div>
 
-              <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">📥</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
               </div>
 
-              <div onClick={() => setModuleActif('clients')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('clients')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">👥</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Clients</span>
               </div>
 
-              <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
               </div>
 
-              <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🤝</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Fournisseurs</span>
               </div>
 
-              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🔑</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
               </div>
 
-              <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+              <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">💵</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Trésorerie & Caisse</span>
               </div>
             </div>
           </div>
         ) : (
-          <div className="bg-[#1b263b] rounded-2xl shadow p-4 border border-blue-900/60 text-slate-100">
+          <div className="bg-[#1b263b] rounded-2xl shadow p-2 sm:p-4 border border-blue-900/60 text-slate-100 w-full">
             {rendreModuleActif()}
           </div>
         )}
       </div>
 
       {/* BARRE DE NAVIGATION INFÉRIEURE FIXE */}
-      <div className="bg-[#1b263b] border-t border-blue-900/60 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-lg shrink-0">
+      <div className="bg-[#1b263b] border-t border-blue-900/60 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-lg shrink-0 w-full">
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
           className={`flex flex-col items-center space-y-0.5 transition ${
@@ -339,13 +339,13 @@ function DashboardContent() {
   );
 
   return (
-    <div>
-      <div className="hidden md:block">
+    <div className="w-full min-h-screen bg-slate-950 flex justify-center items-center">
+      <div className="hidden md:block w-full max-w-[1400px]">
         <SimulateurCadre>
           {contenuApp}
         </SimulateurCadre>
       </div>
-      <div className="block md:hidden">
+      <div className="block md:hidden w-full">
         {contenuApp}
       </div>
     </div>
