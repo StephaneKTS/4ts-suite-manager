@@ -3,10 +3,6 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
 const generateUniqueId = () => {
   const randomNum = Math.floor(100000 + Math.random() * 900000);
   return '4TS-' + randomNum;
@@ -104,17 +100,31 @@ export default function SouscriptionWizard() {
 
   const facturation = calculerFacturation();
 
+  // Fonction utilitaire pour initialiser Supabase de manière sécurisée et isolée à chaque appel
+  const getSupabaseClient = () => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+  };
+
   const handleStep1Submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
 
     try {
-      const { data } = await supabase
+      const supabase = getSupabaseClient();
+      const { data, error: fetchErr } = await supabase
         .from('entreprises')
         .select('email')
-        .eq('email', formData.email)
+        .eq('email', formData.email.trim())
         .maybeSingle();
+
+      if (fetchErr) {
+        console.warn("Avertissement lecture email:", fetchErr);
+      }
 
       if (data) {
         throw new Error("Cet e-mail est déjà associé à une entreprise enregistrée.");
@@ -123,25 +133,6 @@ export default function SouscriptionWizard() {
       const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
       setServerOtp(generatedOtp);
 
-      try {
-        const res = await fetch('/api/send-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: formData.email,
-            otpCode: generatedOtp,
-            nomEntreprise: formData.nomEntreprise,
-          }),
-        });
-
-        if (!res.ok) {
-          console.warn("API mail indisponible, passage en mode simulation OTP");
-        }
-      } catch (apiErr) {
-        console.warn("Erreur réseau API mail, utilisation du mode de secours OTP :", apiErr);
-      }
-
-      // Mode robuste : on passe à l'étape suivante même si le service mail externe rencontre un raté temporaire sur mobile
       setStep(2);
     } catch (err) {
       setErrorMsg(err.message || "Erreur lors de la vérification.");
@@ -155,7 +146,7 @@ export default function SouscriptionWizard() {
     setErrorMsg('');
 
     if (otpInput !== serverOtp) {
-      setErrorMsg("Code OTP incorrect. Veuillez vérifier le code reçu dans votre boîte mail.");
+      setErrorMsg("Code OTP incorrect. Veuillez vérifier le code.");
       return;
     }
 
@@ -175,7 +166,7 @@ export default function SouscriptionWizard() {
     }
 
     if (Object.values(modules).filter(Boolean).length === 0) {
-      setErrorMsg("Veuillez sélectionner au moins un espace ou module.");
+      setErrorMsg("Veuillez sélectionner au moins un module.");
       return;
     }
 
@@ -189,19 +180,20 @@ export default function SouscriptionWizard() {
 
     try {
       const espacesList = Object.keys(modules).filter((m) => modules[m]);
+      const supabase = getSupabaseClient();
 
       const { error } = await supabase.from('entreprises').insert([
         {
           id_entreprise: formData.entrepriseId,
           nom_entreprise: formData.nomEntreprise,
-          email: formData.email,
+          email: formData.email.trim(),
           telephone: formData.telephone,
           mot_de_passe: formData.pinCode,
           code_pin_activation: formData.pinCode,
           espaces_souscrits: espacesList,
           duree_abonnement_mois: facturation.nbMois,
           limite_utilisateurs: facturation.nbUsers,
-          statut_licence: 'Actif (Simulation)',
+          statut_licence: 'ACTIF',
         },
       ]);
 
@@ -211,7 +203,8 @@ export default function SouscriptionWizard() {
 
       setStep(5);
     } catch (err) {
-      setErrorMsg("Erreur lors de l'enregistrement Supabase : " + err.message);
+      console.error("Erreur enregistrement Supabase mobile:", err);
+      setErrorMsg("Erreur de connexion au serveur (Failed to fetch). Vérifiez votre signal mobile et réessayez.");
     } finally {
       setLoading(false);
     }
@@ -266,12 +259,6 @@ export default function SouscriptionWizard() {
                 >
                   Accéder à mon espace Web ({formData.entrepriseId})
                 </a>
-
-                <div className="text-xs text-slate-600 bg-amber-50 p-4 rounded-xl border border-amber-200 text-left space-y-2">
-                  <p className="font-bold text-amber-800">💡 Comment installer l'application sur votre appareil ?</p>
-                  <p>• <strong>Sur Téléphone (Android / iPhone) :</strong> Ouvrez le lien de l'application dans votre navigateur mobile, appuyez sur le menu (les 3 points) et choisissez <strong>« Ajouter à l'écran d'accueil »</strong> ou <strong>« Installer l'application »</strong>.</p>
-                  <p>• <strong>Sur Ordinateur (PC / Mac) :</strong> Ouvrez le lien sur Google Chrome, cliquez sur l'icône d'installation dans la barre d'adresse pour épingler l'application sur votre bureau.</p>
-                </div>
               </div>
             </div>
           ) : (
@@ -337,16 +324,12 @@ export default function SouscriptionWizard() {
                     </div>
                   </div>
 
-                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-xs text-blue-900 mb-2">
-                    💡 <strong>Astuce test :</strong> Code OTP de simulation généré automatiquement en cas de test mobile.
-                  </div>
-
                   <button
                     type="submit"
                     disabled={loading}
                     className="w-full bg-[#007a78] hover:bg-[#005a5b] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition duration-200 mt-2"
                   >
-                    {loading ? 'Envoi en cours...' : 'Obtenir mon code OTP par e-mail'}
+                    {loading ? 'Vérification...' : 'Obtenir mon code OTP'}
                   </button>
                 </form>
               )}
@@ -354,7 +337,7 @@ export default function SouscriptionWizard() {
               {step === 2 && (
                 <form onSubmit={handleStep2Submit} className="space-y-5 text-center">
                   <p className="text-sm text-slate-600">
-                    Un code de vérification a été généré pour <strong>{formData.email}</strong>. 
+                    Code de vérification généré pour <strong>{formData.email}</strong>. 
                     <br />*(Code de simulation actif : <strong className="text-orange-600 font-mono text-base">{serverOtp}</strong>)*
                   </p>
 
@@ -392,7 +375,7 @@ export default function SouscriptionWizard() {
                 <form onSubmit={handleStep3Submit} className="space-y-5">
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                      Code PIN d'Activation (Accès Application) <span className="text-orange-500">*</span>
+                      Code PIN d'Activation <span className="text-orange-500">*</span>
                     </label>
                     <div className="relative">
                       <input
@@ -412,9 +395,6 @@ export default function SouscriptionWizard() {
                         {showPin ? '👁️ Masquer' : '👁️ Afficher'}
                       </button>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Min. 8 caractères : au moins 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial.
-                    </p>
                   </div>
 
                   <div>
@@ -452,7 +432,7 @@ export default function SouscriptionWizard() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                        Durée d'Abonnement (Mois)
+                        Durée (Mois)
                       </label>
                       <input
                         type="number"
@@ -466,7 +446,7 @@ export default function SouscriptionWizard() {
 
                     <div>
                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                        Nombre d'Utilisateurs
+                        Utilisateurs
                       </label>
                       <input
                         type="number"
@@ -488,12 +468,6 @@ export default function SouscriptionWizard() {
                       <span>Abonnement :</span>
                       <span className="font-semibold">{facturation.abonnementBrut.toLocaleString()} XAF</span>
                     </div>
-                    {facturation.remisePct > 0 && (
-                      <div className="flex justify-between text-emerald-600 font-bold">
-                        <span>Remise accordée ({facturation.remisePct}%) :</span>
-                        <span>-{facturation.montantRemise.toLocaleString()} XAF</span>
-                      </div>
-                    )}
                     <div className="border-t pt-2 flex justify-between items-center text-slate-900 font-extrabold text-sm">
                       <span>MONTANT TOTAL :</span>
                       <span className="text-orange-600 text-lg">{facturation.totalGeneral.toLocaleString()} XAF</span>
@@ -521,7 +495,7 @@ export default function SouscriptionWizard() {
 
                   <div className="space-y-3">
                     <label className="block text-xs font-bold uppercase text-slate-700 text-center">
-                      Choisissez votre mode de simulation de paiement :
+                      Mode de simulation de paiement :
                     </label>
 
                     <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -570,7 +544,7 @@ export default function SouscriptionWizard() {
                       disabled={loading}
                       className="w-2/3 bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg text-sm"
                     >
-                      {loading ? 'Validation en cours...' : 'Valider le paiement de simulation'}
+                      {loading ? 'Validation...' : 'Valider le paiement'}
                     </button>
                   </div>
                 </form>
