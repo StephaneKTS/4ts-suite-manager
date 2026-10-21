@@ -216,19 +216,19 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
         </div>
       </div>
 
-      {/* SECTION 3 : PERSONNALISATION DE LA SOUSCRIPTION (SUR-MESURE) - LIGNES COMPACTES */}
+      {/* SECTION 3 : PERSONNALISATION DE LA SOUSCRIPTION (SUR-MESURE) */}
       <div className="bg-white p-3 rounded-xl border-2 border-orange-500/50 shadow-md space-y-2.5">
         <h4 className="font-black text-[10px] text-orange-700 uppercase border-b pb-1">⚙️ PERSONNALISER VOTRE ABONNEMENT SUR-MESURE</h4>
         <p className="text-[9.5px] text-slate-600 leading-tight">
           Ajustez ci-dessous le nombre d'utilisateurs <span className="text-emerald-700 font-black">Réductions : 3 Mois (-5%), 6 Mois (-10%), 9 Mois (-15%), 12 Mois (-20%) !</span>
         </p>
 
-        {/* UTILISATEURS À AJOUTER ET DURÉE SUR LA MÊME LIGNE */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* NOUVEAUX USERS ET DURÉE SUR LA MÊME LIGNE */}
+        <div className="grid grid-cols-[1.3fr_0.7fr] gap-2">
           
           <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
             <label className="block font-black text-[9px] text-slate-700 uppercase truncate">
-              👥 UTILISATEURS À AJOUTER : <span className="text-orange-600">{nombreUtilisateursChoisi}</span>
+              👥 NOUVEAUX USERS : <span className="text-orange-600">{nombreUtilisateursChoisi}</span>
             </label>
             <div className="flex items-center justify-between bg-white border border-slate-300 rounded-lg p-1 shadow-xs">
               <button
@@ -251,7 +251,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
 
           <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
             <label className="block font-black text-[9px] text-slate-700 uppercase flex justify-between items-center truncate">
-              <span>📅 DURÉE : <span className="text-orange-600">{nombreMoisChoisi} MOIS</span></span>
+              <span>📅 DURÉE : <span className="text-orange-600">{nombreMoisChoisi}</span></span>
               {tauxReduction > 0 && (
                 <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-black">
                   -{tauxReduction * 100}%
@@ -266,7 +266,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
               >
                 -
               </button>
-              <span className="font-black text-xs text-slate-900">{nombreMoisChoisi} Mois</span>
+              <span className="font-black text-xs text-slate-900">{nombreMoisChoisi}</span>
               <button
                 type="button"
                 onClick={() => setNombreMoisChoisi(prev => prev + 1)}
@@ -279,19 +279,26 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
 
         </div>
 
-        {/* BOUTON DE MISE À JOUR ÉPURÉ SANS MONTANT */}
-        <div className="pt-1">
+        {/* ZONE DE CALCUL AUTOMATIQUE DU MONTANT ET BOUTON DE VALIDATION CÔTE À CÔTE */}
+        <div className="grid grid-cols-[1fr_1.4fr] gap-2 items-center pt-1">
+          
+          <div className="bg-orange-50 border border-orange-200 p-2 rounded-xl text-center flex flex-col justify-center">
+            <span className="text-[8.5px] font-black text-orange-900 uppercase">Montant Total</span>
+            <span className="text-xs font-black text-orange-700 font-mono">{montantTotalCalculé.toLocaleString()} F</span>
+          </div>
+
           <button
             type="button"
             onClick={souscrireSurMesure}
-            className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 rounded-xl transition shadow-xs text-xs uppercase tracking-wide"
+            className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-2 rounded-xl transition shadow-xs text-xs uppercase tracking-wide truncate"
           >
-            Mettre à jour l'abonnement 🚀
+            Valider l'abonnement 🚀
           </button>
+
         </div>
       </div>
 
-      {/* SECTION 4 : HISTORIQUE DES PAIEMENTS (SANS MONTANT NI STATUT) */}
+      {/* SECTION 4 : HISTORIQUE DES PAIEMENTS */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
         <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">📜 Historique des Paiements</h4>
         
