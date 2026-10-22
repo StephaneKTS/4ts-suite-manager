@@ -10,7 +10,7 @@ const TARIFS_MODULES = {
   Tontine: { installation: 25000, mensuelPerUser: 2500 },
 };
 
-export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
+export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   const [entreprise, setEntreprise] = useState(null);
   const [chargement, setChargement] = useState(true);
   const [sauvegarde, setSauvegarde] = useState(false);
@@ -33,13 +33,29 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
   const PRIX_UNITAIRE_MOIS = 5000;
   const LISTE_MODULES_PRINCIPAUX = ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'];
 
+  // Récupération blindée de l'ID d'entreprise (Prop -> URL -> LocalStorage -> Fallback)
+  const getEntrepriseIdEffectif = () => {
+    if (propEntrepriseId && propEntrepriseId !== '4TS-TEST') return propEntrepriseId;
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const entUrl = params.get('entreprise');
+      if (entUrl) return entUrl;
+      const entLocal = localStorage.getItem('entrepriseId');
+      if (entLocal) return entLocal;
+    }
+    return propEntrepriseId || '4TS-TEST';
+  };
+
+  const entrepriseIdEffectif = getEntrepriseIdEffectif();
+
   const chargerInfosEntreprise = async () => {
     setChargement(true);
     try {
+      // Recherche élargie pour s'assurer de trouver l'entreprise sur mobile
       const { data, error } = await supabase
         .from('entreprises')
         .select('*')
-        .or(`id_entreprise.eq.${entrepriseId},code_entreprise.eq.${entrepriseId}`)
+        .or(`id_entreprise.eq.${entrepriseIdEffectif},code_entreprise.eq.${entrepriseIdEffectif}`)
         .maybeSingle();
 
       if (error) throw error;
@@ -57,9 +73,9 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerInfosEntreprise();
-  }, [entrepriseId]);
+  }, [entrepriseIdEffectif]);
 
-  // Récupération sécurisée du module actif (priorité au localStorage si défini, sinon Supabase)
+  // Récupération sécurisée du module actif
   const moduleActifCourant = (
     typeof window !== 'undefined' ? localStorage.getItem('module_actif') : null
   ) || (entreprise?.module_actif || entreprise?.module_courant || 'BOUTIQUE').toUpperCase();
@@ -70,7 +86,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
 
     setSauvegarde(true);
     try {
-      const identifiantCible = entreprise.id_entreprise || entreprise.code_entreprise || entrepriseId;
+      const identifiantCible = entreprise.id_entreprise || entreprise.code_entreprise || entrepriseIdEffectif;
       const { error } = await supabase
         .from('entreprises')
         .update({
@@ -88,19 +104,16 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // FONCTION POUR CHANGER DE MODULE ACTIF (AVEC LOCALSTORAGE POUR FORCER L'AFFICHAGE)
   const basculerModuleActif = async (nouveauModule) => {
     if (!entreprise) return;
     setChangementModuleEnCours(true);
 
     try {
       const moduleUpper = nouveauModule.toUpperCase();
-      const identifiantCible = entreprise.id_entreprise || entreprise.code_entreprise || entrepriseId;
+      const identifiantCible = entreprise.id_entreprise || entreprise.code_entreprise || entrepriseIdEffectif;
       
-      // 1. Sauvegarde dans le navigateur pour un affichage immédiat et garanti
       localStorage.setItem('module_actif', moduleUpper);
 
-      // 2. Tentative d'écriture en base (si la colonne existe)
       await supabase
         .from('entreprises')
         .update({ module_actif: moduleUpper })
@@ -156,7 +169,6 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
 
   const detailsNouveauxModules = calculerDetailsNouveauxModules();
 
-  // VALIDATION DE L'ACTIVATION DU MODULE
   const validerActivationNouveauxModules = async () => {
     const modulesSelectionnes = Object.keys(nouveauxModulesChoisis).filter(m => nouveauxModulesChoisis[m]);
     if (modulesSelectionnes.length === 0) {
@@ -164,7 +176,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    if (!confirm(`Mode Test : Activer directement les nouveaux modules [${modulesSelectionnes.join(', ')}] sans passer par le paiement ?`)) {
+    if (!confirm(`Activer directement les nouveaux modules [${modulesSelectionnes.join(', ')}] ?`)) {
       return;
     }
 
@@ -182,7 +194,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
       const nouveauxUpper = modulesSelectionnes.map(m => m.toUpperCase());
       const fusionEspaces = Array.from(new Set([...espacesActuels, ...nouveauxUpper]));
 
-      const identifiantCible = entreprise?.id_entreprise || entreprise?.code_entreprise || entrepriseId;
+      const identifiantCible = entreprise?.id_entreprise || entreprise?.code_entreprise || entrepriseIdEffectif;
 
       const { error } = await supabase
         .from('entreprises')
@@ -195,7 +207,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
 
       if (error) throw error;
 
-      alert(`Succès réel ! Modules activés : ${fusionEspaces.join(', ')} 🚀`);
+      alert(`Succès ! Modules activés : ${fusionEspaces.join(', ')} 🚀`);
       
       setModeAjoutModule(false);
       await chargerInfosEntreprise();
@@ -218,10 +230,10 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
     const ancienTotalUtilisateurs = parseInt(entreprise?.limite_utilisateurs || 1);
     const nouveauTotalCumule = ancienTotalUtilisateurs + parseInt(nombreUtilisateursChoisi);
 
-    if (!confirm(`Mode Test : Valider l'abonnement pour ${nombreUtilisateursChoisi} utilisateur(s) supplémentaire(s) sans paiement ?`)) return;
+    if (!confirm(`Valider l'abonnement pour ${nombreUtilisateursChoisi} utilisateur(s) supplémentaire(s) ?`)) return;
 
     try {
-      const identifiantCible = entreprise?.id_entreprise || entreprise?.code_entreprise || entrepriseId;
+      const identifiantCible = entreprise?.id_entreprise || entreprise?.code_entreprise || entrepriseIdEffectif;
       const { error } = await supabase
         .from('entreprises')
         .update({
@@ -252,7 +264,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   };
 
-  // Extraction sécurisée des espaces souscrits
+  // Extraction ultra-sécurisée des espaces souscrits (gère tableaux et chaînes séparées par des virgules)
   const donneesBrutesEspaces = entreprise?.espaces_souscrits;
   let espacesSouscrits = ['BOUTIQUE'];
 
@@ -281,7 +293,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
           <span>💳</span> ESPACE DE SOUSCRIPTION & PARAMÈTRES — <span className="text-orange-600">[{moduleActifCourant}]</span>
         </h3>
         <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[10px] border border-orange-200">
-          {entreprise?.nom_entreprise || 'Mon Entreprise'}
+          {entreprise?.nom_entreprise || 'Mon Entreprise'} ({entrepriseIdEffectif})
         </span>
       </div>
 
@@ -299,12 +311,12 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
           </button>
         </div>
 
-        {/* FORMULAIRE SÉPARÉ D'EXTENSION DE NOUVEAUX MODULES (MODE TEST SANS PAIEMENT) */}
+        {/* FORMULAIRE D'EXTENSION DE NOUVEAUX MODULES */}
         {modeAjoutModule && (
           <div className="bg-orange-50/80 border-2 border-orange-400 p-3 rounded-xl space-y-2.5 animate-fadeIn">
-            <h5 className="font-black text-orange-900 uppercase text-[10px]">🛒 Extension de modules (Vérification & Activation Base de Données)</h5>
+            <h5 className="font-black text-orange-900 uppercase text-[10px]">🛒 Extension de modules (Base de Données)</h5>
             <p className="text-[9.5px] text-slate-700 leading-tight">
-              Cochez les modules absents de votre base de données pour les activer :
+              Cochez les modules à activer pour votre entreprise :
             </p>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -564,7 +576,7 @@ export default function EspaceSouscription({ entrepriseId = '4TS-TEST' }) {
             onClick={souscrireSurMesure}
             className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-2 rounded-xl transition shadow-xs text-xs uppercase tracking-wide truncate"
           >
-            Valider l'abonnement (Mode Test) 🚀
+            Valider l'abonnement 🚀
           </button>
         </div>
       </div>
