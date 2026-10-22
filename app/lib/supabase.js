@@ -7,7 +7,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error("⚠️ Attention : Les clés d'accès Supabase sont manquantes !");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Utilisation d'un singleton pour éviter la duplication des instances GoTrueClient sur mobile et PC
+export const supabase = globalThis.supabase || createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
@@ -20,3 +21,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     schema: 'public',
   },
 });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.supabase = supabase;
+}
