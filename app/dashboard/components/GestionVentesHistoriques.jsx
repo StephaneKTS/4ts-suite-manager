@@ -25,10 +25,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   const [modeSaisie, setModeSaisie] = useState(true);
 
-  // État pour le tri alphabétique ('ASC' pour A-Z, 'DESC' pour Z-A)
   const [ordreAlphabetique, setOrdreAlphabetique] = useState('ASC');
 
-  // En-tête du ticket, caisse et dépôt
   const [caisseId, setCaisseId] = useState('');
   const [depotId, setDepotId] = useState('');
   const [codeCaisseActif, setCodeCaisseActif] = useState('C01');
@@ -37,7 +35,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [modePaiementTicket, setModePaiementTicket] = useState('ESPECES');
   const [clientId, setClientId] = useState('');
   const [clientSelectionneObj, setClientSelectionneObj] = useState(null);
-  const [clientNomSelectionne, setClientNomSelectionne] = useState('Clients Divers');
+  const [clientNomSelectionne, setClientNomSelectionne] = useState('CLIENTS DIVERS');
   const [nomClientLibre, setNomClientLibre] = useState('');
 
   const [afficherModalClient, setAfficherModalClient] = useState(false);
@@ -46,18 +44,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [afficherModalArticle, setAfficherModalArticle] = useState(false);
   const [rechercheArticleInput, setSearchArticleInput] = useState('');
 
-  // 🕒 Gestion des tickets en attente
   const [ticketsEnAttente, setTicketsEnAttente] = useState([]);
   const [afficherModalAttente, setAfficherModalAttente] = useState(false);
 
   const [panier, setPanier] = useState([]);
   
-  // Gestion de la Remise (% ou Montant) et de la TVA (Oui/Non)
-  const [typeRemise, setTypeRemise] = useState('POURCENTAGE'); // 'POURCENTAGE' ou 'MONTANT'
+  const [typeRemise, setTypeRemise] = useState('POURCENTAGE');
   const [valeurRemise, setValeurRemise] = useState(0);
-  const [appliquerTva, setAppliquerTva] = useState('NON'); // 'OUI' ou 'NON'
+  const [appliquerTva, setAppliquerTva] = useState('NON');
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -67,7 +62,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   const moduleActuel = obtenirModuleActuel();
 
-  // Formatage propre du numéro de ticket (ex: C01-01, C01-02, etc.)
   const genererNumeroTicket = (code, totalVentes) => {
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
@@ -75,10 +69,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const [resVentes, resArticles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro] = await Promise.all([
         supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
-        supabase.from('articles_stock').select('*').eq('ID_Entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('categories_clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -132,7 +125,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       } else if (clientsData.length > 0) {
         setClientId(clientsData[0].id);
         setClientSelectionneObj(clientsData[0]);
-        setClientNomSelectionne(clientsData[0].nom_client || 'Client');
+        setClientNomSelectionne(clientsData[0].nom_client || 'CLIENT');
       }
 
     } catch (err) {
@@ -241,7 +234,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       alert('⚠️ Le panier est vide, impossible de mettre en attente.');
       return;
     }
-    const clientNomActuel = nomClientLibre.trim() || clientNomSelectionne || 'Client Divers';
+    const clientNomActuel = nomClientLibre.trim().toUpperCase() || clientNomSelectionne || 'CLIENT DIVERS';
     const nouveauTicketAttente = {
       idAttente: Date.now(),
       numeroTicket,
@@ -285,7 +278,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const selectionnerClient = (client) => {
     setClientId(client.id);
     setClientSelectionneObj(client);
-    setClientNomSelectionne(client.nom_client || 'Client');
+    setClientNomSelectionne((client.nom_client || 'CLIENT').toUpperCase());
     setAfficherModalClient(false);
     setTimeout(() => {
       setAfficherModalArticle(true);
@@ -294,7 +287,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   const ajouterAuPanier = (article) => {
     const articleId = article.id_article || article.id;
-    const designation = article.Designation || article.designation || article.nom;
+    const designation = (article.Designation || article.designation || article.nom || '').toUpperCase();
     const prixU = Number(article.Prix_Vente || article.prix_vente || article.prix || 0);
     const stockDispo = getStockReelArticle(article);
 
@@ -377,11 +370,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       }
     }
 
-    let nomClientFacture = nomClientLibre.trim() || clientNomSelectionne || 'Clients Divers';
+    let nomClientFacture = (nomClientLibre.trim() || clientNomSelectionne || 'CLIENTS DIVERS').toUpperCase();
 
     const payloadVente = {
       id_entreprise: entrepriseId,
-      module: moduleActuel, // Injection automatique du module actif
+      module: moduleActuel,
       numero_ticket: numeroTicket,
       mode_paiement: modePaiementTicket,
       total_montant: totalFinal,
@@ -410,13 +403,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       for (const item of panier) {
         const payloadMouvement = {
           id_entreprise: entrepriseId,
-          module: moduleActuel, // Injection automatique du module actif
+          module: moduleActuel,
           type_mouvement: 'SORTIE',
           id_depot_source: depotId,
           id_depot_destination: null,
           id_article: parseInt(item.id),
           quantite: item.quantite,
-          motif_remarque: `Vente Ticket ${numeroTicket} (${nomClientFacture})`
+          motif_remarque: `VENTE TICKET ${numeroTicket} (${nomClientFacture})`
         };
 
         const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
@@ -460,7 +453,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   const clientsFiltres = clientsList.filter(c => (c.nom_client || '').toLowerCase().includes(rechercheClientInput.toLowerCase()));
 
-  // Tri alphabétique dynamique appliqué sur les articles
   const articlesTries = [...articlesStock].sort((a, b) => {
     const nomA = (a.Designation || a.nom || '').toLowerCase();
     const nomB = (b.Designation || b.nom || '').toLowerCase();
@@ -476,7 +468,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
-      {/* BARRE DE NAVIGATION INTERNE */}
       <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
         <button
           onClick={() => setModeSaisie(true)}
@@ -496,14 +487,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         </button>
       </div>
 
-      {/* MODE 1 : SAISIE DE CAISSE */}
       {modeSaisie ? (
         <div className="space-y-2">
           
-          {/* EN-TÊTE : 2 LIGNES SÉPARÉES */}
           <div className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5">
             
-            {/* LIGNE 1 : Caisse, Date, N° Ticket */}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE</label>
@@ -541,7 +529,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               </div>
             </div>
 
-            {/* LIGNE 2 : Dépôt, Client / Livreur, Client Libre */}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DÉPÔT</label>
@@ -582,19 +569,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <input
                   type="text"
                   value={nomClientLibre}
-                  onChange={(e) => setNomClientLibre(e.target.value)}
-                  placeholder={moduleActuel === 'LIVRAISON' ? 'Livreur libre...' : 'Nom libre...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[10px] font-bold text-slate-900 placeholder:text-slate-400"
+                  onChange={(e) => setNomClientLibre(e.target.value.toUpperCase())}
+                  placeholder={moduleActuel === 'LIVRAISON' ? 'LIVREUR LIBRE...' : 'NOM LIBRE...'}
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
                 />
               </div>
             </div>
 
           </div>
 
-          {/* ZONE PRINCIPALE : PANIER ET ARTICLES */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             
-            {/* COLONNE GAUCHE : RECHERCHE ARTICLE AVEC BOUTON DE TRI ALPHABÉTIQUE */}
             <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col h-[380px]">
               <div className="flex justify-between items-center mb-2 gap-1">
                 <span className="font-extrabold text-slate-700 text-[11px] uppercase">Articles</span>
@@ -622,7 +607,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 ) : (
                   articlesFiltres.map((art) => {
                     const artId = art.id_article || art.id;
-                    const artDes = art.Designation || art.nom;
+                    const artDes = (art.Designation || art.nom || '').toUpperCase();
                     const artPrix = Number(art.Prix_Vente || art.prix_vente || 0);
                     const artStock = getStockReelArticle(art);
                     const estEpuise = artStock <= 0;
@@ -651,7 +636,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               </div>
             </div>
 
-            {/* COLONNE DROITE : PANIER & FINANCES */}
             <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col justify-between h-[380px]">
               <div className="space-y-2">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-1">
@@ -661,10 +645,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     onChange={(e) => setModePaiementTicket(e.target.value)}
                     className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-900"
                   >
-                    <option value="ESPECES">Espèces</option>
-                    <option value="MOBILE_MONEY">Mobile Money</option>
-                    <option value="CARTE">Carte Bancaire</option>
-                    <option value="CREDIT">Crédit</option>
+                    <option value="ESPECES">ESPECES</option>
+                    <option value="MOBILE_MONEY">MOBILE MONEY</option>
+                    <option value="CARTE">CARTE BANCAIRE</option>
+                    <option value="CREDIT">CREDIT</option>
                   </select>
                 </div>
 
@@ -675,7 +659,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     panier.map((item) => (
                       <div key={item.id} className="pt-1 flex justify-between items-center text-[10px]">
                         <div>
-                          <p className="font-bold text-slate-900">{item.designation}</p>
+                          <p className="font-extrabold uppercase text-slate-900">{item.designation}</p>
                           <p className="text-[9px] text-slate-600 font-mono font-bold">
                             {Number(item.prix_unitaire).toLocaleString('fr-FR')} F x {item.quantite}
                           </p>
@@ -701,10 +685,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 </div>
               </div>
 
-              {/* PIED DE PAGE EN LIGNES STRUCTURÉES AVEC MISE EN ATTENTE & RAPPEL */}
               <div className="pt-2 border-t border-slate-200 space-y-1.5">
                 
-                {/* LIGNE 1 : REMISE & TVA */}
                 <div className="flex gap-2 items-center justify-between">
                   <div className="flex items-center gap-1">
                     <select
@@ -738,7 +720,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   </div>
                 </div>
 
-                {/* LIGNE 2 : BOUTONS MISE EN ATTENTE ET RAPPEL TICKET */}
                 <div className="grid grid-cols-2 gap-1">
                   <button
                     onClick={mettreTicketEnAttente}
@@ -755,7 +736,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   </button>
                 </div>
 
-                {/* LIGNE 3 : NAP, CFA & BOUTONS ANNULER / VALIDER */}
                 <div className="flex justify-between items-center pt-1 border-t border-slate-100">
                   <div>
                     <span className="text-[8px] uppercase text-slate-500 font-bold block">NAP :</span>
@@ -788,15 +768,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
           </div>
         </div>
       ) : (
-        /* MODE 2 : HISTORIQUE DES TICKETS */
         <div className="space-y-2">
           <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2 shadow-2xs">
             <input
               type="text"
               value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              placeholder={moduleActuel === 'LIVRAISON' ? "Rechercher ticket ou livreur..." : "Rechercher ticket ou client..."}
-              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
+              onChange={(e) => setRecherche(e.target.value.toUpperCase())}
+              placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER TICKET OU LIVREUR..." : "RECHERCHER TICKET OU CLIENT..."}
+              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
             />
             <select
               value={filtreModePaiement}
@@ -829,7 +808,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10px]">
                   {ventesFiltrees.map((v) => {
-                    const nomClientVente = v.nom_client || (moduleActuel === 'LIVRAISON' ? 'Livreurs Divers' : 'Clients Divers');
+                    const nomClientVente = (v.nom_client || (moduleActuel === 'LIVRAISON' ? 'LIVREURS DIVERS' : 'CLIENTS DIVERS')).toUpperCase();
                     return (
                       <tr
                         key={v.id}
@@ -840,7 +819,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                           {v.created_at ? new Date(v.created_at).toLocaleDateString('fr-FR') : '-'}
                         </td>
                         <td className="p-2 font-mono font-bold text-orange-600">{v.numero_ticket || '-'}</td>
-                        <td className="p-2 font-bold text-slate-900 truncate">{nomClientVente}</td>
+                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{nomClientVente}</td>
                         <td className="p-2 text-right font-black text-emerald-700 font-mono">
                           {Number(v.montant_regle || v.total_montant || 0).toLocaleString('fr-FR')} CFA
                         </td>
@@ -854,7 +833,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         </div>
       )}
 
-      {/* MODAL RAPPEL DES TICKETS EN ATTENTE */}
       {afficherModalAttente && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -872,7 +850,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     className="p-2 bg-slate-50 hover:bg-amber-50 border border-slate-200 rounded flex justify-between items-center transition"
                   >
                     <div>
-                      <p className="font-bold text-slate-900 text-[10px]">{t.numeroTicket} - {t.client}</p>
+                      <p className="font-extrabold uppercase text-slate-900 text-[10px]">{t.numeroTicket} - {t.client}</p>
                       <p className="text-[9px] text-slate-600 font-mono font-bold">{t.panier.length} article(s) • Heure : {t.date}</p>
                     </div>
                     <button
@@ -889,7 +867,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         </div>
       )}
 
-      {/* MODAL RECHERCHE CLIENT / LIVREUR */}
       {afficherModalClient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -902,9 +879,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 type="text"
                 autoFocus
                 value={rechercheClientInput}
-                onChange={(e) => setRechercheClientInput(e.target.value)}
-                placeholder={moduleActuel === 'LIVRAISON' ? "Rechercher un livreur..." : "Rechercher un client..."}
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
+                onChange={(e) => setRechercheClientInput(e.target.value.toUpperCase())}
+                placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER UN LIVREUR..." : "RECHERCHER UN CLIENT..."}
+                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
               />
               <div className="space-y-1 pt-1">
                 {clientsFiltres.length === 0 ? (
@@ -917,8 +894,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       className="p-2 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded flex justify-between items-center cursor-pointer transition"
                     >
                       <div>
-                        <p className="font-bold text-slate-900 text-[10px]">{c.nom_client}</p>
-                        <p className="text-[9px] text-slate-600 font-mono font-bold">{c.telephone || 'Sans téléphone'}</p>
+                        <p className="font-extrabold uppercase text-slate-900 text-[10px]">{c.nom_client}</p>
+                        <p className="text-[9px] text-slate-600 font-mono font-bold">{c.telephone || 'SANS TÉLÉPHONE'}</p>
                       </div>
                       <span className="font-bold text-orange-600 text-[10px]">Sélectionner</span>
                     </div>
@@ -930,7 +907,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         </div>
       )}
 
-      {/* MODAL RECHERCHE ARTICLE */}
       {afficherModalArticle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -943,9 +919,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 type="text"
                 autoFocus
                 value={rechercheArticleInput}
-                onChange={(e) => setSearchArticleInput(e.target.value)}
-                placeholder="Rechercher un article..."
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
+                onChange={(e) => setSearchArticleInput(e.target.value.toUpperCase())}
+                placeholder="RECHERCHER UN ARTICLE..."
+                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
               />
               <div className="space-y-1 pt-1">
                 {articlesFiltres.length === 0 ? (
@@ -953,7 +929,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 ) : (
                   articlesFiltres.map((art) => {
                     const artId = art.id_article || art.id;
-                    const artDes = art.Designation || art.nom;
+                    const artDes = (art.Designation || art.nom || '').toUpperCase();
                     const artPrix = Number(art.Prix_Vente || art.prix_vente || 0);
                     const artStock = getStockReelArticle(art);
                     const estEpuise = artStock <= 0;
@@ -967,7 +943,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                         }`}
                       >
                         <div>
-                          <p className={`font-bold text-[10px] ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
+                          <p className={`font-extrabold uppercase text-[10px] ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
                           <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
                             Stock : {artStock} {estEpuise ? '(Épuisé)' : ''}
                           </p>
@@ -985,7 +961,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         </div>
       )}
 
-      {/* MODAL FICHE TICKET EXISTANT */}
       {ticketSelectionne && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -1017,7 +992,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                           return (
                             <tr key={idx} className="hover:bg-slate-50 transition">
                               <td className="p-1.5 text-center font-bold text-slate-900">{qte}x</td>
-                              <td className="p-1.5 font-bold text-slate-900 truncate">{item.designation}</td>
+                              <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{item.designation}</td>
                               <td className="p-1.5 text-right text-slate-600 font-bold whitespace-nowrap">
                                 {pv.toLocaleString('fr-FR')}
                               </td>

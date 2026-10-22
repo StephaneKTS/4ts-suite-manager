@@ -67,7 +67,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     permissions: initialiserPermissionsDefaut(),
   });
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -175,9 +174,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
-        nom_complet: nouveauUser.nom_complet,
-        email: nouveauUser.email,
+        module: moduleActuel,
+        nom_complet: (nouveauUser.nom_complet || '').trim().toUpperCase(),
+        email: (nouveauUser.email || '').trim().toLowerCase(), // EMAIL EXCLUS ET FORCÉ EN MINUSCULES
         pays: nouveauUser.pays,
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
@@ -214,7 +213,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
     setNouveauUser({
       nom_complet: user.nom_complet || '',
-      email: user.email || '',
+      email: (user.email || '').toLowerCase(), // Restitution en minuscules
       pays: user.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
       mot_de_passe: user.mot_de_passe || '',
@@ -336,7 +335,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div>
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -363,7 +361,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION */}
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
@@ -408,7 +405,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
           <div>
             <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom Complet *</label>
-            <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value })} placeholder="Ex: Jean MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs" />
+            <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: JEAN MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -454,8 +451,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div>
-            <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email</label>
-            <input type="email" value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] shadow-xs" />
+            <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
+            <input type="email" value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
           </div>
 
           {nouveauUser.acces_application && (
@@ -519,7 +516,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       {!afficherForm && (
         <>
           <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder={`Rechercher par nom ou email [${moduleActuel}]...`} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none shadow-xs" />
+            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder={`RECHERCHER PAR NOM OU EMAIL [${moduleActuel}]...`} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400" />
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
@@ -546,7 +543,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     const aAcces = u.acces_application ?? true;
                     return (
                       <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                        <td className="p-2.5 font-black text-slate-900">{u.nom_complet}</td>
+                        <td className="p-2.5 font-black uppercase text-slate-900">{u.nom_complet}</td>
                         <td className="p-2.5">
                           <span className="inline-block bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap">
                             🛡️ {roleTrouve ? roleTrouve.nom_role : 'Aucun'}

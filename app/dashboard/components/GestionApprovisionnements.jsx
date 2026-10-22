@@ -22,7 +22,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const [dateDoc, setDateDoc] = useState(new Date().toISOString().split('T')[0]);
   const [idFournisseur, setIdFournisseur] = useState('');
   const [idDepotDestination, setIdDepotDestination] = useState('');
-  const [delaiLivraison, setDelaiLivraison] = useState('7 jours');
+  const [delaiLivraison, setDelaiLivraison] = useState('7 JOURS');
   const [statutPaiement, setStatutPaiement] = useState('SOLDE');
   const [montantPaye, setMontantPaye] = useState(0);
 
@@ -41,7 +41,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const inputQuantiteRef = useRef(null);
   const selectArticleRef = useRef(null);
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -61,7 +60,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data: dataDepots } = await supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const listDepots = dataDepots || [];
       setDepots(listDepots);
@@ -72,7 +70,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       const { data: dataFourn } = await supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setFournisseurs(dataFourn || []);
 
-      const { data: dataArticles } = await supabase.from('articles_stock').select('*').eq('ID_Entreprise', entrepriseId).eq('module', moduleActuel);
+      const { data: dataArticles } = await supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setArticles(dataArticles || []);
 
       const { data: dataMouvements } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
@@ -218,13 +216,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     if (isNaN(qte) || qte <= 0) { alert('Quantité invalide.'); return; }
     if (isNaN(pxAchat) || pxAchat < 0) { alert('Prix invalide.'); return; }
 
+    const designationMaj = (articleCourant.designation || '').toUpperCase();
+    const articleModifie = { ...articleCourant, designation: designationMaj };
+
     if (indexEnCoursModif !== null) {
       const maj = [...lignesValidees];
-      maj[indexEnCoursModif] = { ...articleCourant };
+      maj[indexEnCoursModif] = articleModifie;
       setLignesValidees(maj);
       setIndexEnCoursModif(null);
     } else {
-      setLignesValidees([...lignesValidees, { ...articleCourant }]);
+      setLignesValidees([...lignesValidees, articleModifie]);
     }
     setArticleCourant({ id_article: '', designation: '', quantite: '1', prix_achat: '' });
     setTimeout(() => { if (selectArticleRef.current) selectArticleRef.current.focus(); }, 50);
@@ -252,17 +253,17 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
+        module: moduleActuel,
         numero_bon: numeroDoc,
         id_fournisseur: idFournisseur,
-        numero_commande: referenceFournisseur,
+        numero_commande: referenceFournisseur.trim().toUpperCase(),
         id_depot_destination: idDepotDestination,
         montant_total: montantTotalGlobal,
         montant_paye: statutPaiement === 'SOLDE' ? montantTotalGlobal : statutPaiement === 'CREDIT' ? 0 : parseFloat(montantPaye) || 0,
         statut_paiement: statutPaiement,
         details_articles: lignesValidees.map(l => ({ 
           id_article: l.id_article, 
-          designation: l.designation, 
+          designation: (l.designation || '').toUpperCase(), 
           quantite: Number(l.quantite), 
           prix_achat: Number(l.prix_achat), 
           sous_total: Number(l.quantite) * Number(l.prix_achat) 
@@ -295,16 +296,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
+        module: moduleActuel,
         numero_commande: numeroDoc,
         id_fournisseur: idFournisseur,
         id_depot_destination: idDepotDestination,
         montant_total: montantTotalGlobal,
         statut_commande: 'EN_ATTENTE',
-        delai_livraison: delaiLivraison,
+        delai_livraison: delaiLivraison.trim().toUpperCase(),
         details_articles: lignesValidees.map(l => ({ 
           id_article: l.id_article, 
-          designation: l.designation, 
+          designation: (l.designation || '').toUpperCase(), 
           quantite: Number(l.quantite), 
           prix_achat: Number(l.prix_achat), 
           sous_total: Number(l.quantite) * Number(l.prix_achat) 
@@ -336,17 +337,17 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       
       const payloadFacture = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
+        module: moduleActuel,
         numero_bon: nouveauNumFacture,
         id_fournisseur: doc.id_fournisseur || idFournisseur,
-        numero_commande: doc.numero_commande || referenceFournisseur,
+        numero_commande: (doc.numero_commande || referenceFournisseur).trim().toUpperCase(),
         id_depot_destination: doc.id_depot_destination || idDepotDestination,
         montant_total: doc.montant_total || montantTotalGlobal,
         montant_paye: doc.montant_total || montantTotalGlobal,
         statut_paiement: 'SOLDE',
         details_articles: doc.details_articles || lignesValidees.map(l => ({ 
           id_article: l.id_article, 
-          designation: l.designation, 
+          designation: (l.designation || '').toUpperCase(), 
           quantite: Number(l.quantite), 
           prix_achat: Number(l.prix_achat), 
           sous_total: Number(l.quantite) * Number(l.prix_achat) 
@@ -378,7 +379,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     setDateDoc(doc.created_at ? doc.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
     setIdFournisseur(doc.id_fournisseur || '');
     setIdDepotDestination(doc.id_depot_destination || '');
-    setDelaiLivraison(doc.delai_livraison || '7 jours');
+    setDelaiLivraison(doc.delai_livraison || '7 JOURS');
     setStatutPaiement(doc.statut_paiement || 'SOLDE');
     setMontantPaye(doc.montant_paye || 0);
 
@@ -387,7 +388,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       if (typeof doc.details_articles === 'string') { try { articlesDetails = JSON.parse(doc.details_articles); } catch (e) {} }
       else if (Array.isArray(doc.details_articles)) { articlesDetails = doc.details_articles; }
     }
-    setLignesValidees(articlesDetails.map(l => ({ id_article: l.id_article, designation: l.designation, quantite: String(l.quantite), prix_achat: String(l.prix_achat || l.prix_estime || '') })));
+    setLignesValidees(articlesDetails.map(l => ({ id_article: l.id_article, designation: (l.designation || '').toUpperCase(), quantite: String(l.quantite), prix_achat: String(l.prix_achat || l.prix_estime || '') })));
     setIndexEnCoursModif(null);
     setVueActive(type === 'FACTURE' ? 'formulaire_facture' : 'formulaire_commande');
   };
@@ -409,7 +410,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const obtenirNomFournisseur = (idFourn) => {
     const f = fournisseurs.find(item => String(item.id) === String(idFourn));
-    return f ? (f.nom_fournisseur || f.nom || f.raison_sociale || '') : '';
+    return f ? (f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase() : '';
   };
 
   const trierListe = (liste) => {
@@ -434,7 +435,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* EN-TÊTE HARMONISÉ */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
           <span>📦</span> APPROVISIONNEMENTS [{moduleActuel}]
@@ -458,7 +458,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         )}
       </div>
 
-      {/* BARRE DE NAVIGATION : FACTURES & COMMANDES */}
       {vueActive === 'liste' && (
         <div className="flex justify-start items-center gap-1.5">
           <button 
@@ -497,7 +496,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                       <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'FACTURE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                         <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
                         <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numero_bon}</td>
-                        <td className="p-2 font-black text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'Fournisseur'}</td>
+                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'FOURNISSEUR'}</td>
                         <td className="p-2 text-right whitespace-nowrap"><span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>{doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}</span></td>
                       </tr>
                     ))
@@ -523,7 +522,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                       <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                         <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
                         <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{cmd.numero_commande}</td>
-                        <td className="p-2 font-black text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'Fournisseur'}</td>
+                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'FOURNISSEUR'}</td>
                       </tr>
                     ))
                   )}
@@ -571,18 +570,18 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Fournisseur *</label>
               <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={(e) => setIdFournisseur(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
                 <option value="">-- Choisir --</option>
-                {fournisseurs.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{f.nom_fournisseur || f.nom || f.raison_sociale}</option>))}
+                {fournisseurs.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
               </select>
             </div>
             <div>
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Frs *</label>
-              <input type="text" disabled={enTeteVerrouille} required value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+              <input type="text" disabled={enTeteVerrouille} required value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF FRS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
             </div>
             <div>
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Dépôt *</label>
               <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
                 <option value="">-- Choisir --</option>
-                {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{d.nom_depot || d.nom || d.libelle}</option>))}
+                {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
               </select>
             </div>
           </div>
@@ -591,8 +590,8 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             <div className="grid grid-cols-12 gap-1.5 items-end">
               <div className="col-span-5">
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
-                <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold text-slate-900 cursor-pointer truncate shadow-xs">
-                  {articleCourant.designation ? articleCourant.designation : '-- Article --'}
+                <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">
+                  {articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}
                 </div>
               </div>
               <div className="col-span-3">
@@ -623,7 +622,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
                   {lignesValidees.map((l, index) => (
                     <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                      <td className="p-2 font-black text-slate-900 truncate">{l.designation}</td>
+                      <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
                       <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
                       <td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
                       <td className="p-2 text-right font-black text-emerald-700">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
@@ -687,23 +686,23 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Fournisseur *</label>
               <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={(e) => setIdFournisseur(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
                 <option value="">-- Choisir --</option>
-                {fournisseurs.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{f.nom_fournisseur || f.nom || f.raison_sociale}</option>))}
+                {fournisseurs.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
               </select>
             </div>
-            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Frs *</label><input type="text" disabled={enTeteVerrouille} required value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
+            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Frs *</label><input type="text" disabled={enTeteVerrouille} required value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF FRS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
             <div>
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Dépôt *</label>
               <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
                 <option value="">-- Choisir --</option>
-                {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{d.nom_depot || d.nom || d.libelle}</option>))}
+                {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
               </select>
             </div>
-            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
+            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} placeholder="7 JOURS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
           </div>
           <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
             <span className="font-black uppercase text-slate-800 text-[9px] block">ARTICLES À COMMANDER</span>
             <div className="grid grid-cols-12 gap-1.5 items-end">
-              <div className="col-span-5"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold text-slate-900 cursor-pointer truncate shadow-xs">{articleCourant.designation ? articleCourant.designation : '-- Article --'}</div></div>
+              <div className="col-span-5"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">{articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}</div></div>
               <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
               <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
               <div className="col-span-1 text-center"><button type="button" onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
@@ -720,7 +719,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
                   {lignesValidees.map((l, index) => (
                     <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                      <td className="p-2 font-black text-slate-900 truncate">{l.designation}</td><td className="p-2 text-center font-black text-orange-600">{l.quantite}</td><td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td><td className="p-2 text-right font-black text-slate-900">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
+                      <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td><td className="p-2 text-center font-black text-orange-600">{l.quantite}</td><td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td><td className="p-2 text-right font-black text-slate-900">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
                       <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button type="button" onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button></td>
                     </tr>
                   ))}
@@ -750,13 +749,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2.5 max-h-[80vh] flex flex-col">
             <div className="flex justify-between items-center border-b border-slate-200 pb-2"><span className="font-black text-xs uppercase text-slate-900">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button></div>
-            <input type="text" autoFocus placeholder="Rechercher..." value={rechercheArticle} onChange={(e) => setRechercheArticle(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-extrabold text-slate-900 shadow-xs" />
+            <input type="text" autoFocus placeholder="RECHERCHER..." value={rechercheArticle} onChange={(e) => setRechercheArticle(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
             <div className="overflow-y-auto space-y-1.5 flex-1 max-h-60">
               {articlesFiltresModal.map((art) => {
                 const estGrise = art.estGrise;
                 return (
-                  <div key={art.idArticleFormate} onClick={() => { if (estGrise) return; setArticleCourant({ id_article: art.idArticleFormate, designation: art.Designation || 'Article', quantite: '1', prix_achat: art.prixAchatDefaut || '' }); setModalArticleOuverte(false); setRechercheArticle(''); setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50); }} className={`p-2.5 border rounded-xl flex justify-between items-center transition ${estGrise ? 'bg-slate-100 opacity-50 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 cursor-pointer border-slate-200'}`}>
-                    <div><span className={`font-black block text-[11px] ${estGrise ? 'text-slate-500' : 'text-slate-900'}`}>{art.Designation}</span>{estGrise && <span className="bg-slate-200 text-slate-700 text-[8.5px] px-1.5 py-0.5 rounded font-black">Déjà ajouté</span>}<span className="text-[9.5px] text-slate-600 font-bold">Stock : <strong>{art.stockDepot}</strong></span></div>
+                  <div key={art.idArticleFormate} onClick={() => { if (estGrise) return; setArticleCourant({ id_article: art.idArticleFormate, designation: (art.Designation || 'ARTICLE').toUpperCase(), quantite: '1', prix_achat: art.prixAchatDefaut || '' }); setModalArticleOuverte(false); setRechercheArticle(''); setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50); }} className={`p-2.5 border rounded-xl flex justify-between items-center transition ${estGrise ? 'bg-slate-100 opacity-50 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 cursor-pointer border-slate-200'}`}>
+                    <div><span className={`font-extrabold uppercase block text-[11px] ${estGrise ? 'text-slate-500' : 'text-slate-900'}`}>{art.Designation}</span>{estGrise && <span className="bg-slate-200 text-slate-700 text-[8.5px] px-1.5 py-0.5 rounded font-black">Déjà ajouté</span>}<span className="text-[9.5px] text-slate-600 font-bold">Stock : <strong>{art.stockDepot}</strong></span></div>
                     <span className="font-black text-[11px] text-orange-600">{art.prixAchatDefaut ? `${Number(art.prixAchatDefaut).toLocaleString('fr-FR')} F` : ''}</span>
                   </div>
                 );

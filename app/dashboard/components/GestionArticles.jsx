@@ -13,11 +13,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [familles, setFamilles] = useState([]);
   const [entrepriseInfo, setInfosEntreprise] = useState(null);
 
-  const [modeVue, setModeVue] = useState('catalogue'); // 'catalogue' ou 'statistiques'
+  const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
 
-  // États pour la modale de sélection d'article
   const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
   const [rechercheModalArticle, setRechercheModalArticle] = useState('');
 
@@ -30,7 +29,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [depotFiltre, setDepotFiltre] = useState('TOUS');
   const [emplacementFiltre, setEmplacementFiltre] = useState('TOUS');
 
-  // Gestion du tri
   const [colonneTri, setColonneTri] = useState('Designation');
   const [ordreTri, setOrdreTri] = useState('asc');
 
@@ -46,7 +44,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     date_peremption: '',
   });
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -66,7 +63,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       
       if (dataEnt) setInfosEntreprise(dataEnt);
 
-      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data: dataFam } = await supabase
         .from('familles_articles')
         .select('*')
@@ -113,7 +109,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const { data, error } = await supabase
         .from('articles_stock')
         .select('*')
-        .eq('ID_Entreprise', entrepriseId)
+        .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
@@ -323,9 +319,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     try {
       const payloadArticle = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
-        Designation: nouveauArticle.Designation,
-        Code_Barre: nouveauArticle.Code_Barre,
+        module: moduleActuel,
+        // Forçage en majuscules à l'enregistrement
+        Designation: (nouveauArticle.Designation || '').trim().toUpperCase(),
+        Code_Barre: (nouveauArticle.Code_Barre || '').trim().toUpperCase(),
         Famille: nouveauArticle.Famille,
         Prix_Achat: parseFloat(nouveauArticle.Prix_Achat) || 0,
         Prix_Vente: parseFloat(nouveauArticle.Prix_Vente) || 0,
@@ -341,14 +338,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           .from('articles_stock')
           .update(payloadArticle)
           .eq(articleEnEdition.id_article ? 'id_article' : 'id', targetId)
-          .eq('ID_Entreprise', entrepriseId);
+          .eq('id_entreprise', entrepriseId);
 
         if (error) throw error;
         alert(`Article mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
         payloadArticle.Quantite_Stock = 0;
-        payloadArticle.ID_Entreprise = entrepriseId;
-
         const { error } = await supabase.from('articles_stock').insert([payloadArticle]);
         if (error) throw error;
         alert(`Article créé avec succès dans le module ${moduleActuel} !`);
@@ -411,7 +406,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .from('articles_stock')
         .delete()
         .eq(articleEnEdition.id_article ? 'id_article' : 'id', artId)
-        .eq('ID_Entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId);
 
       if (error) throw error;
       alert('Article supprimé.');
@@ -474,7 +469,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE */}
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-wrap">
           <span>📦</span> GESTION DES ARTICLES [{moduleActuel}]
@@ -497,7 +491,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION (ARTICLES ET STAT SUR LA MÊME LIGNE) */}
       <div className="grid grid-cols-2 gap-1.5 w-full">
         <button
           type="button"
@@ -533,7 +526,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       {modeVue === 'catalogue' && (
         <>
           {afficherForm ? (
-            /* FORMULAIRE D'AJOUT / ÉDITION */
             <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
               
               <div className="pb-1 border-b border-slate-100">
@@ -562,13 +554,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   type="text"
                   required
                   value={nouveauArticle.Designation}
-                  onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value })}
+                  onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value.toUpperCase() })}
                   placeholder="Ex: JUS DE PAPAYE 250ML"
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  style={{ textTransform: 'uppercase' }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
                 />
               </div>
 
-              {/* 1ère ligne : P.A, P.V, S.ALERTE */}
               <div className="grid grid-cols-3 gap-1.5 items-end">
                 <div>
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A</label>
@@ -604,16 +596,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              {/* 2ème ligne : CODE-BARRES & DATE PÉREMPTION */}
               <div className={`grid ${isGestionPerissablesActive() ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5 items-end`}>
                 <div>
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Code-Barres</label>
                   <input
                     type="text"
                     value={nouveauArticle.Code_Barre}
-                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value })}
+                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value.toUpperCase() })}
                     placeholder="600123"
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 font-mono shadow-xs"
+                    style={{ textTransform: 'uppercase' }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 font-mono shadow-xs uppercase"
                   />
                 </div>
 
@@ -630,7 +622,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 )}
               </div>
 
-              {/* SECTION PHOTO */}
               <div className="pt-2 border-t border-slate-100 space-y-1">
                 <label className="block font-black text-[10px] text-slate-700 uppercase">Photo de l'article</label>
                 
@@ -694,7 +685,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 )}
               </div>
 
-              {/* OPTION SCAN QR CODE */}
               <div className="pt-1.5 border-t border-slate-100">
                 <div className="bg-orange-50/70 border border-orange-200/80 rounded-xl p-2 flex items-center space-x-2">
                   <input
@@ -710,7 +700,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              {/* LIGNE STOCK PAR DÉPÔT ET TOTAL (EN ÉDITION) */}
               {articleEnEdition && (() => {
                 const articleId = articleEnEdition.id_article || articleEnEdition.id;
                 const stockTotal = calculerStockParFiltre(articleId);
@@ -746,7 +735,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 );
               })()}
 
-              {/* BARRE D'ACTION */}
               <div className="pt-2 flex justify-between items-center border-t border-slate-200">
                 {articleEnEdition ? (
                   <button 
@@ -767,7 +755,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
             </form>
           ) : (
-            /* VUE CATALOGUE TABLEAU SEULEMENT */
             <>
               <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
                 <div>
@@ -786,7 +773,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   </select>
                 </div>
 
-                {/* DÉPÔT ET EMPLACEMENT SUR LA MÊME LIGNE */}
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
                     <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Dépôt</label>
@@ -872,7 +858,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                             onClick={() => ouvrirEdition(art)}
                             className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                           >
-                            <td className="p-2.5 font-black text-slate-900 text-[10px] whitespace-nowrap truncate">
+                            <td className="p-2.5 font-black text-slate-900 text-[10px] whitespace-nowrap truncate uppercase">
                               {art.Designation || art.designation}
                             </td>
                             <td className="p-2.5 text-center whitespace-nowrap">
@@ -901,7 +887,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       {modeVue === 'statistiques' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
           
-          {/* BARRE DE SÉLECTION DU DÉPÔT ET DE L'ARTICLE */}
           <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT</label>
@@ -928,7 +913,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 }}
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
               >
-                <span className="truncate">
+                <span className="truncate uppercase">
                   {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner un article --'}
                 </span>
                 <span className="text-[10px] text-slate-400">🔍</span>
@@ -960,7 +945,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
             return (
               <div className="space-y-3">
-
                 <div className="space-y-1">
                   <h4 className="font-black text-slate-800 uppercase text-[10px]">📈 Historique chronologique et dynamique :</h4>
                   <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
@@ -1007,7 +991,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     </table>
                   </div>
                 </div>
-
               </div>
             );
           })() : (
@@ -1017,7 +1000,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {/* MODAL DE SÉLECTION D'ARTICLE */}
       {afficherModalSelectionArticle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -1036,9 +1018,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 type="text"
                 autoFocus
                 value={rechercheModalArticle}
-                onChange={(e) => setRechercheModalArticle(e.target.value)}
+                onChange={(e) => setRechercheModalArticle(e.target.value.toUpperCase())}
                 placeholder="Rechercher..."
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                style={{ textTransform: 'uppercase' }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
               />
 
               <div className="space-y-1.5 pt-1">
@@ -1059,7 +1042,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         }}
                         className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
                       >
-                        <span className="font-black text-slate-900 text-xs truncate mr-2">{nomArt}</span>
+                        <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomArt}</span>
                         <span className="font-bold text-emerald-700 font-mono text-xs shrink-0">Stock : {stockArt}</span>
                       </div>
                     );

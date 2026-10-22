@@ -13,7 +13,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     nom_famille: '',
   });
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -26,7 +25,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const chargerFamilles = async () => {
     setChargement(true);
     try {
-      // Tentative de récupération avec le filtre strict par module
       let { data, error } = await supabase
         .from('familles_articles')
         .select('*')
@@ -34,7 +32,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
-      // Sécuro-fallback : si la colonne module met du temps à se synchroniser sur Supabase
       if (error && error.message.includes('column')) {
         console.warn('⚠️ Colonne module non détectée, bascule en mode global temporaire...');
         const resSecours = await supabase
@@ -71,8 +68,8 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
-        nom_famille: nouveauFamille.nom_famille.trim(),
+        module: moduleActuel,
+        nom_famille: nouveauFamille.nom_famille.trim().toUpperCase(),
       };
 
       if (familleSelectionnee) {
@@ -132,7 +129,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       });
 
       if (articlesRattaches.length > 0) {
-        const exempleArticle = articlesRattaches[0].Designation || articlesRattaches[0].designation || 'Article';
+        const exempleArticle = articlesRattaches[0].Designation || articlesRattaches[0].designation || 'ARTICLE';
         alert(`❌ SUPPRESSION BLOQUÉE : Cette famille ("${familleSelectionnee.nom_famille}") contient encore ${articlesRattaches.length} article(s) rattaché(s) (ex: "${exempleArticle}"). Vous devez d'abord réaffecter ou supprimer ces articles avant de pouvoir supprimer cette famille.`);
         return;
       }
@@ -153,7 +150,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
           <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES [{moduleActuel}]
@@ -175,7 +171,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION (BOUTONS DE VUE LISTE) */}
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
@@ -193,7 +188,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* MODE 1 : SAISIE / AJOUT DE FAMILLE */}
       {modeAffichage === 'SAISIE' && (
         <form onSubmit={enregistrerFamille} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
           <div className="flex justify-between items-center pb-1 border-b border-slate-100">
@@ -212,9 +206,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 type="text"
                 required
                 value={nouveauFamille.nom_famille}
-                onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value })}
-                placeholder="Ex: BOISSONS, LAIT BEBE..."
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
+                placeholder="EX: BOISSONS, LAIT BEBE..."
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
               />
             </div>
           </div>
@@ -240,7 +234,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         </form>
       )}
 
-      {/* MODE 2 : LISTE DES FAMILLES */}
       {modeAffichage === 'LISTE' && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
           <div className="overflow-x-auto">
@@ -266,7 +259,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                       onClick={() => ouvrirFicheDetail(fam)}
                       className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                     >
-                      <td className="p-2.5 font-black text-slate-900 truncate">
+                      <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">
                         🏷️ {fam.nom_famille}
                       </td>
                     </tr>
@@ -278,7 +271,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {/* MODAL FICHE DETAIL (MODIFICATION & SUPPRESSION) */}
       {familleSelectionnee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden flex flex-col">
@@ -295,8 +287,8 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 <input
                   type="text"
                   value={nouveauFamille.nom_famille}
-                  onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-black text-slate-900 text-xs shadow-xs"
+                  onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
                 />
               </div>
             </div>

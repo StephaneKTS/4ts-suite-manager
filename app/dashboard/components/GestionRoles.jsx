@@ -14,7 +14,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const [roleEnEdition, setRoleEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
 
-  // États pour le tri
   const [triCol, setTriCol] = useState('nom_role');
   const [triOrdre, setTriOrdre] = useState('asc');
 
@@ -22,7 +21,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     nom_role: '',
   });
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -35,7 +33,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const chargerRoles = async () => {
     setChargement(true);
     try {
-      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data, error } = await supabase
         .from('roles')
         .select('*')
@@ -66,8 +63,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
-        nom_role: nouveauRole.nom_role.trim(),
+        module: moduleActuel,
+        nom_role: nouveauRole.nom_role.trim().toUpperCase(),
       };
 
       if (roleEnEdition) {
@@ -131,7 +128,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       });
 
       if (usersRattaches.length > 0) {
-        const exempleUser = usersRattaches[0].nom_complet || 'Collaborateur';
+        const exempleUser = usersRattaches[0].nom_complet || 'COLLABORATEUR';
         alert(`❌ SUPPRESSION BLOQUÉE : Ce rôle ("${roleEnEdition.nom_role}") est actuellement affecté à ${usersRattaches.length} utilisateur(s) (ex: "${exempleUser}"). Vous devez d'abord réaffecter ces utilisateurs à un autre rôle avant de pouvoir supprimer celui-ci.`);
         return;
       }
@@ -181,7 +178,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
           <span>🛡️</span> GESTION DES RÔLES [{moduleActuel}]
@@ -203,7 +199,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* BARRE DE NAVIGATION (BOUTON LISTE) */}
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
@@ -218,7 +213,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* Formulaire de création / modification */}
       {afficherForm && (
         <form onSubmit={enregistrerRole} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
@@ -241,9 +235,9 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                 type="text"
                 required
                 value={nouveauRole.nom_role}
-                onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value })}
-                placeholder="Ex: Caissier, Livreur..."
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
+                placeholder="EX: CAISSIER, LIVREUR..."
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
               />
             </div>
           </div>
@@ -274,16 +268,15 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         </form>
       )}
 
-      {/* Tableau de la liste */}
       {!afficherForm && (
         <>
           <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
             <input
               type="text"
               value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              placeholder={`Rechercher par nom de rôle [${moduleActuel}]...`}
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none shadow-xs"
+              onChange={(e) => setRecherche(e.target.value.toUpperCase())}
+              placeholder={`RECHERCHER PAR NOM DE RÔLE [${moduleActuel}]...`}
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400"
             />
           </div>
 
@@ -315,7 +308,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                       className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                       title="Cliquer pour modifier"
                     >
-                      <td className="p-2.5 font-black text-slate-900 truncate">
+                      <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">
                         <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
                           🛡️ {r.nom_role}
                         </span>

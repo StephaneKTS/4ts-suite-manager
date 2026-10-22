@@ -56,7 +56,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     solde_dette: 0,
   });
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -69,7 +68,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const chargerFournisseursEtDonnees = async () => {
     setChargement(true);
     try {
-      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data: dataFourn, error: errFourn } = await supabase
         .from('fournisseurs')
         .select('*')
@@ -170,12 +168,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
-        nom_fournisseur: nouveauFournisseur.nom_fournisseur,
+        module: moduleActuel,
+        nom_fournisseur: (nouveauFournisseur.nom_fournisseur || '').trim().toUpperCase(),
         pays: nouveauFournisseur.pays,
         telephone: numeroComplet,
-        email: nouveauFournisseur.email,
-        adresse: nouveauFournisseur.adresse,
+        email: (nouveauFournisseur.email || '').trim().toLowerCase(), // EMAIL EN MINUSCULES
+        adresse: (nouveauFournisseur.adresse || '').trim().toUpperCase(),
       };
 
       if (fournisseurEnEdition) {
@@ -219,7 +217,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       nom_fournisseur: fournisseur.nom_fournisseur || '',
       pays: fournisseur.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
-      email: fournisseur.email || '',
+      email: (fournisseur.email || '').toLowerCase(), // Restitution en minuscules
       adresse: fournisseur.adresse || '',
       solde_dette: soldeCalcule,
     });
@@ -247,7 +245,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const fournisseurIdStr = String(fournisseurEnEdition.id);
       const fournisseurNomStr = String(fournisseurEnEdition.nom_fournisseur || '').trim().toUpperCase();
 
-      // Interrogation DIRECTE et simultanée de approvisionnements et bons_commande_fournisseurs
       const [resAppro, resBC] = await Promise.all([
         supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
@@ -259,14 +256,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const approDb = resAppro.data || [];
       const bcDb = resBC.data || [];
 
-      // Vérification rigoureuse dans les factures d'achat (approvisionnements)
       const approRattaches = approDb.filter((app) => {
         const idFournApp = String(app.id_fournisseur || '');
         const nomFournApp = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase();
         return idFournApp === fournisseurIdStr || (fournisseurNomStr !== '' && nomFournApp === fournisseurNomStr);
       });
 
-      // Vérification rigoureuse dans les bons de commande
       const bcRattaches = bcDb.filter((bc) => {
         const idFournBc = String(bc.id_fournisseur || '');
         const nomFournBc = String(bc.nom_fournisseur || bc.fournisseur || '').trim().toUpperCase();
@@ -275,7 +270,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
       const totalOperations = approRattaches.length + bcRattaches.length;
 
-      // BLOCAGE STRICT si des achats ou commandes existent
       if (totalOperations > 0) {
         alert(`❌ SUPPRESSION BLOQUÉE : Ce fournisseur ("${fournisseurEnEdition.nom_fournisseur}") a déjà ${totalOperations} facture(s) d'achat ou bon(s) de commande enregistré(s) à son compte. Pour des raisons comptables et de traçabilité, il est strictement impossible de le supprimer.`);
         setChargement(false);
@@ -489,7 +483,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
-      {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
           <span>🏢</span> GESTION DES FOURNISSEURS [{moduleActuel}]
@@ -556,9 +549,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                     type="text"
                     required
                     value={nouveauFournisseur.nom_fournisseur}
-                    onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, nom_fournisseur: e.target.value })}
-                    placeholder="Ex: SARL FESCO"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                    onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, nom_fournisseur: e.target.value.toUpperCase() })}
+                    placeholder="EX: SARL FESCO"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
                   />
                 </div>
 
@@ -579,9 +572,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   <input
                     type="text"
                     value={nouveauFournisseur.adresse}
-                    onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, adresse: e.target.value })}
-                    placeholder="Ex: Douala - Akwa"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                    onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, adresse: e.target.value.toUpperCase() })}
+                    placeholder="EX: DOUALA - AKWA"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
                   />
                 </div>
               </div>
@@ -622,13 +615,13 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email</label>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
                 <input
                   type="email"
                   value={nouveauFournisseur.email}
-                  onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, email: e.target.value })}
+                  onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, email: e.target.value.toLowerCase() })}
                   placeholder="contact@email.com"
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400"
                 />
               </div>
 
@@ -673,9 +666,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <input
                   type="text"
                   value={recherche}
-                  onChange={(e) => setRecherche(e.target.value)}
-                  placeholder={`Rechercher par nom ou téléphone [${moduleActuel}]...`}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+                  onChange={(e) => setRecherche(e.target.value.toUpperCase())}
+                  placeholder={`RECHERCHER PAR NOM OU TÉLÉPHONE [${moduleActuel}]...`}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs placeholder:text-slate-400"
                 />
               </div>
 
@@ -712,7 +705,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                             className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                             title="Cliquer pour modifier"
                           >
-                            <td className="p-2.5 font-black text-slate-900 truncate">{f.nom_fournisseur}</td>
+                            <td className="p-2.5 font-black uppercase text-slate-900 truncate">{f.nom_fournisseur}</td>
                             <td className="p-2.5 text-right font-black text-red-600 whitespace-nowrap">
                               {soldeDetteCalcule.toLocaleString('fr-FR')} F
                             </td>
@@ -868,7 +861,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   <tbody className="divide-y divide-slate-100 text-[10px]">
                     {obtenirLignesFactureDetail(factureSelectionnee).map((line, i) => (
                       <tr key={i}>
-                        <td className="p-2 font-black text-slate-900 truncate">{line.designation}</td>
+                        <td className="p-2 font-black uppercase text-slate-900 truncate">{line.designation}</td>
                         <td className="p-2 text-center font-black text-orange-600">{line.qte}</td>
                         <td className="p-2 text-right font-bold text-slate-800">{line.prixUnitaire.toLocaleString('fr-FR')}</td>
                         <td className="p-2 text-right font-black text-emerald-700">{line.sousTotal.toLocaleString('fr-FR')}</td>

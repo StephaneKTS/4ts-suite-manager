@@ -52,7 +52,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -69,11 +68,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return `${prefix}-${String(numsUniques.length + 1).padStart(2, '0')}`;
   };
 
-  // 🛡️ ISOLATION MULTI-TENANT STRICTE DE TOUTES LES RÉFÉRENCES DE MOUVEMENTS PAR ENTREPRISE ET PAR MODULE
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      // 1. Dépôts strictement filtrés par entreprise et par module
       const { data: dataDepots } = await supabase
         .from('depots_stock')
         .select('*')
@@ -85,7 +82,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         setEnTeteDoc((prev) => ({ ...prev, id_depot_source: depotsList[0].id }));
       }
 
-      // 2. Emplacements filtrés via les dépôts de l'entreprise et du module
       const depotIds = depotsList.map(d => d.id);
       if (depotIds.length > 0) {
         const { data: dataEmplacements } = await supabase
@@ -97,7 +93,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         setEmplacements([]);
       }
 
-      // 3. Articles strictement filtrés par entreprise et par module
       const { data: dataArticles } = await supabase
         .from('articles_stock')
         .select('*')
@@ -105,7 +100,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       setArticles(dataArticles || []);
 
-      // 4. Familles d'articles strictement filtrées par entreprise et par module
       const { data: dataFamilles } = await supabase
         .from('familles_articles')
         .select('*')
@@ -113,7 +107,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       setFamilles(dataFamilles || []);
 
-      // 5. Mouvements de stock filtrés par entreprise et par module
       const { data: dataMouvements } = await supabase
         .from('mouvements_stock')
         .select('*')
@@ -123,7 +116,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       const mouvementsList = dataMouvements || [];
       setMouvements(mouvementsList);
 
-      // 6. Approvisionnements filtrés par entreprise et par module
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
@@ -298,7 +290,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       for (const ligne of lignesPanier) {
         const payload = {
           id_entreprise: entrepriseId,
-          module: moduleActuel, // Injection automatique du module actif
+          module: moduleActuel,
           type_mouvement: typeOperation,
           id_depot_source: enTeteDoc.id_depot_source || null,
           id_depot_destination: typeOperation === 'TRANSFERT' ? enTeteDoc.id_depot_destination : null,
@@ -405,7 +397,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
             <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} [{moduleActuel}] {enTeteVerrouille && '🔒'}</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span></div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-[9.5px]">
               <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
-              <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf.</label><input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="Ex: BL" className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
+              <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf.</label><input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" /></div>
               <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Opérateur</label><input type="text" disabled value={enTeteDoc.operateur} className="w-full bg-slate-100 text-slate-800 border rounded p-1 font-bold" /></div>
               <div>
                 <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">{typeOperation === 'TRANSFERT' ? 'Origine *' : 'Dépôt *'}</label>
@@ -425,7 +417,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
               <div>
                 <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Motif *</label>
-                <input type="text" disabled={enTeteVerrouille} required value={enTeteDoc.motif} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, motif: e.target.value })} placeholder="Ex: Ajustement..." className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
+                <input type="text" disabled={enTeteVerrouille} required value={enTeteDoc.motif} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, motif: e.target.value.toUpperCase() })} placeholder="EX: AJUSTEMENT..." className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
               </div>
             </div>
           </div>
@@ -466,11 +458,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
                 <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2 max-h-[80vh] flex flex-col">
                   <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-500 font-bold">✕</button></div>
-                  <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value)} placeholder="Rechercher..." className="w-full bg-slate-50 border rounded-xl px-2.5 py-1 text-[10px] font-bold text-slate-900" autoFocus />
+                  <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." className="w-full bg-slate-50 border rounded-xl px-2.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400" autoFocus />
                   <div className="overflow-y-auto space-y-1 flex-1 max-h-60">
                     {articlesPopupFiltres.map((art) => (
                       <div key={art.id_article} onClick={() => selectionnerArticleEtFocusQte(art)} className="p-2 rounded-xl border bg-slate-50 hover:bg-orange-50 cursor-pointer flex justify-between items-center">
-                        <span className="font-extrabold text-[10px] text-slate-900">{art.Designation}</span>
+                        <span className="font-extrabold uppercase text-[10px] text-slate-900">{art.Designation}</span>
                         <span className="text-[9.5px] font-bold text-emerald-600">Stock: {calculerStockPourDepotActuel(art.id_article)}</span>
                       </div>
                     ))}
@@ -488,7 +480,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                   <tbody className="divide-y text-[9px]">
                     {lignesPanier.map((ligne, index) => (
                       <tr key={index} onClick={() => modifierLignePanier(ligne)} className="hover:bg-orange-50/70 cursor-pointer transition">
-                        <td className="p-1.5 font-extrabold text-slate-900 truncate">{ligne.designation}</td>
+                        <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
                         <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
                         <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                           <button type="button" onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]" title="Supprimer">🗑️</button>
@@ -529,7 +521,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px]">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
                       <td className="p-1.5 font-bold"><span className="px-1 py-0.5 bg-slate-100 text-slate-800 rounded text-[8.5px]">{doc.type}</span></td>
                       <td className="p-1.5 font-mono font-black text-orange-600">{doc.numeroDoc}</td>
-                      <td className="p-1.5 font-extrabold text-slate-900">{doc.operateur}</td>
+                      <td className="p-1.5 font-extrabold uppercase text-slate-900">{doc.operateur}</td>
                     </tr>
                   ))
                 )}

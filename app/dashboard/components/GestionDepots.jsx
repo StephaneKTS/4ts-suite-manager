@@ -22,7 +22,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const [nouveauNomEmplacement, setNouveauNomEmplacement] = useState('');
   const [responsableEmplacement, setResponsableEmplacement] = useState('');
 
-  // Modale de recherche pour le responsable d'emplacement
   const [modalRespOuverte, setModalRespOuverte] = useState(false);
   const [rechercheResp, setRechercheResp] = useState('');
 
@@ -32,7 +31,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     { id: '3', nom: 'RESPONSABLE MAGASIN A' },
   ];
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -45,7 +43,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const chargerDepotsEtEmplacements = async () => {
     setChargement(true);
     try {
-      // Chargement direct des dépôts via Supabase avec filtrage par entreprise et module
       const { data: dataDepots, error: errDepots } = await supabase
         .from('depots_stock')
         .select('*')
@@ -56,7 +53,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       if (errDepots) throw errDepots;
       setDepots(dataDepots || []);
 
-      // Chargement direct des emplacements via Supabase
       const { data: dataEmpls, error: errEmpls } = await supabase
         .from('emplacements_stock')
         .select('*')
@@ -97,8 +93,8 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       }
 
       const payload = {
-        nom_depot: nouveauDepot.nom_depot,
-        adresse_localisation: nouveauDepot.adresse_localisation,
+        nom_depot: nouveauDepot.nom_depot.trim().toUpperCase(),
+        adresse_localisation: nouveauDepot.adresse_localisation.trim().toUpperCase(),
         responsable_depot: nouveauDepot.responsable_depot,
         est_depot_par_defaut: nouveauDepot.est_depot_par_defaut,
         id_entreprise: entrepriseId,
@@ -192,12 +188,12 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     if (!nouveauNomEmplacement.trim()) return;
 
     try {
-      const respFinal = responsableEmplacement || depot.responsable_depot || 'Non assigné';
+      const respFinal = responsableEmplacement || depot.responsable_depot || 'NON ASSIGNÉ';
 
       const payloadEmp = {
         id_entreprise: entrepriseId,
         id_depot: depot.id,
-        nom_emplacement: nouveauNomEmplacement.trim(),
+        nom_emplacement: nouveauNomEmplacement.trim().toUpperCase(),
         responsable_emplacement: respFinal,
         module: moduleActuel,
       };
@@ -288,9 +284,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                 type="text"
                 required
                 value={nouveauDepot.nom_depot}
-                onChange={(e) => setNouveauDepot({ ...nouveauDepot, nom_depot: e.target.value })}
-                placeholder="Ex: MAGASIN PRINCIPAL"
-                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-extrabold text-slate-900 shadow-xs"
+                onChange={(e) => setNouveauDepot({ ...nouveauDepot, nom_depot: e.target.value.toUpperCase() })}
+                placeholder="EX: MAGASIN PRINCIPAL"
+                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-extrabold uppercase text-slate-900 shadow-xs"
               />
             </div>
 
@@ -299,9 +295,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
               <input
                 type="text"
                 value={nouveauDepot.adresse_localisation}
-                onChange={(e) => setNouveauDepot({ ...nouveauDepot, adresse_localisation: e.target.value })}
-                placeholder="Ex: Yaoundé"
-                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-bold text-slate-900 shadow-xs"
+                onChange={(e) => setNouveauDepot({ ...nouveauDepot, adresse_localisation: e.target.value.toUpperCase() })}
+                placeholder="EX: YAOUNDÉ"
+                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-bold uppercase text-slate-900 shadow-xs"
               />
             </div>
 
@@ -386,7 +382,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                           )}
                         </div>
                         <p className="text-[9.5px] text-slate-700 truncate mt-0.5 font-bold">
-                          Responsable : <strong className="text-orange-700">{dep.responsable_depot || 'Non assigné'}</strong>
+                          Responsable : <strong className="text-orange-700">{dep.responsable_depot || 'NON ASSIGNÉ'}</strong>
                         </p>
                       </div>
                     </div>
@@ -423,9 +419,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                             type="text"
                             required
                             value={nouveauNomEmplacement}
-                            onChange={(e) => setNouveauNomEmplacement(e.target.value)}
-                            placeholder="Ex: RAYON A1"
-                            className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold text-slate-900 shadow-xs"
+                            onChange={(e) => setNouveauNomEmplacement(e.target.value.toUpperCase())}
+                            placeholder="EX: RAYON A1"
+                            className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold uppercase text-slate-900 shadow-xs"
                           />
                         </div>
 

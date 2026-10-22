@@ -30,11 +30,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   
   const [ongletActif, setOngletActif] = useState('repertoire');
 
-  // États pour le tri du répertoire
   const [triCol, setTriCol] = useState('nom_client');
   const [triOrdre, setTriOrdre] = useState('asc');
 
-  // États pour le tri de l'historique
   const [triHistCol, setTriHistCol] = useState('date');
   const [triHistOrdre, setTriHistOrdre] = useState('asc');
 
@@ -57,7 +55,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     solde_credit: 0,
   });
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -70,7 +67,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data: dataCat } = await supabase
         .from('categories_clients')
         .select('*')
@@ -172,11 +168,12 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
-        nom_client: nouveauClient.nom_client,
+        module: moduleActuel,
+        nom_client: nouveauClient.nom_client.trim().toUpperCase(),
         pays: nouveauClient.pays,
         telephone: numeroComplet,
-        email: nouveauClient.email,
+        // EMAIL FORCÉ EN MINUSCULES
+        email: (nouveauClient.email || '').trim().toLowerCase(),
         id_categorie: parseInt(nouveauClient.id_categorie),
       };
 
@@ -220,7 +217,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       nom_client: client.nom_client || '',
       pays: client.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
-      email: client.email || '',
+      email: (client.email || '').toLowerCase(), // Restitution en minuscules
       id_categorie: client.id_categorie || '',
       solde_credit: client.solde_credit || 0,
     });
@@ -248,7 +245,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       const clientIdStr = String(clientEnEdition.id);
       const clientNomStr = String(clientEnEdition.nom_client || '').trim().toUpperCase();
 
-      // Interrogation DIRECTE et simultanée de ventes_historiques et mouvements_stock
       const [resVentes, resMvts] = await Promise.all([
         supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
@@ -260,14 +256,12 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       const ventesDb = resVentes.data || [];
       const mouvementsDb = resMvts.data || [];
 
-      // Vérification rigoureuse dans les ventes
       const ventesRattachees = ventesDb.filter((v) => {
         const idCliVente = String(v.id_client || v.client_id || '');
         const nomCliVente = String(v.nom_client || v.client || '').trim().toUpperCase();
         return idCliVente === clientIdStr || (clientNomStr !== '' && nomCliVente === clientNomStr);
       });
 
-      // Vérification rigoureuse dans les mouvements de stock (présence du nom dans la remarque)
       const mouvementsRattaches = mouvementsDb.filter((m) => {
         const remarque = String(m.motif_remarque || '').trim().toUpperCase();
         return clientNomStr !== '' && remarque.includes(clientNomStr);
@@ -275,7 +269,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
       const totalOperations = ventesRattachees.length + mouvementsRattaches.length;
 
-      // BLOCAGE STRICT si des mouvements ou des ventes existent
       if (totalOperations > 0) {
         alert(`❌ SUPPRESSION BLOQUÉE : Ce client ("${clientEnEdition.nom_client}") a déjà ${totalOperations} mouvement(s) ou vente(s) enregistré(s) à son compte. Pour des raisons comptables et de traçabilité, il est strictement impossible de le supprimer.`);
         setChargement(false);
@@ -554,9 +547,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                     type="text"
                     required
                     value={nouveauClient.nom_client}
-                    onChange={(e) => setNouveauClient({ ...nouveauClient, nom_client: e.target.value })}
-                    placeholder="Ex: JEAN PIERRE"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    onChange={(e) => setNouveauClient({ ...nouveauClient, nom_client: e.target.value.toUpperCase() })}
+                    placeholder="EX: JEAN PIERRE"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
                 </div>
 
@@ -626,13 +619,13 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 </div>
 
                 <div className="sm:col-span-1">
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email</label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
                   <input
                     type="email"
                     value={nouveauClient.email}
-                    onChange={(e) => setNouveauClient({ ...nouveauClient, email: e.target.value })}
+                    onChange={(e) => setNouveauClient({ ...nouveauClient, email: e.target.value.toLowerCase() })}
                     placeholder="client@email.com"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] shadow-xs"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400"
                   />
                 </div>
               </div>
@@ -697,9 +690,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 <input
                   type="text"
                   value={recherche}
-                  onChange={(e) => setRecherche(e.target.value)}
-                  placeholder={`Rechercher par nom ou téléphone [${moduleActuel}]...`}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+                  onChange={(e) => setRecherche(e.target.value.toUpperCase())}
+                  placeholder={`RECHERCHER PAR NOM OU TÉLÉPHONE [${moduleActuel}]...`}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs placeholder:text-slate-400"
                 />
               </div>
 
@@ -740,10 +733,10 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                             className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                             title="Cliquer pour modifier"
                           >
-                            <td className="p-2.5 font-black text-slate-900 truncate">{c.nom_client}</td>
+                            <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">{c.nom_client}</td>
                             <td className="p-2.5 truncate">
                               <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
-                                {catTrouvee ? catTrouvee.nom_categorie : 'Standard'}
+                                {catTrouvee ? catTrouvee.nom_categorie : 'STANDARD'}
                               </span>
                             </td>
                             <td className="p-2.5 text-right font-black text-blue-700 truncate">
@@ -899,7 +892,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   <tbody className="divide-y divide-slate-100 text-[10px]">
                     {obtenirLignesFactureDetail(factureSelectionnee).map((line, i) => (
                       <tr key={i}>
-                        <td className="p-2 font-black text-slate-900 truncate">{line.designation}</td>
+                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{line.designation}</td>
                         <td className="p-2 text-center font-black text-orange-600">{line.qte}</td>
                         <td className="p-2 text-right font-bold text-slate-800">{line.prixUnitaire.toLocaleString('fr-FR')}</td>
                         <td className="p-2 text-right font-black text-emerald-700">{line.sousTotal.toLocaleString('fr-FR')}</td>

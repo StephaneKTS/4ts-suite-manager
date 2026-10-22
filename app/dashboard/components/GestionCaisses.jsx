@@ -14,7 +14,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [natureCaisse, setNatureCaisse] = useState('FACTURATION');
   const [caisseEnEdition, setCaisseEnEdition] = useState(null);
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -86,7 +85,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         id_entreprise: entrepriseId,
         module: moduleActuel,
         code_caisse: codeCaisse.trim().toUpperCase(),
-        nom_caisse: nomCaisse.trim(),
+        nom_caisse: nomCaisse.trim().toUpperCase(), // Forcé en majuscules
         nature: natureCaisse,
       };
 
@@ -137,7 +136,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
-      {/* BARRE HAUTE : TITRE ET BOUTONS DE NAVIGATION */}
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
           🏧 Caisses [{moduleActuel}] ({caisses.length})
@@ -178,7 +176,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {/* FORMULAIRE D'AJOUT / MODIFICATION */}
       {afficherForm ? (
         <form onSubmit={enregistrerCaisse} className="bg-white p-3 rounded-xl border border-orange-500/50 shadow-sm space-y-2.5">
           <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
@@ -200,7 +197,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               <input
                 type="text"
                 value={codeCaisse}
-                onChange={(e) => setCodeCaisse(e.target.value)}
+                onChange={(e) => setCodeCaisse(e.target.value.toUpperCase())}
                 placeholder="C01"
                 required
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-mono font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
@@ -212,10 +209,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               <input
                 type="text"
                 value={nomCaisse}
-                onChange={(e) => setNomCaisse(e.target.value)}
-                placeholder="Caisse Principale"
+                onChange={(e) => setNomCaisse(e.target.value.toUpperCase())}
+                placeholder="CAISSE PRINCIPALE"
                 required
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
 
@@ -261,7 +258,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
           </div>
         </form>
       ) : (
-        /* LISTE DES CAISSES : GRILLE ÉPURÉE */
         <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
           {loading ? (
             <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des caisses...</p>

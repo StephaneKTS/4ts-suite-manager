@@ -22,7 +22,6 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
     valeur_ristourne: 0,
   });
 
-  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -35,7 +34,6 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
   const chargerCategories = async () => {
     setChargement(true);
     try {
-      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data, error } = await supabase
         .from('categories_clients')
         .select('*')
@@ -61,8 +59,8 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
     try {
       const payload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel, // Injection automatique du module actif
-        nom_categorie: nouvelleCategorie.nom_categorie,
+        module: moduleActuel,
+        nom_categorie: nouvelleCategorie.nom_categorie.trim().toUpperCase(),
         taux_remise_defaut: parseFloat(nouvelleCategorie.taux_remise_defaut) || 0,
         applique_tva: Boolean(nouvelleCategorie.applique_tva),
         taux_tva_defaut: parseFloat(nouvelleCategorie.taux_tva_defaut) || 0,
@@ -105,7 +103,6 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
     if (!categorieEnEdition) return;
 
     try {
-      // 1. Interrogation de la table clients pour vérifier si des clients sont rattachés à cette catégorie
       const { data: tousLesClients, error: errClients } = await supabase
         .from('clients')
         .select('*')
@@ -117,7 +114,6 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       const idCatStr = String(categorieEnEdition.id);
       const nomCatStr = String(categorieEnEdition.nom_categorie || '').trim().toUpperCase();
 
-      // 2. Filtrer les clients rattachés (par ID de catégorie ou par nom texte de catégorie)
       const clientsRattaches = (tousLesClients || []).filter((cli) => {
         const valIdCat = String(cli.id_categorie || cli.categorie_id || '');
         const valNomCat = String(cli.categorie_client || cli.nom_categorie || '').trim().toUpperCase();
@@ -125,9 +121,8 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
         return valIdCat === idCatStr || valNomCat === nomCatStr;
       });
 
-      // 3. Blocage immédiat si des clients y sont rattachés
       if (clientsRattaches.length > 0) {
-        const exempleClient = clientsRattaches[0].nom_client || 'Client';
+        const exempleClient = clientsRattaches[0].nom_client || 'CLIENT';
         alert(`❌ SUPPRESSION BLOQUÉE : Cette catégorie ("${categorieEnEdition.nom_categorie}") contient encore ${clientsRattaches.length} client(s) rattaché(s) (ex: "${exempleClient}"). Vous devez d'abord réaffecter ou supprimer ces clients avant de pouvoir supprimer cette catégorie.`);
         return;
       }
@@ -162,7 +157,6 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
-      {/* En-tête avec boutons de navigation "Nouveau" et "Liste" */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS [{moduleActuel}]</h3>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -196,7 +190,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
             <button type="button" onClick={annulerForm} className="text-slate-400 font-bold text-xs">✖</button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-            <div><label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom *</label><input type="text" required value={nouvelleCategorie.nom_categorie} onChange={(e) => setNouvelleCategorie({ ...nouvelleCategorie, nom_categorie: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-xs text-slate-800" /></div>
+            <div><label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom *</label><input type="text" required value={nouvelleCategorie.nom_categorie} onChange={(e) => setNouvelleCategorie({ ...nouvelleCategorie, nom_categorie: e.target.value.toUpperCase() })} placeholder="NOM CATÉGORIE" className="w-full bg-white border rounded p-1 font-extrabold uppercase text-xs text-slate-800" /></div>
             <div><label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Remise (%)</label><input type="number" step="0.01" value={nouvelleCategorie.taux_remise_defaut} onChange={(e) => setNouvelleCategorie({ ...nouvelleCategorie, taux_remise_defaut: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-xs text-slate-800" /></div>
             <div><label className="block font-semibold mb-0.5 text-[9px] text-slate-500">TVA</label><select value={nouvelleCategorie.applique_tva ? 'OUI' : 'NON'} onChange={(e) => setNouvelleCategorie({ ...nouvelleCategorie, applique_tva: e.target.value === 'OUI' })} className="w-full bg-white border rounded p-1 font-bold text-xs text-slate-800"><option value="OUI">Oui</option><option value="NON">Non</option></select></div>
           </div>
@@ -207,7 +201,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
         </form>
       ) : (
         <>
-          <div className="bg-slate-50 p-1.5 rounded-xl border"><input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder={`Rechercher [${moduleActuel}]...`} className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-bold" /></div>
+          <div className="bg-slate-50 p-1.5 rounded-xl border"><input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder={`RECHERCHER [${moduleActuel}]...`} className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-extrabold uppercase placeholder:text-slate-400" /></div>
           {chargement ? (<div className="p-4 text-center text-slate-400">Chargement...</div>) : categoriesFiltrees.length === 0 ? (<div className="p-4 text-center text-slate-400 bg-white border rounded-xl">Aucune catégorie enregistrée pour le module {moduleActuel}.</div>) : (
             <div className="overflow-x-auto border rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs table-fixed">
@@ -238,7 +232,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
                 <tbody className="divide-y text-[10.5px]">
                   {categoriesFiltrees.map((cat) => (
                     <tr key={cat.id} onClick={() => ouvrirEdition(cat)} className="hover:bg-orange-50/70 cursor-pointer">
-                      <td className="p-2 font-extrabold text-slate-900 truncate">{cat.nom_categorie}</td>
+                      <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{cat.nom_categorie}</td>
                       <td className="p-2 font-bold text-emerald-600">{cat.taux_remise_defaut || 0} %</td>
                       <td className="p-2 font-bold text-slate-800">{cat.applique_tva ? `Oui (${cat.taux_tva_defaut}%)` : 'Exonéré'}</td>
                       <td className="p-2 text-right font-bold text-purple-700">{cat.valeur_ristourne || 0}</td>
