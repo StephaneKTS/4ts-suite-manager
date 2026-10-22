@@ -80,12 +80,48 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    const codeSaisi = codeCaisse.trim().toUpperCase();
+    const nomSaisi = nomCaisse.trim().toUpperCase();
+
     try {
+      // 1. Vérification anti-doublon sur le code et sur le nom de la caisse
+      const { data: caissesExistantes, error: errVerif } = await supabase
+        .from('caisses')
+        .select('id, code_caisse, nom_caisse')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+
+      if (errVerif) throw errVerif;
+
+      const liste = caissesExistantes || [];
+
+      // Vérifier si le code existe déjà (sur une autre ligne)
+      const doublonCode = liste.some(c => 
+        String(c.code_caisse || '').toUpperCase() === codeSaisi && 
+        (!caisseEnEdition || String(c.id) !== String(caisseEnEdition.id))
+      );
+
+      if (doublonCode) {
+        setMsg({ type: 'error', text: `⛔ Erreur : Le code caisse "${codeSaisi}" existe déjà dans le module ${moduleActuel}.` });
+        return;
+      }
+
+      // Vérifier si le nom existe déjà (sur une autre ligne)
+      const doublonNom = liste.some(c => 
+        String(c.nom_caisse || '').toUpperCase() === nomSaisi && 
+        (!caisseEnEdition || String(c.id) !== String(caisseEnEdition.id))
+      );
+
+      if (doublonNom) {
+        setMsg({ type: 'error', text: `⛔ Erreur : Le nom de caisse "${nomSaisi}" existe déjà dans le module ${moduleActuel}.` });
+        return;
+      }
+
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        code_caisse: codeCaisse.trim().toUpperCase(),
-        nom_caisse: nomCaisse.trim().toUpperCase(), // Forcé en majuscules
+        code_caisse: codeSaisi,
+        nom_caisse: nomSaisi,
         nature: natureCaisse,
       };
 

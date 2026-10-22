@@ -17,6 +17,7 @@ import GestionApprovisionnements from './components/GestionApprovisionnements';
 import GestionFamilles from './components/GestionFamilles';
 import GestionMouvements from './components/GestionMouvements';
 import GestionJournalCaisse from './components/GestionJournalCaisse';
+import GestionPlanComptable from './components/GestionPlanComptable';
 import GestionRoles from './components/GestionRoles';
 import GestionUtilisateurs from './components/GestionUtilisateurs';
 import EspaceSouscription from './components/EspaceSouscription';
@@ -113,6 +114,7 @@ function DashboardContent() {
       case 'approvisionnements': return <GestionApprovisionnements entrepriseId={entrepriseId} />;
       case 'familles': return <GestionFamilles entrepriseId={entrepriseId} />;
       case 'mouvements': return <GestionMouvements entrepriseId={entrepriseId} />;
+      case 'plan_comptable': return <GestionPlanComptable entrepriseId={entrepriseId} />;
       case 'journal':
       case 'grand_livre':
       case 'controle':
@@ -346,9 +348,9 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
               </div>
 
-              <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">💵</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Trésorerie & Caisse</span>
+              <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">📚</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Plan Comptable</span>
               </div>
             </div>
           </div>
@@ -420,9 +422,9 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
               </div>
 
-              <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">💵</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Trésorerie & Caisse</span>
+              <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">📚</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Plan Comptable</span>
               </div>
             </div>
           </div>

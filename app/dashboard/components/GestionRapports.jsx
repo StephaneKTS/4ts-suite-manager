@@ -5,7 +5,7 @@ import GestionVentesHistoriques from './GestionVentesHistoriques';
 import GestionJournalCaisse from './GestionJournalCaisse';
 
 export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
-  const [vueActive, setVueActive] = useState('ventes'); // 'ventes' ou ID de la sous-table de trésorerie
+  const [vueActive, setVueActive] = useState('ventes'); // 'ventes' ou ID de la sous-table de saisie comptable
   const [tiroirTresorerieOuvert, setTiroirTresorerieOuvert] = useState(false);
 
   // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
@@ -18,7 +18,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
-  // Sous-tables du bloc Trésorerie & Comptabilité
+  // Sous-tables du bloc Saisie Comptable
   const tablesTresorerie = [
     {
       id: 'saisie_operations',
@@ -58,22 +58,22 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
             >
               <span className="text-4xl p-3 bg-emerald-50 text-emerald-700 rounded-2xl">📊</span>
               <div>
-                <span className="font-extrabold text-sm text-slate-800 block">Journal des Ventes [{moduleActuel}]</span>
-                <span className="text-[11px] text-slate-400 mt-1 block leading-snug">
+                <span className="font-extrabold text-sm text-slate-900 block">Journal des Ventes [{moduleActuel}]</span>
+                <span className="text-[11px] text-slate-600 font-bold mt-1 block leading-snug">
                   Consultation des tickets émis, filtres par période, dépôt et vendeur.
                 </span>
               </div>
             </button>
 
-            {/* Bloc 2 : Trésorerie & Comptabilité (Ouvre le tiroir des 3 icônes) */}
+            {/* Bloc 2 : Saisie Comptable (Ouvre le tiroir des 3 icônes) */}
             <button
               onClick={() => setTiroirTresorerieOuvert(true)}
               className="bg-white hover:bg-slate-50 border border-slate-200 p-6 rounded-3xl flex flex-col items-center text-center gap-3 shadow-sm hover:shadow-md transition duration-200"
             >
               <span className="text-4xl p-3 bg-orange-50 text-orange-600 rounded-2xl">💵</span>
               <div>
-                <span className="font-extrabold text-sm text-slate-800 block">Trésorerie & Comptabilité [{moduleActuel}]</span>
-                <span className="text-[11px] text-slate-400 mt-1 block leading-snug">
+                <span className="font-extrabold text-sm text-slate-900 block">Saisie Comptable [{moduleActuel}]</span>
+                <span className="text-[11px] text-slate-600 font-bold mt-1 block leading-snug">
                   Saisie des opérations, grand livre, journal de caisse et contrôle de clôture.
                 </span>
               </div>
@@ -101,7 +101,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {/* Affichage des modules de Trésorerie selon la sélection du tiroir */}
+      {/* Affichage des modules de Saisie Comptable selon la sélection du tiroir */}
       {['saisie_operations', 'grand_livre', 'controle_cloture'].includes(vueActive) && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -112,25 +112,25 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
               ⬅️ Retour aux blocs de rapports
             </button>
             <span className="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-1 rounded-full border border-orange-200">
-              ● Module Trésorerie Actif [{moduleActuel}]
+              ● Module Saisie Comptable Actif [{moduleActuel}]
             </span>
           </div>
           <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale={vueActive} />
         </div>
       )}
 
-      {/* TIROIR / BOTTOM SHEET POUR LES 3 ICONES DE TRÉSORERIE */}
+      {/* TIROIR / BOTTOM SHEET POUR LES 3 ICONES DE SAISIE COMPTABLE */}
       {tiroirTresorerieOuvert && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs p-0 sm:p-4">
           <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">💵</span>
-                <h3 className="font-extrabold text-base text-slate-800">Trésorerie & Comptabilité [{moduleActuel}]</h3>
+                <h3 className="font-extrabold text-base text-slate-900">Saisie Comptable [{moduleActuel}]</h3>
               </div>
               <button
                 onClick={() => setTiroirTresorerieOuvert(false)}
-                className="text-slate-400 hover:text-slate-600 font-black p-1 text-sm"
+                className="text-slate-500 hover:text-slate-700 font-black p-1 text-sm"
               >
                 ✕
               </button>
@@ -147,8 +147,8 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
                   className="bg-slate-50 hover:bg-orange-50 hover:border-orange-200 border border-slate-200 p-4 rounded-2xl flex flex-col items-center text-center gap-2 transition"
                 >
                   <span className="text-3xl">{t.icon}</span>
-                  <span className="font-extrabold text-xs text-slate-800 leading-tight">{t.nom}</span>
-                  <span className="text-[10px] text-slate-400 line-clamp-2">{t.desc}</span>
+                  <span className="font-extrabold text-xs text-slate-900 leading-tight">{t.nom}</span>
+                  <span className="text-[10px] text-slate-600 font-semibold line-clamp-2">{t.desc}</span>
                 </button>
               ))}
             </div>

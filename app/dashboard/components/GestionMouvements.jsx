@@ -93,10 +93,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         setEmplacements([]);
       }
 
+      // CORRECTION DE LA CASSE DE ID_ENTREPRISE -> id_entreprise
       const { data: dataArticles } = await supabase
         .from('articles_stock')
         .select('*')
-        .eq('ID_Entreprise', entrepriseId)
+        .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
       setArticles(dataArticles || []);
 
@@ -167,8 +168,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const calculerStockPourDepotActuel = (articleId) => {
     const depotCibleId = enTeteDoc.id_depot_source;
     if (!depotCibleId) {
-      const artObj = articles.find(a => String(a.id_article) === String(articleId));
-      return parseInt(artObj?.Quantite_Stock || 0);
+      const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
+      return parseInt(artObj?.Quantite_Stock || artObj?.quantite_stock || 0);
     }
     let stockDepot = 0;
     const fluxArticle = obtenirTousLesFluxArticle(articleId);
@@ -198,7 +199,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return Math.max(0, stockDepot);
   };
 
-  const articlesPopupFiltres = articles.filter((art) => (art.Designation || '').toLowerCase().includes((recherchePopup || '').toLowerCase()));
+  const articlesPopupFiltres = articles.filter((art) => {
+    const designation = art.Designation || art.designation || '';
+    return designation.toLowerCase().includes((recherchePopup || '').toLowerCase());
+  });
 
   const verifierEnTeteAvantSaisie = () => {
     if (!enTeteDoc.motif || !enTeteDoc.motif.trim()) { alert('⚠️ Veuillez obligatoirement saisir le motif.'); return false; }
@@ -218,7 +222,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const modifierLignePanier = (ligne) => {
-    const artObj = articles.find(a => String(a.id_article) === String(ligne.id_article)) || { id_article: ligne.id_article, Designation: ligne.designation };
+    const artObj = articles.find(a => String(a.id_article || a.id) === String(ligne.id_article)) || { id_article: ligne.id_article, Designation: ligne.designation };
     setArticleSelectionneTemp(artObj);
     setQuantiteSaisie(ligne.quantite);
     setLignesPanier(lignesPanier.filter((l) => String(l.id_article) !== String(ligne.id_article)));
@@ -230,7 +234,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     const qte = parseInt(quantiteSaisie);
     if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { alert('Quantité invalide.'); return; }
 
-    const stockActuelDepot = calculerStockPourDepotActuel(articleSelectionneTemp.id_article);
+    const artId = articleSelectionneTemp.id_article || articleSelectionneTemp.id;
+    const stockActuelDepot = calculerStockPourDepotActuel(artId);
     if ((typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') && qte > stockActuelDepot) {
       alert(`⛔ Stock insuffisant (${stockActuelDepot} disp.).`);
       return;
@@ -241,7 +246,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     else if (typeOperation === 'SORTIE' || typeOperation === 'AVARIES' || typeOperation === 'TRANSFERT') stockReelPrevisionnel = Math.max(0, stockActuelDepot - qte);
     else if (typeOperation === 'INVENTAIRE') stockReelPrevisionnel = qte;
 
-    const dejaPresentIndex = lignesPanier.findIndex((l) => String(l.id_article) === String(articleSelectionneTemp.id_article));
+    const dejaPresentIndex = lignesPanier.findIndex((l) => String(l.id_article) === String(artId));
     if (dejaPresentIndex !== -1) {
       const nouveauPanier = [...lignesPanier];
       const nouvelleQte = typeOperation === 'INVENTAIRE' ? qte : nouveauPanier[dejaPresentIndex].quantite + qte;
@@ -249,7 +254,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       nouveauPanier[dejaPresentIndex].stockReel = stockReelPrevisionnel;
       setLignesPanier(nouveauPanier);
     } else {
-      setLignesPanier([...lignesPanier, { id_article: articleSelectionneTemp.id_article, designation: articleSelectionneTemp.Designation, quantite: qte, stockActuel: stockActuelDepot, stockReel: stockReelPrevisionnel }]);
+      setLignesPanier([...lignesPanier, { id_article: artId, designation: articleSelectionneTemp.Designation || articleSelectionneTemp.designation, quantite: qte, stockActuel: stockActuelDepot, stockReel: stockReelPrevisionnel }]);
     }
     setArticleSelectionneTemp(null);
     setQuantiteSaisie(1);
@@ -324,8 +329,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     setTypeOperation(premier.type_mouvement || 'ENTREE');
     setEnTeteDoc({ ...enTeteDoc, numeroDoc: numeroDocUnique, dateDoc: premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0], id_depot_source: premier.id_depot_source || '', id_depot_destination: premier.id_depot_destination || '', motif: numeroDocUnique, operateur: premier.operateur || 'THÉODORE STÉPHANE' });
     setLignesPanier(lignesAssociees.map(mvt => {
-      const art = articles.find((a) => String(a.id_article) === String(mvt.id_article));
-      return { id_article: mvt.id_article, designation: art ? art.Designation : `Article #${mvt.id_article}`, quantite: mvt.quantite, stockActuel: calculerStockPourDepotActuel(mvt.id_article), stockReel: mvt.quantite };
+      const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
+      return { id_article: mvt.id_article, designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, quantite: mvt.quantite, stockActuel: calculerStockPourDepotActuel(mvt.id_article), stockReel: mvt.quantite };
     }));
     setMouvementEnEditionId(premier.id);
     setModeAffichage('SAISIE');
@@ -428,7 +433,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
               <div className="sm:col-span-8">
                 <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
                 <button ref={boutonSelectionArticleRef} type="button" onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between">
-                  <span>{articleSelectionneTemp ? `${articleSelectionneTemp.Designation}` : '-- Sélectionner --'}</span>
+                  <span>{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
                   <span className="text-orange-600">🔍</span>
                 </button>
               </div>
@@ -460,12 +465,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                   <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-500 font-bold">✕</button></div>
                   <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." className="w-full bg-slate-50 border rounded-xl px-2.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400" autoFocus />
                   <div className="overflow-y-auto space-y-1 flex-1 max-h-60">
-                    {articlesPopupFiltres.map((art) => (
-                      <div key={art.id_article} onClick={() => selectionnerArticleEtFocusQte(art)} className="p-2 rounded-xl border bg-slate-50 hover:bg-orange-50 cursor-pointer flex justify-between items-center">
-                        <span className="font-extrabold uppercase text-[10px] text-slate-900">{art.Designation}</span>
-                        <span className="text-[9.5px] font-bold text-emerald-600">Stock: {calculerStockPourDepotActuel(art.id_article)}</span>
-                      </div>
-                    ))}
+                    {articlesPopupFiltres.length === 0 ? (
+                      <p className="text-center text-slate-400 py-4 text-[10px] font-bold">Aucun article trouvé.</p>
+                    ) : (
+                      articlesPopupFiltres.map((art) => {
+                        const artId = art.id_article || art.id;
+                        return (
+                          <div key={artId} onClick={() => selectionnerArticleEtFocusQte(art)} className="p-2 rounded-xl border bg-slate-50 hover:bg-orange-50 cursor-pointer flex justify-between items-center">
+                            <span className="font-extrabold uppercase text-[10px] text-slate-900">{art.Designation || art.designation}</span>
+                            <span className="text-[9.5px] font-bold text-emerald-600">Stock: {calculerStockPourDepotActuel(artId)}</span>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>

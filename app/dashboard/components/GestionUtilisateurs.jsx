@@ -29,6 +29,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [afficherForm, setAfficherForm] = useState(false);
   const [userEnEdition, setUserEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
+  const [afficherMotDePasse, setAfficherMotDePasse] = useState(false);
 
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
@@ -176,7 +177,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         id_entreprise: entrepriseId,
         module: moduleActuel,
         nom_complet: (nouveauUser.nom_complet || '').trim().toUpperCase(),
-        email: (nouveauUser.email || '').trim().toLowerCase(), // EMAIL EXCLUS ET FORCÉ EN MINUSCULES
+        email: (nouveauUser.email || '').trim().toLowerCase(),
         pays: nouveauUser.pays,
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
@@ -213,7 +214,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
     setNouveauUser({
       nom_complet: user.nom_complet || '',
-      email: (user.email || '').toLowerCase(), // Restitution en minuscules
+      email: (user.email || '').toLowerCase(),
       pays: user.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
       mot_de_passe: user.mot_de_passe || '',
@@ -376,7 +377,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       </div>
 
       {afficherForm && (
-        <form onSubmit={enregistrerUtilisateur} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[60vh] overflow-y-auto pr-2 pb-24">
+        <form onSubmit={enregistrerUtilisateur} autoComplete="off" className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[60vh] overflow-y-auto pr-2 pb-24">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
               {userEnEdition ? `✏️ Fiche du collaborateur (${moduleActuel})` : `➕ Nouveau collaborateur (${moduleActuel})`}
@@ -429,7 +430,26 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             <div className="space-y-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
-                <input type="password" required={nouveauUser.acces_application} value={nouveauUser.mot_de_passe} onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} placeholder="••••••••" className="w-full bg-white border border-slate-300 rounded p-1.5 font-mono font-extrabold text-slate-900 text-xs shadow-xs" />
+                <div className="relative flex items-center">
+                  <input 
+                    key={userEnEdition ? userEnEdition.id : 'new-pwd'}
+                    type={afficherMotDePasse ? "text" : "password"} 
+                    required={nouveauUser.acces_application} 
+                    value={nouveauUser.mot_de_passe} 
+                    onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
+                    placeholder="••••••••" 
+                    autoComplete="new-password"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 pr-8 font-mono font-extrabold text-slate-900 text-xs shadow-xs" 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAfficherMotDePasse(!afficherMotDePasse)}
+                    className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs focus:outline-none"
+                    title={afficherMotDePasse ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  >
+                    {afficherMotDePasse ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -452,7 +472,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
           <div>
             <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-            <input type="email" value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
+            <input 
+              key={userEnEdition ? userEnEdition.id : 'new-email'}
+              type="email" 
+              value={nouveauUser.email} 
+              onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} 
+              placeholder="collaborateur@keita.cm" 
+              autoComplete="off"
+              className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" 
+            />
           </div>
 
           {nouveauUser.acces_application && (
