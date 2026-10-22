@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function ModuleBoutique({ entrepriseId = '4TS-TEST' }) {
   const [onglet, setOnglet] = useState('caisses'); // 'caisses', 'caisse', 'stock', 'historique'

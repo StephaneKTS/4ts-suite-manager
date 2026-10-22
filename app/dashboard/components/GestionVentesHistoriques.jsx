@@ -57,6 +57,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [valeurRemise, setValeurRemise] = useState(0);
   const [appliquerTva, setAppliquerTva] = useState('NON'); // 'OUI' ou 'NON'
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   // Formatage propre du numéro de ticket (ex: C01-01, C01-02, etc.)
   const genererNumeroTicket = (code, totalVentes) => {
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
@@ -65,15 +75,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const chargerDonnees = async () => {
     setChargement(true);
     try {
+      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const [resVentes, resArticles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro] = await Promise.all([
-        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false }),
-        supabase.from('articles_stock').select('*').eq('ID_Entreprise', entrepriseId),
-        supabase.from('clients').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('categories_clients').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId)
+        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
+        supabase.from('articles_stock').select('*').eq('ID_Entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('categories_clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
       if (resVentes.error) throw resVentes.error;
@@ -133,7 +144,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   useEffect(() => {
     chargerDonnees();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const changerCaisseSelectionnee = (idCaisseSel) => {
     setCaisseId(idCaisseSel);
@@ -370,6 +381,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
     const payloadVente = {
       id_entreprise: entrepriseId,
+      module: moduleActuel, // Injection automatique du module actif
       numero_ticket: numeroTicket,
       mode_paiement: modePaiementTicket,
       total_montant: totalFinal,
@@ -398,6 +410,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       for (const item of panier) {
         const payloadMouvement = {
           id_entreprise: entrepriseId,
+          module: moduleActuel, // Injection automatique du module actif
           type_mouvement: 'SORTIE',
           id_depot_source: depotId,
           id_depot_destination: null,
@@ -412,7 +425,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         }
       }
 
-      alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré et stock mis à jour avec succès !`);
+      alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré et stock mis à jour avec succès dans le module ${moduleActuel} !`);
       setPanier([]);
       setNomClientLibre('');
       setValeurRemise(0);
@@ -471,7 +484,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
             modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
           }`}
         >
-          🛒 Caiss
+          🛒 Caisse
         </button>
         <button
           onClick={() => setModeSaisie(false)}
@@ -528,7 +541,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               </div>
             </div>
 
-            {/* LIGNE 2 : Dépôt, Client, Client Libre */}
+            {/* LIGNE 2 : Dépôt, Client / Livreur, Client Libre */}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DÉPÔT</label>
@@ -550,7 +563,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               </div>
 
               <div>
-                <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CLIENT</label>
+                <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">
+                  {moduleActuel === 'LIVRAISON' ? 'LIVREUR' : 'CLIENT'}
+                </label>
                 <div
                   onClick={() => setAfficherModalClient(true)}
                   className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[24px]"
@@ -561,12 +576,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               </div>
 
               <div>
-                <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CLT LIBRE</label>
+                <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">
+                  {moduleActuel === 'LIVRAISON' ? 'LIVREUR LIBRE' : 'CLT LIBRE'}
+                </label>
                 <input
                   type="text"
                   value={nomClientLibre}
                   onChange={(e) => setNomClientLibre(e.target.value)}
-                  placeholder="Nom libre..."
+                  placeholder={moduleActuel === 'LIVRAISON' ? 'Livreur libre...' : 'Nom libre...'}
                   className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[10px] font-bold text-slate-900 placeholder:text-slate-400"
                 />
               </div>
@@ -778,7 +795,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               type="text"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
-              placeholder="Rechercher ticket ou client..."
+              placeholder={moduleActuel === 'LIVRAISON' ? "Rechercher ticket ou livreur..." : "Rechercher ticket ou client..."}
               className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
             />
             <select
@@ -806,13 +823,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   <tr>
                     <th className="p-2">Date</th>
                     <th className="p-2">N° Ticket</th>
-                    <th className="p-2">Client</th>
+                    <th className="p-2">{moduleActuel === 'LIVRAISON' ? 'Livreur' : 'Client'}</th>
                     <th className="p-2 text-right">Montant</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10px]">
                   {ventesFiltrees.map((v) => {
-                    const nomClientVente = v.nom_client || 'Client Divers';
+                    const nomClientVente = v.nom_client || (moduleActuel === 'LIVRAISON' ? 'Livreurs Divers' : 'Clients Divers');
                     return (
                       <tr
                         key={v.id}
@@ -872,12 +889,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         </div>
       )}
 
-      {/* MODAL RECHERCHE CLIENT */}
+      {/* MODAL RECHERCHE CLIENT / LIVREUR */}
       {afficherModalClient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
             <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px] font-bold">
-              <span>SÉLECTIONNER UN CLIENT</span>
+              <span>{moduleActuel === 'LIVRAISON' ? 'SÉLECTIONNER UN LIVREUR' : 'SÉLECTIONNER UN CLIENT'}</span>
               <button onClick={() => setAfficherModalClient(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
             <div className="p-3 space-y-2 overflow-y-auto">
@@ -886,12 +903,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 autoFocus
                 value={rechercheClientInput}
                 onChange={(e) => setRechercheClientInput(e.target.value)}
-                placeholder="Rechercher un client..."
+                placeholder={moduleActuel === 'LIVRAISON' ? "Rechercher un livreur..." : "Rechercher un client..."}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-bold text-slate-900 placeholder:text-slate-400"
               />
               <div className="space-y-1 pt-1">
                 {clientsFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-6 text-[10px]">Aucun client trouvé.</p>
+                  <p className="text-center text-slate-400 py-6 text-[10px]">{moduleActuel === 'LIVRAISON' ? 'Aucun livreur trouvé.' : 'Aucun client trouvé.'}</p>
                 ) : (
                   clientsFiltres.map((c) => (
                     <div

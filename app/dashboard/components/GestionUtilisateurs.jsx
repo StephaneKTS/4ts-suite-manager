@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 const LISTE_PAYS = [
   { code: 'cmr', indicatif: '+237', longueur: 9 },
@@ -67,6 +67,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     permissions: initialiserPermissionsDefaut(),
   });
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerDonnees = async () => {
     setChargement(true);
     try {
@@ -80,13 +90,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       const { data: dataRoles } = await supabase
         .from('roles')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setRoles(dataRoles || []);
 
       const { data: dataUsers, error } = await supabase
         .from('utilisateurs')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -100,7 +112,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerDonnees();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const togglePermission = (moduleId, action) => {
     setNouveauUser((prev) => {
@@ -162,6 +174,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
     try {
       const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         nom_complet: nouveauUser.nom_complet,
         email: nouveauUser.email,
         pays: nouveauUser.pays,
@@ -176,11 +190,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       if (userEnEdition) {
         const { error } = await supabase.from('utilisateurs').update(payload).eq('id', userEnEdition.id);
         if (error) throw error;
-        alert('Utilisateur mis à jour avec succès !');
+        alert(`Utilisateur mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
-        const { error } = await supabase.from('utilisateurs').insert([{ ...payload, id_entreprise: entrepriseId }]);
+        const { error } = await supabase.from('utilisateurs').insert([payload]);
         if (error) throw error;
-        alert('Utilisateur créé avec succès !');
+        alert(`Utilisateur créé avec succès dans le module ${moduleActuel} !`);
       }
 
       annulerForm();
@@ -236,9 +250,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       const idUserStr = String(userEnEdition.id);
 
       const [resMvts, resVentes, resAppro] = await Promise.all([
-        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId)
+        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
       const mouvements = resMvts.data || [];
@@ -326,7 +340,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div>
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-            <span>👥</span> COMPTES & INTERVENANTS
+            <span>👥</span> COMPTES & INTERVENANTS [{moduleActuel}]
           </h3>
           <p className="text-[9.5px] text-slate-600 font-bold mt-0.5">
             Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-600' : 'text-emerald-700'}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
@@ -360,7 +374,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste ({utilisateurs.length})
+          📋 Liste [{moduleActuel}] ({utilisateurs.length})
         </button>
       </div>
 
@@ -368,7 +382,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerUtilisateur} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[60vh] overflow-y-auto pr-2 pb-24">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
+              {userEnEdition ? `✏️ Fiche du collaborateur (${moduleActuel})` : `➕ Nouveau collaborateur (${moduleActuel})`}
             </h4>
             <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
           </div>
@@ -505,7 +519,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       {!afficherForm && (
         <>
           <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher par nom ou email..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none shadow-xs" />
+            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder={`Rechercher par nom ou email [${moduleActuel}]...`} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none shadow-xs" />
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
@@ -515,7 +529,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           {chargement ? (
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">Aucun enregistrement trouvé.</div>
+            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">Aucun enregistrement trouvé pour le module {moduleActuel}.</div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs">

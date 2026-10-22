@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 import SimulateurCadre from './components/SimulateurCadre';
 
 // Importation de tous vos composants métiers indépendants
@@ -21,23 +21,39 @@ import GestionRoles from './components/GestionRoles';
 import GestionUtilisateurs from './components/GestionUtilisateurs';
 import EspaceSouscription from './components/EspaceSouscription';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Importation de votre nouveau module de livraison
+import ModuleLivraison from './livraison/page';
 
 function DashboardContent() {
   const searchParams = useSearchParams();
   const entrepriseIdUrl = searchParams.get('entreprise') || '4TS-TEST';
 
+  const [mounted, setMounted] = useState(false);
   const [entrepriseId, setEntrepriseId] = useState(entrepriseIdUrl);
   const [infosEntreprise, setInfosEntreprise] = useState({
     nom_entreprise: 'CHARGEMENT...',
     email: '',
-    espaces_souscrits: []
+    espaces_souscrits: [],
+    module_actif: 'BOUTIQUE'
   });
 
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
+  const [moduleCourant, setModuleCourant] = useState('BOUTIQUE');
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('THEODORE STEPHANE');
+
+  // Sécurisation stricte de l'hydratation côté client (Empêche tout mismatch SSR/Client)
+  useEffect(() => {
+    setMounted(true);
+    const modLocal = localStorage.getItem('module_actif');
+    if (modLocal) {
+      setModuleCourant(modLocal.toUpperCase());
+    }
+    const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('nom_utilisateur');
+    if (userLocal) {
+      setUtilisateurConnecte(userLocal.toUpperCase());
+    }
+  }, []);
 
   // Charger les informations réelles de l'entreprise depuis Supabase
   useEffect(() => {
@@ -52,11 +68,15 @@ function DashboardContent() {
         if (data) {
           setInfosEntreprise(data);
           setEntrepriseId(data.id_entreprise);
+          if (!localStorage.getItem('module_actif') && data.module_actif) {
+            setModuleCourant(data.module_actif.toUpperCase());
+          }
         } else {
           setInfosEntreprise({
             nom_entreprise: 'KEITA SHOP',
             email: 'bureauisma26@gmail.com',
-            espaces_souscrits: ['Boutique']
+            espaces_souscrits: ['Boutique'],
+            module_actif: 'BOUTIQUE'
           });
         }
       } catch (err) {
@@ -64,10 +84,22 @@ function DashboardContent() {
       }
     }
 
-    fetchEntrepriseData();
+    if (entrepriseIdUrl) {
+      fetchEntrepriseData();
+    }
   }, [entrepriseIdUrl]);
 
+  const estModeLivraison = moduleCourant === 'LIVRAISON';
+
   const rendreModuleActif = () => {
+    if (moduleActif === 'souscription') {
+      return <EspaceSouscription entrepriseId={entrepriseId} />;
+    }
+
+    if (estModeLivraison && moduleActif === 'module_livraison_specifique') {
+      return <ModuleLivraison entrepriseId={entrepriseId} />;
+    }
+
     switch (moduleActif) {
       case 'caisses': return <GestionCaisses entrepriseId={entrepriseId} />;
       case 'ventes': return <GestionVentesHistoriques entrepriseId={entrepriseId} />;
@@ -85,26 +117,42 @@ function DashboardContent() {
         return <GestionJournalCaisse entrepriseId={entrepriseId} />;
       case 'roles': return <GestionRoles entrepriseId={entrepriseId} />;
       case 'utilisateurs': return <GestionUtilisateurs entrepriseId={entrepriseId} />;
-      case 'souscription': return <EspaceSouscription entrepriseId={entrepriseId} />;
       default: return null;
     }
   };
 
+  // Écran de chargement initial blindé pour éviter les sauts de rendu (SSR / Client)
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#0d1b2a] text-white flex items-center justify-center font-sans text-xs">
+        Chargement de la suite 4TS...
+      </div>
+    );
+  }
+
   const contenuApp = (
     <div className="min-h-screen bg-[#0d1b2a] text-slate-100 flex flex-col font-sans relative overflow-y-auto w-full max-w-full">
       
-      {/* EN-TÊTE ÉPURÉ ET PROFESSIONNEL */}
+      {/* EN-TÊTE AVEC LE LOGO PNG CORRIGÉ, SANS FOND BLEU ET AGRANDI */}
       <div className="sticky top-0 z-20 bg-[#1b263b] border-b border-blue-900/50 px-2 sm:px-4 py-3 text-white shadow-md shrink-0 flex items-center justify-between w-full">
         <div className="flex items-center space-x-3">
-          <div className="bg-orange-600 text-white font-black text-sm px-2.5 py-1 rounded-lg shadow-xs">
-            4TS
+          <div className="w-10 h-10 flex items-center justify-center shrink-0">
+            <img 
+              src="/logo-4ts.png" 
+              alt="4TS" 
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.parentElement.innerHTML = '<span class="font-black tracking-wider text-xs text-white">4TS</span>';
+              }}
+            />
           </div>
           <div>
             <h1 className="text-sm font-black tracking-tight text-white uppercase leading-none">
-              {infosEntreprise.nom_entreprise}
+              4TS : {infosEntreprise.nom_entreprise}
             </h1>
-            <p className="text-[10px] text-blue-300 font-mono mt-1">
-              ID : {entrepriseId}
+            <p className="text-[10px] text-blue-300 font-mono mt-1 uppercase">
+              {moduleCourant} | 👤 {utilisateurConnecte}
             </p>
           </div>
         </div>
@@ -125,12 +173,12 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* CONTENU DE LA PAGE AVEC ESPACE SUFFISANT EN BAS (pb-24) ET PLEINE LARGEUR */}
+      {/* CONTENU DE LA PAGE */}
       <div className="p-1 sm:p-2.5 space-y-3 flex-1 pb-24 w-full">
         {ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-3 w-full">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
-              TRÉSORERIE & COMPTABILITÉ DIRECTES
+              RAPPORTS
             </h2>
 
             <div className="grid grid-cols-1 gap-2.5 w-full">
@@ -162,7 +210,7 @@ function DashboardContent() {
         ) : ongletNavigation === 'profil' && !moduleActif ? (
           <div className="space-y-4 w-full">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
-              INFORMATIONS DU COMPTE & ENTREPRISE
+              MON PROFIL
             </h2>
 
             <div className="bg-[#1b263b] rounded-2xl p-5 shadow border border-blue-900/60 space-y-4 w-full">
@@ -171,7 +219,7 @@ function DashboardContent() {
                   👤
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-100 text-sm">Administrateur</h3>
+                  <h3 className="font-extrabold text-slate-100 text-sm">{utilisateurConnecte}</h3>
                   <p className="text-xs text-orange-400 font-bold">{infosEntreprise.email || 'Admin'}</p>
                 </div>
               </div>
@@ -186,8 +234,12 @@ function DashboardContent() {
                   <span className="font-mono font-bold text-blue-400">{entrepriseId}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-blue-900/30">
-                  <span className="text-blue-200/70 font-medium">Base de données :</span>
-                  <span className="font-bold text-slate-200">Supabase Direct Cloud</span>
+                  <span className="text-blue-200/70 font-medium">Module Actif :</span>
+                  <span className="font-bold text-orange-400 uppercase">{moduleCourant}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-blue-900/30">
+                  <span className="text-blue-200/70 font-medium">Utilisateur Connecté :</span>
+                  <span className="font-bold text-orange-400">{utilisateurConnecte}</span>
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span className="text-blue-200/70 font-medium">Statut de la session :</span>
@@ -222,10 +274,14 @@ function DashboardContent() {
               </div>
             </div>
           </div>
-        ) : !moduleActif ? (
+        ) : moduleActif === 'souscription' ? (
+          <div className="bg-[#1b263b] rounded-2xl shadow p-2 sm:p-4 border border-blue-900/60 text-slate-100 w-full">
+            <EspaceSouscription entrepriseId={entrepriseId} />
+          </div>
+        ) : !moduleActif && !estModeLivraison ? (
           <div className="space-y-3 w-full">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
-              ACCUEIL - TOUTES LES TABLES SUPABASE
+              ACCUEIL
             </h2>
 
             <div className="grid grid-cols-3 gap-2 w-full">
@@ -282,6 +338,80 @@ function DashboardContent() {
               <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🤝</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Fournisseurs</span>
+              </div>
+
+              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
+              </div>
+
+              <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">💵</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Trésorerie & Caisse</span>
+              </div>
+            </div>
+          </div>
+        ) : !moduleActif && estModeLivraison ? (
+          /* ACCUEIL MODULE LIVRAISON : GRILLE UNIFIÉE STRICTEMENT IDENTIQUE À LA BOUTIQUE */
+          <div className="space-y-3 w-full">
+            <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
+              ACCUEIL
+            </h2>
+
+            <div className="grid grid-cols-3 gap-2 w-full">
+              <div onClick={() => setModuleActif('ventes')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">🛒</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Saisie Livraison</span>
+              </div>
+
+              <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Espace Livreur</span>
+              </div>
+
+              <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Stock Articles</span>
+              </div>
+
+              <div onClick={() => setModuleActif('depots')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Dépôts de stock</span>
+              </div>
+
+              <div onClick={() => setModuleActif('familles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Familles d'Articles</span>
+              </div>
+
+              <div onClick={() => setModuleActif('categories')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Catégories Clients</span>
+              </div>
+
+              <div onClick={() => setModuleActif('mouvements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Mouvement Stock</span>
+              </div>
+
+              <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
+              </div>
+
+              <div onClick={() => setModuleActif('clients')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">👥</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion Livreur</span>
+              </div>
+
+              <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
+              </div>
+
+              <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion Partenaire</span>
               </div>
 
               <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">

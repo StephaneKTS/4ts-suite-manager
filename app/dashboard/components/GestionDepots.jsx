@@ -1,11 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://vtdqodqhkdxanrelxtrq.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '@/lib/supabase';
 
 export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const [depots, setDepots] = useState([]);
@@ -36,22 +32,36 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     { id: '3', nom: 'RESPONSABLE MAGASIN A' },
   ];
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerDepotsEtEmplacements = async () => {
     setChargement(true);
     try {
+      // Chargement direct des dépôts via Supabase avec filtrage par entreprise et module
       const { data: dataDepots, error: errDepots } = await supabase
         .from('depots_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (errDepots) throw errDepots;
       setDepots(dataDepots || []);
 
+      // Chargement direct des emplacements via Supabase
       const { data: dataEmpls, error: errEmpls } = await supabase
         .from('emplacements_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
 
       if (errEmpls) throw errEmpls;
 
@@ -73,7 +83,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerDepotsEtEmplacements();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const enregistrerDepot = async (e) => {
     e.preventDefault();
@@ -82,35 +92,34 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         await supabase
           .from('depots_stock')
           .update({ est_depot_par_defaut: false })
-          .eq('id_entreprise', entrepriseId);
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel);
       }
+
+      const payload = {
+        nom_depot: nouveauDepot.nom_depot,
+        adresse_localisation: nouveauDepot.adresse_localisation,
+        responsable_depot: nouveauDepot.responsable_depot,
+        est_depot_par_defaut: nouveauDepot.est_depot_par_defaut,
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+      };
 
       if (depotEnEdition) {
         const { error } = await supabase
           .from('depots_stock')
-          .update({
-            nom_depot: nouveauDepot.nom_depot,
-            adresse_localisation: nouveauDepot.adresse_localisation,
-            responsable_depot: nouveauDepot.responsable_depot,
-            est_depot_par_defaut: nouveauDepot.est_depot_par_defaut,
-          })
+          .update(payload)
           .eq('id', depotEnEdition.id);
 
         if (error) throw error;
-        alert('Dépôt mis à jour avec succès !');
+        alert(`Dépôt mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
-        const { error } = await supabase.from('depots_stock').insert([
-          {
-            nom_depot: nouveauDepot.nom_depot,
-            adresse_localisation: nouveauDepot.adresse_localisation,
-            responsable_depot: nouveauDepot.responsable_depot,
-            est_depot_par_defaut: nouveauDepot.est_depot_par_defaut,
-            id_entreprise: entrepriseId,
-          },
-        ]);
+        const { error } = await supabase
+          .from('depots_stock')
+          .insert([payload]);
 
         if (error) throw error;
-        alert('Dépôt créé avec succès !');
+        alert(`Dépôt enregistré avec succès dans le module ${moduleActuel} !`);
       }
 
       annulerFormDepot();
@@ -146,7 +155,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     if (!depotEnEdition) return;
 
     try {
-      // 1. Interrogation directe de la table relationnelle "stocks_par_depot"
       const { data: stocksDepot, error: errStocks } = await supabase
         .from('stocks_par_depot')
         .select('*')
@@ -154,7 +162,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
       if (errStocks) throw errStocks;
 
-      // 2. Vérification s'il existe un stock supérieur à 0 dans ce dépôt
       const totalStockActif = (stocksDepot || []).reduce((acc, curr) => acc + Number(curr.quantite || 0), 0);
 
       if (totalStockActif > 0) {
@@ -187,17 +194,21 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     try {
       const respFinal = responsableEmplacement || depot.responsable_depot || 'Non assigné';
 
-      const { error } = await supabase.from('emplacements_stock').insert([
-        {
-          id_entreprise: entrepriseId,
-          id_depot: depot.id,
-          nom_emplacement: nouveauNomEmplacement.trim(),
-          responsable_emplacement: respFinal,
-        },
-      ]);
+      const payloadEmp = {
+        id_entreprise: entrepriseId,
+        id_depot: depot.id,
+        nom_emplacement: nouveauNomEmplacement.trim(),
+        responsable_emplacement: respFinal,
+        module: moduleActuel,
+      };
+
+      const { error } = await supabase
+        .from('emplacements_stock')
+        .insert([payloadEmp]);
 
       if (error) throw error;
-      alert('Emplacement enregistré avec succès !');
+
+      alert(`Emplacement enregistré avec succès dans le module ${moduleActuel} !`);
 
       setNouveauNomEmplacement('');
       setResponsableEmplacement('');
@@ -229,7 +240,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🏢</span> GESTION DES DÉPÔTS
+          <span>🏢</span> GESTION DES DÉPÔTS [{moduleActuel}]
         </h3>
         <button
           type="button"
@@ -257,7 +268,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste des Dépôts ({depots.length})
+          📋 Liste des Dépôts [{moduleActuel}] ({depots.length})
         </button>
       </div>
 
@@ -265,7 +276,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerDepot} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
           <div className="flex justify-between items-center pb-1 border-b border-slate-100">
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
-              {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot}` : 'Nouveau Dépôt / Magasin'}
+              {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot}` : `Nouveau Dépôt / Magasin (${moduleActuel})`}
             </span>
             <button type="button" onClick={annulerFormDepot} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✖</button>
           </div>
@@ -318,7 +329,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
               className="w-4 h-4 text-orange-600 rounded border-slate-300 cursor-pointer"
             />
             <label htmlFor="est_depot_par_defaut_chk" className="text-[10px] font-black text-slate-900 cursor-pointer">
-              ⭐ Définir comme Dépôt Principal unique (remplacera l'ancien)
+              ⭐ Définir comme Dépôt Principal unique pour ce module
             </label>
           </div>
 
@@ -346,7 +357,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           <div className="p-4 text-center text-slate-500 font-bold text-xs">Chargement...</div>
         ) : depots.length === 0 ? (
           <div className="p-4 text-center text-slate-500 font-bold text-xs bg-white rounded-xl border border-slate-200">
-            Aucun dépôt enregistré.
+            Aucun dépôt enregistré pour le module {moduleActuel}.
           </div>
         ) : (
           <div className="space-y-2">

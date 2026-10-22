@@ -8,6 +8,16 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
   const [vueActive, setVueActive] = useState('ventes'); // 'ventes' ou ID de la sous-table de trésorerie
   const [tiroirTresorerieOuvert, setTiroirTresorerieOuvert] = useState(false);
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   // Sous-tables du bloc Trésorerie & Comptabilité
   const tablesTresorerie = [
     {
@@ -35,7 +45,11 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
       {/* Grille des 2 grands blocs de rapports */}
       {vueActive === 'ventes' && !tiroirTresorerieOuvert && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto pt-4">
+          <div className="text-center font-black text-xs text-orange-600 uppercase">
+            RAPPORTS & COMPTABILITÉ — [{moduleActuel}]
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto pt-2">
             
             {/* Bloc 1 : Journal des Ventes */}
             <button
@@ -44,7 +58,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
             >
               <span className="text-4xl p-3 bg-emerald-50 text-emerald-700 rounded-2xl">📊</span>
               <div>
-                <span className="font-extrabold text-sm text-slate-800 block">Journal des Ventes</span>
+                <span className="font-extrabold text-sm text-slate-800 block">Journal des Ventes [{moduleActuel}]</span>
                 <span className="text-[11px] text-slate-400 mt-1 block leading-snug">
                   Consultation des tickets émis, filtres par période, dépôt et vendeur.
                 </span>
@@ -58,7 +72,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
             >
               <span className="text-4xl p-3 bg-orange-50 text-orange-600 rounded-2xl">💵</span>
               <div>
-                <span className="font-extrabold text-sm text-slate-800 block">Trésorerie & Comptabilité</span>
+                <span className="font-extrabold text-sm text-slate-800 block">Trésorerie & Comptabilité [{moduleActuel}]</span>
                 <span className="text-[11px] text-slate-400 mt-1 block leading-snug">
                   Saisie des opérations, grand livre, journal de caisse et contrôle de clôture.
                 </span>
@@ -80,7 +94,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
               ⬅️ Retour aux blocs de rapports
             </button>
             <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200">
-              ● Journal des Ventes Actif
+              ● Journal des Ventes Actif [{moduleActuel}]
             </span>
           </div>
           <GestionVentesHistoriques entrepriseId={entrepriseId} />
@@ -98,7 +112,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
               ⬅️ Retour aux blocs de rapports
             </button>
             <span className="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-1 rounded-full border border-orange-200">
-              ● Module Trésorerie Actif
+              ● Module Trésorerie Actif [{moduleActuel}]
             </span>
           </div>
           <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale={vueActive} />
@@ -112,7 +126,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">💵</span>
-                <h3 className="font-extrabold text-base text-slate-800">Trésorerie & Comptabilité</h3>
+                <h3 className="font-extrabold text-base text-slate-800">Trésorerie & Comptabilité [{moduleActuel}]</h3>
               </div>
               <button
                 onClick={() => setTiroirTresorerieOuvert(false)}

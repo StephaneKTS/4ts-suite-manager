@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [articles, setArticles] = useState([]);
@@ -46,6 +46,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     date_peremption: '',
   });
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerDonneesReference = async () => {
     try {
       const { data: dataEnt } = await supabase
@@ -56,17 +66,20 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       
       if (dataEnt) setInfosEntreprise(dataEnt);
 
+      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data: dataFam } = await supabase
         .from('familles_articles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('nom_famille', { ascending: true });
       setFamilles(dataFam || []);
 
       const { data: dataDep } = await supabase
         .from('depots_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
 
@@ -81,13 +94,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         setEmplacements([]);
       }
 
-      const { data: dataMvts } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId);
+      const { data: dataMvts } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setMouvements(dataMvts || []);
 
-      const { data: dataApp } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId);
+      const { data: dataApp } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setApprovisionnements(dataApp || []);
 
-      const { data: dataVentes } = await supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId);
+      const { data: dataVentes } = await supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setVentesHistoriques(dataVentes || []);
     } catch (err) {
       console.error('Erreur chargement références :', err.message);
@@ -101,6 +114,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .from('articles_stock')
         .select('*')
         .eq('ID_Entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -124,7 +138,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   useEffect(() => {
     chargerDonneesReference();
     chargerArticles();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const isGestionPerissablesActive = () => {
     if (!entrepriseInfo) return false;
@@ -308,6 +322,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     e.preventDefault();
     try {
       const payloadArticle = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         Designation: nouveauArticle.Designation,
         Code_Barre: nouveauArticle.Code_Barre,
         Famille: nouveauArticle.Famille,
@@ -328,14 +344,14 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           .eq('ID_Entreprise', entrepriseId);
 
         if (error) throw error;
-        alert('Article mis à jour avec succès !');
+        alert(`Article mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
         payloadArticle.Quantite_Stock = 0;
         payloadArticle.ID_Entreprise = entrepriseId;
 
         const { error } = await supabase.from('articles_stock').insert([payloadArticle]);
         if (error) throw error;
-        alert('Article créé avec succès !');
+        alert(`Article créé avec succès dans le module ${moduleActuel} !`);
       }
 
       annulerForm();
@@ -461,7 +477,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       {/* EN-TÊTE EXPLICITE DE LA TABLE */}
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-wrap">
-          <span>📦</span> GESTION DES ARTICLES 
+          <span>📦</span> GESTION DES ARTICLES [{moduleActuel}]
           {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables Actif</span>}
         </h3>
         <button
@@ -495,7 +511,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📄 Articles ({articles.length})
+          📄 Articles [{moduleActuel}] ({articles.length})
         </button>
 
         <button
@@ -510,7 +526,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📊 Stat
+          📊 Stat [{moduleActuel}]
         </button>
       </div>
 
@@ -843,7 +859,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       </tr>
                     ) : articlesAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun article dans cette entreprise.</td>
+                        <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
                       </tr>
                     ) : (
                       articlesAffiches.map((art) => {
@@ -1006,7 +1022,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
-              <span className="font-black text-xs uppercase">SÉLECTIONNER UN ARTICLE</span>
+              <span className="font-black text-xs uppercase">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span>
               <button
                 onClick={() => setAfficherModalSelectionArticle(false)}
                 className="text-slate-300 hover:text-white font-black text-xs p-1"
@@ -1027,7 +1043,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
               <div className="space-y-1.5 pt-1">
                 {articlesModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun article trouvé.</p>
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun article trouvé pour le module {moduleActuel}.</p>
                 ) : (
                   articlesModalFiltres.map((art) => {
                     const idA = String(art.id_article || art.id);

@@ -22,13 +22,25 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     nom_role: '',
   });
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerRoles = async () => {
     setChargement(true);
     try {
+      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data, error } = await supabase
         .from('roles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -42,7 +54,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerRoles();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const enregistrerRole = async (e) => {
     e.preventDefault();
@@ -52,26 +64,25 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
+      const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
+        nom_role: nouveauRole.nom_role.trim(),
+      };
+
       if (roleEnEdition) {
         const { error } = await supabase
           .from('roles')
-          .update({
-            nom_role: nouveauRole.nom_role.trim(),
-          })
+          .update(payload)
           .eq('id', roleEnEdition.id);
 
         if (error) throw error;
-        alert('Rôle mis à jour avec succès !');
+        alert(`Rôle mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
-        const { error } = await supabase.from('roles').insert([
-          {
-            nom_role: nouveauRole.nom_role.trim(),
-            id_entreprise: entrepriseId,
-          },
-        ]);
+        const { error } = await supabase.from('roles').insert([payload]);
 
         if (error) throw error;
-        alert('Rôle créé avec succès !');
+        alert(`Rôle créé avec succès dans le module ${moduleActuel} !`);
       }
 
       annulerForm();
@@ -104,7 +115,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       const { data: tousLesUsers, error: errUsers } = await supabase
         .from('utilisateurs')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
 
       if (errUsers) throw errUsers;
 
@@ -172,7 +184,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       {/* EN-TÊTE EXPLICITE DE LA TABLE */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🛡️</span> GESTION DES RÔLES
+          <span>🛡️</span> GESTION DES RÔLES [{moduleActuel}]
         </h3>
         <button
           type="button"
@@ -202,7 +214,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste ({roles.length})
+          📋 Liste [{moduleActuel}] ({roles.length})
         </button>
       </div>
 
@@ -211,7 +223,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerRole} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {roleEnEdition ? '✏️ Fiche du rôle' : '➕ Nouveau rôle'}
+              {roleEnEdition ? `✏️ Fiche du rôle (${moduleActuel})` : `➕ Nouveau rôle (${moduleActuel})`}
             </h4>
             <button
               type="button"
@@ -270,7 +282,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               type="text"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
-              placeholder="Rechercher par nom de rôle..."
+              placeholder={`Rechercher par nom de rôle [${moduleActuel}]...`}
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none shadow-xs"
             />
           </div>
@@ -283,7 +295,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : rolesFiltres.length === 0 ? (
             <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-              Aucun rôle enregistré.
+              Aucun rôle enregistré pour le module {moduleActuel}.
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">

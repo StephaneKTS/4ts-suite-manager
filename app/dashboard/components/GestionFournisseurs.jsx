@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 const LISTE_PAYS = [
   { code: 'cmr', indicatif: '+237', longueur: 9 },
@@ -56,13 +56,25 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     solde_dette: 0,
   });
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerFournisseursEtDonnees = async () => {
     setChargement(true);
     try {
+      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data: dataFourn, error: errFourn } = await supabase
         .from('fournisseurs')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (errFourn) throw errFourn;
@@ -76,19 +88,29 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setApprovisionnements(dataAppro || []);
 
       const { data: dataBC } = await supabase
         .from('bons_commande_fournisseurs')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setBonsCommandes(dataBC || []);
 
-      const { data: dataArticles } = await supabase.from('articles_stock').select('*');
+      const { data: dataArticles } = await supabase
+        .from('articles_stock')
+        .select('*')
+        .eq('ID_Entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setArticles(dataArticles || []);
 
-      const { data: dataDepots } = await supabase.from('depots_stock').select('*');
+      const { data: dataDepots } = await supabase
+        .from('depots_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setDepots(dataDepots || []);
 
     } catch (err) {
@@ -100,7 +122,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerFournisseursEtDonnees();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const calculerTotauxFacture = (app) => {
     const montantTotal = Number(app.montant_total || app.total || 0);
@@ -147,6 +169,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
     try {
       const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         nom_fournisseur: nouveauFournisseur.nom_fournisseur,
         pays: nouveauFournisseur.pays,
         telephone: numeroComplet,
@@ -161,18 +185,17 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           .eq('id', fournisseurEnEdition.id);
 
         if (error) throw error;
-        alert('Fournisseur mis à jour avec succès !');
+        alert(`Fournisseur mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
         const { error } = await supabase.from('fournisseurs').insert([
           {
             ...payload,
             solde_dette: 0,
-            id_entreprise: entrepriseId,
           },
         ]);
 
         if (error) throw error;
-        alert('Fournisseur enregistré avec succès !');
+        alert(`Fournisseur enregistré avec succès dans le module ${moduleActuel} !`);
       }
 
       annulerForm();
@@ -226,8 +249,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
       // Interrogation DIRECTE et simultanée de approvisionnements et bons_commande_fournisseurs
       const [resAppro, resBC] = await Promise.all([
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId)
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
       if (resAppro.error) throw resAppro.error;
@@ -469,7 +492,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🏢</span> GESTION DES FOURNISSEURS
+          <span>🏢</span> GESTION DES FOURNISSEURS [{moduleActuel}]
         </h3>
         <button
           type="button"
@@ -496,7 +519,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             ongletActif === 'repertoire' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
-          👥 Fournisseurs ({fournisseurs.length})
+          👥 Fournisseurs [{moduleActuel}] ({fournisseurs.length})
         </button>
         <button
           type="button"
@@ -505,7 +528,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             ongletActif === 'historique' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
-          🔍 Historique
+          🔍 Historique [{moduleActuel}]
         </button>
       </div>
 
@@ -515,7 +538,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             <form onSubmit={enregistrerFournisseur} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
-                  {fournisseurEnEdition ? '✏️ Fiche du fournisseur' : '➕ Nouveau fournisseur'}
+                  {fournisseurEnEdition ? `✏️ Fiche du fournisseur (${moduleActuel})` : `➕ Nouveau fournisseur (${moduleActuel})`}
                 </h4>
                 <button
                   type="button"
@@ -651,7 +674,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   type="text"
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value)}
-                  placeholder="Rechercher par nom ou téléphone..."
+                  placeholder={`Rechercher par nom ou téléphone [${moduleActuel}]...`}
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
                 />
               </div>
@@ -664,7 +687,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
               ) : fournisseursFiltres.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-                  Aucun fournisseur enregistré.
+                  Aucun fournisseur enregistré pour le module {moduleActuel}.
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
@@ -708,7 +731,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       {ongletActif === 'historique' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
           <h4 className="font-black text-slate-900 text-xs uppercase flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
-            <span>🔍</span> HISTORIQUE FOURNISSEUR
+            <span>🔍</span> HISTORIQUE FOURNISSEUR [{moduleActuel}]
           </h4>
 
           <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
@@ -776,7 +799,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               <tbody className="divide-y divide-slate-100 text-[10px]">
                 {resultatHistorique.lignes.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun historique d'achat.</td>
+                    <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun historique d'achat pour le module {moduleActuel}.</td>
                   </tr>
                 ) : (
                   resultatHistorique.lignes.map((ligne, idx) => (
@@ -817,7 +840,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
               <div>
-                <h3 className="font-black text-xs uppercase">📄 FACTURE FOURNISSEUR</h3>
+                <h3 className="font-black text-xs uppercase">📄 FACTURE FOURNISSEUR [{moduleActuel}]</h3>
                 <p className="text-[10px] text-orange-400 font-mono font-extrabold">
                   N° {factureSelectionnee.numero_bon || factureSelectionnee.numero_commande || 'FACTURE'}
                 </p>

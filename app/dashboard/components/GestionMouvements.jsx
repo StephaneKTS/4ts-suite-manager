@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const [mouvements, setMouvements] = useState([]);
@@ -52,6 +52,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const genererNumeroDocIndependant = (type, mouvementsList) => {
     const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
     const prefix = prefixes[type] || 'ME';
@@ -59,22 +69,23 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return `${prefix}-${String(numsUniques.length + 1).padStart(2, '0')}`;
   };
 
-  // 🛡️ ISOLATION MULTI-TENANT STRICTE DE TOUTES LES RÉFÉRENCES DE MOUVEMENTS
+  // 🛡️ ISOLATION MULTI-TENANT STRICTE DE TOUTES LES RÉFÉRENCES DE MOUVEMENTS PAR ENTREPRISE ET PAR MODULE
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      // 1. Dépôts strictement filtrés par entreprise
+      // 1. Dépôts strictement filtrés par entreprise et par module
       const { data: dataDepots } = await supabase
         .from('depots_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       const depotsList = dataDepots || [];
       setDepots(depotsList);
       if (depotsList.length > 0 && !enTeteDoc.id_depot_source) {
         setEnTeteDoc((prev) => ({ ...prev, id_depot_source: depotsList[0].id }));
       }
 
-      // 2. Emplacements filtrés via les dépôts de l'entreprise
+      // 2. Emplacements filtrés via les dépôts de l'entreprise et du module
       const depotIds = depotsList.map(d => d.id);
       if (depotIds.length > 0) {
         const { data: dataEmplacements } = await supabase
@@ -86,34 +97,38 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         setEmplacements([]);
       }
 
-      // 3. Articles strictement filtrés par entreprise
+      // 3. Articles strictement filtrés par entreprise et par module
       const { data: dataArticles } = await supabase
         .from('articles_stock')
         .select('*')
-        .eq('ID_Entreprise', entrepriseId);
+        .eq('ID_Entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setArticles(dataArticles || []);
 
-      // 4. Familles d'articles strictement filtrées par entreprise
+      // 4. Familles d'articles strictement filtrées par entreprise et par module
       const { data: dataFamilles } = await supabase
         .from('familles_articles')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setFamilles(dataFamilles || []);
 
-      // 5. Mouvements de stock filtrés par entreprise
+      // 5. Mouvements de stock filtrés par entreprise et par module
       const { data: dataMouvements } = await supabase
         .from('mouvements_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
       const mouvementsList = dataMouvements || [];
       setMouvements(mouvementsList);
 
-      // 6. Approvisionnements filtrés par entreprise
+      // 6. Approvisionnements filtrés par entreprise et par module
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setApprovisionnements(dataAppro || []);
 
       if (!mouvementEnEditionId) {
@@ -126,7 +141,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  useEffect(() => { chargerDonnees(); }, [entrepriseId, typeOperation]);
+  useEffect(() => { chargerDonnees(); }, [entrepriseId, typeOperation, moduleActuel]);
 
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
     if (!valeurDepotFlux || !depotCibleId) return false;
@@ -283,12 +298,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       for (const ligne of lignesPanier) {
         const payload = {
           id_entreprise: entrepriseId,
+          module: moduleActuel, // Injection automatique du module actif
           type_mouvement: typeOperation,
           id_depot_source: enTeteDoc.id_depot_source || null,
           id_depot_destination: typeOperation === 'TRANSFERT' ? enTeteDoc.id_depot_destination : null,
           id_article: parseInt(ligne.id_article),
           quantite: ligne.quantite,
           motif_remarque: enTeteDoc.numeroDoc,
+          operateur: enTeteDoc.operateur,
         };
 
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
@@ -299,7 +316,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      alert('Document validé avec succès !');
+      alert(`Document validé avec succès dans le module ${moduleActuel} !`);
       setLignesPanier([]);
       setMouvementEnEditionId(null);
       setEnTeteDoc((prev) => ({ ...prev, motif: '', referenceDoc: '' }));
@@ -371,21 +388,21 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2 font-sans text-[10px]">
       <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-        <button type="button" onClick={() => { setModeAffichage('SAISIE'); setMouvementEnEditionId(null); setLignesPanier([]); setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), motif: '' })); }} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisir'}</button>
-        <button type="button" onClick={() => setModeAffichage('LISTE_DOCS')} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>📋 Liste ({documentsGroupes.length})</button>
+        <button type="button" onClick={() => { setModeAffichage('SAISIE'); setMouvementEnEditionId(null); setLignesPanier([]); setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), motif: '' })); }} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisir'} [{moduleActuel}]</button>
+        <button type="button" onClick={() => setModeAffichage('LISTE_DOCS')} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>📋 Liste [{moduleActuel}] ({documentsGroupes.length})</button>
       </div>
 
       {modeAffichage === 'SAISIE' && (
         <>
           <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
-            <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
+            <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement [{moduleActuel}]</span>
             <select disabled={enTeteVerrouille} value={typeOperation} onChange={(e) => { const nt = e.target.value; setTypeOperation(nt); if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements) })); }} className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]">
               <option value="ENTREE">📥 Entrée (ME)</option><option value="SORTIE">📤 Sortie (MS)</option><option value="AVARIES">⚠️ Avaries (AV)</option><option value="TRANSFERT">🔀 Transfert (TR)</option><option value="INVENTAIRE">📊 Inventaire (INV)</option>
             </select>
           </div>
 
           <div className={`bg-white border-2 border-orange-500/50 p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
-            <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span></div>
+            <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} [{moduleActuel}] {enTeteVerrouille && '🔒'}</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span></div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-[9.5px]">
               <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
               <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf.</label><input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="Ex: BL" className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
@@ -414,7 +431,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="bg-white border p-2 rounded-xl shadow-2xs space-y-1.5">
-            <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles</span>
+            <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles [{moduleActuel}]</span>
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
               <div className="sm:col-span-8">
                 <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
@@ -448,7 +465,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
             {modalArticleOuvert && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
                 <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2 max-h-[80vh] flex flex-col">
-                  <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">SÉLECTIONNER UN ARTICLE</span><button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-500 font-bold">✕</button></div>
+                  <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-500 font-bold">✕</button></div>
                   <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value)} placeholder="Rechercher..." className="w-full bg-slate-50 border rounded-xl px-2.5 py-1 text-[10px] font-bold text-slate-900" autoFocus />
                   <div className="overflow-y-auto space-y-1 flex-1 max-h-60">
                     {articlesPopupFiltres.map((art) => (
@@ -499,14 +516,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
       {modeAffichage === 'LISTE_DOCS' && (
         <div className="bg-white border rounded-xl overflow-hidden shadow-2xs">
-          <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]"><span className="font-extrabold uppercase text-slate-800">Documents Enregistrés</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span></div>
+          <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]"><span className="font-extrabold uppercase text-slate-800">Documents Enregistrés [{moduleActuel}]</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span></div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[9.5px]">
               <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
                 <tr><th onClick={() => gererTri('date')} className="p-1.5 cursor-pointer">Date</th><th onClick={() => gererTri('type')} className="p-1.5 cursor-pointer">Type</th><th onClick={() => gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° Doc</th><th onClick={() => gererTri('operateur')} className="p-1.5 cursor-pointer">Opérateur</th></tr>
               </thead>
               <tbody className="divide-y text-[9.5px]">
-                {documentsTries.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun document.</td></tr>) : (
+                {documentsTries.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun document pour le module {moduleActuel}.</td></tr>) : (
                   documentsTries.map((doc, idx) => (
                     <tr key={idx} onClick={() => ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px]">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>

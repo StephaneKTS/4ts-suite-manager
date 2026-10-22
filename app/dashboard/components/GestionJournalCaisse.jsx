@@ -1,11 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://vtdqodqhkdxanrelxtrq.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '@/lib/supabase';
 
 export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueInitiale = 'saisie_operations', utilisateurActif = 'THEODORE STEPHANE' }) {
   const [sousMenu, setSousMenu] = useState(vueInitiale);
@@ -41,29 +37,65 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const [montantPhysiqueReel, setMontantPhysiqueReel] = useState('');
   const [imputerManquant, setImputerManquant] = useState(false);
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerDonneesGlobales = async () => {
     setChargement(true);
     try {
-      const { data: cData } = await supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId);
-      
-      // Filtrer pour exclure les caisses de type "facturation" ou "vente"
-      const caissesFiltrees = (cData || []).filter(c => {
+      // 1. Récupération des caisses filtrées par entreprise et module
+      const { data: dataCaisses } = await supabase
+        .from('caisses')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+
+      const caissesFiltrees = (dataCaisses || []).filter(c => {
         const typeCaisse = (c.type_caisse || c.type || '').toLowerCase();
         return !typeCaisse.includes('facturation') && !typeCaisse.includes('vente');
       });
       setCaisses(caissesFiltrees);
 
-      const { data: cpData } = await supabase.from('comptes_comptables').select('*').eq('id_entreprise', entrepriseId);
-      setComptes(cpData || []);
+      // 2. Récupération des comptes comptables
+      const { data: dataComptes } = await supabase
+        .from('comptes_comptables')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setComptes(dataComptes || []);
 
-      const { data: mData } = await supabase.from('mouvements_caisse').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false });
-      setMouvements(mData || []);
+      // 3. Récupération des mouvements de caisse
+      const { data: dataMvts } = await supabase
+        .from('mouvements_caisse')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .order('created_at', { ascending: false });
+      setMouvements(dataMvts || []);
 
-      const { data: vData } = await supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId);
-      setVentes(vData || []);
+      // 4. Récupération des ventes historiques
+      const { data: dataVentes } = await supabase
+        .from('ventes_historiques')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setVentes(dataVentes || []);
 
-      const { data: uData } = await supabase.from('utilisateurs').select('*').eq('id_entreprise', entrepriseId);
-      setUtilisateurs(uData || []);
+      // 5. Récupération des utilisateurs
+      const { data: dataUsers } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setUtilisateurs(dataUsers || []);
+
     } catch (err) {
       console.error('Erreur chargement :', err.message);
     } finally {
@@ -73,7 +105,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
   useEffect(() => {
     chargerDonneesGlobales();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const calculerSoldeCaisse = (caisseId) => {
     if (!caisseId) return 0;
@@ -108,22 +140,25 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     try {
       const numeroPieceAuto = 'PC-' + Date.now().toString().slice(-6);
 
-      const payload = lignesSaisie.map(l => ({
-        id_entreprise: entrepriseId,
-        id_caisse: enteteSaisie.id_caisse,
-        type_mouvement: enteteSaisie.type_mouvement,
-        montant: Number(l.montant),
-        libelle: l.libelle,
-        id_compte: l.id_compte || null,
-        numero_piece_systeme: numeroPieceAuto,
-        numero_piece_physique: l.piece_physique || null,
-        created_at: new Date(enteteSaisie.date).toISOString(),
-      }));
+      for (const l of lignesSaisie) {
+        const payload = {
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          id_caisse: enteteSaisie.id_caisse,
+          type_mouvement: enteteSaisie.type_mouvement,
+          montant: Number(l.montant),
+          libelle: l.libelle,
+          id_compte: l.id_compte || null,
+          numero_piece_systeme: numeroPieceAuto,
+          numero_piece_physique: l.piece_physique || null,
+          created_at: new Date(enteteSaisie.date).toISOString(),
+        };
 
-      const { error } = await supabase.from('mouvements_caisse').insert(payload);
-      if (error) throw error;
+        const { error } = await supabase.from('mouvements_caisse').insert([payload]);
+        if (error) throw error;
+      }
 
-      alert(`Opérations enregistrées par ${utilisateurActif}. Pièce : ${numeroPieceAuto}`);
+      alert(`Opérations enregistrées par ${utilisateurActif} dans le module ${moduleActuel}. Pièce : ${numeroPieceAuto}`);
       setLignesSaisie([{ id_compte: '', libelle: '', montant: '', piece_physique: '' }]);
       chargerDonneesGlobales();
     } catch (err) {
@@ -162,28 +197,28 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
       const caissePrincipale = caisses.find(c => (c.nom_caisse || '').toLowerCase().includes('principale') || (c.nom_caisse || '').toLowerCase().includes('centrale')) || caisses[0];
       
       if (!caissePrincipale) {
-        alert('Aucune caisse principale trouvée pour le versement.');
+        alert(`Aucune caisse principale trouvée pour le versement dans le module ${moduleActuel}.`);
         return;
       }
 
       const montantVerser = Number(montantPhysiqueReel) || montantAttenduCaisse;
-      const libelleVersement = `Recette caisse du ${dateDebutControle} au ${dateFinControle} (Caissier: ${caissierFiltre}) versée par ${utilisateurActif}`;
+      const libelleVersement = `Recette caisse du ${dateDebutControle} au ${dateFinControle} (Caissier: ${caissierFiltre}) versé par ${utilisateurActif}`;
 
-      const { error } = await supabase.from('mouvements_caisse').insert([
-        {
-          id_entreprise: entrepriseId,
-          id_caisse: caissePrincipale.id,
-          type_mouvement: 'ENTREE',
-          montant: montantVerser,
-          libelle: libelleVersement,
-          numero_piece_systeme: 'CLOT-' + Date.now().toString().slice(-6),
-          created_at: new Date().toISOString()
-        }
-      ]);
+      const payloadVersement = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+        id_caisse: caissePrincipale.id,
+        type_mouvement: 'ENTREE',
+        montant: montantVerser,
+        libelle: libelleVersement,
+        numero_piece_systeme: 'CLOT-' + Date.now().toString().slice(-6),
+        created_at: new Date().toISOString()
+      };
 
+      const { error } = await supabase.from('mouvements_caisse').insert([payloadVersement]);
       if (error) throw error;
 
-      alert(`Clôture effectuée avec succès ! Montant de ${montantVerser.toLocaleString('fr-FR')} F versé en caisse principale.`);
+      alert(`Clôture effectuée avec succès ! Montant de ${montantVerser.toLocaleString('fr-FR')} F versé en caisse principale (${moduleActuel}).`);
       setMontantPhysiqueReel('');
       setCaisseControleId('');
       chargerDonneesGlobales();
@@ -199,7 +234,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
         <form onSubmit={enregistrerOperationsBatch} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
-              <h4 className="font-extrabold text-slate-800 text-sm uppercase">Saisie des opérations</h4>
+              <h4 className="font-extrabold text-slate-800 text-sm uppercase">Saisie des opérations [{moduleActuel}]</h4>
             </div>
             {enteteSaisie.id_caisse && (
               <div className="bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-right border border-slate-300">
@@ -346,7 +381,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
               💾 Valider
             </button>
             <span className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">
-              {utilisateurActif}
+              {utilisateurActif} [{moduleActuel}]
             </span>
           </div>
         </form>
@@ -356,7 +391,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
-              <h4 className="font-extrabold text-slate-800 text-sm uppercase">📚 Grand Livre des Comptes</h4>
+              <h4 className="font-extrabold text-slate-800 text-sm uppercase">📚 Grand Livre des Comptes [{moduleActuel}]</h4>
               <p className="text-slate-500">Édition par compte comptable (Auteur : <strong className="text-orange-600">{utilisateurActif}</strong>)</p>
             </div>
             <button
@@ -456,7 +491,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <div>
-              <h4 className="font-extrabold text-slate-800 text-sm uppercase">🔐 Contrôle de Caisse & Clôture Journalière</h4>
+              <h4 className="font-extrabold text-slate-800 text-sm uppercase">🔐 Contrôle de Caisse & Clôture [{moduleActuel}]</h4>
               <p className="text-slate-500">Responsable : <strong className="text-orange-600">{utilisateurActif}</strong></p>
             </div>
             <button
@@ -515,7 +550,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
               >
                 <option value="TOUS">Tous les caissiers</option>
                 {utilisateurs.map((u) => (
-                  <option key={u.id} value={u.id}>{u.nom || u.email}</option>
+                  <option key={u.id} value={u.id}>{u.nom_complet || u.email}</option>
                 ))}
               </select>
             </div>
@@ -570,7 +605,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                 onClick={cloturerEtVerserCaissePrincipale}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-2xl shadow-lg transition text-xs flex items-center gap-2"
               >
-                📥 Valider la Clôture & Verser en Caisse Principale
+                📥 Valider la Clôture & Verser en Caisse Principale ({moduleActuel})
               </button>
             </div>
           )}

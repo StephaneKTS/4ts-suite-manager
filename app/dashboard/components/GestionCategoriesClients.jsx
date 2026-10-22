@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) {
   const [categories, setCategories] = useState([]);
@@ -22,10 +22,27 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
     valeur_ristourne: 0,
   });
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerCategories = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase.from('categories_clients').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false });
+      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
+      const { data, error } = await supabase
+        .from('categories_clients')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
       setCategories(data || []);
     } catch (err) {
@@ -35,12 +52,16 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
     }
   };
 
-  useEffect(() => { chargerCategories(); }, [entrepriseId]);
+  useEffect(() => { 
+    chargerCategories(); 
+  }, [entrepriseId, moduleActuel]);
 
   const enregistrerCategorie = async (e) => {
     e.preventDefault();
     try {
       const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         nom_categorie: nouvelleCategorie.nom_categorie,
         taux_remise_defaut: parseFloat(nouvelleCategorie.taux_remise_defaut) || 0,
         applique_tva: Boolean(nouvelleCategorie.applique_tva),
@@ -51,10 +72,10 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
 
       if (categorieEnEdition) {
         await supabase.from('categories_clients').update(payload).eq('id', categorieEnEdition.id);
-        alert('Mise à jour réussie !');
+        alert(`Mise à jour réussie dans le module ${moduleActuel} !`);
       } else {
-        await supabase.from('categories_clients').insert([{ ...payload, id_entreprise: entrepriseId }]);
-        alert('Création réussie !');
+        await supabase.from('categories_clients').insert([payload]);
+        alert(`Création réussie dans le module ${moduleActuel} !`);
       }
       annulerForm();
       chargerCategories();
@@ -87,7 +108,9 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       // 1. Interrogation de la table clients pour vérifier si des clients sont rattachés à cette catégorie
       const { data: tousLesClients, error: errClients } = await supabase
         .from('clients')
-        .select('*');
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
 
       if (errClients) throw errClients;
 
@@ -141,7 +164,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       
       {/* En-tête avec boutons de navigation "Nouveau" et "Liste" */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS</h3>
+        <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS [{moduleActuel}]</h3>
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => { setCategorieEnEdition(null); setAfficherForm(true); }}
@@ -169,7 +192,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       {afficherForm ? (
         <form onSubmit={enregistrerCategorie} className="bg-slate-50 border border-orange-500/40 p-2.5 rounded-xl space-y-2 shadow-2xs">
           <div className="flex justify-between items-center border-b pb-1">
-            <h4 className="font-bold text-orange-600 uppercase text-[10px]">{categorieEnEdition ? '✏️ Édition' : '➕ Nouvelle'}</h4>
+            <h4 className="font-bold text-orange-600 uppercase text-[10px]">{categorieEnEdition ? `✏️ Édition (${moduleActuel})` : `➕ Nouvelle (${moduleActuel})`}</h4>
             <button type="button" onClick={annulerForm} className="text-slate-400 font-bold text-xs">✖</button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
@@ -184,8 +207,8 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
         </form>
       ) : (
         <>
-          <div className="bg-slate-50 p-1.5 rounded-xl border"><input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher..." className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-bold" /></div>
-          {chargement ? (<div className="p-4 text-center text-slate-400">Chargement...</div>) : categoriesFiltrees.length === 0 ? (<div className="p-4 text-center text-slate-400 bg-white border rounded-xl">Aucune catégorie.</div>) : (
+          <div className="bg-slate-50 p-1.5 rounded-xl border"><input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder={`Rechercher [${moduleActuel}]...`} className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-bold" /></div>
+          {chargement ? (<div className="p-4 text-center text-slate-400">Chargement...</div>) : categoriesFiltrees.length === 0 ? (<div className="p-4 text-center text-slate-400 bg-white border rounded-xl">Aucune catégorie enregistrée pour le module {moduleActuel}.</div>) : (
             <div className="overflow-x-auto border rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs table-fixed">
                 <thead className="bg-slate-50 text-slate-700 border-b uppercase text-[9px] font-extrabold select-none">

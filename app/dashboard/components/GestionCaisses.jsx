@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [caisses, setCaisses] = useState([]);
@@ -14,9 +14,19 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [natureCaisse, setNatureCaisse] = useState('FACTURATION');
   const [caisseEnEdition, setCaisseEnEdition] = useState(null);
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   useEffect(() => {
     chargerCaisses();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const chargerCaisses = async () => {
     setLoading(true);
@@ -25,12 +35,14 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         .from('caisses')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setCaisses(data || []);
     } catch (err) {
       console.error('Erreur chargement caisses :', err.message);
+      setMsg({ type: 'error', text: 'Erreur lors du chargement des caisses.' });
     } finally {
       setLoading(false);
     }
@@ -72,6 +84,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     try {
       const payload = {
         id_entreprise: entrepriseId,
+        module: moduleActuel,
         code_caisse: codeCaisse.trim().toUpperCase(),
         nom_caisse: nomCaisse.trim(),
         nature: natureCaisse,
@@ -82,12 +95,16 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
           .from('caisses')
           .update(payload)
           .eq('id', caisseEnEdition.id);
+
         if (error) throw error;
-        setMsg({ type: 'success', text: '✅ Caisse mise à jour avec succès !' });
+        setMsg({ type: 'success', text: `✅ Caisse mise à jour avec succès dans le module ${moduleActuel} !` });
       } else {
-        const { error } = await supabase.from('caisses').insert([payload]);
+        const { error } = await supabase
+          .from('caisses')
+          .insert([payload]);
+
         if (error) throw error;
-        setMsg({ type: 'success', text: '✅ Nouvelle caisse créée avec succès !' });
+        setMsg({ type: 'success', text: `✅ Nouvelle caisse enregistrée avec succès dans le module ${moduleActuel} !` });
       }
 
       annulerForm();
@@ -102,8 +119,13 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     if (!confirm(`Voulez-vous vraiment supprimer la caisse "${caisseEnEdition.nom_caisse}" ?`)) return;
 
     try {
-      const { error } = await supabase.from('caisses').delete().eq('id', caisseEnEdition.id);
+      const { error } = await supabase
+        .from('caisses')
+        .delete()
+        .eq('id', caisseEnEdition.id);
+
       if (error) throw error;
+
       setMsg({ type: 'success', text: 'Caisse supprimée avec succès.' });
       annulerForm();
       chargerCaisses();
@@ -118,7 +140,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       {/* BARRE HAUTE : TITRE ET BOUTONS DE NAVIGATION */}
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
-          🏧 Caisses ({caisses.length})
+          🏧 Caisses [{moduleActuel}] ({caisses.length})
         </h2>
         <div className="flex items-center gap-1">
           <button
@@ -161,7 +183,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerCaisse} className="bg-white p-3 rounded-xl border border-orange-500/50 shadow-sm space-y-2.5">
           <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
             <h3 className="font-extrabold text-slate-900 text-[11px] uppercase">
-              {caisseEnEdition ? '✏️ Modifier la Caisse' : '🏧 Nouvelle Caisse'}
+              {caisseEnEdition ? `✏️ Modifier la Caisse (${moduleActuel})` : `🏧 Nouvelle Caisse (${moduleActuel})`}
             </h3>
             <button
               type="button"
@@ -245,7 +267,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
             <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des caisses...</p>
           ) : caisses.length === 0 ? (
             <div className="text-center py-6 space-y-2">
-              <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée.</p>
+              <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée pour le module {moduleActuel}.</p>
               <button
                 type="button"
                 onClick={ouvrirFormulaireNouveau}

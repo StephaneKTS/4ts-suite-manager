@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 const LISTE_PAYS = [
   { code: 'cmr', indicatif: '+237', longueur: 9 },
@@ -57,13 +57,25 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     solde_credit: 0,
   });
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerDonnees = async () => {
     setChargement(true);
     try {
+      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
       const { data: dataCat } = await supabase
         .from('categories_clients')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('nom_categorie', { ascending: true });
 
       setCategories(dataCat || []);
@@ -72,6 +84,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         .from('clients')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (errCli) throw errCli;
@@ -85,10 +98,15 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       const { data: dataVentes } = await supabase
         .from('ventes_historiques')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setVentes(dataVentes || []);
 
-      const { data: dataArticles } = await supabase.from('articles_stock').select('*');
+      const { data: dataArticles } = await supabase
+        .from('articles_stock')
+        .select('*')
+        .eq('ID_Entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setArticles(dataArticles || []);
 
     } catch (err) {
@@ -100,7 +118,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerDonnees();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const calculerTotauxFactureClient = (vente) => {
     const montantTotal = Number(vente.montant_total || vente.total || 0);
@@ -153,6 +171,8 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
     try {
       const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         nom_client: nouveauClient.nom_client,
         pays: nouveauClient.pays,
         telephone: numeroComplet,
@@ -167,18 +187,17 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
           .eq('id', clientEnEdition.id);
 
         if (error) throw error;
-        alert('Client mis à jour avec succès !');
+        alert(`Client mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
         const { error } = await supabase.from('clients').insert([
           {
             ...payload,
             solde_credit: 0,
-            id_entreprise: entrepriseId,
           },
         ]);
 
         if (error) throw error;
-        alert('Client enregistré avec succès !');
+        alert(`Client enregistré avec succès dans le module ${moduleActuel} !`);
       }
 
       annulerForm();
@@ -231,8 +250,8 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
       // Interrogation DIRECTE et simultanée de ventes_historiques et mouvements_stock
       const [resVentes, resMvts] = await Promise.all([
-        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId)
+        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
       if (resVentes.error) throw resVentes.error;
@@ -256,7 +275,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
       const totalOperations = ventesRattachees.length + mouvementsRattaches.length;
 
-      // BLOCAGE STRICT si des mouvements ou des ventes existent, SINON demande de confirmation pour supprimer un client neuf sans ventes
+      // BLOCAGE STRICT si des mouvements ou des ventes existent
       if (totalOperations > 0) {
         alert(`❌ SUPPRESSION BLOQUÉE : Ce client ("${clientEnEdition.nom_client}") a déjà ${totalOperations} mouvement(s) ou vente(s) enregistré(s) à son compte. Pour des raisons comptables et de traçabilité, il est strictement impossible de le supprimer.`);
         setChargement(false);
@@ -480,7 +499,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
             ongletActif === 'repertoire' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
-          👥 Clients ({clients.length})
+          👥 Clients [{moduleActuel}] ({clients.length})
         </button>
         <button
           type="button"
@@ -489,14 +508,14 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
             ongletActif === 'historique' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
-          🔍 Historique
+          🔍 Historique [{moduleActuel}]
         </button>
       </div>
 
       {ongletActif === 'repertoire' && (
         <>
           <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <h3 className="font-extrabold text-slate-900 uppercase text-xs">👥 GESTION DES CLIENTS</h3>
+            <h3 className="font-extrabold text-slate-900 uppercase text-xs">👥 GESTION DES CLIENTS [{moduleActuel}]</h3>
             <button
               onClick={() => {
                 if (afficherForm) {
@@ -517,7 +536,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
             <form onSubmit={enregistrerClient} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2 shadow-2xs">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
-                  {clientEnEdition ? '✏️ Fiche du client' : '➕ Nouveau client'}
+                  {clientEnEdition ? `✏️ Fiche du client (${moduleActuel})` : `➕ Nouveau client (${moduleActuel})`}
                 </h4>
                 <button
                   type="button"
@@ -679,7 +698,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   type="text"
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value)}
-                  placeholder="Rechercher par nom ou téléphone..."
+                  placeholder={`Rechercher par nom ou téléphone [${moduleActuel}]...`}
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
                 />
               </div>
@@ -692,7 +711,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
               ) : clientsFiltres.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-                  Aucun client trouvé.
+                  Aucun client enregistré pour le module {moduleActuel}.
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
@@ -745,7 +764,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       {ongletActif === 'historique' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
           <h4 className="font-black text-slate-900 text-xs uppercase flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
-            <span>🔍</span> HISTORIQUE CLIENT
+            <span>🔍</span> HISTORIQUE CLIENT [{moduleActuel}]
           </h4>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
@@ -852,7 +871,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
               <div>
-                <h3 className="font-black text-xs uppercase">📄 FACTURE CLIENT</h3>
+                <h3 className="font-black text-xs uppercase">📄 FACTURE CLIENT [{moduleActuel}]</h3>
                 <p className="text-[10px] text-orange-400 font-mono font-extrabold">
                   N° {factureSelectionnee.numero_facture || factureSelectionnee.reference || factureSelectionnee.numero_bon || 'FACTURE'}
                 </p>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' }) {
   const [approvisionnements, setApprovisionnements] = useState([]);
@@ -41,6 +41,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const inputQuantiteRef = useRef(null);
   const selectArticleRef = useRef(null);
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const genererNumeroDoc = (type, listeDocs) => {
     const prefix = type === 'FACTURE' ? 'APP-' : 'BC-';
     const docsFiltres = (listeDocs || []).filter(d => ((d.numero_bon || d.numero_commande) || '').startsWith(prefix));
@@ -51,26 +61,27 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      const { data: dataDepots } = await supabase.from('depots_stock').select('*');
+      // Isolation stricte par entreprise ET par module pour une étanchéité à long terme
+      const { data: dataDepots } = await supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const listDepots = dataDepots || [];
       setDepots(listDepots);
       if (listDepots.length > 0 && !idDepotDestination) {
         setIdDepotDestination(listDepots[0].id);
       }
 
-      const { data: dataFourn } = await supabase.from('fournisseurs').select('*');
+      const { data: dataFourn } = await supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setFournisseurs(dataFourn || []);
 
-      const { data: dataArticles } = await supabase.from('articles_stock').select('*');
+      const { data: dataArticles } = await supabase.from('articles_stock').select('*').eq('ID_Entreprise', entrepriseId).eq('module', moduleActuel);
       setArticles(dataArticles || []);
 
-      const { data: dataMouvements } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId);
+      const { data: dataMouvements } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setMouvements(dataMouvements || []);
 
-      const { data: dataAppro } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false });
+      const { data: dataAppro } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false });
       setApprovisionnements(dataAppro || []);
 
-      const { data: dataBC } = await supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false });
+      const { data: dataBC } = await supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false });
       setBonsCommandes(dataBC || []);
 
       if (!approEnEditionId && !numeroDoc) {
@@ -85,7 +96,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   useEffect(() => {
     chargerDonnees();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
     if (!valeurDepotFlux || !depotCibleId) return false;
@@ -241,6 +252,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     try {
       const payload = {
         id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         numero_bon: numeroDoc,
         id_fournisseur: idFournisseur,
         numero_commande: referenceFournisseur,
@@ -268,7 +280,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
       if (error) { alert(`Erreur Supabase : ${error.message}`); return; }
 
-      alert(`Facture ${numeroDoc} enregistrée !`);
+      alert(`Facture ${numeroDoc} enregistrée avec succès dans le module ${moduleActuel} !`);
       setVueActive('liste');
       chargerDonnees();
     } catch (err) { alert('Erreur : ' + err.message); }
@@ -283,6 +295,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     try {
       const payload = {
         id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         numero_commande: numeroDoc,
         id_fournisseur: idFournisseur,
         id_depot_destination: idDepotDestination,
@@ -309,7 +322,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
       if (error) { alert(`Erreur Supabase : ${error.message}`); return; }
 
-      alert(`Bon de commande ${numeroDoc} enregistré !`);
+      alert(`Bon de commande ${numeroDoc} enregistré avec succès dans le module ${moduleActuel} !`);
       setVueActive('liste');
       chargerDonnees();
     } catch (err) { alert('Erreur : ' + err.message); }
@@ -323,6 +336,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       
       const payloadFacture = {
         id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
         numero_bon: nouveauNumFacture,
         id_fournisseur: doc.id_fournisseur || idFournisseur,
         numero_commande: doc.numero_commande || referenceFournisseur,
@@ -347,7 +361,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         if (errDel) throw errDel;
       }
 
-      alert(`Succès ! Le bon a été transformé en facture : ${nouveauNumFacture}`);
+      alert(`Succès ! Le bon a été transformé en facture : ${nouveauNumFacture} (${moduleActuel})`);
       setVueActive('liste');
       setOngletActif('FACTURE');
       chargerDonnees();
@@ -423,7 +437,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       {/* EN-TÊTE HARMONISÉ */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>📦</span> APPROVISIONNEMENTS
+          <span>📦</span> APPROVISIONNEMENTS [{moduleActuel}]
         </h3>
         {vueActive === 'liste' ? (
           <button
@@ -452,14 +466,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             onClick={() => { setOngletActif('FACTURE'); setVueActive('liste'); }} 
             className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'FACTURE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
           >
-            📥 Factures ({documentsHistorique.length})
+            📥 Factures [{moduleActuel}] ({documentsHistorique.length})
           </button>
           <button 
             type="button" 
             onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
             className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
           >
-            📋 Commandes ({commandesHistorique.length})
+            📋 Commandes [{moduleActuel}] ({commandesHistorique.length})
           </button>
         </div>
       )}
@@ -478,7 +492,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10px]">
-                  {documentsHistorique.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucune facture enregistrée.</td></tr>) : (
+                  {documentsHistorique.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucune facture enregistrée pour le module {moduleActuel}.</td></tr>) : (
                     documentsHistorique.map((doc) => (
                       <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'FACTURE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                         <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
@@ -504,7 +518,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10px]">
-                  {commandesHistorique.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande.</td></tr>) : (
+                  {commandesHistorique.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande pour le module {moduleActuel}.</td></tr>) : (
                     commandesHistorique.map((cmd) => (
                       <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                         <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
@@ -523,7 +537,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       {vueActive === 'choix_creation' && (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-md space-y-3 max-w-sm mx-auto text-center">
           <div className="border-b border-slate-200 pb-2 flex justify-between items-center">
-            <span className="font-black text-slate-900 text-xs uppercase">CHOISIR LE TYPE DE DOCUMENT</span>
+            <span className="font-black text-slate-900 text-xs uppercase">CHOISIR LE TYPE DE DOCUMENT [{moduleActuel}]</span>
             <button type="button" onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
           </div>
           <div className="grid grid-cols-2 gap-2 pt-1">
@@ -543,7 +557,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         <form onSubmit={enregistrerFacture} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
             <div className="flex items-center gap-2">
-              <span className="font-black text-slate-900 text-xs uppercase">📥 FACTURE FOURNISSEUR {enTeteVerrouille && '🔒'}</span>
+              <span className="font-black text-slate-900 text-xs uppercase">📥 FACTURE FOURNISSEUR [{moduleActuel}] {enTeteVerrouille && '🔒'}</span>
               <button type="button" onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
             </div>
             <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
@@ -662,7 +676,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         <form onSubmit={enregistrerCommande} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
             <div className="flex items-center gap-2">
-              <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
+              <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE [{moduleActuel}] {enTeteVerrouille && '🔒'}</span>
               <button type="button" onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
             </div>
             <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
@@ -735,7 +749,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       {modalArticleOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2.5 max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2"><span className="font-black text-xs uppercase text-slate-900">SÉLECTIONNER UN ARTICLE</span><button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button></div>
+            <div className="flex justify-between items-center border-b border-slate-200 pb-2"><span className="font-black text-xs uppercase text-slate-900">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button></div>
             <input type="text" autoFocus placeholder="Rechercher..." value={rechercheArticle} onChange={(e) => setRechercheArticle(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-extrabold text-slate-900 shadow-xs" />
             <div className="overflow-y-auto space-y-1.5 flex-1 max-h-60">
               {articlesFiltresModal.map((art) => {

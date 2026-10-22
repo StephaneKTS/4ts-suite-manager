@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [familles, setFamilles] = useState([]);
@@ -13,16 +13,42 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     nom_famille: '',
   });
 
+  // Récupération dynamique et robuste du module actif (Boutique, Livraison, Logistique, Tontine, etc.)
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+
   const chargerFamilles = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase
+      // Tentative de récupération avec le filtre strict par module
+      let { data, error } = await supabase
         .from('familles_articles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      // Sécuro-fallback : si la colonne module met du temps à se synchroniser sur Supabase
+      if (error && error.message.includes('column')) {
+        console.warn('⚠️ Colonne module non détectée, bascule en mode global temporaire...');
+        const resSecours = await supabase
+          .from('familles_articles')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .order('created_at', { ascending: false });
+        
+        if (resSecours.error) throw resSecours.error;
+        data = resSecours.data;
+      } else if (error) {
+        throw error;
+      }
+
       setFamilles(data || []);
     } catch (err) {
       console.error('Erreur :', err.message);
@@ -33,7 +59,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerFamilles();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const enregistrerFamille = async (e) => {
     if (e) e.preventDefault();
@@ -43,26 +69,25 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
+      const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel, // Injection automatique du module actif
+        nom_famille: nouveauFamille.nom_famille.trim(),
+      };
+
       if (familleSelectionnee) {
         const { error } = await supabase
           .from('familles_articles')
-          .update({
-            nom_famille: nouveauFamille.nom_famille.trim(),
-          })
+          .update(payload)
           .eq('id', familleSelectionnee.id);
 
         if (error) throw error;
-        alert('Famille mise à jour avec succès !');
+        alert(`Famille mise à jour avec succès dans le module ${moduleActuel} !`);
       } else {
-        const { error } = await supabase.from('familles_articles').insert([
-          {
-            nom_famille: nouveauFamille.nom_famille.trim(),
-            id_entreprise: entrepriseId,
-          },
-        ]);
+        const { error } = await supabase.from('familles_articles').insert([payload]);
 
         if (error) throw error;
-        alert('Famille créée avec succès !');
+        alert(`Famille créée avec succès dans le module ${moduleActuel} !`);
       }
       reinitialiser();
       chargerFamilles();
@@ -90,7 +115,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     try {
       const { data: tousLesArticles, error: errArticles } = await supabase
         .from('articles_stock')
-        .select('*');
+        .select('*')
+        .eq('ID_Entreprise', entrepriseId)
+        .eq('module', moduleActuel);
 
       if (errArticles) throw errArticles;
 
@@ -129,7 +156,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       {/* EN-TÊTE EXPLICITE DE LA TABLE (HARMONISÉ) */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES
+          <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES [{moduleActuel}]
         </h3>
         <button
           type="button"
@@ -162,7 +189,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste des Familles ({familles.length})
+          📋 Liste des Familles [{moduleActuel}] ({familles.length})
         </button>
       </div>
 
@@ -171,7 +198,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerFamille} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
           <div className="flex justify-between items-center pb-1 border-b border-slate-100">
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
-              Nouvelle famille d'articles
+              Nouvelle famille d'articles ({moduleActuel})
             </span>
             <button type="button" onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
           </div>
@@ -220,7 +247,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             <table className="w-full text-left text-xs table-fixed">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
-                  <th className="p-2.5 w-full">Famille</th>
+                  <th className="p-2.5 w-full">Famille [{moduleActuel}]</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-[10.5px]">
@@ -230,7 +257,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   </tr>
                 ) : familles.length === 0 ? (
                   <tr>
-                    <td className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
+                    <td className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée pour le module {moduleActuel}.</td>
                   </tr>
                 ) : (
                   familles.map((fam) => (
@@ -256,7 +283,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden flex flex-col">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-xs font-black">
-              <span>🏷️ MODIFIER LA FAMILLE</span>
+              <span>🏷️ MODIFIER LA FAMILLE [{moduleActuel}]</span>
               <button onClick={reinitialiser} className="text-slate-300 hover:text-white font-black text-xs">✕</button>
             </div>
 
