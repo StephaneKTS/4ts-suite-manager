@@ -45,17 +45,13 @@ function DashboardContent() {
   // Sécurisation stricte de l'hydratation côté client (Empêche tout mismatch SSR/Client)
   useEffect(() => {
     setMounted(true);
-    const modLocal = localStorage.getItem('module_actif');
-    if (modLocal) {
-      setModuleCourant(modLocal.toUpperCase());
-    }
     const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('nom_utilisateur');
     if (userLocal) {
       setUtilisateurConnecte(userLocal.toUpperCase());
     }
   }, []);
 
-  // Charger les informations réelles de l'entreprise depuis Supabase
+  // Charger les informations réelles de l'entreprise depuis Supabase et synchroniser le module actif
   useEffect(() => {
     async function fetchEntrepriseData() {
       try {
@@ -68,14 +64,20 @@ function DashboardContent() {
         if (data) {
           setInfosEntreprise(data);
           setEntrepriseId(data.id_entreprise);
-          if (!localStorage.getItem('module_actif') && data.module_actif) {
+
+          // Synchronisation propre du module actif entre la base et l'appareil mobile/desktop
+          const modLocal = localStorage.getItem('module_actif');
+          if (modLocal && data.espaces_souscrits && data.espaces_souscrits.map(m => m.toUpperCase()).includes(modLocal.toUpperCase())) {
+            setModuleCourant(modLocal.toUpperCase());
+          } else if (data.module_actif) {
             setModuleCourant(data.module_actif.toUpperCase());
+            localStorage.setItem('module_actif', data.module_actif.toUpperCase());
           }
         } else {
           setInfosEntreprise({
             nom_entreprise: 'KEITA SHOP',
             email: 'bureauisma26@gmail.com',
-            espaces_souscrits: ['Boutique'],
+            espaces_souscrits: ['Boutique', 'Livraison'],
             module_actif: 'BOUTIQUE'
           });
         }
@@ -262,8 +264,7 @@ function DashboardContent() {
                 <button
                   onClick={() => {
                     if (confirm('Voulez-vous vraiment vous déconnecter de l’application ?')) {
-                      localStorage.removeItem('entrepriseId');
-                      localStorage.removeItem('utilisateurConnecte');
+                      localStorage.clear();
                       window.location.href = '/connexion';
                     }
                   }}
