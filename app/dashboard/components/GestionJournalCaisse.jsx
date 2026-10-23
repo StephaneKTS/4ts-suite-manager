@@ -1085,7 +1085,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
             </div>
           ) : (
             <div className="space-y-3">
-              {/* Ligne compacte : Titre du Journal de Caisse + Bouton Imprimer réduit */}
               <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-2">
                 <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs uppercase whitespace-nowrap">📋 JOURNAL DE CAISSE</h4>
                 <button
@@ -1110,7 +1109,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                 </select>
               </div>
 
-              {/* Filtres par date pour le Journal de Caisse */}
               <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
                 <div>
                   <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Début :</label>
@@ -1378,7 +1376,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
           ) : (
             <div className="space-y-3">
               
-              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+              {/* FILTRES DE RECHERCHE RESTRUCTURÉS */}
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
                 <div className="flex justify-between items-center">
                   <span className="font-extrabold text-slate-800 text-[10px] uppercase">🔍 Filtres de recherche</span>
                   {(filtreDateDebut || filtreDateFin || filtreCaisseId || filtreCaissierId) && (
@@ -1396,7 +1395,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                {/* Ligne 1 : Date Du / Au sur la même ligne */}
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-black text-slate-700 text-[9px] mb-0.5">Du :</label>
                     <input
@@ -1416,7 +1416,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                       className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[11px]"
                     />
                   </div>
+                </div>
 
+                {/* Ligne 2 : Caisse / Caissier sur la même ligne */}
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-black text-slate-700 text-[9px] mb-0.5">Caisse :</label>
                     <select
@@ -1427,7 +1430,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                       }}
                       className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] truncate"
                     >
-                      <option value="">-- Toutes les caisses --</option>
+                      <option value="">-- Toutes --</option>
                       {caisses.map((c) => (
                         <option key={c.id} value={c.id}>{c.nom_caisse}</option>
                       ))}
@@ -1441,7 +1444,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                       onChange={(e) => setFiltreCaissierId(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] truncate"
                     >
-                      <option value="">-- Tous les caissiers --</option>
+                      <option value="">-- Tous --</option>
                       {caissiersFiltresRecherche.map((u) => (
                         <option key={u.id} value={u.id}>{u.nom_complet || u.email}</option>
                       ))}
