@@ -138,7 +138,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
         .order('created_at', { ascending: false });
       setEtatsCaisseList(dataEtats || []);
 
-      const prochainNum = `CL-${String((dataEtats || []).length + 1).padStart(3, '0')}`;
+      const prochainNum = `CL-${(dataEtats || []).length + 1}`;
       setNumeroPieceCloture(prochainNum);
 
     } catch (err) {
@@ -157,7 +157,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     setCaissierFiltre('');
     setMontantVerse('');
     setDernierEtatIdValidé(null);
-    const prochainNum = `CL-${String(etatsCaisseList.length + 1).padStart(3, '0')}`;
+    const prochainNum = `CL-${etatsCaisseList.length + 1}`;
     setNumeroPieceCloture(prochainNum);
   };
 
@@ -323,7 +323,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     return 0;
   });
 
-  // Calculs des totaux Entrées, Sorties et Solde pour le Journal de Caisse
   const totalEntreesJournal = mouvementsJournalTries
     .filter(m => m.type_mouvement === 'ENTREE')
     .reduce((acc, m) => acc + Number(m.montant || 0), 0);
@@ -534,7 +533,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
         return;
       }
 
-      const numClotureAssocie = etat.code_piece || `CL-${String(etatsCaisseList.indexOf(etat) + 1).padStart(3, '0')}`;
+      const numClotureAssocie = etat.code_piece || `CL-${etatsCaisseList.indexOf(etat) + 1}`;
 
       const payloadMvt = {
         id_entreprise: entrepriseId,
@@ -744,7 +743,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] text-slate-700 font-black mb-1">Motif *</label>
                     <input
@@ -965,60 +964,64 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
           {sousOngletGrandLivreJournal === 'grand_livre' ? (
             <div className="space-y-3">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                 <div>
-                  <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm uppercase">📖 GRAND LIVRE [{moduleActuel}]</h4>
+                  <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs uppercase">📖 GRAND LIVRE</h4>
                   <p className="text-slate-700 font-semibold text-[10px]">Consultation des mouvements de compte</p>
                 </div>
                 <button
                   onClick={() => window.print()}
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl transition shadow text-xs"
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2.5 py-1.5 rounded-xl transition shadow text-[10px] shrink-0"
                 >
                   🖨️ Imprimer
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-200 items-end">
-                <div>
-                  <label className="block font-black text-slate-800 mb-1 text-[10px]">Date Début :</label>
-                  <input
-                    type="date"
-                    value={dateDebutLivre}
-                    onChange={(e) => setDateDebutLivre(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs"
-                  />
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Du :</label>
+                    <input
+                      type="date"
+                      value={dateDebutLivre}
+                      onChange={(e) => setDateDebutLivre(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Au :</label>
+                    <input
+                      type="date"
+                      value={dateFinLivre}
+                      onChange={(e) => setDateFinLivre(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-black text-slate-800 mb-1 text-[10px]">Date Fin :</label>
-                  <input
-                    type="date"
-                    value={dateFinLivre}
-                    onChange={(e) => setDateFinLivre(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs"
-                  />
-                </div>
+                <div className="grid grid-cols-2 gap-2 items-end">
+                  <div>
+                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Compte :</label>
+                    <select
+                      value={compteLivreId}
+                      onChange={(e) => setCompteLivreId(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate shadow-2xs"
+                    >
+                      <option value="">-- Tous --</option>
+                      {comptes.map((c) => (
+                        <option key={c.id} value={c.id}>{c.intitule_compte}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block font-black text-slate-800 mb-1 text-[10px]">Compte :</label>
-                  <select
-                    value={compteLivreId}
-                    onChange={(e) => setCompteLivreId(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate"
+                  <button
+                    onClick={lancerEditionGrandLivre}
+                    className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 px-3 rounded-xl shadow transition text-xs text-center"
                   >
-                    <option value="">-- Tous les comptes --</option>
-                    {comptes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.intitule_compte}</option>
-                    ))}
-                  </select>
+                    🔍 Consulter
+                  </button>
                 </div>
-
-                <button
-                  onClick={lancerEditionGrandLivre}
-                  className="bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-2 rounded-xl shadow transition text-xs"
-                >
-                  🔍 Consulter
-                </button>
               </div>
 
               <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
@@ -1082,33 +1085,29 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex flex-col gap-2 border-b border-slate-100 pb-2.5">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm uppercase">📋 JOURNAL DE CAISSE [{moduleActuel}]</h4>
-                    <p className="text-slate-700 font-semibold text-[10px]">Journal chronologique complet (saisies manuelles & versements validés)</p>
-                  </div>
-                  <button
-                    onClick={() => window.print()}
-                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl transition shadow text-xs"
-                  >
-                    🖨️ Imprimer
-                  </button>
-                </div>
+              {/* Ligne compacte : Titre du Journal de Caisse + Bouton Imprimer réduit */}
+              <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-2">
+                <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs uppercase whitespace-nowrap">📋 JOURNAL DE CAISSE</h4>
+                <button
+                  onClick={() => window.print()}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2.5 py-1.5 rounded-xl transition shadow text-[10px] whitespace-nowrap shrink-0"
+                >
+                  🖨️ Imprimer
+                </button>
+              </div>
 
-                <div className="flex items-center gap-1.5 w-full pt-1">
-                  <label className="font-bold text-slate-700 text-[10px] whitespace-nowrap">Caisse Principale :</label>
-                  <select
-                    value={caisseSelectionneeJournal}
-                    onChange={(e) => setCaisseSelectionneeJournal(e.target.value)}
-                    className="bg-slate-50 border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-xs shadow-2xs w-full truncate"
-                  >
-                    <option value="">-- Toutes les caisses principales --</option>
-                    {caissesPrincipalesPourSaisie.map((c) => (
-                      <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="flex items-center gap-1.5 w-full">
+                <label className="font-bold text-slate-700 text-[10px] whitespace-nowrap">Caisse :</label>
+                <select
+                  value={caisseSelectionneeJournal}
+                  onChange={(e) => setCaisseSelectionneeJournal(e.target.value)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-xs shadow-2xs w-full truncate"
+                >
+                  <option value="">-- Toutes les caisses principales --</option>
+                  {caissesPrincipalesPourSaisie.map((c) => (
+                    <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Filtres par date pour le Journal de Caisse */}
@@ -1168,7 +1167,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                         const estEntree = m.type_mouvement === 'ENTREE';
                         const montantNum = Number(m.montant) || 0;
                         
-                        // Si c'est un versement (ex: CL-006), on cherche le caissier associé à cette clôture (code_piece)
                         let nomCompteAffichage = compteObj ? compteObj.intitule_compte : '-';
                         if ((m.libelle || '').toUpperCase() === 'VERSEMENT' && m.piece_physique) {
                           const etatConcerne = etatsCaisseList.find(e => String(e.code_piece) === String(m.piece_physique));
@@ -1247,24 +1245,24 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
           {sousOngletControle === 'nouveau_controle' ? (
             <div className="space-y-3">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm uppercase">CONTRÔLE & CLÔTURE</h4>
-                  <span className="bg-orange-100 text-orange-800 font-mono font-black text-[10px] px-2 py-0.5 rounded-md border border-orange-200">
-                    N° {numeroPieceCloture}
+              <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs uppercase whitespace-nowrap">CONTRÔLE & CLÔTURE</h4>
+                  <span className="bg-orange-100 text-orange-800 font-mono font-black text-[9.5px] px-2 py-0.5 rounded-md border border-orange-200 whitespace-nowrap">
+                    {numeroPieceCloture}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={preparerNouvelleCloture}
-                    className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-xl transition shadow text-xs flex items-center gap-1"
+                    className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-1.5 rounded-xl transition shadow text-[10px] whitespace-nowrap uppercase"
                   >
-                    <span>＋</span> Nouvelle clôture
+                    <span>＋</span> Nouvelle
                   </button>
                   <button
                     onClick={() => window.print()}
-                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl transition shadow text-xs"
+                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2.5 py-1.5 rounded-xl transition shadow text-[10px] whitespace-nowrap"
                   >
                     🖨️ Imprimer
                   </button>
@@ -1296,7 +1294,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                       onChange={(e) => setCaisseControleId(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                     >
-                      <option value="">-- Sélectionnez une caisse --</option>
+                      <option value="">-- Sélectionnez --</option>
                       {caissesFacturationPourControle.map((c) => (
                         <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
                       ))}
@@ -1312,7 +1310,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                       onChange={(e) => setCaissierFiltre(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                     >
-                      <option value="">-- Sélectionnez un caissier --</option>
+                      <option value="">-- Sélectionnez --</option>
                       {caissiersFiltresControle.map((u) => (
                         <option key={u.id} value={u.id}>{u.nom_complet || u.email}</option>
                       ))}
@@ -1320,7 +1318,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center pt-1 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
                   <div>
                     <label className="block font-black text-slate-800 mb-1 text-[10px]">Montant Attendu :</label>
                     <div className="bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-950 text-xs text-center truncate shadow-2xs">
@@ -1340,22 +1338,22 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                       className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-emerald-700 text-xs shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Écart :</label>
-                    <div className={`p-2 rounded-xl border text-xs font-black text-center shadow-2xs ${montantVerse === '' ? 'bg-white border-slate-300 text-slate-400' : ecartCaisse === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : ecartCaisse > 0 ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
-                      {montantVerse === '' ? '-' : ecartCaisse === 0 ? '0 (Parfait)' : ecartCaisse > 0 ? `+ ${ecartCaisse.toLocaleString('fr-FR')} (Excédent)` : `${ecartCaisse.toLocaleString('fr-FR')} (Manquant)`}
-                    </div>
+                <div>
+                  <label className="block font-black text-slate-800 mb-1 text-[10px]">Écart :</label>
+                  <div className={`p-2 rounded-xl border text-xs font-black text-center shadow-2xs ${montantVerse === '' ? 'bg-white border-slate-300 text-slate-400' : ecartCaisse === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : ecartCaisse > 0 ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
+                    {montantVerse === '' ? '-' : ecartCaisse === 0 ? '0 (Parfait)' : ecartCaisse > 0 ? `+ ${ecartCaisse.toLocaleString('fr-FR')} (Excédent)` : `${ecartCaisse.toLocaleString('fr-FR')} (Manquant)`}
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   disabled={Boolean(dernierEtatIdValidé)}
                   onClick={validerClotureCaisse}
-                  className={`px-5 py-2.5 rounded-2xl shadow transition text-xs font-black text-center ${
+                  className={`w-full py-2.5 px-2 rounded-2xl shadow transition text-[11px] font-black text-center truncate ${
                     !dernierEtatIdValidé
                       ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -1367,7 +1365,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   type="button"
                   disabled={!dernierEtatIdValidé}
                   onClick={executerVersementActif}
-                  className={`px-5 py-2.5 rounded-2xl shadow transition text-xs font-black text-center ${
+                  className={`w-full py-2.5 px-2 rounded-2xl shadow transition text-[11px] font-black text-center truncate ${
                     dernierEtatIdValidé 
                       ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer' 
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -1380,7 +1378,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
           ) : (
             <div className="space-y-3">
               
-              {/* FILTRES DE RECHERCHE MULTICRITÈRES */}
               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="font-extrabold text-slate-800 text-[10px] uppercase">🔍 Filtres de recherche</span>
@@ -1498,7 +1495,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                         
                         const dateObj = new Date(etat.date_debut);
                         const dateFormatee = !isNaN(dateObj) ? dateObj.toLocaleDateString('fr-FR') : etat.date_debut;
-                        const numeroClotureAffichage = etat.code_piece || `CL-${String(indexEtat + 1).padStart(3, '0')}`;
+                        const numeroClotureAffichage = etat.code_piece || `CL-${indexEtat + 1}`;
 
                         const montantAttenduNum = Number(etat.montant_attendu) || 0;
                         const montantVerseNum = Number(etat.montant_verse) || 0;
