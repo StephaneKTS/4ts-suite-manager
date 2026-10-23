@@ -18,7 +18,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
   const [nouveauCompte, setNouveauCompte] = useState({
     code_compte: '',
     intitule_compte: '',
-    type_compte: 'CHARGE',
+    type_compte: '',
   });
 
   const obtenirModuleActuel = () => {
@@ -54,12 +54,42 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerCompte = async (e) => {
     e.preventDefault();
+    if (!nouveauCompte.type_compte) {
+      alert('Veuillez sélectionner la nature du compte.');
+      return;
+    }
+
     try {
+      const codeSaisi = (nouveauCompte.code_compte || '').trim();
+      const intituleSaisi = (nouveauCompte.intitule_compte || '').trim().toUpperCase();
+
+      // Vérification stricte des doublons sur le numéro de compte
+      const doublonCode = comptes.find(c => 
+        (c.code_compte || '').trim().toLowerCase() === codeSaisi.toLowerCase() && 
+        (!compteEnEdition || c.id !== compteEnEdition.id)
+      );
+
+      if (doublonCode) {
+        alert(`Le numéro de compte "${codeSaisi}" existe déjà dans le plan comptable.`);
+        return;
+      }
+
+      // Vérification stricte des doublons sur l'intitulé du compte
+      const doublonIntitule = comptes.find(c => 
+        (c.intitule_compte || '').trim().toUpperCase() === intituleSaisi && 
+        (!compteEnEdition || c.id !== compteEnEdition.id)
+      );
+
+      if (doublonIntitule) {
+        alert(`L'intitulé de compte "${intituleSaisi}" existe déjà dans le plan comptable.`);
+        return;
+      }
+
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        code_compte: (nouveauCompte.code_compte || '').trim(),
-        intitule_compte: (nouveauCompte.intitule_compte || '').trim().toUpperCase(),
+        code_compte: codeSaisi,
+        intitule_compte: intituleSaisi,
         type_compte: nouveauCompte.type_compte,
       };
 
@@ -86,7 +116,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
     setNouveauCompte({
       code_compte: compte.code_compte || '',
       intitule_compte: compte.intitule_compte || '',
-      type_compte: compte.type_compte || 'CHARGE',
+      type_compte: compte.type_compte || '',
     });
     setAfficherForm(true);
   };
@@ -96,7 +126,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
     setNouveauCompte({
       code_compte: '',
       intitule_compte: '',
-      type_compte: 'CHARGE',
+      type_compte: '',
     });
     setAfficherForm(false);
   };
@@ -210,6 +240,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
               onChange={(e) => setNouveauCompte({ ...nouveauCompte, type_compte: e.target.value })}
               className="w-full bg-white border border-slate-300 rounded p-1 font-black text-slate-900 text-[10px] shadow-2xs"
             >
+              <option value="">-- Choisir la nature --</option>
               <option value="CHARGE">🔴 CHARGE</option>
               <option value="PRODUIT">🟢 PRODUIT</option>
             </select>

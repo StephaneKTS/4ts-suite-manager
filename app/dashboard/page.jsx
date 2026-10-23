@@ -115,10 +115,15 @@ function DashboardContent() {
       case 'familles': return <GestionFamilles entrepriseId={entrepriseId} />;
       case 'mouvements': return <GestionMouvements entrepriseId={entrepriseId} />;
       case 'plan_comptable': return <GestionPlanComptable entrepriseId={entrepriseId} />;
-      case 'journal':
-      case 'grand_livre':
-      case 'controle':
-        return <GestionJournalCaisse entrepriseId={entrepriseId} />;
+      
+      // Affectation stricte et indépendante des vues de rapports[cite: 34]
+      case 'journal': 
+        return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="saisie_operations" />;
+      case 'grand_livre': 
+        return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="grand_livre" />;
+      case 'controle': 
+        return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="controle_cloture" />;
+        
       case 'roles': return <GestionRoles entrepriseId={entrepriseId} />;
       case 'utilisateurs': return <GestionUtilisateurs entrepriseId={entrepriseId} />;
       default: return null;
@@ -137,7 +142,7 @@ function DashboardContent() {
   const contenuApp = (
     <div className="min-h-screen bg-[#0d1b2a] text-slate-100 flex flex-col font-sans relative overflow-y-auto w-full max-w-full">
       
-      {/* EN-TÊTE AVEC LE LOGO PNG CORRIGÉ, SANS FOND BLEU ET AGRANDI */}
+      {/* EN-TÊTE AVEC BOUTON DE RETOUR INTELLIGENT ET UNIFIÉ */}
       <div className="sticky top-0 z-20 bg-[#1b263b] border-b border-blue-900/50 px-2 sm:px-4 py-3 text-white shadow-md shrink-0 flex items-center justify-between w-full">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 flex items-center justify-center shrink-0">
@@ -161,13 +166,23 @@ function DashboardContent() {
           </div>
         </div>
 
-        <div>
+        <div className="flex items-center gap-2">
           {(moduleActif || ongletNavigation !== 'accueil') ? (
             <button
-              onClick={() => { setModuleActif(null); setOngletNavigation('accueil'); }}
-              className="bg-white/10 hover:bg-white/20 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-white/20 shadow-xs"
+              onClick={() => {
+                // Si on était dans un module issu des rapports (journal, grand_livre, controle), on revient aux rapports
+                if (['journal', 'grand_livre', 'controle'].includes(moduleActif)) {
+                  setModuleActif(null);
+                  setOngletNavigation('rapports');
+                } else {
+                  // Sinon on revient par défaut à l'accueil
+                  setModuleActif(null);
+                  setOngletNavigation('accueil');
+                }
+              }}
+              className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-slate-700 shadow-xs flex items-center gap-1"
             >
-              ← Accueil
+              {['journal', 'grand_livre', 'controle'].includes(moduleActif) ? '← Retour Rapports' : '← Accueil'}
             </button>
           ) : (
             <span className="text-[10px] bg-blue-950 text-emerald-400 font-bold px-2.5 py-1 rounded-full border border-blue-800/50">
@@ -186,6 +201,7 @@ function DashboardContent() {
             </h2>
 
             <div className="grid grid-cols-1 gap-2.5 w-full">
+              {/* 1. Saisie des Opérations */}
               <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
                 <span className="text-2xl group-hover:scale-110 transition">📝</span>
                 <div>
@@ -194,19 +210,21 @@ function DashboardContent() {
                 </div>
               </div>
 
-              <div onClick={() => setModuleActif('grand_livre')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
-                <span className="text-2xl group-hover:scale-110 transition">📖</span>
-                <div>
-                  <h3 className="font-extrabold text-slate-100 text-xs">Grand Livre & Journal</h3>
-                  <p className="text-[10px] text-blue-200/70 mt-0.5">Mouvements par période et par compte.</p>
-                </div>
-              </div>
-
+              {/* 2. Contrôle & Clôture */}
               <div onClick={() => setModuleActif('controle')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                 <div>
                   <h3 className="font-extrabold text-slate-100 text-xs">Contrôle & Clôture</h3>
                   <p className="text-[10px] text-blue-200/70 mt-0.5">Vérification caisse et versement central.</p>
+                </div>
+              </div>
+
+              {/* 3. Grand Livre & Journal */}
+              <div onClick={() => setModuleActif('grand_livre')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                <span className="text-2xl group-hover:scale-110 transition">📖</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-100 text-xs">Grand Livre & Journal</h3>
+                  <p className="text-[10px] text-blue-200/70 mt-0.5">Mouvements par période et par compte.</p>
                 </div>
               </div>
             </div>
@@ -355,7 +373,6 @@ function DashboardContent() {
             </div>
           </div>
         ) : !moduleActif && estModeLivraison ? (
-          /* ACCUEIL MODULE LIVRAISON : GRILLE UNIFIÉE STRICTEMENT IDENTIQUE À LA BOUTIQUE */
           <div className="space-y-3 w-full">
             <h2 className="text-[11px] font-black text-blue-300/70 uppercase tracking-wider px-1">
               ACCUEIL

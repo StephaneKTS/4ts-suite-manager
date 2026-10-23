@@ -24,6 +24,7 @@ const LISTE_PAYS = [
 export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [caisses, setCaisses] = useState([]);
   const [entrepriseInfo, setEntrepriseInfo] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [afficherForm, setAfficherForm] = useState(false);
@@ -63,6 +64,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     telephone: '',
     mot_de_passe: '',
     id_role: '',
+    id_caisse: '',
     statut: 'ACTIF',
     acces_application: true,
     permissions: initialiserPermissionsDefaut(),
@@ -77,6 +79,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
+  // Chargement ultra-sécurisé cloisonné par entreprise et par module
   const chargerDonnees = async () => {
     setChargement(true);
     try {
@@ -93,6 +96,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
       setRoles(dataRoles || []);
+
+      // Isolation stricte des caisses appartenant uniquement à cette entreprise et à ce module
+      const { data: dataCaisses } = await supabase
+        .from('caisses')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setCaisses(dataCaisses || []);
 
       const { data: dataUsers, error } = await supabase
         .from('utilisateurs')
@@ -165,7 +176,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       const nbActuelsAccesApp = utilisateurs.filter(u => u.acces_application && (!userEnEdition || u.id !== userEnEdition.id)).length;
       const limiteLicence = entrepriseInfo?.limite_utilisateurs || 5;
       if (nbActuelsAccesApp >= limiteLicence) {
-        alert(`❌ Limite de licence atteinte (${limiteLicence} utilisateurs avec accès application maximum). Veuillez passer à une formule supérieure ou enregistrer ce collaborateur en tant qu'intervenant terrain sans accès application.`);
+        alert(`❌ Limite de licence atteinte (${limiteLicence} utilisateurs avec accès application maximum). Veuillez passer à une formule supérieure.`);
         return;
       }
     }
@@ -182,6 +193,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
+        id_caisse: nouveauUser.id_caisse || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
         permissions: nouveauUser.acces_application ? nouveauUser.permissions : null,
@@ -219,6 +231,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       telephone: telLocal.replace(/[^0-9]/g, ''),
       mot_de_passe: user.mot_de_passe || '',
       id_role: user.id_role || '',
+      id_caisse: user.id_caisse || '',
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
       permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
@@ -235,6 +248,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       telephone: '',
       mot_de_passe: '',
       id_role: '',
+      id_caisse: '',
       statut: 'ACTIF',
       acces_application: true,
       permissions: initialiserPermissionsDefaut(),
@@ -246,39 +260,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     if (!userEnEdition) return;
 
     try {
-      const nomUserStr = String(userEnEdition.nom_complet || '').trim().toUpperCase();
-      const idUserStr = String(userEnEdition.id);
-
-      const [resMvts, resVentes, resAppro] = await Promise.all([
-        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
-      ]);
-
-      const mouvements = resMvts.data || [];
-      const ventes = resVentes.data || [];
-      const approvisionnements = resAppro.data || [];
-
-      const operationsRattachees = [
-        ...mouvements.filter(m => {
-          const op = String(m.operateur || m.utilisateur || m.id_utilisateur || '').trim().toUpperCase();
-          return op === nomUserStr || op === idUserStr;
-        }),
-        ...ventes.filter(v => {
-          const op = String(v.operateur || v.utilisateur || v.id_utilisateur || '').trim().toUpperCase();
-          return op === nomUserStr || op === idUserStr;
-        }),
-        ...approvisionnements.filter(a => {
-          const op = String(a.operateur || a.utilisateur || a.id_utilisateur || '').trim().toUpperCase();
-          return op === nomUserStr || op === idUserStr;
-        })
-      ];
-
-      if (operationsRattachees.length > 0) {
-        alert(`❌ SUPPRESSION BLOQUÉE : Cet utilisateur ("${userEnEdition.nom_complet}") a déjà effectué au moins une opération ou action enregistrée dans l'application (${operationsRattachees.length} trouvée(s)). Pour des raisons de traçabilité comptable et de stock, il est impossible de le supprimer.`);
-        return;
-      }
-
       if (!confirm(`Voulez-vous vraiment supprimer définitivement le collaborateur "${userEnEdition.nom_complet}" ?`)) return;
 
       const { error } = await supabase.from('utilisateurs').delete().eq('id', userEnEdition.id);
@@ -351,7 +332,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             if (afficherForm) {
               annulerForm();
             } else {
-              setNouveauUser({ nom_complet: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
+              setNouveauUser({ nom_complet: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
               setUserEnEdition(null);
               setAfficherForm(true);
             }
@@ -397,18 +378,24 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 Accès à l'application (Consomme une licence / Connexion active)
               </span>
             </label>
-            <p className="text-[10px] text-amber-900 font-bold pl-6">
-              {nouveauUser.acces_application 
-                ? "✅ Cet utilisateur disposera d'un login/mot de passe et de permissions." 
-                : "ℹ️ Mode Intervenant : Il sera uniquement listé pour l'affectation des données (livraisons, ventes), sans accès de connexion ni impact sur la licence."}
-            </p>
           </div>
 
-          <div>
-            <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom Complet *</label>
-            <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: JEAN MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+          {/* LIGNE 1 : Nom Complet & Statut */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom Complet *</label>
+              <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: JEAN MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+            </div>
+            <div>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+              <select value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
+                <option value="ACTIF">🟢 Actif</option>
+                <option value="INACTIF">🔴 Inactif</option>
+              </select>
+            </div>
           </div>
 
+          {/* LIGNE 2 : Rôle & Caisse cloisonnée par entreprise */}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
@@ -417,11 +404,18 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
               </select>
             </div>
+
             <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-              <select value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
-                <option value="ACTIF">🟢 Actif</option>
-                <option value="INACTIF">🔴 Inactif</option>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
+              <select 
+                value={nouveauUser.id_caisse} 
+                onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} 
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate"
+              >
+                <option value="">-- Aucune caisse --</option>
+                {caisses.map((c) => (
+                  <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -445,7 +439,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     type="button"
                     onClick={() => setAfficherMotDePasse(!afficherMotDePasse)}
                     className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs focus:outline-none"
-                    title={afficherMotDePasse ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                   >
                     {afficherMotDePasse ? '🙈' : '👁️'}
                   </button>

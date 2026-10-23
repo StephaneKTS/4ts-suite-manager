@@ -13,7 +13,6 @@ const TARIFS_MODULES = {
 export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   const [entreprise, setEntreprise] = useState(null);
   const [chargement, setChargement] = useState(true);
-  const [sauvegarde, setSauvegarde] = useState(false);
   const [changementModuleEnCours, setChangementModuleEnCours] = useState(false);
 
   // Paramètres de personnalisation par module actif
@@ -79,30 +78,6 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   const moduleActifCourant = (
     typeof window !== 'undefined' ? localStorage.getItem('module_actif') : null
   ) || (entreprise?.module_actif || entreprise?.module_courant || 'BOUTIQUE').toUpperCase();
-
-  const mettreAJourParametres = async (e) => {
-    e.preventDefault();
-    if (!entreprise) return;
-
-    setSauvegarde(true);
-    try {
-      const identifiantCible = entreprise.id_entreprise || entreprise.code_entreprise || entrepriseIdEffectif;
-      const { error } = await supabase
-        .from('entreprises')
-        .update({
-          gestion_perissables: entreprise.gestion_perissables ?? false,
-        })
-        .eq('id_entreprise', identifiantCible);
-
-      if (error) throw error;
-      alert(`Paramètres du module ${moduleActifCourant} mis à jour avec succès !`);
-      chargerInfosEntreprise();
-    } catch (err) {
-      alert('Erreur lors de la mise à jour : ' + err.message);
-    } finally {
-      setSauvegarde(false);
-    }
-  };
 
   const basculerModuleActif = async (nouveauModule) => {
     if (!entreprise) return;
@@ -442,42 +417,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
         </div>
       </div>
 
-      {/* SECTION 1 : CONFIGURATION MÉTIER */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-        <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">⚙️ Préférences de Gestion [{moduleActifCourant}]</h4>
-        
-        <form onSubmit={mettreAJourParametres} className="space-y-3">
-          <div className="bg-orange-50/60 border border-orange-200 rounded-xl p-2.5 flex items-center justify-between gap-3">
-            <div>
-              <label className="font-black text-slate-900 block text-[11px]">
-                Vendez-vous des articles périssables ? ({moduleActifCourant})
-              </label>
-              <p className="text-[10px] text-slate-600 leading-tight">
-                Active l'affichage de la zone de péremption de manière indépendante pour ce module.
-              </p>
-            </div>
-
-            <input
-              type="checkbox"
-              checked={entreprise?.gestion_perissables || false}
-              onChange={(e) => setEntreprise({ ...entreprise, gestion_perissables: e.target.checked })}
-              className="w-5 h-5 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer shrink-0"
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={sauvegarde}
-              className="bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-1.5 rounded-lg transition shadow-2xs text-xs"
-            >
-              {sauvegarde ? 'Enregistrement...' : 'Enregistrer les modifications'}
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* SECTION 2 : STATUT DE LICENCE */}
+      {/* SECTION 1 : STATUT DE LICENCE */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
         <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">📊 STATUT DE VOTRE LICENCE — [{moduleActifCourant}]</h4>
         
@@ -505,7 +445,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
         </div>
       </div>
 
-      {/* SECTION 3 : PERSONNALISATION DE LA SOUSCRIPTION SUR-MESURE */}
+      {/* SECTION 2 : PERSONNALISATION DE LA SOUSCRIPTION SUR-MESURE */}
       <div className="bg-white p-3 rounded-xl border-2 border-orange-500/50 shadow-md space-y-2.5">
         <h4 className="font-black text-[10px] text-orange-700 uppercase border-b pb-1">⚙️ PERSONNALISER ABONNEMENT — [{moduleActifCourant}]</h4>
         <p className="text-[9.5px] text-slate-600 leading-tight">
@@ -581,7 +521,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
         </div>
       </div>
 
-      {/* SECTION 4 : HISTORIQUE DES PAIEMENTS */}
+      {/* SECTION 3 : HISTORIQUE DES PAIEMENTS */}
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
         <h4 className="font-black text-slate-800 uppercase text-[10px] border-b pb-1">📜 Historique des Activations — [{moduleActifCourant}]</h4>
         
