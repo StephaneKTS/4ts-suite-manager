@@ -1169,7 +1169,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           
           <div className="bg-white p-3 rounded-xl shadow-inner space-y-3">
             
-            {/* LIGNE 1 : Date & Partenaire */}
+            {/* LIGNE 1 : Date & Partenaire sur la même ligne */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
@@ -1242,7 +1242,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               </div>
             )}
 
-            {/* LIGNE CLASSIQUE (SI AVEC STOCKAGE) : ADRESSE DE LIVRAISON & N° CMD */}
+            {/* LIGNE CLASSIQUE (SI AVEC STOCKAGE) : ADRESSE DE LIVRAISON (INITIALE) & N° CMD SUR LA MÊME LIGNE */}
             {!partenaireSansStockage && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
@@ -1350,7 +1350,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 )}
               </div>
             ) : (
-              /* SI AVEC STOCKAGE : MONTANT & STATUT COMMANDE SUR LA MÊME LIGNE */
+              /* SI AVEC STOCKAGE : MONTANT À RÉCUPÉRER & STATUT COMMANDE SUR LA MÊME LIGNE */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant à récupérer *</label>
@@ -1384,19 +1384,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               </div>
             )}
 
-            {/* ZONE RÉSERVÉE AUX SUPERVISEURS */}
+            {/* ZONE RÉSERVÉE AUX SUPERVISEURS SANS SOUS-TITRE ENTRE PARENTHÈSES */}
             <div className="bg-blue-50/70 border-2 border-blue-200 p-2.5 rounded-xl space-y-2.5 mt-2">
               <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
                 <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
-                  🔒 Zone réservée aux superviseurs
-                </span>
-                <span className="text-[9px] text-blue-600 font-bold italic">
-                  (Grille tarifaire &amp; Livreur assigné)
+                  🔒 ZONE RÉSERVÉE AUX SUPERVISEURS
                 </span>
               </div>
 
               <div className="space-y-2">
-                {/* Ligne 1 Superviseur : Frais de livraison & Livreur assigné */}
+                {/* FRAIS DE LIVRAISON (CALCULÉ) & LIVREUR ASSIGNÉ SUR LA MÊME LIGNE */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais de Livraison (Calculé)</label>
@@ -1439,7 +1436,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </div>
                 </div>
 
-                {/* Ligne 2 Superviseur : Zone effective sur sa propre ligne */}
+                {/* ZONE EFFECTIVE SUR SA PROPRE LIGNE */}
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Zone Effective (Livraison)</label>
                   <input
@@ -1819,21 +1816,22 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             </div>
 
             <div className="space-y-2">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
-                  <select
-                    value={filtrePartenaire}
-                    onChange={(e) => setFiltrePartenaire(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                  >
-                    <option value="">Tous les partenaires</option>
-                    {partenaires.map((p) => (
-                      <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
+                <select
+                  value={filtrePartenaire}
+                  onChange={(e) => setFiltrePartenaire(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                >
+                  <option value="">Tous les partenaires</option>
+                  {partenaires.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
+                  ))}
+                </select>
+              </div>
 
+              {/* DATE DÉBUT & DATE FIN SUR LA MÊME LIGNE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
                   <input
@@ -1857,6 +1855,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 </div>
               </div>
 
+              {/* LIVREUR & STATUT SUR LA MÊME LIGNE */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
