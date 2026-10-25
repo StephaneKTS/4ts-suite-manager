@@ -7,6 +7,7 @@ import SimulateurCadre from './components/SimulateurCadre';
 
 // Importation de tous vos composants métiers indépendants
 import GestionCaisses from './components/GestionCaisses';
+import GestionEmplacements from './components/GestionEmplacements';
 import GestionVentesHistoriques from './components/GestionVentesHistoriques';
 import GestionArticles from './components/GestionArticles';
 import GestionDepots from './components/GestionDepots';
@@ -21,13 +22,19 @@ import GestionPlanComptable from './components/GestionPlanComptable';
 import GestionRoles from './components/GestionRoles';
 import GestionUtilisateurs from './components/GestionUtilisateurs';
 import EspaceSouscription from './components/EspaceSouscription';
+import GestionCommandesLivraison from './components/GestionCommandesLivraison';
+import GrilleTarifaireLivraison from './components/GrilleTarifaireLivraison';
 
 // Importation de votre nouveau module de livraison
 import ModuleLivraison from './livraison/page';
 
 function DashboardContent() {
   const searchParams = useSearchParams();
-  const entrepriseIdUrl = searchParams.get('entreprise') || '4TS-TEST';
+  
+  // Correction sécurisée blindée contre le crash localStorage is not defined sur le serveur
+  const entrepriseIdUrl = searchParams.get('entreprise') || 
+    (typeof window !== 'undefined' ? localStorage.getItem('entrepriseId') : null) || 
+    '4TS-234321';
 
   const [mounted, setMounted] = useState(false);
   const [entrepriseId, setEntrepriseId] = useState(entrepriseIdUrl);
@@ -41,18 +48,22 @@ function DashboardContent() {
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   const [moduleCourant, setModuleCourant] = useState('BOUTIQUE');
-  const [utilisateurConnecte, setUtilisateurConnecte] = useState('THEODORE STEPHANE');
+  
+  // Récupération du nom de l'utilisateur stocké lors de la connexion
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('UTILISATEUR');
+  const [emailConnecte, setEmailConnecte] = useState('');
 
-  // Sécurisation stricte de l'hydratation côté client (Empêche tout mismatch SSR/Client)
   useEffect(() => {
     setMounted(true);
-    const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('nom_utilisateur');
-    if (userLocal) {
-      setUtilisateurConnecte(userLocal.toUpperCase());
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte');
+      const emailLocal = localStorage.getItem('emailConnecte');
+      if (userLocal) setUtilisateurConnecte(userLocal.toUpperCase());
+      if (emailLocal) setEmailConnecte(emailLocal);
     }
   }, []);
 
-  // Charger les informations réelles de l'entreprise depuis Supabase et synchroniser le module actif
+  // Charger les informations de l'entreprise depuis Supabase sans bloquer
   useEffect(() => {
     async function fetchEntrepriseData() {
       try {
@@ -65,19 +76,21 @@ function DashboardContent() {
         if (data) {
           setInfosEntreprise(data);
           setEntrepriseId(data.id_entreprise);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('entrepriseId', data.id_entreprise);
 
-          // Synchronisation propre du module actif entre la base et l'appareil mobile/desktop
-          const modLocal = localStorage.getItem('module_actif');
-          if (modLocal && data.espaces_souscrits && data.espaces_souscrits.map(m => m.toUpperCase()).includes(modLocal.toUpperCase())) {
-            setModuleCourant(modLocal.toUpperCase());
-          } else if (data.module_actif) {
-            setModuleCourant(data.module_actif.toUpperCase());
-            localStorage.setItem('module_actif', data.module_actif.toUpperCase());
+            const modLocal = localStorage.getItem('module_actif');
+            if (modLocal && data.espaces_souscrits && data.espaces_souscrits.map(m => m.toUpperCase()).includes(modLocal.toUpperCase())) {
+              setModuleCourant(modLocal.toUpperCase());
+            } else if (data.module_actif) {
+              setModuleCourant(data.module_actif.toUpperCase());
+              localStorage.setItem('module_actif', data.module_actif.toUpperCase());
+            }
           }
         } else {
           setInfosEntreprise({
-            nom_entreprise: 'KEITA SHOP',
-            email: 'bureauisma26@gmail.com',
+            nom_entreprise: 'ISMA LOGISTIQUE',
+            email: emailConnecte || 'bureauisma26@gmail.com',
             espaces_souscrits: ['Boutique', 'Livraison'],
             module_actif: 'BOUTIQUE'
           });
@@ -90,7 +103,7 @@ function DashboardContent() {
     if (entrepriseIdUrl) {
       fetchEntrepriseData();
     }
-  }, [entrepriseIdUrl]);
+  }, [entrepriseIdUrl, emailConnecte]);
 
   const estModeLivraison = moduleCourant === 'LIVRAISON';
 
@@ -103,8 +116,17 @@ function DashboardContent() {
       return <ModuleLivraison entrepriseId={entrepriseId} />;
     }
 
+    if (moduleActif === 'commandes_livraison') {
+      return <GestionCommandesLivraison entrepriseId={entrepriseId} />;
+    }
+
+    if (moduleActif === 'grille_tarifaire') {
+      return <GrilleTarifaireLivraison entrepriseId={entrepriseId} />;
+    }
+
     switch (moduleActif) {
       case 'caisses': return <GestionCaisses entrepriseId={entrepriseId} />;
+      case 'emplacements': return <GestionEmplacements entrepriseId={entrepriseId} />;
       case 'ventes': return <GestionVentesHistoriques entrepriseId={entrepriseId} />;
       case 'articles': return <GestionArticles entrepriseId={entrepriseId} />;
       case 'depots': return <GestionDepots entrepriseId={entrepriseId} />;
@@ -116,7 +138,6 @@ function DashboardContent() {
       case 'mouvements': return <GestionMouvements entrepriseId={entrepriseId} />;
       case 'plan_comptable': return <GestionPlanComptable entrepriseId={entrepriseId} />;
       
-      // Affectation stricte et indépendante des vues de rapports[cite: 34]
       case 'journal': 
         return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="saisie_operations" />;
       case 'grand_livre': 
@@ -130,7 +151,6 @@ function DashboardContent() {
     }
   };
 
-  // Écran de chargement initial blindé pour éviter les sauts de rendu (SSR / Client)
   if (!mounted) {
     return (
       <div className="min-h-screen bg-[#0d1b2a] text-white flex items-center justify-center font-sans text-xs">
@@ -142,7 +162,7 @@ function DashboardContent() {
   const contenuApp = (
     <div className="min-h-screen bg-[#0d1b2a] text-slate-100 flex flex-col font-sans relative overflow-y-auto w-full max-w-full">
       
-      {/* EN-TÊTE AVEC BOUTON DE RETOUR INTELLIGENT ET UNIFIÉ */}
+      {/* EN-TÊTE */}
       <div className="sticky top-0 z-20 bg-[#1b263b] border-b border-blue-900/50 px-2 sm:px-4 py-3 text-white shadow-md shrink-0 flex items-center justify-between w-full">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 flex items-center justify-center shrink-0">
@@ -170,12 +190,10 @@ function DashboardContent() {
           {(moduleActif || ongletNavigation !== 'accueil') ? (
             <button
               onClick={() => {
-                // Si on était dans un module issu des rapports (journal, grand_livre, controle), on revient aux rapports
                 if (['journal', 'grand_livre', 'controle'].includes(moduleActif)) {
                   setModuleActif(null);
                   setOngletNavigation('rapports');
                 } else {
-                  // Sinon on revient par défaut à l'accueil
                   setModuleActif(null);
                   setOngletNavigation('accueil');
                 }
@@ -201,7 +219,6 @@ function DashboardContent() {
             </h2>
 
             <div className="grid grid-cols-1 gap-2.5 w-full">
-              {/* 1. Saisie des Opérations */}
               <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
                 <span className="text-2xl group-hover:scale-110 transition">📝</span>
                 <div>
@@ -210,7 +227,6 @@ function DashboardContent() {
                 </div>
               </div>
 
-              {/* 2. Contrôle & Clôture */}
               <div onClick={() => setModuleActif('controle')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                 <div>
@@ -219,7 +235,6 @@ function DashboardContent() {
                 </div>
               </div>
 
-              {/* 3. Grand Livre & Journal */}
               <div onClick={() => setModuleActif('grand_livre')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
                 <span className="text-2xl group-hover:scale-110 transition">📖</span>
                 <div>
@@ -237,12 +252,12 @@ function DashboardContent() {
 
             <div className="bg-[#1b263b] rounded-2xl p-5 shadow border border-blue-900/60 space-y-4 w-full">
               <div className="flex items-center space-x-3 pb-3 border-b border-blue-900/40">
-                <div className="bg-blue-950 text-blue-300 p-3 rounded-2xl text-2xl font-black">
-                  👤
+                <div className="bg-orange-600/20 border border-orange-500/40 text-orange-400 w-12 h-12 rounded-full flex items-center justify-center text-base font-black">
+                  {utilisateurConnecte ? utilisateurConnecte.charAt(0).toUpperCase() : 'U'}
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-100 text-sm">{utilisateurConnecte}</h3>
-                  <p className="text-xs text-orange-400 font-bold">{infosEntreprise.email || 'Admin'}</p>
+                  <h3 className="font-extrabold text-slate-100 text-sm uppercase">{utilisateurConnecte}</h3>
+                  <p className="text-xs text-orange-400 font-bold">{emailConnecte || infosEntreprise.email || 'user@entreprise.com'}</p>
                 </div>
               </div>
 
@@ -261,11 +276,13 @@ function DashboardContent() {
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-blue-900/30">
                   <span className="text-blue-200/70 font-medium">Utilisateur Connecté :</span>
-                  <span className="font-bold text-orange-400">{utilisateurConnecte}</span>
+                  <span className="font-bold text-orange-400 uppercase">{utilisateurConnecte}</span>
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span className="text-blue-200/70 font-medium">Statut de la session :</span>
-                  <span className="bg-blue-950 text-blue-400 font-bold px-2 py-0.5 rounded-full text-[10px]">● Actif</span>
+                  <span className="bg-blue-950 text-emerald-400 font-bold px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Actif
+                  </span>
                 </div>
               </div>
 
@@ -280,12 +297,13 @@ function DashboardContent() {
                   <span>→</span>
                 </button>
 
-                {/* Bouton de Déconnexion */}
                 <button
                   onClick={() => {
                     if (confirm('Voulez-vous vraiment vous déconnecter de l’application ?')) {
-                      localStorage.clear();
-                      window.location.href = '/connexion';
+                      if (typeof window !== 'undefined') {
+                        localStorage.clear();
+                        window.location.href = '/connexion';
+                      }
                     }
                   }}
                   className="w-full bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800 font-bold p-3 rounded-xl transition flex items-center justify-center gap-2 shadow-xs text-xs"
@@ -314,6 +332,11 @@ function DashboardContent() {
               <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🏧</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Création Caisse</span>
+              </div>
+
+              <div onClick={() => setModuleActif('emplacements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">📍</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Emplacements Stock</span>
               </div>
 
               <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -384,9 +407,19 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Saisie Livraison</span>
               </div>
 
-              <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
-                <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Espace Livreur</span>
+              <div onClick={() => setModuleActif('commandes_livraison')} className="bg-slate-900/80 hover:bg-orange-600/20 border border-slate-800 hover:border-orange-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                <span className="font-bold text-white text-[11px] leading-tight">Commandes Livraison</span>
+              </div>
+
+              <div onClick={() => setModuleActif('grille_tarifaire')} className="bg-slate-900/80 hover:bg-orange-600/20 border border-slate-800 hover:border-orange-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
+                <span className="font-bold text-white text-[11px] leading-tight">Grille Tarifaire</span>
+              </div>
+
+              <div onClick={() => setModuleActif('emplacements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">📍</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Emplacements Livreurs</span>
               </div>
 
               <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -452,7 +485,7 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* BARRE DE NAVIGATION INFÉRIEURE FIXE */}
+      {/* BARRE DE NAVIGATION INFÉRIEURE */}
       <div className="bg-[#1b263b] border-t border-blue-900/60 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-lg shrink-0 w-full">
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}

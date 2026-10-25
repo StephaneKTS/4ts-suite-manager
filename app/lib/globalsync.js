@@ -39,7 +39,7 @@ export const globalSync = {
 
       return { data: data || [], error: null, horsLigne: false };
     } catch (err) {
-      console.warn(`⚠️ Mode hors-ligne actif pour [${tableName}]. Utilisation des données locales.`);
+      console.warn(`⚠️ Mode hors-ligne actif pour ${tableName}. Utilisation des données locales.`);
       
       // Récupération du cache si la connexion échoue
       if (typeof window !== 'undefined') {
@@ -88,7 +88,7 @@ export const globalSync = {
       if (error) throw error;
       return { data, error: null, success: true, horsLigne: false };
     } catch (err) {
-      console.warn(`⚠️ Échec réseau lors de l'insertion dans [${tableName}]. Bascule en file d'attente locale.`);
+      console.warn(`⚠️ Échec réseau lors de l'insertion dans ${tableName}. Bascule en file d'attente locale.`);
       
       globalSync.sauvegarderFileAttente(tableName, enrichedPayload);
 

@@ -22,7 +22,7 @@ const LISTE_PAYS = [
 ];
 
 export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
-  const [fournisseurs, setFournisseurs] = useState([]);
+  const [partenaires, setPartenaires] = useState([]);
   const [approvisionnements, setApprovisionnements] = useState([]);
   const [bonsCommandes, setBonsCommandes] = useState([]);
   const [articles, setArticles] = useState([]);
@@ -37,23 +37,33 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [triHistCol, setTriHistCol] = useState('date');
   const [triHistOrdre, setTriHistOrdre] = useState('asc');
 
-  const [fournisseurHistoriqueId, setFournisseurHistoriqueId] = useState('');
+  const [partenaireHistoriqueId, setPartenaireHistoriqueId] = useState('');
   const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');
   const [factureSelectionnee, setFactureSelectionnee] = useState(null);
   const [montantReglementSaisi, setMontantReglementSaisi] = useState('');
 
   const [afficherForm, setAfficherForm] = useState(false);
-  const [fournisseurEnEdition, setFournisseurEnEdition] = useState(null);
+  const [partenaireEnEdition, setPartenaireEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
 
-  const [nouveauFournisseur, setNouveauFournisseur] = useState({
+  // Permissions de l'employé connecté
+  const [permissions, setPermissions] = useState({
+    peutVoir: true,
+    peutCreer: true,
+    peutModifier: true,
+    peutSuppression: false,
+  });
+
+  const [nouveauPartenaire, setNouveauPartenaire] = useState({
     nom_fournisseur: '',
+    statut_stockage: 'AVEC_STOCKAGE',
     pays: 'cmr',
     telephone: '',
     email: '',
     adresse: '',
     solde_dette: 0,
+    id_depot: '',
   });
 
   const obtenirModuleActuel = () => {
@@ -64,23 +74,61 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const estModeLivraison = moduleActuel === 'LIVRAISON';
 
-  const chargerFournisseursEtDonnees = async () => {
+  const chargerPermissionsEtDonnees = async () => {
     setChargement(true);
     try {
-      const { data: dataFourn, error: errFourn } = await supabase
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          const permModule = userObj.permissions?.['fournisseurs'] || userObj.permissions?.['fournisseur'];
+          
+          if (permModule) {
+            setPermissions({
+              peutVoir: permModule.lecture ?? permModule.voir ?? true,
+              peutCreer: permModule.creation ?? permModule.creer ?? true,
+              peutModifier: permModule.modification ?? permModule.modifier ?? true,
+              peutSuppression: permModule.suppression ?? false,
+            });
+          } else {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['fournisseurs'] || roleData?.permissions?.['fournisseur'];
+            if (rolePerm) {
+              setPermissions({
+                peutVoir: rolePerm.lecture ?? rolePerm.voir ?? true,
+                peutCreer: rolePerm.creation ?? rolePerm.creer ?? true,
+                peutModifier: rolePerm.modification ?? rolePerm.modifier ?? true,
+                peutSuppression: rolePerm.suppression ?? false,
+              });
+            }
+          }
+        }
+      }
+
+      const { data: dataPartenaires, error: errPartenaires } = await supabase
         .from('fournisseurs')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
-      if (errFourn) throw errFourn;
-      const listFourn = dataFourn || [];
-      setFournisseurs(listFourn);
+      if (errPartenaires) throw errPartenaires;
+      const listPartenaires = dataPartenaires || [];
+      setPartenaires(listPartenaires);
 
-      if (listFourn.length > 0 && !fournisseurHistoriqueId) {
-        setFournisseurHistoriqueId(listFourn[0].id);
+      if (listPartenaires.length > 0 && !partenaireHistoriqueId) {
+        setPartenaireHistoriqueId(listPartenaires[0].id);
       }
 
       const { data: dataAppro } = await supabase
@@ -119,7 +167,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   useEffect(() => {
-    chargerFournisseursEtDonnees();
+    chargerPermissionsEtDonnees();
   }, [entrepriseId, moduleActuel]);
 
   const calculerTotauxFacture = (app) => {
@@ -134,15 +182,15 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     return { montantTotal, montantRegle, resteAPayer, statut };
   };
 
-  const calculerSoldeDetteFournisseur = (fournisseur) => {
-    if (!fournisseur) return 0;
-    const fournId = fournisseur.id;
-    const fournNom = (fournisseur.nom_fournisseur || '').trim().toUpperCase();
+  const calculerSoldeDettePartenaire = (partenaire) => {
+    if (!partenaire) return 0;
+    const partId = partenaire.id;
+    const partNom = (partenaire.nom_fournisseur || partenaire.nom || '').trim().toUpperCase();
 
     let totalDetteAppro = 0;
     approvisionnements.forEach((app) => {
-      const matchId = String(app.id_fournisseur) === String(fournId);
-      const matchNom = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase() === fournNom;
+      const matchId = String(app.id_fournisseur) === String(partId);
+      const matchNom = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase() === partNom;
 
       if (matchId || matchNom) {
         const totaux = calculerTotauxFacture(app);
@@ -153,10 +201,16 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     return Math.max(0, totalDetteAppro);
   };
 
-  const enregistrerFournisseur = async (e) => {
+  const enregistrerPartenaire = async (e) => {
     e.preventDefault();
-    const paysObj = LISTE_PAYS.find(p => p.code === nouveauFournisseur.pays) || LISTE_PAYS[0];
-    const chiffresPur = (nouveauFournisseur.telephone || '').replace(/[^0-9]/g, '');
+
+    if (nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && estModeLivraison && !nouveauPartenaire.id_depot) {
+      alert('⚠️ Ce partenaire est configuré "Avec Stockage". Veuillez obligatoirement lui assigner un dépôt[cite: 34].');
+      return;
+    }
+
+    const paysObj = LISTE_PAYS.find(p => p.code === nouveauPartenaire.pays) || LISTE_PAYS[0];
+    const chiffresPur = (nouveauPartenaire.telephone || '').replace(/[^0-9]/g, '');
 
     if (chiffresPur.length > 0 && chiffresPur.length !== paysObj.longueur) {
       alert(`⚠️ Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`);
@@ -169,81 +223,105 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        nom_fournisseur: (nouveauFournisseur.nom_fournisseur || '').trim().toUpperCase(),
-        pays: nouveauFournisseur.pays,
+        nom_fournisseur: (nouveauPartenaire.nom_fournisseur || '').trim().toUpperCase(),
+        statut_stockage: nouveauPartenaire.statut_stockage,
+        id_depot: nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' ? (nouveauPartenaire.id_depot || null) : null,
+        pays: nouveauPartenaire.pays,
         telephone: numeroComplet,
-        email: (nouveauFournisseur.email || '').trim().toLowerCase(), // EMAIL EN MINUSCULES
-        adresse: (nouveauFournisseur.adresse || '').trim().toUpperCase(),
+        email: (nouveauPartenaire.email || '').trim().toLowerCase(),
+        adresse: (nouveauPartenaire.adresse || '').trim().toUpperCase(),
       };
 
-      if (fournisseurEnEdition) {
-        const { error } = await supabase
+      if (partenaireEnEdition) {
+        let { error } = await supabase
           .from('fournisseurs')
           .update(payload)
-          .eq('id', fournisseurEnEdition.id);
+          .eq('id', partenaireEnEdition.id);
 
-        if (error) throw error;
-        alert(`Fournisseur mis à jour avec succès dans le module ${moduleActuel} !`);
+        if (error && error.message.includes('statut_stockage')) {
+          delete payload.statut_stockage;
+          const resSecours = await supabase.from('fournisseurs').update(payload).eq('id', partenaireEnEdition.id);
+          if (resSecours.error) throw resSecours.error;
+        } else if (error) {
+          throw error;
+        }
+
+        alert(`Partenaire mis à jour avec succès !`);
       } else {
-        const { error } = await supabase.from('fournisseurs').insert([
+        let { error } = await supabase.from('fournisseurs').insert([
           {
             ...payload,
             solde_dette: 0,
           },
         ]);
 
-        if (error) throw error;
-        alert(`Fournisseur enregistré avec succès dans le module ${moduleActuel} !`);
+        if (error && error.message.includes('statut_stockage')) {
+          delete payload.statut_stockage;
+          const resSecours = await supabase.from('fournisseurs').insert([{ ...payload, solde_dette: 0 }]);
+          if (resSecours.error) throw resSecours.error;
+        } else if (error) {
+          throw error;
+        }
+
+        alert(`Partenaire enregistré avec succès !`);
       }
 
       annulerForm();
-      chargerFournisseursEtDonnees();
+      chargerPermissionsEtDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
     }
   };
 
-  const ouvrirEdition = (fournisseur) => {
-    setFournisseurEnEdition(fournisseur);
-    const soldeCalcule = calculerSoldeDetteFournisseur(fournisseur);
+  const ouvrirEdition = (partenaire) => {
+    setPartenaireEnEdition(partenaire);
+    const soldeCalcule = calculerSoldeDettePartenaire(partenaire);
     
-    let telLocal = fournisseur.telephone || '';
-    const paysTrouve = LISTE_PAYS.find(p => fournisseur.telephone && fournisseur.telephone.startsWith(p.indicatif)) || LISTE_PAYS[0];
-    if (fournisseur.telephone && fournisseur.telephone.startsWith(paysTrouve.indicatif)) {
-      telLocal = fournisseur.telephone.replace(paysTrouve.indicatif, '');
+    let telLocal = partenaire.telephone || '';
+    const paysTrouve = LISTE_PAYS.find(p => partenaire.telephone && partenaire.telephone.startsWith(p.indicatif)) || LISTE_PAYS[0];
+    if (partenaire.telephone && partenaire.telephone.startsWith(paysTrouve.indicatif)) {
+      telLocal = partenaire.telephone.replace(paysTrouve.indicatif, '');
     }
 
-    setNouveauFournisseur({
-      nom_fournisseur: fournisseur.nom_fournisseur || '',
-      pays: fournisseur.pays || paysTrouve.code,
+    setNouveauPartenaire({
+      nom_fournisseur: partenaire.nom_fournisseur || partenaire.nom || '',
+      statut_stockage: partenaire.statut_stockage || 'AVEC_STOCKAGE',
+      pays: partenaire.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
-      email: (fournisseur.email || '').toLowerCase(), // Restitution en minuscules
-      adresse: fournisseur.adresse || '',
+      email: (partenaire.email || '').toLowerCase(),
+      adresse: partenaire.adresse || '',
       solde_dette: soldeCalcule,
+      id_depot: partenaire.id_depot || '',
     });
     setAfficherForm(true);
   };
 
   const annulerForm = () => {
-    setFournisseurEnEdition(null);
-    setNouveauFournisseur({
+    setPartenaireEnEdition(null);
+    setNouveauPartenaire({
       nom_fournisseur: '',
+      statut_stockage: 'AVEC_STOCKAGE',
       pays: 'cmr',
       telephone: '',
       email: '',
       adresse: '',
       solde_dette: 0,
+      id_depot: '',
     });
     setAfficherForm(false);
   };
 
-  const supprimerFournisseur = async () => {
-    if (!fournisseurEnEdition) return;
+  const supprimerPartenaire = async () => {
+    if (!permissions.peutSuppression) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des partenaires.');
+      return;
+    }
+    if (!partenaireEnEdition) return;
 
     try {
       setChargement(true);
-      const fournisseurIdStr = String(fournisseurEnEdition.id);
-      const fournisseurNomStr = String(fournisseurEnEdition.nom_fournisseur || '').trim().toUpperCase();
+      const partenaireIdStr = String(partenaireEnEdition.id);
+      const partenaireNomStr = String(partenaireEnEdition.nom_fournisseur || partenaireEnEdition.nom || '').trim().toUpperCase();
 
       const [resAppro, resBC] = await Promise.all([
         supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -259,34 +337,34 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const approRattaches = approDb.filter((app) => {
         const idFournApp = String(app.id_fournisseur || '');
         const nomFournApp = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase();
-        return idFournApp === fournisseurIdStr || (fournisseurNomStr !== '' && nomFournApp === fournisseurNomStr);
+        return idFournApp === partenaireIdStr || (partenaireNomStr !== '' && nomFournApp === partenaireNomStr);
       });
 
       const bcRattaches = bcDb.filter((bc) => {
         const idFournBc = String(bc.id_fournisseur || '');
         const nomFournBc = String(bc.nom_fournisseur || bc.fournisseur || '').trim().toUpperCase();
-        return idFournBc === fournisseurIdStr || (fournisseurNomStr !== '' && nomFournBc === fournisseurNomStr);
+        return idFournBc === partenaireIdStr || (partenaireNomStr !== '' && nomFournBc === partenaireNomStr);
       });
 
       const totalOperations = approRattaches.length + bcRattaches.length;
 
       if (totalOperations > 0) {
-        alert(`❌ SUPPRESSION BLOQUÉE : Ce fournisseur ("${fournisseurEnEdition.nom_fournisseur}") a déjà ${totalOperations} facture(s) d'achat ou bon(s) de commande enregistré(s) à son compte. Pour des raisons comptables et de traçabilité, il est strictement impossible de le supprimer.`);
+        alert(`❌ SUPPRESSION BLOQUÉE : Ce partenaire ("${partenaireNomStr}") a déjà ${totalOperations} facture(s) d'achat ou bon(s) de commande enregistré(s) à son compte. Impossible de le supprimer.`);
         setChargement(false);
         return;
       }
 
-      if (!confirm(`Voulez-vous vraiment supprimer définitivement le fournisseur "${fournisseurEnEdition.nom_fournisseur}" ?`)) {
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement le partenaire "${partenaireNomStr}" ?`)) {
         setChargement(false);
         return;
       }
 
-      const { error } = await supabase.from('fournisseurs').delete().eq('id', fournisseurEnEdition.id);
+      const { error } = await supabase.from('fournisseurs').delete().eq('id', partenaireEnEdition.id);
       if (error) throw error;
 
-      alert('Fournisseur supprimé avec succès.');
+      alert('Partenaire supprimé avec succès.');
       annulerForm();
-      chargerFournisseursEtDonnees();
+      chargerPermissionsEtDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -296,12 +374,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   const gererSaisieTelephone = (e) => {
     const chiffres = e.target.value.replace(/[^0-9]/g, '');
-    setNouveauFournisseur({ ...nouveauFournisseur, telephone: chiffres });
+    setNouveauPartenaire({ ...nouveauPartenaire, telephone: chiffres });
   };
 
   const getTelephoneComplet = () => {
-    const paysObj = LISTE_PAYS.find(p => p.code === nouveauFournisseur.pays) || LISTE_PAYS[0];
-    return `${paysObj.indicatif}${nouveauFournisseur.telephone || ''}`;
+    const paysObj = LISTE_PAYS.find(p => p.code === nouveauPartenaire.pays) || LISTE_PAYS[0];
+    return `${paysObj.indicatif}${nouveauPartenaire.telephone || ''}`;
   };
 
   const obtenirNumWhatsapp = (tel) => {
@@ -337,9 +415,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     return <span className="text-orange-600 ml-1 font-bold">{triHistOrdre === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const fournisseursFiltres = fournisseurs
+  const partenairesFiltres = partenaires
     .filter((f) => {
-      const nom = (f.nom_fournisseur || '').toLowerCase();
+      const nom = (f.nom_fournisseur || f.nom || '').toLowerCase();
       const tel = (f.telephone || '').toLowerCase();
       const query = recherche.toLowerCase();
       return nom.includes(query) || tel.includes(query);
@@ -349,11 +427,11 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       let valB = '';
 
       if (triCol === 'nom_fournisseur') {
-        valA = a.nom_fournisseur || '';
-        valB = b.nom_fournisseur || '';
+        valA = a.nom_fournisseur || a.nom || '';
+        valB = b.nom_fournisseur || b.nom || '';
       } else if (triCol === 'solde_dette') {
-        valA = Number(calculerSoldeDetteFournisseur(a));
-        valB = Number(calculerSoldeDetteFournisseur(b));
+        valA = Number(calculerSoldeDettePartenaire(a));
+        valB = Number(calculerSoldeDettePartenaire(b));
       }
 
       if (valA < valB) return triOrdre === 'asc' ? -1 : 1;
@@ -361,19 +439,19 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       return 0;
     });
 
-  const obtenirHistoriqueFournisseur = () => {
-    if (!fournisseurHistoriqueId) return { lignes: [], soldeGlobal: 0 };
-    const fournObj = fournisseurs.find(f => String(f.id) === String(fournisseurHistoriqueId));
-    if (!fournObj) return { lignes: [], soldeGlobal: 0 };
+  const obtenirHistoriquePartenaire = () => {
+    if (!partenaireHistoriqueId) return { lignes: [], soldeGlobal: 0 };
+    const partObj = partenaires.find(f => String(f.id) === String(partenaireHistoriqueId));
+    if (!partObj) return { lignes: [], soldeGlobal: 0 };
 
-    const fournId = fournObj.id;
-    const fournNom = (fournObj.nom_fournisseur || '').trim().toUpperCase();
+    const partId = partObj.id;
+    const partNom = (partObj.nom_fournisseur || partObj.nom || '').trim().toUpperCase();
 
     let operations = [];
 
     approvisionnements.forEach((app) => {
-      const matchId = String(app.id_fournisseur) === String(fournId);
-      const matchNom = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase() === fournNom;
+      const matchId = String(app.id_fournisseur) === String(partId);
+      const matchNom = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase() === partNom;
 
       if (matchId || matchNom) {
         const totaux = calculerTotauxFacture(app);
@@ -425,8 +503,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     return { lignes: lignesAvecProgressif, soldeGlobal: cumulProgressif };
   };
 
-  const fournisseurSelectionneObj = fournisseurs.find(f => String(f.id) === String(fournisseurHistoriqueId));
-  const resultatHistorique = obtenirHistoriqueFournisseur();
+  const partenaireSelectionneObj = partenaires.find(f => String(f.id) === String(partenaireHistoriqueId));
+  const resultatHistorique = obtenirHistoriquePartenaire();
 
   const obtenirLignesFactureDetail = (factureObj) => {
     if (!factureObj || !factureObj.details_articles) return [];
@@ -472,36 +550,52 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       alert('Règlement enregistré avec succès !');
       setMontantReglementSaisi('');
       setFactureSelectionnee(null);
-      chargerFournisseursEtDonnees();
+      chargerPermissionsEtDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
     }
   };
 
-  const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauFournisseur.pays) || LISTE_PAYS[0];
+  const obtenirNomDepot = (depotId) => {
+    if (!depotId) return 'Aucun';
+    const d = depots.find(item => String(item.id) === String(depotId));
+    return d ? d.nom_depot || d.code_depot : 'Non assigné';
+  };
+
+  if (!permissions.peutVoir) {
+    return (
+      <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
+        ⛔ Vous n'avez pas l'autorisation d'afficher le module des fournisseurs / partenaires.
+      </div>
+    );
+  }
+
+  const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauPartenaire.pays) || LISTE_PAYS[0];
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🏢</span> GESTION DES FOURNISSEURS [{moduleActuel}]
+          <span>🏢</span> GESTION DES PARTENAIRES
         </h3>
-        <button
-          type="button"
-          onClick={() => {
-            if (afficherForm) {
-              annulerForm();
-            } else {
-              setNouveauFournisseur({ nom_fournisseur: '', pays: 'cmr', telephone: '', email: '', adresse: '', solde_dette: 0 });
-              setFournisseurEnEdition(null);
-              setAfficherForm(true);
-            }
-          }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-        >
-          {afficherForm ? '✖' : 'Nouveau'}
-        </button>
+        {permissions.peutCreer && (
+          <button
+            type="button"
+            onClick={() => {
+              if (afficherForm) {
+                annulerForm();
+              } else {
+                setNouveauPartenaire({ nom_fournisseur: '', statut_stockage: 'AVEC_STOCKAGE', pays: 'cmr', telephone: '', email: '', adresse: '', solde_dette: 0, id_depot: '' });
+                setPartenaireEnEdition(null);
+                setAfficherForm(true);
+              }
+            }}
+            className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          >
+            {afficherForm ? '✖' : 'Nouveau'}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
@@ -512,7 +606,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             ongletActif === 'repertoire' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
-          👥 Fournisseurs [{moduleActuel}] ({fournisseurs.length})
+          🤝 Partenaires ({partenaires.length})
         </button>
         <button
           type="button"
@@ -521,17 +615,17 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             ongletActif === 'historique' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
-          🔍 Historique [{moduleActuel}]
+          🔍 Historique
         </button>
       </div>
 
       {ongletActif === 'repertoire' && (
         <>
           {afficherForm && (
-            <form onSubmit={enregistrerFournisseur} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
+            <form onSubmit={enregistrerPartenaire} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
-                  {fournisseurEnEdition ? `✏️ Fiche du fournisseur (${moduleActuel})` : `➕ Nouveau fournisseur (${moduleActuel})`}
+                  {partenaireEnEdition ? '✏️ Fiche du partenaire' : '➕ Nouveau partenaire'}
                 </h4>
                 <button
                   type="button"
@@ -548,20 +642,49 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   <input
                     type="text"
                     required
-                    value={nouveauFournisseur.nom_fournisseur}
-                    onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, nom_fournisseur: e.target.value.toUpperCase() })}
+                    value={nouveauPartenaire.nom_fournisseur}
+                    onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, nom_fournisseur: e.target.value.toUpperCase() })}
                     placeholder="EX: SARL FESCO"
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
                   />
                 </div>
 
-                {fournisseurEnEdition && (
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Partenaire (Gestion du stock) *</label>
+                  <select
+                    value={nouveauPartenaire.statut_stockage}
+                    onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, statut_stockage: e.target.value, id_depot: e.target.value === 'SANS_STOCKAGE' ? '' : nouveauPartenaire.id_depot })}
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                  >
+                    <option value="AVEC_STOCKAGE">📦 Avec Stockage (Suivi de stock actif)</option>
+                    <option value="SANS_STOCKAGE">🚚 Sans Stockage (Pas de suivi stock)</option>
+                  </select>
+                </div>
+
+                {nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && (
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Dépôt du Partenaire *</label>
+                    <select
+                      required={nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE'}
+                      value={nouveauPartenaire.id_depot}
+                      onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, id_depot: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs"
+                    >
+                      <option value="">-- Sélectionnez un dépôt --</option>
+                      {depots.map((d) => (
+                        <option key={d.id} value={d.id}>🏢 {d.nom_depot || d.code_depot}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {partenaireEnEdition && (
                   <div>
                     <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Solde Dette</label>
                     <input
                       type="text"
                       disabled
-                      value={`${Number(nouveauFournisseur.solde_dette || 0).toLocaleString('fr-FR')} F`}
+                      value={`${Number(nouveauPartenaire.solde_dette || 0).toLocaleString('fr-FR')} F`}
                       className="w-full bg-slate-100 text-red-700 border border-slate-300 rounded p-1.5 font-black text-xs cursor-not-allowed"
                     />
                   </div>
@@ -571,8 +694,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse</label>
                   <input
                     type="text"
-                    value={nouveauFournisseur.adresse}
-                    onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, adresse: e.target.value.toUpperCase() })}
+                    value={nouveauPartenaire.adresse}
+                    onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, adresse: e.target.value.toUpperCase() })}
                     placeholder="EX: DOUALA - AKWA"
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
                   />
@@ -583,8 +706,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays *</label>
                   <select
-                    value={nouveauFournisseur.pays}
-                    onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, pays: e.target.value })}
+                    value={nouveauPartenaire.pays}
+                    onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, pays: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs"
                   >
                     {LISTE_PAYS.map((p) => (
@@ -605,7 +728,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       type="text"
                       required
                       maxLength={paysActuelObj.longueur}
-                      value={nouveauFournisseur.telephone}
+                      value={nouveauPartenaire.telephone}
                       onChange={gererSaisieTelephone}
                       placeholder="6XXXXXXXX"
                       className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none"
@@ -618,8 +741,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
                 <input
                   type="email"
-                  value={nouveauFournisseur.email}
-                  onChange={(e) => setNouveauFournisseur({ ...nouveauFournisseur, email: e.target.value.toLowerCase() })}
+                  value={nouveauPartenaire.email}
+                  onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, email: e.target.value.toLowerCase() })}
                   placeholder="contact@email.com"
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400"
                 />
@@ -627,33 +750,34 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
               <div className="pt-2 border-t border-slate-200 flex flex-wrap justify-between items-center gap-1.5">
                 <div className="flex items-center gap-1 flex-wrap">
-                  {nouveauFournisseur.telephone && nouveauFournisseur.telephone.length === paysActuelObj.longueur && (
+                  {nouveauPartenaire.telephone && nouveauPartenaire.telephone.length === paysActuelObj.longueur && (
                     <>
                       <a href={`tel:${getTelephoneComplet()}`} className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="Appeler">📞 Appel</a>
                       <a href={`sms:${getTelephoneComplet()}`} className="bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="SMS">💬 SMS</a>
                       <a href={`https://wa.me/${obtenirNumWhatsapp(getTelephoneComplet())}`} target="_blank" rel="noopener noreferrer" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold px-2.5 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="WhatsApp">
-                        <svg className="w-3.5 h-3.5 inline fill-current text-emerald-600" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                         WhatsApp
                       </a>
                     </>
                   )}
-                  {nouveauFournisseur.email && (
-                    <a href={`mailto:${nouveauFournisseur.email}`} className="bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-300 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="Email">📧 Email</a>
+                  {nouveauPartenaire.email && (
+                    <a href={`mailto:${nouveauPartenaire.email}`} className="bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-300 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="Email">📧 Email</a>
                   )}
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {fournisseurEnEdition && (
+                  {/* Le bouton de suppression s'affiche uniquement si la permission de suppression est accordée */}
+                  {partenaireEnEdition && permissions.peutSuppression && (
                     <button
                       type="button"
-                      onClick={supprimerFournisseur}
+                      onClick={supprimerPartenaire}
                       className="bg-red-600 hover:bg-red-700 text-white font-black px-2.5 py-1.5 rounded text-[10px] shadow-xs"
                     >
                       🗑️ Supprimer
                     </button>
                   )}
+                  {/* Le bouton Mettre à jour / Enregistrer s'affiche toujours correctement */}
                   <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
-                    {fournisseurEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                    {partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer'}
                   </button>
                 </div>
               </div>
@@ -667,37 +791,41 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   type="text"
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-                  placeholder={`RECHERCHER PAR NOM OU TÉLÉPHONE [${moduleActuel}]...`}
+                  placeholder="RECHERCHER PAR NOM OU TÉLÉPHONE..."
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs placeholder:text-slate-400"
                 />
               </div>
 
               <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
-                <span>Répertoire : <strong>{fournisseursFiltres.length}</strong> fournisseur(s)</span>
+                <span>Répertoire : <strong>{partenairesFiltres.length}</strong> partenaire(s)</span>
               </div>
 
               {chargement ? (
                 <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
-              ) : fournisseursFiltres.length === 0 ? (
+              ) : partenairesFiltres.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-                  Aucun fournisseur enregistré pour le module {moduleActuel}.
+                  Aucun partenaire enregistré.
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                   <table className="w-full text-left text-xs table-fixed">
                     <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                       <tr>
-                        <th onClick={() => gererTri('nom_fournisseur')} className="p-2.5 w-[70%] cursor-pointer hover:bg-slate-200 transition">
+                        <th onClick={() => gererTri('nom_fournisseur')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200 transition">
                           Nom / Raison Sociale {rendreFlecheTri('nom_fournisseur')}
                         </th>
+                        <th className="p-2.5 w-[30%]">Statut Stock</th>
                         <th onClick={() => gererTri('solde_dette')} className="p-2.5 w-[30%] text-right cursor-pointer hover:bg-slate-200 transition whitespace-nowrap">
                           Solde Dette {rendreFlecheTri('solde_dette')}
                         </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                      {fournisseursFiltres.map((f) => {
-                        const soldeDetteCalcule = calculerSoldeDetteFournisseur(f);
+                      {partenairesFiltres.map((f) => {
+                        const nomP = f.nom_fournisseur || f.nom || '';
+                        const soldeDetteCalcule = calculerSoldeDettePartenaire(f);
+                        const estSansStock = f.statut_stockage === 'SANS_STOCKAGE';
+
                         return (
                           <tr 
                             key={f.id} 
@@ -705,7 +833,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                             className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                             title="Cliquer pour modifier"
                           >
-                            <td className="p-2.5 font-black uppercase text-slate-900 truncate">{f.nom_fournisseur}</td>
+                            <td className="p-2.5 font-black uppercase text-slate-900 truncate">{nomP}</td>
+                            <td className="p-2.5 whitespace-nowrap">
+                              <span className={`px-1.5 py-0.5 rounded font-black text-[9px] ${estSansStock ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+                                {estSansStock ? '🚚 SANS STOCK' : `📦 ${obtenirNomDepot(f.id_depot)}`}
+                              </span>
+                            </td>
                             <td className="p-2.5 text-right font-black text-red-600 whitespace-nowrap">
                               {soldeDetteCalcule.toLocaleString('fr-FR')} F
                             </td>
@@ -724,19 +857,19 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       {ongletActif === 'historique' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
           <h4 className="font-black text-slate-900 text-xs uppercase flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
-            <span>🔍</span> HISTORIQUE FOURNISSEUR [{moduleActuel}]
+            <span>🔍</span> HISTORIQUE PARTENAIRE
           </h4>
 
           <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
             <div>
-              <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Fournisseur *</label>
+              <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Partenaire *</label>
               <select
-                value={fournisseurHistoriqueId}
-                onChange={(e) => setFournisseurHistoriqueId(e.target.value)}
+                value={partenaireHistoriqueId}
+                onChange={(e) => setPartenaireHistoriqueId(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
               >
-                {fournisseurs.map((f) => (
-                  <option key={f.id} value={f.id}>🏢 {f.nom_fournisseur}</option>
+                {partenaires.map((f) => (
+                  <option key={f.id} value={f.id}>🏢 {f.nom_fournisseur || f.nom}</option>
                 ))}
               </select>
             </div>
@@ -766,7 +899,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
           <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl flex justify-between items-center text-[10px]">
             <span className="font-black text-slate-900 uppercase">
-              🏢 FOURNISSEUR : {fournisseurSelectionneObj ? fournisseurSelectionneObj.nom_fournisseur : 'Aucun'}
+              🏢 PARTENAIRE : {partenaireSelectionneObj ? (partenaireSelectionneObj.nom_fournisseur || partenaireSelectionneObj.nom) : 'Aucun'}
             </span>
             <span className="font-extrabold text-slate-700">{resultatHistorique.lignes.length} facture(s)</span>
           </div>
@@ -792,7 +925,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               <tbody className="divide-y divide-slate-100 text-[10px]">
                 {resultatHistorique.lignes.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun historique d'achat pour le module {moduleActuel}.</td>
+                    <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun historique d'achat.</td>
                   </tr>
                 ) : (
                   resultatHistorique.lignes.map((ligne, idx) => (
@@ -833,7 +966,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
               <div>
-                <h3 className="font-black text-xs uppercase">📄 FACTURE FOURNISSEUR [{moduleActuel}]</h3>
+                <h3 className="font-black text-xs uppercase">📄 FACTURE PARTENAIRE</h3>
                 <p className="text-[10px] text-orange-400 font-mono font-extrabold">
                   N° {factureSelectionnee.numero_bon || factureSelectionnee.numero_commande || 'FACTURE'}
                 </p>

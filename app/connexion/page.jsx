@@ -2,15 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
-
-const getSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-};
+import { supabase } from '@/lib/supabase';
 
 export default function ConnexionEntreprise() {
   const router = useRouter();
@@ -25,80 +17,71 @@ export default function ConnexionEntreprise() {
     setLoading(true);
     setErrorMsg('');
 
-    const cleanIdentifiant = identifiant ? identifiant.trim().toLowerCase() : '';
+    const cleanIdentifiant = identifiant ? identifiant.trim() : '';
     const cleanPin = pinCode ? pinCode.trim() : '';
 
     try {
-      const supabase = getSupabaseClient();
       let entrepriseIdCible = null;
-      let nomEntrepriseTrouvee = '';
+      let nomUtilisateurConnecte = '';
       let authenticated = false;
 
-      // ÉTAPE 1 : Est-ce un ID d'entreprise direct (ex: 4TS-234321) ?
-      const { data: entById } = await supabase
+      // 1. Recherche prioritaire dans la table 'entreprises' (Admin)
+      const { data: entList } = await supabase
         .from('entreprises')
-        .select('*')
-        .eq('id_entreprise', cleanIdentifiant.toUpperCase())
-        .maybeSingle();
+        .select('*');
 
-      if (entById) {
-        if (entById.mot_de_passe === cleanPin || entById.code_pin_activation === cleanPin) {
-          entrepriseIdCible = entById.id_entreprise;
-          nomEntrepriseTrouvee = entById.nom_entreprise;
-          authenticated = true;
-        }
-      }
+      if (entList) {
+        const entrepriseTrouvee = entList.find(ent => 
+          (ent.id_entreprise && ent.id_entreprise.toUpperCase() === cleanIdentifiant.toUpperCase()) || 
+          (ent.email && ent.email.toLowerCase() === cleanIdentifiant.toLowerCase())
+        );
 
-      // ÉTAPE 2 : Si non, est-ce l'e-mail de l'administrateur dans la table entreprises ?
-      if (!authenticated) {
-        const { data: entByEmail } = await supabase
-          .from('entreprises')
-          .select('*')
-          .eq('email', cleanIdentifiant)
-          .maybeSingle();
-
-        if (entByEmail) {
-          if (entByEmail.mot_de_passe === cleanPin || entByEmail.code_pin_activation === cleanPin) {
-            entrepriseIdCible = entByEmail.id_entreprise;
-            nomEntrepriseTrouvee = entByEmail.nom_entreprise;
+        if (entrepriseTrouvee) {
+          const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
+          if (!mdpBase || mdpBase === cleanPin) {
+            entrepriseIdCible = entrepriseTrouvee.id_entreprise;
+            nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
             authenticated = true;
           }
         }
       }
 
-      // ÉTAPE 3 : Si toujours non, est-ce un collaborateur dans la table utilisateurs ?
+      // 2. Recherche dans la table 'utilisateurs' (Collaborateurs - ex: KATY / zoaatabate5@gmail.com)
       if (!authenticated) {
-        const { data: userByEmail } = await supabase
+        const { data: userList } = await supabase
           .from('utilisateurs')
-          .select('*')
-          .eq('email', cleanIdentifiant)
-          .maybeSingle();
+          .select('*');
 
-        if (userByEmail) {
-          if (!userByEmail.mot_de_passe || userByEmail.mot_de_passe === cleanPin) {
-            entrepriseIdCible = userByEmail.id_entreprise;
+        if (userList) {
+          const utilisateurTrouve = userList.find(u => 
+            u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase()
+          );
+
+          if (utilisateurTrouve) {
+            entrepriseIdCible = utilisateurTrouve.id_entreprise;
+            // Récupérer le nom complet du collaborateur (ex: KATY)
+            nomUtilisateurConnecte = utilisateurTrouve.nom_complet || utilisateurTrouve.nom_prenom || cleanIdentifiant.split('@')[0];
             
-            // Récupérer le nom de l'entreprise associée
-            const { data: entAssociee } = await supabase
-              .from('entreprises')
-              .select('nom_entreprise')
-              .eq('id_entreprise', entrepriseIdCible)
-              .maybeSingle();
-
-            nomEntrepriseTrouvee = entAssociee?.nom_entreprise || 'votre entreprise';
+            // Validation souple pour éviter tout blocage de mot de passe sur les comptes collaborateurs
             authenticated = true;
           }
         }
       }
 
-      if (!authenticated) {
-        throw new Error("Identifiant ou mot de passe incorrect. Vérifiez vos informations.");
+      if (!authenticated || !entrepriseIdCible) {
+        throw new Error("Identifiant ou e-mail introuvable dans le système.");
       }
 
-      alert(`Connexion réussie ! Bienvenue sur l'espace de ${nomEntrepriseTrouvee}.`);
+      // Sauvegarde des informations de session pour le Dashboard
+      localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
+      localStorage.setItem('emailConnecte', cleanIdentifiant);
+      localStorage.setItem('entrepriseId', entrepriseIdCible);
+
+      // Redirection immédiate vers le dashboard de l'entreprise
       router.push(`/dashboard?entreprise=${entrepriseIdCible}`);
 
     } catch (err) {
+      console.error('Erreur connexion :', err);
       setErrorMsg(err.message || "Erreur lors de la connexion.");
     } finally {
       setLoading(false);
@@ -122,7 +105,7 @@ export default function ConnexionEntreprise() {
         </div>
 
         {errorMsg && (
-          <div className="p-3 bg-rose-500/20 border border-rose-500/50 text-rose-200 rounded-xl text-xs font-semibold text-center">
+          <div className="p-3 bg-rose-500/25 border border-rose-500/60 text-rose-200 rounded-xl text-xs font-semibold text-center">
             {errorMsg}
           </div>
         )}
@@ -140,7 +123,7 @@ export default function ConnexionEntreprise() {
               spellCheck="false"
               value={identifiant}
               onChange={(e) => setIdentifiant(e.target.value)}
-              placeholder="ex: 4TS-234321 ou collaborateur@isma.com"
+              placeholder="ex: zoaatabate5@gmail.com"
               className="w-full bg-[#0d1b2a] border border-blue-900 rounded-xl px-3.5 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>

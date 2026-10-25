@@ -24,8 +24,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [ticketSelectionne, setTicketSelectionne] = useState(null);
 
   const [modeSaisie, setModeSaisie] = useState(true);
-
   const [ordreAlphabetique, setOrdreAlphabetique] = useState('ASC');
+
+  // Permissions de l'employé connecté
+  const [permissions, setPermissions] = useState({
+    lecture: true,
+    creation: true,
+    modification: false,
+    suppression: false,
+  });
 
   const [caisseId, setCaisseId] = useState('');
   const [depotId, setDepotId] = useState('');
@@ -66,9 +73,46 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
 
-  const chargerDonnees = async () => {
+  const chargerDonneesEtPermissions = async () => {
     setChargement(true);
     try {
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          const permHistorique = userObj.permissions?.['ventes_historiques'] || userObj.permissions?.['caisse'];
+          
+          if (permHistorique) {
+            setPermissions({
+              lecture: permHistorique.lecture ?? true,
+              creation: permHistorique.creation ?? true,
+              modification: permHistorique.modification ?? false,
+              suppression: permHistorique.suppression ?? false,
+            });
+          } else {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['ventes_historiques'] || roleData?.permissions?.['caisse'];
+            if (rolePerm) {
+              setPermissions({
+                lecture: rolePerm.lecture ?? true,
+                creation: rolePerm.creation ?? true,
+                modification: rolePerm.modification ?? false,
+                suppression: rolePerm.suppression ?? false,
+              });
+            }
+          }
+        }
+      }
+
       const [resVentes, resArticles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro] = await Promise.all([
         supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -80,52 +124,40 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
-      if (resVentes.error) throw resVentes.error;
-      if (resArticles.error) throw resArticles.error;
-      if (resClients.error) throw resClients.error;
-      if (resCaisses.error) throw resCaisses.error;
-      if (resDepots.error) throw resDepots.error;
-
-      const ventesData = resVentes.data || [];
-      const clientsData = resClients.data || [];
-      const categoriesData = resCategories.data || [];
-      const caissesData = resCaisses.data || [];
-      const depotsData = resDepots.data || [];
-      
-      setVentes(ventesData);
-      setVentesHistoriques(ventesData);
+      setVentes(resVentes.data || []);
+      setVentesHistoriques(resVentes.data || []);
       setArticlesStock(resArticles.data || []);
-      setClientsList(clientsData);
-      setCategoriesList(categoriesData);
-      setCaissesList(caissesData);
-      setDepotsList(depotsData);
+      setClientsList(resClients.data || []);
+      setCategoriesList(resCategories.data || []);
+      setCaissesList(resCaisses.data || []);
+      setDepotsList(resDepots.data || []);
       setMouvements(resMouvements.data || []);
       setApprovisionnements(resAppro.data || []);
 
       setDateJour(new Date().toISOString().split('T')[0]);
 
       let codeCaisseCourant = 'C01';
-      if (caissesData.length > 0) {
-        setCaisseId(caissesData[0].id);
-        codeCaisseCourant = caissesData[0].code_caisse || 'C01';
+      if ((resCaisses.data || []).length > 0) {
+        setCaisseId(resCaisses.data[0].id);
+        codeCaisseCourant = resCaisses.data[0].code_caisse || 'C01';
         setCodeCaisseActif(codeCaisseCourant);
       }
 
-      setNumeroTicket(genererNumeroTicket(codeCaisseCourant, ventesData.length));
+      setNumeroTicket(genererNumeroTicket(codeCaisseCourant, (resVentes.data || []).length));
 
-      if (depotsData.length > 0) {
-        setDepotId(depotsData[0].id);
+      if ((resDepots.data || []).length > 0) {
+        setDepotId(resDepots.data[0].id);
       }
 
-      const clientDivers = clientsData.find(c => (c.nom_client || '').toLowerCase().includes('divers'));
+      const clientDivers = (resClients.data || []).find(c => (c.nom_client || '').toLowerCase().includes('divers'));
       if (clientDivers) {
         setClientId(clientDivers.id);
         setClientSelectionneObj(clientDivers);
         setClientNomSelectionne(clientDivers.nom_client);
-      } else if (clientsData.length > 0) {
-        setClientId(clientsData[0].id);
-        setClientSelectionneObj(clientsData[0]);
-        setClientNomSelectionne(clientsData[0].nom_client || 'CLIENT');
+      } else if ((resClients.data || []).length > 0) {
+        setClientId(resClients.data[0].id);
+        setClientSelectionneObj(resClients.data[0]);
+        setClientNomSelectionne(resClients.data[0].nom_client || 'CLIENT');
       }
 
     } catch (err) {
@@ -136,7 +168,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   useEffect(() => {
-    chargerDonnees();
+    chargerDonneesEtPermissions();
   }, [entrepriseId, moduleActuel]);
 
   const changerCaisseSelectionnee = (idCaisseSel) => {
@@ -351,6 +383,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const totalFinal = baseImposable + montantTva;
 
   const validerEtEnregistrerVente = async () => {
+    if (!permissions.creation) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de créer des ventes.');
+      return;
+    }
+
     if (panier.length === 0) {
       alert('⚠️ Le panier est vide.');
       return;
@@ -390,7 +427,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       let { error: errVente } = await supabase.from('ventes_historiques').insert([payloadVente]);
 
       if (errVente && errVente.message.includes('column')) {
-        console.warn("Retrait dynamique des colonnes client absentes de la table :", errVente.message);
         delete payloadVente.nom_client;
         delete payloadVente.id_client;
 
@@ -423,7 +459,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       setNomClientLibre('');
       setValeurRemise(0);
       setAppliquerTva('NON');
-      await chargerDonnees();
+      await chargerDonneesEtPermissions();
       setModeSaisie(false);
     } catch (err) {
       alert('Erreur enregistrement : ' + err.message);
@@ -431,12 +467,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   const supprimerTicket = async (id) => {
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des tickets ou des ventes.');
+      return;
+    }
     if (!confirm('Voulez-vous vraiment supprimer ce ticket ?')) return;
     try {
       const { error } = await supabase.from('ventes_historiques').delete().eq('id', id);
       if (error) throw error;
       setTicketSelectionne(null);
-      await chargerDonnees();
+      await chargerDonneesEtPermissions();
     } catch (err) {
       alert('Erreur suppression : ' + err.message);
     }
@@ -751,15 +791,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       ❌ Annuler
                     </button>
 
-                    <button
-                      onClick={validerEtEnregistrerVente}
-                      disabled={panier.length === 0}
-                      className={`font-bold px-3 py-1.5 rounded text-[10px] transition shadow-2xs ${
-                        panier.length > 0 ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      }`}
-                    >
-                      Valider
-                    </button>
+                    {permissions.creation && (
+                      <button
+                        onClick={validerEtEnregistrerVente}
+                        disabled={panier.length === 0}
+                        className={`font-bold px-3 py-1.5 rounded text-[10px] transition shadow-2xs ${
+                          panier.length > 0 ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        Valider
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1018,28 +1060,37 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               </div>
             </div>
 
-            <div className="p-2 bg-white border-t border-slate-200 flex items-center justify-between">
-              <button
-                onClick={() => supprimerTicket(ticketSelectionne.id)}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded text-[10px] transition"
-              >
-                🗑️ Supprimer
-              </button>
-              <div className="flex gap-1">
+            {/* Pied de modale corrigé et responsive pour téléphones et tablettes */}
+            <div className="p-2.5 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <div className="w-full sm:w-auto text-center sm:text-left">
+                {permissions.suppression ? (
+                  <button
+                    onClick={() => supprimerTicket(ticketSelectionne.id)}
+                    className="w-full sm:w-auto bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1.5 rounded text-[10px] transition"
+                  >
+                    🗑️ Supprimer
+                  </button>
+                ) : (
+                  <span className="text-slate-400 text-[9px] italic block">Suppression non autorisée pour votre profil</span>
+                )}
+              </div>
+              
+              <div className="flex gap-1.5 w-full sm:w-auto justify-end">
                 <button
                   onClick={() => window.print()}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-2 py-1 rounded text-[10px] transition"
+                  className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] transition text-center"
                 >
                   🖨️ Imprimer
                 </button>
                 <button
                   onClick={() => setTicketSelectionne(null)}
-                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-2 py-1 rounded text-[10px] transition"
+                  className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded text-[10px] transition text-center"
                 >
                   Fermer
                 </button>
               </div>
             </div>
+
           </div>
         </div>
       )}

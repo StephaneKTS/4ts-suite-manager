@@ -14,6 +14,14 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [natureCaisse, setNatureCaisse] = useState('FACTURATION');
   const [caisseEnEdition, setCaisseEnEdition] = useState(null);
 
+  // État des permissions utilisateur strictes
+  const [permissions, setPermissions] = useState({
+    peutVoir: true,
+    peutCreer: true,
+    peutModifier: true,
+    peutSupprimer: false, // Par défaut sécurisé à false si non défini
+  });
+
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -24,12 +32,59 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
 
   useEffect(() => {
-    chargerCaisses();
+    chargerPermissionsEtCaisses();
   }, [entrepriseId, moduleActuel]);
 
-  const chargerCaisses = async () => {
+  const chargerPermissionsEtCaisses = async () => {
     setLoading(true);
     try {
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          // 1. Vérifier d'abord si les permissions sont stockées directement dans l'objet utilisateur (JSON)
+          const permModule = userObj.permissions?.['caisses'] || userObj.permissions?.['caisse'];
+          
+          if (permModule) {
+            setPermissions({
+              peutVoir: permModule.lecture ?? permModule.voir ?? true,
+              peutCreer: permModule.creation ?? permModule.creer ?? true,
+              peutModifier: permModule.modification ?? permModule.modifier ?? false,
+              peutSupprimer: permModule.suppression ?? false,
+            });
+          } else {
+            // 2. Sinon, interroger la table des rôles
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['caisses'] || roleData?.permissions?.['caisse'];
+
+            if (rolePerm) {
+              setPermissions({
+                peutVoir: rolePerm.lecture ?? rolePerm.voir ?? true,
+                peutCreer: rolePerm.creation ?? rolePerm.creer ?? true,
+                peutModifier: rolePerm.modification ?? rolePerm.modifier ?? false,
+                peutSupprimer: rolePerm.suppression ?? false,
+              });
+            } else if (roleData) {
+              setPermissions({
+                peutVoir: roleData.peut_voir ?? roleData.voir ?? true,
+                peutCreer: roleData.peut_creer ?? roleData.creer ?? true,
+                peutModifier: roleData.peut_modifier ?? roleData.modifier ?? false,
+                peutSupprimer: roleData.peut_supprimer ?? roleData.supprimer ?? false,
+              });
+            }
+          }
+        }
+      }
+
       const { data, error } = await supabase
         .from('caisses')
         .select('*')
@@ -48,6 +103,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   };
 
   const ouvrirFormulaireNouveau = () => {
+    if (!permissions.peutCreer) {
+      setMsg({ type: 'error', text: '⛔ Accès refusé : Vous n’avez pas le droit de créer de nouvelles caisses.' });
+      return;
+    }
     setCaisseEnEdition(null);
     setCodeCaisse('');
     setNomCaisse('');
@@ -57,6 +116,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   };
 
   const ouvrirEdition = (caisse) => {
+    if (!permissions.peutModifier && !permissions.peutVoir) {
+      setMsg({ type: 'error', text: '⛔ Accès refusé : Vous n’avez pas les droits nécessaires.' });
+      return;
+    }
     setCaisseEnEdition(caisse);
     setCodeCaisse(caisse.code_caisse || '');
     setNomCaisse(caisse.nom_caisse || '');
@@ -75,6 +138,15 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerCaisse = async (e) => {
     e.preventDefault();
+    if (caisseEnEdition && !permissions.peutModifier) {
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Vous n’avez pas le droit de modifier les caisses.' });
+      return;
+    }
+    if (!caisseEnEdition && !permissions.peutCreer) {
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Vous n’avez pas le droit de créer des caisses.' });
+      return;
+    }
+
     if (!codeCaisse.trim() || !nomCaisse.trim()) {
       setMsg({ type: 'error', text: '⚠️ Veuillez remplir le code et le nom de la caisse.' });
       return;
@@ -84,7 +156,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     const nomSaisi = nomCaisse.trim().toUpperCase();
 
     try {
-      // 1. Vérification anti-doublon sur le code et sur le nom de la caisse
       const { data: caissesExistantes, error: errVerif } = await supabase
         .from('caisses')
         .select('id, code_caisse, nom_caisse')
@@ -95,25 +166,23 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
       const liste = caissesExistantes || [];
 
-      // Vérifier si le code existe déjà (sur une autre ligne)
       const doublonCode = liste.some(c => 
         String(c.code_caisse || '').toUpperCase() === codeSaisi && 
         (!caisseEnEdition || String(c.id) !== String(caisseEnEdition.id))
       );
 
       if (doublonCode) {
-        setMsg({ type: 'error', text: `⛔ Erreur : Le code caisse "${codeSaisi}" existe déjà dans le module ${moduleActuel}.` });
+        setMsg({ type: 'error', text: `⛔ Erreur : Le code caisse "${codeSaisi}" existe déjà.` });
         return;
       }
 
-      // Vérifier si le nom existe déjà (sur une autre ligne)
       const doublonNom = liste.some(c => 
         String(c.nom_caisse || '').toUpperCase() === nomSaisi && 
         (!caisseEnEdition || String(c.id) !== String(caisseEnEdition.id))
       );
 
       if (doublonNom) {
-        setMsg({ type: 'error', text: `⛔ Erreur : Le nom de caisse "${nomSaisi}" existe déjà dans le module ${moduleActuel}.` });
+        setMsg({ type: 'error', text: `⛔ Erreur : Le nom de caisse "${nomSaisi}" existe déjà.` });
         return;
       }
 
@@ -132,24 +201,29 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
           .eq('id', caisseEnEdition.id);
 
         if (error) throw error;
-        setMsg({ type: 'success', text: `✅ Caisse mise à jour avec succès dans le module ${moduleActuel} !` });
+        setMsg({ type: 'success', text: '✅ Caisse mise à jour avec succès !' });
       } else {
         const { error } = await supabase
           .from('caisses')
           .insert([payload]);
 
         if (error) throw error;
-        setMsg({ type: 'success', text: `✅ Nouvelle caisse enregistrée avec succès dans le module ${moduleActuel} !` });
+        setMsg({ type: 'success', text: '✅ Nouvelle caisse enregistrée avec succès !' });
       }
 
       annulerForm();
-      chargerCaisses();
+      chargerPermissionsEtCaisses();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur : ' + err.message });
     }
   };
 
   const supprimerCaisse = async () => {
+    // Double vérification stricte de la permission de suppression
+    if (!permissions.peutSupprimer) {
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des caisses.' });
+      return;
+    }
     if (!caisseEnEdition) return;
     if (!confirm(`Voulez-vous vraiment supprimer la caisse "${caisseEnEdition.nom_caisse}" ?`)) return;
 
@@ -163,31 +237,37 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
       setMsg({ type: 'success', text: 'Caisse supprimée avec succès.' });
       annulerForm();
-      chargerCaisses();
+      chargerPermissionsEtCaisses();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
     }
   };
+
+  if (!permissions.peutVoir) {
+    return (
+      <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
+        ⛔ Vous n'avez pas l'autorisation d'afficher le module des caisses.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
-          🏧 Caisses [{moduleActuel}] ({caisses.length})
+          🏧 Caisses ({caisses.length})
         </h2>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={ouvrirFormulaireNouveau}
-            className={`px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs ${
-              afficherForm 
-                ? 'bg-orange-600 text-white' 
-                : 'bg-orange-600 hover:bg-orange-700 text-white'
-            }`}
-          >
-            ＋ Nouveau
-          </button>
+          {permissions.peutCreer && (
+            <button
+              type="button"
+              onClick={ouvrirFormulaireNouveau}
+              className="px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              ＋ Nouveau
+            </button>
+          )}
           <button
             type="button"
             onClick={() => { setAfficherForm(false); setCaisseEnEdition(null); }}
@@ -216,7 +296,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerCaisse} className="bg-white p-3 rounded-xl border border-orange-500/50 shadow-sm space-y-2.5">
           <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
             <h3 className="font-extrabold text-slate-900 text-[11px] uppercase">
-              {caisseEnEdition ? `✏️ Modifier la Caisse (${moduleActuel})` : `🏧 Nouvelle Caisse (${moduleActuel})`}
+              {caisseEnEdition ? '✏️ Modifier la Caisse' : '🏧 Nouvelle Caisse'}
             </h3>
             <button
               type="button"
@@ -236,6 +316,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setCodeCaisse(e.target.value.toUpperCase())}
                 placeholder="C01"
                 required
+                disabled={caisseEnEdition && !permissions.peutModifier}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-mono font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
@@ -248,6 +329,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setNomCaisse(e.target.value.toUpperCase())}
                 placeholder="CAISSE PRINCIPALE"
                 required
+                disabled={caisseEnEdition && !permissions.peutModifier}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
@@ -257,6 +339,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               <select
                 value={natureCaisse}
                 onChange={(e) => setNatureCaisse(e.target.value)}
+                disabled={caisseEnEdition && !permissions.peutModifier}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-black text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
                 <option value="FACTURATION">FACTURATION</option>
@@ -266,7 +349,8 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-            {caisseEnEdition ? (
+            {/* Le bouton de suppression s'affiche uniquement si l'utilisateur a explicitement la permission */}
+            {caisseEnEdition && permissions.peutSupprimer ? (
               <button
                 type="button"
                 onClick={supprimerCaisse}
@@ -284,12 +368,14 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               >
                 Annuler
               </button>
-              <button
-                type="submit"
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition"
-              >
-                {caisseEnEdition ? 'Mettre à jour' : 'Enregistrer'}
-              </button>
+              {((caisseEnEdition && permissions.peutModifier) || (!caisseEnEdition && permissions.peutCreer)) && (
+                <button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition"
+                >
+                  {caisseEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                </button>
+              )}
             </div>
           </div>
         </form>
@@ -299,14 +385,16 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
             <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des caisses...</p>
           ) : caisses.length === 0 ? (
             <div className="text-center py-6 space-y-2">
-              <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée pour le module {moduleActuel}.</p>
-              <button
-                type="button"
-                onClick={ouvrirFormulaireNouveau}
-                className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1 rounded text-[10px]"
-              >
-                ＋ Déclarer une caisse
-              </button>
+              <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée.</p>
+              {permissions.peutCreer && (
+                <button
+                  type="button"
+                  onClick={ouvrirFormulaireNouveau}
+                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1 rounded text-[10px]"
+                >
+                  ＋ Déclarer une caisse
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
@@ -338,7 +426,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
                   <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-end">
                     <span className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600">
-                      ✏️ Modifier
+                      {permissions.peutModifier ? '✏️ Modifier' : '👁️ Consulter'}
                     </span>
                   </div>
                 </div>

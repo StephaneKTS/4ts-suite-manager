@@ -79,21 +79,20 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       const depotsList = dataDepots || [];
       setDepots(depotsList);
       if (depotsList.length > 0 && !enTeteDoc.id_depot_source) {
-        setEnTeteDoc((prev) => ({ ...prev, id_depot_source: depotsList[0].id }));
+        setEnTeteDoc((prev) => ({ 
+          ...prev, 
+          id_depot_source: depotsList[0].id,
+          id_depot_destination: depotsList[0].id 
+        }));
       }
 
-      const depotIds = depotsList.map(d => d.id);
-      if (depotIds.length > 0) {
-        const { data: dataEmplacements } = await supabase
-          .from('emplacements_stock')
-          .select('*')
-          .in('id_depot', depotIds);
-        setEmplacements(dataEmplacements || []);
-      } else {
-        setEmplacements([]);
-      }
+      const { data: dataEmplacements } = await supabase
+        .from('emplacements_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setEmplacements(dataEmplacements || []);
 
-      // CORRECTION DE LA CASSE DE ID_ENTREPRISE -> id_entreprise
       const { data: dataArticles } = await supabase
         .from('articles_stock')
         .select('*')
@@ -136,6 +135,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => { chargerDonnees(); }, [entrepriseId, typeOperation, moduleActuel]);
 
+  const emplacementsSourceFiltres = emplacements;
+  const emplacementsDestinationFiltres = emplacements;
+
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
     if (!valeurDepotFlux || !depotCibleId) return false;
     if (String(valeurDepotFlux) === String(depotCibleId)) return true;
@@ -147,7 +149,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const obtenirTousLesFluxArticle = (articleId) => {
     let flux = [];
     mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
-      flux.push({ date: m.created_at || '', depot_source: m.id_depot_source, depot_destination: m.id_depot_destination, quantite: parseInt(m.quantite || 0), type: (m.type_mouvement || '').toUpperCase() });
+      flux.push({ 
+        date: m.created_at || '', 
+        depot_source: m.id_depot_source, 
+        depot_destination: m.id_depot_destination, 
+        emplacement_source: m.id_emplacement_source,
+        emplacement_destination: m.id_emplacement_destination,
+        quantite: parseInt(m.quantite || 0), 
+        type: (m.type_mouvement || '').toUpperCase() 
+      });
     });
     approvisionnements.forEach((app) => {
       let articlesAppro = [];
@@ -165,7 +175,38 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return flux;
   };
 
+  const calculerStockPourEmplacement = (articleId, emplacementId) => {
+    let stockEmp = 0;
+    const fluxArticle = obtenirTousLesFluxArticle(articleId);
+    
+    fluxArticle.forEach((m) => {
+      const qte = m.quantite;
+      const typeMvt = m.type;
+      const matchSource = String(m.emplacement_source) === String(emplacementId);
+      const matchDest = String(m.emplacement_destination) === String(emplacementId);
+
+      if (typeMvt === 'INVENTAIRE' && matchSource) {
+        stockEmp = qte;
+        return;
+      }
+      if (typeMvt === 'TRANSFERT') {
+        if (matchDest) stockEmp += qte;
+        if (matchSource) stockEmp -= qte;
+        return;
+      }
+      if (matchDest) stockEmp += qte;
+      if (matchSource) stockEmp -= qte;
+    });
+
+    return Math.max(0, stockEmp);
+  };
+
   const calculerStockPourDepotActuel = (articleId) => {
+    const emplacementCibleId = enTeteDoc.id_emplacement_source;
+    if (emplacementCibleId) {
+      return calculerStockPourEmplacement(articleId, emplacementCibleId);
+    }
+
     const depotCibleId = enTeteDoc.id_depot_source;
     if (!depotCibleId) {
       const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
@@ -184,6 +225,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         return; 
       }
       if (typeMvt === 'TRANSFERT') { 
+        if (matchDepotSource && matchDepotDest) {
+          return;
+        }
         if (matchDepotDest) stockDepot += qte; 
         if (matchDepotSource) stockDepot -= qte; 
         return; 
@@ -207,8 +251,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const verifierEnTeteAvantSaisie = () => {
     if (!enTeteDoc.motif || !enTeteDoc.motif.trim()) { alert('⚠️ Veuillez obligatoirement saisir le motif.'); return false; }
     if (typeOperation === 'TRANSFERT') {
-      if (!enTeteDoc.id_depot_source || !enTeteDoc.id_depot_destination) { alert('⚠️ Sélectionnez les dépôts source et destination.'); return false; }
-      if (enTeteDoc.id_depot_source === enTeteDoc.id_depot_destination) { alert('⚠️ Dépôts identiques.'); return false; }
+      if (!enTeteDoc.id_depot_source) { alert('⚠️ Sélectionnez le dépôt source.'); return false; }
+      if (!enTeteDoc.id_depot_destination) { alert('⚠️ Sélectionnez le dépôt destination.'); return false; }
+
+      const memeDepot = String(enTeteDoc.id_depot_source) === String(enTeteDoc.id_depot_destination);
+      if (memeDepot && enTeteDoc.id_emplacement_source) {
+        if (!enTeteDoc.id_emplacement_destination) { alert('⚠️ Veuillez sélectionner l’emplacement / livreur de destination.'); return false; }
+      }
     }
     return true;
   };
@@ -298,7 +347,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
           module: moduleActuel,
           type_mouvement: typeOperation,
           id_depot_source: enTeteDoc.id_depot_source || null,
-          id_depot_destination: typeOperation === 'TRANSFERT' ? enTeteDoc.id_depot_destination : null,
+          id_emplacement_source: enTeteDoc.id_emplacement_source || null,
+          id_depot_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_depot_destination || null) : null,
+          id_emplacement_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_emplacement_destination || null) : null,
           id_article: parseInt(ligne.id_article),
           quantite: ligne.quantite,
           motif_remarque: enTeteDoc.numeroDoc,
@@ -327,7 +378,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     if (lignesAssociees.length === 0) return;
     const premier = lignesAssociees[0];
     setTypeOperation(premier.type_mouvement || 'ENTREE');
-    setEnTeteDoc({ ...enTeteDoc, numeroDoc: numeroDocUnique, dateDoc: premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0], id_depot_source: premier.id_depot_source || '', id_depot_destination: premier.id_depot_destination || '', motif: numeroDocUnique, operateur: premier.operateur || 'THÉODORE STÉPHANE' });
+    setEnTeteDoc({ 
+      ...enTeteDoc, 
+      numeroDoc: numeroDocUnique, 
+      dateDoc: premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0], 
+      id_depot_source: premier.id_depot_source || '', 
+      id_emplacement_source: premier.id_emplacement_source || '',
+      id_depot_destination: premier.id_depot_destination || '', 
+      id_emplacement_destination: premier.id_emplacement_destination || '',
+      motif: numeroDocUnique, 
+      operateur: premier.operateur || 'THÉODORE STÉPHANE' 
+    });
     setLignesPanier(lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
       return { id_article: mvt.id_article, designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, quantite: mvt.quantite, stockActuel: calculerStockPourDepotActuel(mvt.id_article), stockReel: mvt.quantite };
@@ -400,30 +461,37 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
           <div className={`bg-white border-2 border-orange-500/50 p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
             <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} [{moduleActuel}] {enTeteVerrouille && '🔒'}</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span></div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 text-[9.5px]">
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[9.5px]">
               <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
               <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf.</label><input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" /></div>
               <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Opérateur</label><input type="text" disabled value={enTeteDoc.operateur} className="w-full bg-slate-100 text-slate-800 border rounded p-1 font-bold" /></div>
-              <div>
-                <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">{typeOperation === 'TRANSFERT' ? 'Origine *' : 'Dépôt *'}</label>
+              
+              <div className="space-y-1">
+                <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">{typeOperation === 'TRANSFERT' ? 'Origine (Dépôt) *' : 'Dépôt *'}</label>
                 <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-orange-600">
                   <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                </select>
+                <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
+                  <option value="">-- Aucun (Prise directe Dépôt) --</option>
+                  {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                 </select>
               </div>
 
               {typeOperation === 'TRANSFERT' && (
-                <div>
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Destination *</label>
+                <div className="space-y-1">
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Destination (Dépôt) *</label>
                   <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-blue-600">
-                    <option value="">-- Destination --</option>{depots.filter(dep => String(dep.id) !== String(enTeteDoc.id_depot_source)).map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                    <option value="">-- Dépôt Destination --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                  </select>
+                  <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
+                    <option value="">-- Emplacement / Livreur Dest. --</option>
+                    {emplacementsDestinationFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                   </select>
                 </div>
               )}
 
-              <div>
-                <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Motif *</label>
-                <input type="text" disabled={enTeteVerrouille} required value={enTeteDoc.motif} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, motif: e.target.value.toUpperCase() })} placeholder="EX: AJUSTEMENT..." className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
-              </div>
+              <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Motif *</label><input type="text" disabled={enTeteVerrouille} required value={enTeteDoc.motif} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, motif: e.target.value.toUpperCase() })} placeholder="EX: AJUSTEMENT..." className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" /></div>
             </div>
           </div>
 
@@ -520,14 +588,26 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
       {modeAffichage === 'LISTE_DOCS' && (
         <div className="bg-white border rounded-xl overflow-hidden shadow-2xs">
-          <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]"><span className="font-extrabold uppercase text-slate-800">Documents Enregistrés [{moduleActuel}]</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span></div>
+          <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]">
+            <span className="font-extrabold uppercase text-slate-800">Documents Enregistrés [{moduleActuel}]</span>
+            <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[9.5px]">
               <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
-                <tr><th onClick={() => gererTri('date')} className="p-1.5 cursor-pointer">Date</th><th onClick={() => gererTri('type')} className="p-1.5 cursor-pointer">Type</th><th onClick={() => gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° Doc</th><th onClick={() => gererTri('operateur')} className="p-1.5 cursor-pointer">Opérateur</th></tr>
+                <tr>
+                  <th onClick={() => gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
+                  <th onClick={() => gererTri('type')} className="p-1.5 cursor-pointer">Type</th>
+                  <th onClick={() => gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° Doc</th>
+                  <th onClick={() => gererTri('operateur')} className="p-1.5 cursor-pointer">Opérateur</th>
+                </tr>
               </thead>
               <tbody className="divide-y text-[9.5px]">
-                {documentsTries.length === 0 ? (<tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun document pour le module {moduleActuel}.</td></tr>) : (
+                {documentsTries.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="p-4 text-center text-slate-400 font-bold">Aucun document pour le module {moduleActuel}.</td>
+                  </tr>
+                ) : (
                   documentsTries.map((doc, idx) => (
                     <tr key={idx} onClick={() => ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px]">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>

@@ -79,16 +79,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
 
-      const depotIds = listeDepots.map(d => d.id);
-      if (depotIds.length > 0) {
-        const { data: dataEmp } = await supabase
-          .from('emplacements_stock')
-          .select('*')
-          .in('id_depot', depotIds);
-        setEmplacements(dataEmp || []);
-      } else {
-        setEmplacements([]);
-      }
+      const { data: dataEmp } = await supabase
+        .from('emplacements_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setEmplacements(dataEmp || []);
 
       const { data: dataMvts } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setMouvements(dataMvts || []);
@@ -159,7 +155,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         flux.push({ 
           date: m.created_at || '', 
           depot_source: m.id_depot_source, 
-          depot_destination: m.id_depot_destination, 
+          depot_destination: m.id_depot_destination,
+          emplacement_source: m.id_emplacement_source,
+          emplacement_destination: m.id_emplacement_destination,
           quantite: parseInt(m.quantite || 0), 
           type: (m.type_mouvement || '').toUpperCase(),
           remarque: m.motif_remarque || '',
@@ -183,7 +181,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               depot_destination: null, 
               quantite: parseInt(ligne.quantite || 0), 
               type: 'APPROVISIONNEMENT',
-              remarque: '',
+              remarque: app.reference || `APP-${app.id || '01'}`,
               referenceObjet: app 
             });
           }
@@ -210,8 +208,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         return; 
       }
       if (typeMvt === 'TRANSFERT') { 
-        if (matchDepotDest) stockDepot += qte; 
-        if (matchDepotSource) stockDepot -= qte; 
         return; 
       }
       if (typeMvt === 'ENTREE' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
@@ -226,8 +222,42 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return Math.max(0, stockDepot);
   };
 
+  const calculerStockPourEmplacement = (articleId, emplacementId) => {
+    let stockEmp = 0;
+    const fluxArticle = obtenirTousLesFluxArticle(articleId);
+    
+    fluxArticle.forEach((m) => {
+      const qte = m.quantite;
+      const typeMvt = m.type;
+      const matchSource = String(m.emplacement_source) === String(emplacementId);
+      const matchDest = String(m.emplacement_destination) === String(emplacementId);
+
+      if (typeMvt === 'INVENTAIRE' && matchSource) {
+        stockEmp = qte;
+        return;
+      }
+      if (typeMvt === 'TRANSFERT') {
+        if (matchDest) stockEmp += qte;
+        if (matchSource) stockEmp -= qte;
+        return;
+      }
+      if (matchDest) stockEmp += qte;
+      if (matchSource) stockEmp -= qte;
+    });
+
+    return Math.max(0, stockEmp);
+  };
+
+  const aEteMouvementeParDepot = (articleId, depotId) => {
+    if (!depotId || depotId === 'TOUS') return true;
+    const fluxArticle = obtenirTousLesFluxArticle(articleId);
+    return fluxArticle.some(m => correspondAuDepot(m.depot_source, depotId) || correspondAuDepot(m.depot_destination, depotId));
+  };
+
   const calculerStockParFiltre = (articleId) => {
-    if (depotFiltre !== 'TOUS') {
+    if (emplacementFiltre !== 'TOUS') {
+      return calculerStockPourEmplacement(articleId, emplacementFiltre);
+    } else if (depotFiltre !== 'TOUS') {
       return calculerStockPourUnDepot(articleId, depotFiltre);
     } else {
       let totalGlobal = 0;
@@ -240,42 +270,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       }
       return totalGlobal;
     }
-  };
-
-  const obtenirCodeMouvement = (mouvementObj) => {
-    const t = (mouvementObj.type || '').toUpperCase();
-    const remarque = (mouvementObj.remarque || '').toUpperCase();
-
-    if (t.includes('APPROVISIONNEMENT') && mouvementObj.referenceObjet) {
-      const app = mouvementObj.referenceObjet;
-      if (app.numero_approvisionnement) return app.numero_approvisionnement;
-      if (app.reference) return app.reference;
-      if (app.code) return app.code;
-      const indexApp = approvisionnements.findIndex(a => a.id === app.id);
-      if (indexApp !== -1) {
-        return `APP-${String(indexApp + 1).padStart(2, '0')}`;
-      }
-      return 'APP';
-    }
-
-    if (t.includes('SORTIE') || t.includes('VENTE')) {
-      const matchTicket = remarque.match(/TICKET\s+([A-Z0-9-]+)/i);
-      if (matchTicket && matchTicket[1]) {
-        return matchTicket[1];
-      }
-      for (const v of ventesHistoriques) {
-        if (v.numero_ticket && remarque.includes(v.numero_ticket.toUpperCase())) {
-          return v.numero_ticket;
-        }
-      }
-      return 'MS';
-    }
-
-    if (t.includes('ENTREE') || t.includes('ACHAT') || t.includes('FACTURE')) return 'ME';
-    if (t.includes('INVENTAIRE')) return 'INV';
-    if (t.includes('TRANSFERT')) return 'TR';
-    if (t.includes('AVARIE')) return 'AV';
-    return t.substring(0, 3);
   };
 
   const gererUploadImage = async (e) => {
@@ -320,7 +314,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const payloadArticle = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        // Forçage en majuscules à l'enregistrement
         Designation: (nouveauArticle.Designation || '').trim().toUpperCase(),
         Code_Barre: (nouveauArticle.Code_Barre || '').trim().toUpperCase(),
         Famille: nouveauArticle.Famille,
@@ -395,7 +388,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     const stockGlobalActuel = calculerStockParFiltre(artId);
 
     if (stockGlobalActuel > 0) {
-      alert(`⛔ Impossible de supprimer ! L'article possède encore un cumul global de ${stockGlobalActuel} unité(s) en stock.`);
+      alert(`⛔ Impossible de supprimer ! L'article possède encore un stock de ${stockGlobalActuel} unité(s).`);
       return;
     }
 
@@ -418,8 +411,20 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const articlesFiltres = articles.filter((art) => {
+    const artId = art.id_article || art.id;
     const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
-    return matchFamille;
+    if (!matchFamille) return false;
+
+    if (emplacementFiltre !== 'TOUS') {
+      const stockEmp = calculerStockPourEmplacement(artId, emplacementFiltre);
+      if (stockEmp <= 0) return false;
+    } else if (depotFiltre !== 'TOUS') {
+      const stockDep = calculerStockPourUnDepot(artId, depotFiltre);
+      const dejaMvt = aEteMouvementeParDepot(artId, depotFiltre);
+      if (stockDep <= 0 && !dejaMvt) return false;
+    }
+
+    return true;
   });
 
   const gererTri = (colonne) => {
@@ -444,7 +449,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       valB = calculerStockParFiltre(bId);
     } else if (colonneTri === 'Prix_Achat') {
       valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
-      valB = parseFloat(b.Prix_Achat || b.prix_achat || 0);
+      valB = parseFloat(b.Prix_Achat || b.prix_vente || 0);
     } else if (colonneTri === 'Prix_Vente') {
       valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
       valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
@@ -457,7 +462,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const emplacementsDisponibles = depotFiltre === 'TOUS' 
     ? emplacements 
-    : emplacements.filter(emp => String(emp.id_depot) === String(depotFiltre));
+    : emplacements.filter(emp => correspondAuDepot(emp.id_depot, depotFiltre));
 
   const articlesModalFiltres = articles.filter(art => {
     const nom = (art.Designation || art.designation || '').toLowerCase();
@@ -465,6 +470,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   });
 
   const articleStatObjet = articles.find(a => String(a.id_article || a.id) === String(articleSelectionneStatId));
+
+  const colSpanTotal = 2 + emplacements.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
 
   return (
     <div className="space-y-2.5 font-sans text-xs">
@@ -504,7 +511,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📄 Articles [{moduleActuel}] ({articles.length})
+          📄 Stock Article ({articles.length})
         </button>
 
         <button
@@ -519,7 +526,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📊 Stat [{moduleActuel}]
+          📊 Stat Article
         </button>
       </div>
 
@@ -562,18 +569,20 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="grid grid-cols-3 gap-1.5 items-end">
-                <div>
-                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A</label>
-                  <input
-                    type="number"
-                    value={nouveauArticle.Prix_Achat}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Achat: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs"
-                  />
-                </div>
+                {moduleActuel !== 'LIVRAISON' && (
+                  <div>
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A</label>
+                    <input
+                      type="number"
+                      value={nouveauArticle.Prix_Achat}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Achat: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs"
+                    />
+                  </div>
+                )}
 
-                <div>
+                <div className={moduleActuel === 'LIVRAISON' ? 'col-span-1.5' : ''}>
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.V *</label>
                   <input
                     type="number"
@@ -700,41 +709,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              {articleEnEdition && (() => {
-                const articleId = articleEnEdition.id_article || articleEnEdition.id;
-                const stockTotal = calculerStockParFiltre(articleId);
-
-                const depotsAvecStock = depots.filter((dep) => {
-                  const stockDep = calculerStockPourUnDepot(articleId, dep.id);
-                  return stockDep > 0;
-                });
-
-                return (
-                  <div className="pt-1.5 border-t border-slate-100">
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-2 flex items-center gap-2 overflow-x-auto text-[10px]">
-                      <span className="font-black text-orange-600 uppercase shrink-0">📦 STOCK :</span>
-                      
-                      <div className="flex items-center gap-4 whitespace-nowrap overflow-x-auto py-1">
-                        <div className="flex flex-col items-center bg-orange-100/75 border border-orange-300 px-3 py-1 rounded-lg shadow-2xs shrink-0">
-                          <span className="font-black text-orange-900 uppercase text-[9px]">TOTAL</span>
-                          <span className="text-orange-950 font-black text-xs">{stockTotal}</span>
-                        </div>
-
-                        {depotsAvecStock.map((dep) => {
-                          const stockDep = calculerStockPourUnDepot(articleId, dep.id);
-                          return (
-                            <div key={dep.id} className="flex flex-col items-center bg-white border border-slate-200 px-3 py-1 rounded-lg shadow-2xs shrink-0">
-                              <span className="font-bold text-slate-700 uppercase text-[9px]">{dep.nom_depot || dep.Nom_Depot}</span>
-                              <span className="text-emerald-800 font-black text-xs">{stockDep}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
               <div className="pt-2 flex justify-between items-center border-t border-slate-200">
                 {articleEnEdition ? (
                   <button 
@@ -775,32 +749,32 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Dépôt</label>
+                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Dépôt / Partenaire</label>
                     <select
                       value={depotFiltre}
                       onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
                     >
-                      <option value="TOUS">Tous</option>
+                      <option value="TOUS">Tous les dépôts</option>
                       {depots.map((dep) => (
                         <option key={dep.id} value={dep.id}>
-                          {dep.nom_depot || dep.Nom_Depot}
+                          🏢 {dep.nom_depot || dep.Nom_Depot}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Emplacement</label>
+                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Emplacement / Livreur</label>
                     <select
                       value={emplacementFiltre}
                       onChange={(e) => setEmplacementFiltre(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
                     >
-                      <option value="TOUS">Tous</option>
+                      <option value="TOUS">Tous les emplacements</option>
                       {emplacementsDisponibles.map((emp) => (
-                        <option key={emp.id} value={emp.nom_emplacement}>
-                          {emp.nom_emplacement}
+                        <option key={emp.id} value={emp.id}>
+                          📍 {emp.nom_emplacement} {emp.responsable_emplacement ? `(${emp.responsable_emplacement})` : ''}
                         </option>
                       ))}
                     </select>
@@ -808,31 +782,41 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-                <table className="w-full text-left text-xs border-collapse table-fixed">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-xs">
+                <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
                       <th 
                         onClick={() => gererTri('Designation')} 
-                        className="p-2.5 w-[46%] cursor-pointer hover:bg-slate-200 select-none truncate"
+                        className="p-2.5 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                       >
                         Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
                       <th 
                         onClick={() => gererTri('Stock')} 
-                        className="p-2.5 w-[22%] text-center cursor-pointer hover:bg-slate-200 select-none truncate"
+                        className="p-2.5 text-center cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                       >
                         STOCK {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
-                      <th 
-                        onClick={() => gererTri('Prix_Achat')} 
-                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none truncate"
-                      >
-                        P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
-                      </th>
+
+                      {emplacements.map((emp) => (
+                        <th key={emp.id} className="p-2.5 text-center text-blue-700 whitespace-nowrap">
+                          📍 {emp.nom_emplacement || emp.code_emplacement}
+                        </th>
+                      ))}
+
+                      {moduleActuel !== 'LIVRAISON' && (
+                        <th 
+                          onClick={() => gererTri('Prix_Achat')} 
+                          className="p-2.5 text-right cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
+                        >
+                          P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
+                        </th>
+                      )}
+
                       <th 
                         onClick={() => gererTri('Prix_Vente')} 
-                        className="p-2.5 w-[16%] text-right cursor-pointer hover:bg-slate-200 select-none truncate"
+                        className="p-2.5 text-right cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                       >
                         P.V {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
@@ -841,35 +825,50 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <tbody className="divide-y divide-slate-100">
                     {chargement ? (
                       <tr>
-                        <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
+                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
                       </tr>
                     ) : articlesAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
+                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
                       </tr>
                     ) : (
                       articlesAffiches.map((art) => {
                         const artId = art.id_article || art.id;
                         const stockVal = calculerStockParFiltre(artId);
+                        const estEpuise = stockVal <= 0;
 
                         return (
                           <tr 
                             key={artId} 
                             onClick={() => ouvrirEdition(art)}
-                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                            className={`hover:bg-orange-50/70 cursor-pointer transition select-none ${estEpuise ? 'bg-slate-50/60 opacity-80' : ''}`}
                           >
-                            <td className="p-2.5 font-black text-slate-900 text-[10px] whitespace-nowrap truncate uppercase">
+                            <td className={`p-2.5 font-black text-[10px] whitespace-nowrap uppercase ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
                               {art.Designation || art.designation}
                             </td>
                             <td className="p-2.5 text-center whitespace-nowrap">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockVal > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500 font-bold'}`}>
-                                {stockVal}
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockVal > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-rose-100 text-rose-700 border border-rose-200'}`}>
+                                {stockVal} {estEpuise && '(Épuisé)'}
                               </span>
                             </td>
-                            <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap truncate">
-                              {art.Prix_Achat || art.prix_achat || 0}
-                            </td>
-                            <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap truncate">
+
+                            {emplacements.map((emp) => {
+                              const stockEmp = calculerStockPourEmplacement(artId, emp.id);
+                              return (
+                                <td key={emp.id} className="p-2.5 text-center whitespace-nowrap">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
+                                    {stockEmp}
+                                  </span>
+                                </td>
+                              );
+                            })}
+
+                            {moduleActuel !== 'LIVRAISON' && (
+                              <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap">
+                                {art.Prix_Achat || art.prix_achat || 0}
+                              </td>
+                            )}
+                            <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap">
                               {art.Prix_Vente || art.prix_vente || 0}
                             </td>
                           </tr>
@@ -889,13 +888,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           
           <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT</label>
+              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT / PARTENAIRE</label>
               <select
                 value={depotStatFiltre}
                 onChange={(e) => setDepotStatFiltre(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
               >
-                <option value="TOUS">Tous les dépôts</option>
+                <option value="TOUS">Tous les dépôts / partenaires</option>
                 {depots.map((dep) => (
                   <option key={dep.id} value={dep.id}>
                     🏢 {dep.nom_depot || dep.Nom_Depot}
@@ -928,11 +927,20 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             let stockCourant = 0;
             const fluxAvecStockProgressif = fluxArt.map((f) => {
               const estSortie = f.type.includes('SORTIE') || f.type.includes('AVARIES');
-              const qteDelta = estSortie ? -f.quantite : f.quantite;
+              const estTransfertInterne = f.type === 'TRANSFERT';
               
+              let qteDelta = 0;
               if (f.type === 'INVENTAIRE') {
                 stockCourant = f.quantite;
+                qteDelta = f.quantite;
+              } else if (estTransfertInterne) {
+                qteDelta = 0;
+                stockCourant += 0;
+              } else if (estSortie) {
+                qteDelta = -f.quantite;
+                stockCourant += qteDelta;
               } else {
+                qteDelta = f.quantite;
                 stockCourant += qteDelta;
               }
 
@@ -964,8 +972,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                           </tr>
                         ) : (
                           fluxAvecStockProgressif.map((f, i) => {
-                            const codeMvt = obtenirCodeMouvement(f);
                             const estNegatif = f.qteDelta < 0;
+                            const estTransfert = f.type === 'TRANSFERT';
+                            const libelleAffichage = estTransfert ? `${f.remarque || 'TR'} (inter-emplacement)` : (f.remarque || f.type);
 
                             return (
                               <tr key={i} className="hover:bg-slate-50 transition">
@@ -973,12 +982,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                                   {f.date ? new Date(f.date).toLocaleDateString('fr-FR') : '-'}
                                 </td>
                                 <td className="p-2.5 font-bold text-slate-900">
-                                  <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[9.5px] border border-orange-200 inline-block whitespace-nowrap">
-                                    {codeMvt}
+                                  <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[9.5px] border border-orange-200 inline-block">
+                                    {libelleAffichage}
                                   </span>
                                 </td>
-                                <td className={`p-2.5 text-right font-black font-mono whitespace-nowrap ${estNegatif ? 'text-red-600' : 'text-emerald-700'}`}>
-                                  {estNegatif ? f.qteDelta : `+${f.qteDelta}`}
+                                <td className={`p-2.5 text-right font-black font-mono whitespace-nowrap ${estNegatif ? 'text-red-600' : (f.qteDelta > 0 ? 'text-emerald-700' : 'text-slate-500')}`}>
+                                  {estNegatif ? f.qteDelta : (f.qteDelta > 0 ? `+${f.qteDelta}` : '0')}
                                 </td>
                                 <td className="p-2.5 text-right font-black font-mono text-slate-900 whitespace-nowrap">
                                   {f.stockProgressif}

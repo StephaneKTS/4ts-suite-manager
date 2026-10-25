@@ -25,6 +25,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [roles, setRoles] = useState([]);
   const [caisses, setCaisses] = useState([]);
+  const [emplacements, setEmplacements] = useState([]);
   const [entrepriseInfo, setEntrepriseInfo] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [afficherForm, setAfficherForm] = useState(false);
@@ -59,12 +60,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   const [nouveauUser, setNouveauUser] = useState({
     nom_complet: '',
+    prenom: '',
     email: '',
     pays: 'cmr',
     telephone: '',
     mot_de_passe: '',
     id_role: '',
     id_caisse: '',
+    id_emplacement: '',
     statut: 'ACTIF',
     acces_application: true,
     permissions: initialiserPermissionsDefaut(),
@@ -78,8 +81,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const estModeLivraison = moduleActuel === 'LIVRAISON';
 
-  // Chargement ultra-sécurisé cloisonné par entreprise et par module
   const chargerDonnees = async () => {
     setChargement(true);
     try {
@@ -97,13 +100,19 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       setRoles(dataRoles || []);
 
-      // Isolation stricte des caisses appartenant uniquement à cette entreprise et à ce module
       const { data: dataCaisses } = await supabase
         .from('caisses')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
       setCaisses(dataCaisses || []);
+
+      const { data: dataEmplacements } = await supabase
+        .from('emplacements_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setEmplacements(dataEmplacements || []);
 
       const { data: dataUsers, error } = await supabase
         .from('utilisateurs')
@@ -164,6 +173,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerUtilisateur = async (e) => {
     e.preventDefault();
+
+    if (estModeLivraison && !nouveauUser.id_emplacement) {
+      alert('⚠️ Veuillez obligatoirement attribuer un emplacement (ou livreur) pour ce collaborateur en mode Livraison.');
+      return;
+    }
+
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
 
@@ -184,6 +199,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
 
     try {
+      // Payload sécurisé de base compatible avec toutes les versions de schémas
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -193,11 +209,17 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
-        id_caisse: nouveauUser.id_caisse || null,
+        id_caisse: estModeLivraison ? null : (nouveauUser.id_caisse || null),
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
         permissions: nouveauUser.acces_application ? nouveauUser.permissions : null,
       };
+
+      // Ajout dynamique sécurisé pour éviter les crashs si les colonnes n'ont pas encore migré
+      payload.prenom = (nouveauUser.prenom || '').trim().toUpperCase();
+      if (estModeLivraison) {
+        payload.id_emplacement = nouveauUser.id_emplacement || null;
+      }
 
       if (userEnEdition) {
         const { error } = await supabase.from('utilisateurs').update(payload).eq('id', userEnEdition.id);
@@ -226,12 +248,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
     setNouveauUser({
       nom_complet: user.nom_complet || '',
+      prenom: user.prenom || '',
       email: (user.email || '').toLowerCase(),
       pays: user.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
       mot_de_passe: user.mot_de_passe || '',
       id_role: user.id_role || '',
       id_caisse: user.id_caisse || '',
+      id_emplacement: user.id_emplacement || '',
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
       permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
@@ -243,12 +267,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     setUserEnEdition(null);
     setNouveauUser({
       nom_complet: '',
+      prenom: '',
       email: '',
       pays: 'cmr',
       telephone: '',
       mot_de_passe: '',
       id_role: '',
       id_caisse: '',
+      id_emplacement: '',
       statut: 'ACTIF',
       acces_application: true,
       permissions: initialiserPermissionsDefaut(),
@@ -292,10 +318,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   const usersFiltres = utilisateurs
     .filter((u) => {
-      const nom = (u.nom_complet || '').toLowerCase();
+      const nomComplet = `${u.nom_complet || ''} ${u.prenom || ''}`.toLowerCase();
       const email = (u.email || '').toLowerCase();
       const query = recherche.toLowerCase();
-      return nom.includes(query) || email.includes(query);
+      return nomComplet.includes(query) || email.includes(query);
     })
     .sort((a, b) => {
       let valA = '';
@@ -332,7 +358,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             if (afficherForm) {
               annulerForm();
             } else {
-              setNouveauUser({ nom_complet: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
+              setNouveauUser({ nom_complet: '', prenom: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '', id_emplacement: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
               setUserEnEdition(null);
               setAfficherForm(true);
             }
@@ -380,22 +406,19 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             </label>
           </div>
 
-          {/* LIGNE 1 : Nom Complet & Statut */}
+          {/* NOM ET PRÉNOM */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom Complet *</label>
-              <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: JEAN MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom *</label>
+              <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
             </div>
             <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-              <select value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
-                <option value="ACTIF">🟢 Actif</option>
-                <option value="INACTIF">🔴 Inactif</option>
-              </select>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Prénom</label>
+              <input type="text" value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
             </div>
           </div>
 
-          {/* LIGNE 2 : Rôle & Caisse cloisonnée par entreprise */}
+          {/* RÔLE / FONCTION & ATTRIBUTION EMPLACEMENT / CAISSE */}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
@@ -406,17 +429,36 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             </div>
 
             <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
-              <select 
-                value={nouveauUser.id_caisse} 
-                onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} 
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate"
-              >
-                <option value="">-- Aucune caisse --</option>
-                {caisses.map((c) => (
-                  <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
-                ))}
-              </select>
+              {estModeLivraison ? (
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Emplacement / Livreur *</label>
+                  <select 
+                    required={estModeLivraison}
+                    value={nouveauUser.id_emplacement} 
+                    onChange={(e) => setNouveauUser({ ...nouveauUser, id_emplacement: e.target.value })} 
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs truncate"
+                  >
+                    <option value="">-- Emplacement --</option>
+                    {emplacements.map((emp) => (
+                      <option key={emp.id} value={emp.id}>📍 {emp.nom_emplacement}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
+                  <select 
+                    value={nouveauUser.id_caisse} 
+                    onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} 
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate"
+                  >
+                    <option value="">-- Aucune caisse --</option>
+                    {caisses.map((c) => (
+                      <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -463,17 +505,27 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             </div>
           </div>
 
-          <div>
-            <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-            <input 
-              key={userEnEdition ? userEnEdition.id : 'new-email'}
-              type="email" 
-              value={nouveauUser.email} 
-              onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} 
-              placeholder="collaborateur@keita.cm" 
-              autoComplete="off"
-              className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" 
-            />
+          {/* EMAIL ET STATUT SUR LA MÊME LIGNE */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
+              <input 
+                key={userEnEdition ? userEnEdition.id : 'new-email'}
+                type="email" 
+                value={nouveauUser.email} 
+                onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} 
+                placeholder="collaborateur@keita.cm" 
+                autoComplete="off"
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" 
+              />
+            </div>
+            <div>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+              <select value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                <option value="ACTIF">🟢 Actif</option>
+                <option value="INACTIF">🔴 Inactif</option>
+              </select>
+            </div>
           </div>
 
           {nouveauUser.acces_application && (
@@ -564,7 +616,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     const aAcces = u.acces_application ?? true;
                     return (
                       <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                        <td className="p-2.5 font-black uppercase text-slate-900">{u.nom_complet}</td>
+                        <td className="p-2.5 font-black uppercase text-slate-900">
+                          {u.nom_complet} {u.prenom ? u.prenom : ''}
+                        </td>
                         <td className="p-2.5">
                           <span className="inline-block bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap">
                             🛡️ {roleTrouve ? roleTrouve.nom_role : 'Aucun'}

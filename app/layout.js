@@ -22,6 +22,14 @@ export default function RootLayout({ children }) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* Script Google Maps Places Autocomplete */}
+        <script
+          src="https://maps.googleapis.com/maps/api/js?key=VOTRE_CLE_API_GOOGLE&libraries=places"
+          async
+          defer
+        ></script>
+      </head>
       <body className="min-h-full flex flex-col p-0 bg-slate-950 m-0">
         <main className="flex-1 w-full max-w-full flex flex-col">
           {children}

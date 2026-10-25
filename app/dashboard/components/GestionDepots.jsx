@@ -12,6 +12,14 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const [depotOuvertId, setDepotOuvertId] = useState(null);
   const [emplacementsParDepot, setEmplacementsParDepot] = useState({});
 
+  // Permissions strictes de l'employé connecté
+  const [permissions, setPermissions] = useState({
+    lecture: true,
+    creation: true,
+    modification: true,
+    suppression: false, // Par défaut bloqué par sécurité
+  });
+
   const [nouveauDepot, setNouveauDepot] = useState({
     nom_depot: '',
     adresse_localisation: '',
@@ -40,9 +48,48 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
-  const chargerDepotsEtEmplacements = async () => {
+  const chargerDepotsEtPermissions = async () => {
     setChargement(true);
     try {
+      // 1. Charger et analyser rigoureusement les permissions de l'employé connecté
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          // Vérification élargie de toutes les variantes possibles du module Dépôts
+          const pDepot = userObj.permissions?.['depots_stock'] || userObj.permissions?.['depots'] || userObj.permissions?.['depots_et_magasins'];
+          
+          if (pDepot) {
+            setPermissions({
+              lecture: pDepot.lecture ?? true,
+              creation: pDepot.creation ?? true,
+              modification: pDepot.modification ?? false,
+              suppression: pDepot.suppression ?? false,
+            });
+          } else {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['depots_stock'] || roleData?.permissions?.['depots'] || roleData?.permissions?.['depots_et_magasins'];
+            if (rolePerm) {
+              setPermissions({
+                lecture: rolePerm.lecture ?? true,
+                creation: rolePerm.creation ?? true,
+                modification: rolePerm.modification ?? false,
+                suppression: rolePerm.suppression ?? false,
+              });
+            }
+          }
+        }
+      }
+
       const { data: dataDepots, error: errDepots } = await supabase
         .from('depots_stock')
         .select('*')
@@ -78,11 +125,20 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   };
 
   useEffect(() => {
-    chargerDepotsEtEmplacements();
+    chargerDepotsEtPermissions();
   }, [entrepriseId, moduleActuel]);
 
   const enregistrerDepot = async (e) => {
     e.preventDefault();
+    if (depotEnEdition && !permissions.modification) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les dépôts.');
+      return;
+    }
+    if (!depotEnEdition && !permissions.creation) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de créer des dépôts.');
+      return;
+    }
+
     try {
       if (nouveauDepot.est_depot_par_defaut) {
         await supabase
@@ -119,7 +175,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       }
 
       annulerFormDepot();
-      chargerDepotsEtEmplacements();
+      chargerDepotsEtPermissions();
     } catch (err) {
       alert('Erreur lors de l’enregistrement : ' + err.message);
     }
@@ -148,6 +204,11 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   };
 
   const supprimerDepotDepuisFormulaire = async () => {
+    // Double vérification stricte de la permission de suppression
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des dépôts.');
+      return;
+    }
     if (!depotEnEdition) return;
 
     try {
@@ -173,7 +234,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       alert('Dépôt supprimé avec succès.');
       if (depotOuvertId === depotEnEdition.id) setDepotOuvertId(null);
       annulerFormDepot();
-      chargerDepotsEtEmplacements();
+      chargerDepotsEtPermissions();
     } catch (err) {
       alert('Erreur : ' + err.message);
     }
@@ -185,6 +246,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   const ajouterEmplacement = async (e, depot) => {
     e.preventDefault();
+    if (!permissions.creation) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit d’ajouter des emplacements.');
+      return;
+    }
     if (!nouveauNomEmplacement.trim()) return;
 
     try {
@@ -208,20 +273,24 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
       setNouveauNomEmplacement('');
       setResponsableEmplacement('');
-      chargerDepotsEtEmplacements();
+      chargerDepotsEtPermissions();
     } catch (err) {
       alert('Erreur lors de l’ajout de l’emplacement : ' + err.message);
     }
   };
 
   const supprimerEmplacement = async (empId) => {
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des emplacements.');
+      return;
+    }
     if (!confirm('Supprimer cet emplacement ?')) return;
 
     try {
       const { error } = await supabase.from('emplacements_stock').delete().eq('id', empId);
       if (error) throw error;
       alert('Emplacement supprimé.');
-      chargerDepotsEtEmplacements();
+      chargerDepotsEtPermissions();
     } catch (err) {
       alert('Erreur de suppression : ' + err.message);
     }
@@ -238,20 +307,22 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
           <span>🏢</span> GESTION DES DÉPÔTS [{moduleActuel}]
         </h3>
-        <button
-          type="button"
-          onClick={() => {
-            if (afficherFormDepot) {
-              annulerFormDepot();
-            } else {
-              setDepotEnEdition(null);
-              setAfficherFormDepot(true);
-            }
-          }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-        >
-          {afficherFormDepot ? '✖' : 'Nouveau'}
-        </button>
+        {permissions.creation && (
+          <button
+            type="button"
+            onClick={() => {
+              if (afficherFormDepot) {
+                annulerFormDepot();
+              } else {
+                setDepotEnEdition(null);
+                setAfficherFormDepot(true);
+              }
+            }}
+            className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          >
+            {afficherFormDepot ? '✖' : 'Nouveau'}
+          </button>
+        )}
       </div>
 
       <div className="flex justify-start items-center gap-1.5">
@@ -330,7 +401,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="pt-2 flex justify-between items-center border-t border-slate-200">
-            {depotEnEdition ? (
+            {depotEnEdition && permissions.suppression ? (
               <button 
                 type="button" 
                 onClick={supprimerDepotDepuisFormulaire} 
@@ -342,9 +413,11 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
             <div className="flex gap-1.5">
               <button type="button" onClick={annulerFormDepot} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-[10px]">Annuler</button>
-              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-xs">
-                {depotEnEdition ? 'Mettre à jour' : 'Enregistrer'}
-              </button>
+              {(depotEnEdition ? permissions.modification : permissions.creation) && (
+                <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-xs">
+                  {depotEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                </button>
+              )}
             </div>
           </div>
         </form>
@@ -369,7 +442,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                   }`}
                 >
                   <div
-                    onClick={() => ouvrirEdition(dep)}
+                    onClick={() => permissions.modification && ouvrirEdition(dep)}
                     className="p-2.5 cursor-pointer flex items-center justify-between gap-2 hover:bg-orange-50/70 transition select-none"
                   >
                     <div className="flex items-center gap-2 truncate">
@@ -409,39 +482,41 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                         </span>
                       </div>
 
-                      <form
-                        onSubmit={(e) => ajouterEmplacement(e, dep)}
-                        className="bg-white p-2 rounded-lg border border-slate-300 flex gap-1.5 items-end shadow-2xs"
-                      >
-                        <div className="flex-1">
-                          <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Emplacement</label>
-                          <input
-                            type="text"
-                            required
-                            value={nouveauNomEmplacement}
-                            onChange={(e) => setNouveauNomEmplacement(e.target.value.toUpperCase())}
-                            placeholder="EX: RAYON A1"
-                            className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold uppercase text-slate-900 shadow-xs"
-                          />
-                        </div>
-
-                        <div className="flex-1">
-                          <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Responsable</label>
-                          <div 
-                            onClick={() => setModalRespOuverte(true)} 
-                            className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold text-slate-900 cursor-pointer truncate shadow-xs"
-                          >
-                            {responsableEmplacement ? responsableEmplacement : `-- Choisir --`}
-                          </div>
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1 rounded text-[10px] shadow-xs shrink-0 flex items-center gap-1"
+                      {permissions.creation && (
+                        <form
+                          onSubmit={(e) => ajouterEmplacement(e, dep)}
+                          className="bg-white p-2 rounded-lg border border-slate-300 flex gap-1.5 items-end shadow-2xs"
                         >
-                          <span>➕</span> Ajouter
-                        </button>
-                      </form>
+                          <div className="flex-1">
+                            <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Emplacement</label>
+                            <input
+                              type="text"
+                              required
+                              value={nouveauNomEmplacement}
+                              onChange={(e) => setNouveauNomEmplacement(e.target.value.toUpperCase())}
+                              placeholder="EX: RAYON A1"
+                              className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold uppercase text-slate-900 shadow-xs"
+                            />
+                          </div>
+
+                          <div className="flex-1">
+                            <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Responsable</label>
+                            <div 
+                              onClick={() => setModalRespOuverte(true)} 
+                              className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold text-slate-900 cursor-pointer truncate shadow-xs"
+                            >
+                              {responsableEmplacement ? responsableEmplacement : `-- Choisir --`}
+                            </div>
+                          </div>
+
+                          <button
+                            type="submit"
+                            className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1 rounded text-[10px] shadow-xs shrink-0 flex items-center gap-1"
+                          >
+                            <span>➕</span> Ajouter
+                          </button>
+                        </form>
+                      )}
 
                       {emplacements.length === 0 ? (
                         <p className="text-center text-slate-500 py-2 font-bold italic text-[10px]">Aucun emplacement enregistré.</p>
@@ -456,13 +531,15 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                                 <p className="font-black text-slate-900 text-[10px] truncate">📦 {emp.nom_emplacement}</p>
                                 <p className="text-[8.5px] text-slate-600 font-bold truncate">👤 {emp.responsable_emplacement}</p>
                               </div>
-                              <button
-                                onClick={() => supprimerEmplacement(emp.id)}
-                                className="text-red-500 hover:text-red-700 p-1 rounded text-[10px] shrink-0 font-bold"
-                                title="Supprimer"
-                              >
-                                🗑️
-                              </button>
+                              {permissions.suppression && (
+                                <button
+                                  onClick={() => supprimerEmplacement(emp.id)}
+                                  className="text-red-500 hover:text-red-700 p-1 rounded text-[10px] shrink-0 font-bold"
+                                  title="Supprimer"
+                                >
+                                  🗑️
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
