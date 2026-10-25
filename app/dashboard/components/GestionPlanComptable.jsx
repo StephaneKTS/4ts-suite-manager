@@ -11,7 +11,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
   const [recherche, setRecherche] = useState('');
   const [filtreType, setFiltreType] = useState('TOUS');
 
-  // États pour le tri des colonnes
   const [triCol, setTriCol] = useState('code_compte');
   const [triOrdre, setTriOrdre] = useState('asc');
 
@@ -52,6 +51,56 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
     chargerComptes();
   }, [entrepriseId, moduleActuel]);
 
+  const genererCodeAutomatique = (type, intitule = '') => {
+    const intituleUpper = intitule.toUpperCase();
+    let prefixe = '605';
+    
+    if (intituleUpper.includes('ACHAT')) {
+      prefixe = '601';
+    } else if (type === 'PRODUIT') {
+      prefixe = '701';
+    }
+
+    const comptesMemePrefixe = comptes.filter(c => (c.code_compte || '').startsWith(prefixe));
+    
+    let maxSuffixe = 0;
+    comptesMemePrefixe.forEach(c => {
+      const suffixeStr = c.code_compte.replace(prefixe, '');
+      const suffixeNum = parseInt(suffixeStr, 10);
+      if (!isNaN(suffixeNum) && suffixeNum > maxSuffixe) {
+        maxSuffixe = suffixeNum;
+      }
+    });
+
+    const prochainSuffixe = String(maxSuffixe + 1).padStart(3, '0');
+    return `${prefixe}${prochainSuffixe}`;
+  };
+
+  const gererChangementNature = (e) => {
+    const nature = e.target.value;
+    const codeGenere = !compteEnEdition ? genererCodeAutomatique(nature, nouveauCompte.intitule_compte) : nouveauCompte.code_compte;
+    setNouveauCompte({
+      ...nouveauCompte,
+      type_compte: nature,
+      code_compte: codeGenere,
+    });
+  };
+
+  const gererChangementIntitule = (e) => {
+    const val = e.target.value.toUpperCase();
+    let codeGenere = nouveauCompte.code_compte;
+    
+    if (!compteEnEdition && nouveauCompte.type_compte) {
+      codeGenere = genererCodeAutomatique(nouveauCompte.type_compte, val);
+    }
+
+    setNouveauCompte({
+      ...nouveauCompte,
+      intitule_compte: val,
+      code_compte: codeGenere,
+    });
+  };
+
   const enregistrerCompte = async (e) => {
     e.preventDefault();
     if (!nouveauCompte.type_compte) {
@@ -63,7 +112,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
       const codeSaisi = (nouveauCompte.code_compte || '').trim();
       const intituleSaisi = (nouveauCompte.intitule_compte || '').trim().toUpperCase();
 
-      // Vérification stricte des doublons sur le numéro de compte
       const doublonCode = comptes.find(c => 
         (c.code_compte || '').trim().toLowerCase() === codeSaisi.toLowerCase() && 
         (!compteEnEdition || c.id !== compteEnEdition.id)
@@ -74,7 +122,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
         return;
       }
 
-      // Vérification stricte des doublons sur l'intitulé du compte
       const doublonIntitule = comptes.find(c => 
         (c.intitule_compte || '').trim().toUpperCase() === intituleSaisi && 
         (!compteEnEdition || c.id !== compteEnEdition.id)
@@ -188,7 +235,11 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
           type="button"
           onClick={() => {
             if (afficherForm) annulerForm();
-            else setAfficherForm(true);
+            else {
+              setNouveauCompte({ code_compte: '', intitule_compte: '', type_compte: 'CHARGE' });
+              setCompteEnEdition(null);
+              setAfficherForm(true);
+            }
           }}
           className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1 rounded-lg transition shadow-2xs text-[10px]"
         >
@@ -196,7 +247,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* Formulaire d'ajout / modification affiché seul */}
       {afficherForm ? (
         <form onSubmit={enregistrerCompte} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2 shadow-md">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
@@ -206,16 +256,30 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
             <button type="button" onClick={annulerForm} className="text-slate-500 font-black text-xs">✖</button>
           </div>
 
+          <div>
+            <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Nature *</label>
+            <select
+              required
+              value={nouveauCompte.type_compte}
+              onChange={gererChangementNature}
+              className="w-full bg-white border border-slate-300 rounded p-1 font-black text-slate-900 text-[10px] shadow-2xs"
+            >
+              <option value="">-- Choisir la nature --</option>
+              <option value="CHARGE">🔴 CHARGE</option>
+              <option value="PRODUIT">🟢 PRODUIT</option>
+            </select>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block font-black text-slate-800 mb-0.5 text-[9px]">N° Code *</label>
+              <label className="block font-black text-slate-800 mb-0.5 text-[9px]">N° Code (Modifiable) *</label>
               <input
                 type="text"
                 required
                 value={nouveauCompte.code_compte}
                 onChange={(e) => setNouveauCompte({ ...nouveauCompte, code_compte: e.target.value })}
-                placeholder="613"
-                className="w-full bg-white border border-slate-300 rounded p-1 font-black text-slate-900 text-[10px] shadow-2xs"
+                placeholder="605001"
+                className="w-full bg-white border border-slate-300 rounded p-1 font-black text-orange-600 text-[10px] shadow-2xs"
               />
             </div>
 
@@ -225,25 +289,11 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
                 type="text"
                 required
                 value={nouveauCompte.intitule_compte}
-                onChange={(e) => setNouveauCompte({ ...nouveauCompte, intitule_compte: e.target.value.toUpperCase() })}
-                placeholder="Loyer et charges"
+                onChange={gererChangementIntitule}
+                placeholder="EX: DÉPANNAGE MOTO, ACHAT..."
                 className="w-full bg-white border border-slate-300 rounded p-1 font-extrabold uppercase text-slate-900 text-[10px] shadow-2xs"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Nature *</label>
-            <select
-              required
-              value={nouveauCompte.type_compte}
-              onChange={(e) => setNouveauCompte({ ...nouveauCompte, type_compte: e.target.value })}
-              className="w-full bg-white border border-slate-300 rounded p-1 font-black text-slate-900 text-[10px] shadow-2xs"
-            >
-              <option value="">-- Choisir la nature --</option>
-              <option value="CHARGE">🔴 CHARGE</option>
-              <option value="PRODUIT">🟢 PRODUIT</option>
-            </select>
           </div>
 
           <div className="flex justify-between items-center pt-2 border-t border-slate-200">
@@ -256,7 +306,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
                 Supprimer
               </button>
             ) : <div />}
-            <div className="flex gap-1">
+            <div className="flex gap-1 ml-auto">
               <button
                 type="button"
                 onClick={annulerForm}
@@ -275,7 +325,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
         </form>
       ) : (
         <>
-          {/* Barre de recherche et filtres */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs items-center">
             <div className="sm:col-span-2">
               <input
@@ -311,7 +360,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
             </div>
           </div>
 
-          {/* Tableau de la liste */}
           {chargement ? (
             <div className="p-4 text-center text-slate-600 font-bold text-[10px]">Chargement...</div>
           ) : comptesFiltres.length === 0 ? (

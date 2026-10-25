@@ -70,10 +70,10 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
 
       if (categorieEnEdition) {
         await supabase.from('categories_clients').update(payload).eq('id', categorieEnEdition.id);
-        alert(`Mise à jour réussie dans le module ${moduleActuel} !`);
+        alert('Mise à jour réussie !');
       } else {
         await supabase.from('categories_clients').insert([payload]);
-        alert(`Création réussie dans le module ${moduleActuel} !`);
+        alert('Création réussie !');
       }
       annulerForm();
       chargerCategories();
@@ -158,15 +158,11 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
     <div className="space-y-2.5 text-[11px] font-sans">
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS [{moduleActuel}]</h3>
+        <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS</h3>
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => { setCategorieEnEdition(null); setAfficherForm(true); }}
-            className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition shadow-2xs ${
-              afficherForm && !categorieEnEdition 
-                ? 'bg-orange-600 text-white' 
-                : 'bg-orange-600 hover:bg-orange-700 text-white'
-            }`}
+            className="px-3 py-1.5 rounded-lg font-bold text-[11px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 text-white"
           >
             Nouveau
           </button>
@@ -186,7 +182,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       {afficherForm ? (
         <form onSubmit={enregistrerCategorie} className="bg-slate-50 border border-orange-500/40 p-2.5 rounded-xl space-y-2 shadow-2xs">
           <div className="flex justify-between items-center border-b pb-1">
-            <h4 className="font-bold text-orange-600 uppercase text-[10px]">{categorieEnEdition ? `✏️ Édition (${moduleActuel})` : `➕ Nouvelle (${moduleActuel})`}</h4>
+            <h4 className="font-bold text-orange-600 uppercase text-[10px]">{categorieEnEdition ? '✏️ Édition de la Catégorie' : '➕ Nouvelle Catégorie'}</h4>
             <button type="button" onClick={annulerForm} className="text-slate-400 font-bold text-xs">✖</button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
@@ -201,31 +197,23 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
         </form>
       ) : (
         <>
-          <div className="bg-slate-50 p-1.5 rounded-xl border"><input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder={`RECHERCHER [${moduleActuel}]...`} className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-extrabold uppercase placeholder:text-slate-400" /></div>
-          {chargement ? (<div className="p-4 text-center text-slate-400">Chargement...</div>) : categoriesFiltrees.length === 0 ? (<div className="p-4 text-center text-slate-400 bg-white border rounded-xl">Aucune catégorie enregistrée pour le module {moduleActuel}.</div>) : (
+          <div className="bg-slate-50 p-1.5 rounded-xl border"><input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER..." className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-extrabold uppercase placeholder:text-slate-400" /></div>
+          {chargement ? (<div className="p-4 text-center text-slate-400">Chargement...</div>) : categoriesFiltrees.length === 0 ? (<div className="p-4 text-center text-slate-400 bg-white border rounded-xl">Aucune catégorie enregistrée.</div>) : (
             <div className="overflow-x-auto border rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs table-fixed">
                 <thead className="bg-slate-50 text-slate-700 border-b uppercase text-[9px] font-extrabold select-none">
                   <tr>
                     <th onClick={() => gererTri('nom_categorie')} className="p-2 w-[35%] cursor-pointer">
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Catégorie</span> {rendreFlecheTri('nom_categorie')}
-                      </div>
+                      <div className="flex items-center gap-1 whitespace-nowrap"><span>Catégorie</span> {rendreFlecheTri('nom_categorie')}</div>
                     </th>
                     <th onClick={() => gererTri('taux_remise_defaut')} className="p-2 w-[20%] cursor-pointer">
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Remise</span> {rendreFlecheTri('taux_remise_defaut')}
-                      </div>
+                      <div className="flex items-center gap-1 whitespace-nowrap"><span>Remise</span> {rendreFlecheTri('taux_remise_defaut')}</div>
                     </th>
                     <th onClick={() => gererTri('applique_tva')} className="p-2 w-[25%] cursor-pointer">
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>TVA</span> {rendreFlecheTri('applique_tva')}
-                      </div>
+                      <div className="flex items-center gap-1 whitespace-nowrap"><span>TVA</span> {rendreFlecheTri('taux_tva_defaut')}</div>
                     </th>
                     <th onClick={() => gererTri('valeur_ristourne')} className="p-2 w-[20%] text-right cursor-pointer">
-                      <div className="flex items-center justify-end gap-1 whitespace-nowrap">
-                        <span>Ristourne</span> {rendreFlecheTri('valeur_ristourne')}
-                      </div>
+                      <div className="flex items-center justify-end gap-1 whitespace-nowrap"><span>Ristourne</span> {rendreFlecheTri('valeur_ristourne')}</div>
                     </th>
                   </tr>
                 </thead>

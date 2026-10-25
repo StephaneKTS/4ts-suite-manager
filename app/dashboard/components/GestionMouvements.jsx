@@ -11,6 +11,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const [articles, setArticles] = useState([]);
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('ENTREE');
@@ -271,6 +272,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const modifierLignePanier = (ligne) => {
+    if (enTrainDeSauvegarder) return;
     const artObj = articles.find(a => String(a.id_article || a.id) === String(ligne.id_article)) || { id_article: ligne.id_article, Designation: ligne.designation };
     setArticleSelectionneTemp(artObj);
     setQuantiteSaisie(ligne.quantite);
@@ -318,6 +320,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const annulerOperation = () => {
+    if (enTrainDeSauvegarder) return;
     if (lignesPanier.length > 0 || enTeteDoc.motif) {
       if (!confirm('Voulez-vous vraiment annuler cette opération en cours ?')) return;
     }
@@ -334,11 +337,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const validerDocumentMouvement = async () => {
+    if (enTrainDeSauvegarder) return;
     if (!verifierEnTeteAvantSaisie() || lignesPanier.length === 0) { if (lignesPanier.length === 0) alert('Ajoutez des articles.'); return; }
+
+    setEnTrainDeSauvegarder(true);
     try {
       if (mouvementEnEditionId) {
         const { error: errDel } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
-        if (errDel) { alert('Erreur suppression : ' + errDel.message); return; }
+        if (errDel) { alert('Erreur suppression : ' + errDel.message); setEnTrainDeSauvegarder(false); return; }
       }
       
       for (const ligne of lignesPanier) {
@@ -360,6 +366,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         if (error) {
           console.error("Erreur Supabase insertion mouvement:", error);
           alert(`Erreur Supabase : ${error.message}`);
+          setEnTrainDeSauvegarder(false);
           return;
         }
       }
@@ -368,9 +375,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       setLignesPanier([]);
       setMouvementEnEditionId(null);
       setEnTeteDoc((prev) => ({ ...prev, motif: '', referenceDoc: '' }));
-      chargerDonnees();
+      await chargerDonnees();
       setModeAffichage('LISTE_DOCS');
-    } catch (err) { alert('Erreur : ' + err.message); }
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
   };
 
   const ouvrirDocumentDepuisListe = (numeroDocUnique) => {
@@ -398,6 +409,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const supprimerDocumentComplet = async (numeroDocUnique) => {
+    if (enTrainDeSauvegarder) return;
     if (!confirm(`Supprimer le document ${numeroDocUnique} ?`)) return;
     try {
       const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', numeroDocUnique);
@@ -441,13 +453,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return 0;
   });
 
-  const enTeteVerrouille = lignesPanier.length > 0;
+  const enTeteVerrouille = lignesPanier.length > 0 || enTrainDeSauvegarder;
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
       <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-        <button type="button" onClick={() => { setModeAffichage('SAISIE'); setMouvementEnEditionId(null); setLignesPanier([]); setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), motif: '' })); }} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisir'} [{moduleActuel}]</button>
-        <button type="button" onClick={() => setModeAffichage('LISTE_DOCS')} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>📋 Liste [{moduleActuel}] ({documentsGroupes.length})</button>
+        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setModeAffichage('SAISIE'); setMouvementEnEditionId(null); setLignesPanier([]); setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), motif: '' })); }} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisir'} [{moduleActuel}]</button>
+        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModeAffichage('LISTE_DOCS')} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>📋 Liste [{moduleActuel}] ({documentsGroupes.length})</button>
       </div>
 
       {modeAffichage === 'SAISIE' && (
@@ -500,7 +512,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
               <div className="sm:col-span-8">
                 <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
-                <button ref={boutonSelectionArticleRef} type="button" onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between">
+                <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between">
                   <span>{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
                   <span className="text-orange-600">🔍</span>
                 </button>
@@ -513,6 +525,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                   type="number" 
                   min="1" 
                   value={quantiteSaisie} 
+                  disabled={enTrainDeSauvegarder}
                   onFocus={(e) => e.target.select()} 
                   onChange={(e) => setQuantiteSaisie(e.target.value)} 
                   onKeyDown={gererKeyDownQuantite}
@@ -521,7 +534,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="sm:col-span-1">
-                <button type="button" onClick={ajouterArticleAuPanier} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold p-1 rounded text-center text-[9px] shadow-2xs" title="Valider l'article (ou Entrée)">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleAuPanier} className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-bold p-1 rounded text-center text-[9px] shadow-2xs" title="Valider l'article (ou Entrée)">
                   OK
                 </button>
               </div>
@@ -563,7 +576,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                         <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
                         <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
                         <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]" title="Supprimer">🗑️</button>
+                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]" title="Supprimer">🗑️</button>
                         </td>
                       </tr>
                     ))}
@@ -573,13 +586,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
             )}
 
             <div className="pt-1.5 flex items-center justify-between gap-1 flex-wrap">
-              {mouvementEnEditionId ? (<button type="button" onClick={() => supprimerDocumentComplet(enTeteDoc.numeroDoc)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[9px]">🗑️ Supprimer</button>) : <div />}
+              {mouvementEnEditionId ? (<button type="button" disabled={enTrainDeSauvegarder} onClick={() => supprimerDocumentComplet(enTeteDoc.numeroDoc)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[9px]">🗑️ Supprimer</button>) : <div />}
               
               <div className="flex items-center gap-1 flex-wrap">
-                <button type="button" onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
-                <button type="button" onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2 py-1 rounded text-[9px]">🖨️ Imprimer</button>
-                <button type="button" onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-[9px]">📤 Partager</button>
-                <button type="button" onClick={validerDocumentMouvement} disabled={lignesPanier.length === 0} className={`font-bold px-2.5 py-1 rounded text-[9px] ${lignesPanier.length > 0 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-400'}`}>✅ Valider</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2 py-1 rounded text-[9px]">🖨️ Imprimer</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-[9px]">📤 Partager</button>
+                <button type="button" onClick={validerDocumentMouvement} disabled={lignesPanier.length === 0 || enTrainDeSauvegarder} className={`font-bold px-2.5 py-1 rounded text-[9px] ${lignesPanier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                  {enTrainDeSauvegarder ? 'Validation...' : '✅ Valider'}
+                </button>
               </div>
             </div>
           </div>

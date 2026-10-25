@@ -11,6 +11,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const [depots, setDepots] = useState([]);
   const [articles, setArticles] = useState([]);
   const [chargement, setChargement] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [ongletActif, setOngletActif] = useState('APPRO');
   const [vueActive, setVueActive] = useState('liste');
@@ -94,17 +95,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     chargerDonnees();
   }, [entrepriseId, moduleActuel]);
 
-  // Fonction utilitaire robuste pour détecter si un partenaire est "sans stockage"
   const estStatutSansStockage = (statut) => {
     if (!statut) return false;
     const s = String(statut).trim().toUpperCase();
     return s.includes('SANS') || s.includes('AUCUN');
   };
 
-  // Filtrer uniquement les partenaires avec stockage (en ignorant les variations de casse/libellés)
   const fournisseursAvecStockage = fournisseurs.filter(f => !estStatutSansStockage(f.statut_stockage));
 
   const gererChangementPartenaire = (e) => {
+    if (enTrainDeSauvegarder) return;
     const partenaireId = e.target.value;
     setIdFournisseur(partenaireId);
 
@@ -222,6 +222,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   };
 
   const preparerNouveauDoc = (type) => {
+    if (enTrainDeSauvegarder) return;
     if (type === 'APPRO') {
       setNumeroDoc(genererNumeroDoc('APPRO', approvisionnements));
     } else {
@@ -241,6 +242,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   };
 
   const ajouterArticleCourant = () => {
+    if (enTrainDeSauvegarder) return;
     if (!verifierEnTeteAvantSaisie()) return;
     if (!articleCourant.id_article) { alert('Veuillez sélectionner un article.'); return; }
     const qte = parseInt(articleCourant.quantite);
@@ -271,6 +273,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   };
 
   const chargerLignePourModification = (index) => {
+    if (enTrainDeSauvegarder) return;
     const ligne = lignesValidees[index];
     setArticleCourant({ id_article: ligne.id_article, designation: ligne.designation, quantite: ligne.quantite, prix_achat: ligne.prix_achat });
     setIndexEnCoursModif(index);
@@ -278,10 +281,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const enregistrerFacture = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
     if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
       if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
       return; 
     }
+
+    setEnTrainDeSauvegarder(true);
     try {
       const payload = {
         id_entreprise: entrepriseId,
@@ -311,20 +317,34 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         error = res.error;
       }
 
-      if (error) { alert(`Erreur Supabase : ${error.message}`); return; }
+      if (error) { 
+        if (error.code === '23505') {
+          alert('⛔ Erreur : Ce numéro d’approvisionnement existe déjà.');
+        } else {
+          alert(`Erreur Supabase : ${error.message}`); 
+        }
+        return; 
+      }
 
       alert(`Approvisionnement ${numeroDoc} enregistré avec succès !`);
       setVueActive('liste');
-      chargerDonnees();
-    } catch (err) { alert('Erreur : ' + err.message); }
+      await chargerDonnees();
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
   };
 
   const enregistrerCommande = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
     if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
       if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
       return; 
     }
+
+    setEnTrainDeSauvegarder(true);
     try {
       const payload = {
         id_entreprise: entrepriseId,
@@ -353,17 +373,31 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         error = res.error;
       }
 
-      if (error) { alert(`Erreur Supabase : ${error.message}`); return; }
+      if (error) { 
+        if (error.code === '23505') {
+          alert('⛔ Erreur : Ce numéro de commande existe déjà.');
+        } else {
+          alert(`Erreur Supabase : ${error.message}`); 
+        }
+        return; 
+      }
 
       alert(`Bon de commande ${numeroDoc} enregistré avec succès !`);
       setVueActive('liste');
-      chargerDonnees();
-    } catch (err) { alert('Erreur : ' + err.message); }
+      await chargerDonnees();
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
   };
 
   const transformerEnFacture = async (doc) => {
+    if (enTrainDeSauvegarder) return;
     if (!doc) return;
     if (!confirm('Voulez-vous transformer ce bon de commande en approvisionnement (ce qui va incrémenter le stock) ?')) return;
+
+    setEnTrainDeSauvegarder(true);
     try {
       const nouveauNumAppro = genererNumeroDoc('APPRO', approvisionnements);
       
@@ -397,13 +431,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       alert(`Succès ! Le bon a été transformé en approvisionnement : ${nouveauNumAppro}`);
       setVueActive('liste');
       setOngletActif('APPRO');
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       alert('Erreur lors de la transformation : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const ouvrirDocModification = (doc, type) => {
+    if (enTrainDeSauvegarder) return;
     setApproEnEditionId(doc.id);
     setDocEnEditionObjet(doc);
     setNumeroDoc(doc.numero_bon || doc.numero_commande || '');
@@ -426,12 +463,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   };
 
   const supprimerDoc = async (id, type) => {
+    if (enTrainDeSauvegarder) return;
     if (!confirm('Supprimer ce document ?')) return;
     try {
       const table = type === 'APPRO' ? 'approvisionnements' : 'bons_commande_fournisseurs';
       await supabase.from(table).delete().eq('id', id);
       alert('Supprimé.');
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) { alert('Erreur : ' + err.message); }
   };
 
@@ -461,7 +499,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const documentsHistorique = trierListe(approvisionnements);
   const commandesHistorique = trierListe(bonsCommandes);
   
-  const enTeteVerrouille = lignesValidees.length > 0;
+  const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder;
   const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
   return (
@@ -474,14 +512,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         {vueActive === 'liste' ? (
           <button
             type="button"
+            disabled={enTrainDeSauvegarder}
             onClick={() => setVueActive('choix_creation')}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
           >
             Nouveau
           </button>
         ) : (
           <button
             type="button"
+            disabled={enTrainDeSauvegarder}
             onClick={() => setVueActive('liste')}
             className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
           >
@@ -494,6 +534,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         <div className="flex justify-between items-center gap-1.5">
           <button 
             type="button" 
+            disabled={enTrainDeSauvegarder}
             onClick={() => { setOngletActif('APPRO'); setVueActive('liste'); }} 
             className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'APPRO' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
           >
@@ -501,6 +542,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
           </button>
           <button 
             type="button" 
+            disabled={enTrainDeSauvegarder}
             onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
             className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
           >
@@ -575,14 +617,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-md space-y-3 max-w-sm mx-auto text-center">
           <div className="border-b border-slate-200 pb-2 flex justify-between items-center">
             <span className="font-black text-slate-900 text-xs uppercase">CHOISIR LE TYPE DE DOCUMENT</span>
-            <button type="button" onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
           </div>
           <div className="grid grid-cols-2 gap-2 pt-1">
-            <button type="button" onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
               <span className="text-2xl">📋</span>
               <span className="font-black text-[11px] text-slate-900">Bon de Commande</span>
             </button>
-            <button type="button" onClick={() => preparerNouveauDoc('APPRO')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => preparerNouveauDoc('APPRO')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
               <span className="text-2xl">📥</span>
               <span className="font-black text-[11px] text-emerald-900">Approvisionnement</span>
             </button>
@@ -595,7 +637,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
           <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
             <div className="flex items-center gap-2">
               <span className="font-black text-slate-900 text-xs uppercase">📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
-              <button type="button" onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
             </div>
             <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
           </div>
@@ -634,22 +676,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
               <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
-                <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">
+                <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">
                   {articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}
                 </div>
               </div>
               <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label>
-                <input ref={inputQuantiteRef} type="number" min="1" value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
               </div>
               {!estModeLivraison && (
                 <div className="col-span-3">
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A (F) *</label>
-                  <input type="number" min="0" value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                  <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
                 </div>
               )}
               <div className="col-span-1 text-center">
-                <button type="button" onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button>
               </div>
             </div>
           </div>
@@ -677,7 +719,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                         </>
                       )}
                       <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
+                        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
                       </td>
                     </tr>
                   ))}
@@ -692,7 +734,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
               </div>
               <div className="grid grid-cols-3 gap-2 items-center">
                 <div>
-                  <select value={statutPaiement} onChange={(e) => setStatutPaiement(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
+                  <select value={statutPaiement} disabled={enTrainDeSauvegarder} onChange={(e) => setStatutPaiement(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
                     <option value="SOLDE">Soldé</option>
                     <option value="PARTIEL">Avance</option>
                     <option value="CREDIT">Crédit</option>
@@ -701,7 +743,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                 <div>
                   <input 
                     type="number" 
-                    disabled={statutPaiement === 'SOLDE' || statutPaiement === 'CREDIT'} 
+                    disabled={statutPaiement === 'SOLDE' || statutPaiement === 'CREDIT' || enTrainDeSauvegarder} 
                     value={montantPaye} 
                     onFocus={(e) => e.target.select()} 
                     onChange={(e) => setMontantPaye(e.target.value)} 
@@ -713,11 +755,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             </div>
           )}
           <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-            {approEnEditionId ? (<button type="button" onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>) : (!estModeLivraison ? (<div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>) : <div/>)}
+            {approEnEditionId ? (<button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>) : (!estModeLivraison ? (<div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>) : <div/>)}
             <div className="flex items-center gap-1.5">
-              <button type="button" onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
-              <button type="button" onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
-              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs">{approEnEditionId ? 'Mettre à jour' : 'Valider'}</button>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
+              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
+                {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Valider')}
+              </button>
             </div>
           </div>
         </form>
@@ -728,7 +772,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
           <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
             <div className="flex items-center gap-2">
               <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
-              <button type="button" onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
             </div>
             <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
           </div>
@@ -758,15 +802,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                 </select>
               )}
             </div>
-            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} placeholder="7 JOURS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
+            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} placeholder="7 JOURS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
           </div>
           <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
             <span className="font-black uppercase text-slate-800 text-[9px] block">ARTICLES À COMMANDER</span>
             <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
-              <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">{articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}</div></div>
-              <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
-              {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
-              <div className="col-span-1 text-center"><button type="button" onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
+              <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">{articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}</div></div>
+              <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
+              {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
+              <div className="col-span-1 text-center"><button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
             </div>
           </div>
           {lignesValidees.length > 0 && (
@@ -792,7 +836,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                           <td className="p-2 text-right font-black text-slate-900">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
                         </>
                       )}
-                      <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button type="button" onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button></td>
+                      <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -802,16 +846,18 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
           <div className="flex justify-between items-center pt-2 border-t border-slate-200">
             {approEnEditionId ? (
               <div className="flex gap-1.5">
-                <button type="button" onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
-                <button type="button" onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">🔄 Transformer en Appro</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">🔄 Transformer en Appro</button>
               </div>
             ) : (!estModeLivraison ? (
               <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>
             ) : <div/>)}
             <div className="flex items-center gap-1.5">
-              <button type="button" onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
-              <button type="button" onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
-              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs">{approEnEditionId ? 'Mettre à jour' : 'Enregistrer'}</button>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
+              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
+                {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Enregistrer')}
+              </button>
             </div>
           </div>
         </form>

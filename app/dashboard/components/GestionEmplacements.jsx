@@ -7,6 +7,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
   const [emplacements, setEmplacements] = useState([]);
   const [depots, setDepots] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
   const [afficherForm, setAfficherForm] = useState(false);
@@ -87,12 +88,17 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerEmplacement = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
     if (!nomEmplacement.trim()) {
       setMsg({ type: 'error', text: '⚠️ Veuillez renseigner le nom de l’emplacement.' });
       return;
     }
 
     const nomSaisi = nomEmplacement.trim().toUpperCase();
+
+    setEnTrainDeSauvegarder(true);
+    setMsg({ type: '', text: '' });
 
     try {
       const payload = {
@@ -121,9 +127,15 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
       }
 
       annulerForm();
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
-      setMsg({ type: 'error', text: 'Erreur : ' + err.message });
+      if (err.code === '23505') {
+        setMsg({ type: 'error', text: '⛔ Erreur : Cet emplacement existe déjà.' });
+      } else {
+        setMsg({ type: 'error', text: 'Erreur : ' + err.message });
+      }
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -141,7 +153,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
       setMsg({ type: 'success', text: 'Emplacement supprimé avec succès.' });
       annulerForm();
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
     }
@@ -203,6 +215,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
             </h3>
             <button
               type="button"
+              disabled={enTrainDeSauvegarder}
               onClick={annulerForm}
               className="text-slate-400 hover:text-slate-700 font-black text-xs px-1"
             >
@@ -216,6 +229,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
               <select
                 value={idDepot}
                 onChange={(e) => setIdDepot(e.target.value)}
+                disabled={enTrainDeSauvegarder}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
                 <option value="">-- Sélectionnez un dépôt --</option>
@@ -233,6 +247,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setNomEmplacement(e.target.value.toUpperCase())}
                 placeholder="EX: RAYON BOISSONS / LIVREUR JEAN"
                 required
+                disabled={enTrainDeSauvegarder}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
@@ -244,6 +259,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
                 value={responsableEmplacement}
                 onChange={(e) => setResponsableEmplacement(e.target.value.toUpperCase())}
                 placeholder="NOM DU RESPONSABLE"
+                disabled={enTrainDeSauvegarder}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
@@ -253,6 +269,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
             {emplacementEnEdition ? (
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={supprimerEmplacement}
                 className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded text-[10px] transition"
               >
@@ -263,6 +280,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
             <div className="flex gap-1.5">
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={annulerForm}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded text-[10px] transition"
               >
@@ -270,9 +288,10 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
               </button>
               <button
                 type="submit"
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition"
+                disabled={enTrainDeSauvegarder}
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition flex items-center gap-1"
               >
-                {emplacementEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                {enTrainDeSauvegarder ? 'Enregistrement...' : (emplacementEnEdition ? 'Mettre à jour' : 'Enregistrer')}
               </button>
             </div>
           </div>

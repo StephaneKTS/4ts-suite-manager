@@ -13,6 +13,7 @@ import GestionArticles from './components/GestionArticles';
 import GestionDepots from './components/GestionDepots';
 import GestionClients from './components/GestionClients';
 import GestionCategoriesClients from './components/GestionCategoriesClients';
+import GestionChallengesCommerciaux from './components/GestionChallengesCommerciaux';
 import GestionFournisseurs from './components/GestionFournisseurs';
 import GestionApprovisionnements from './components/GestionApprovisionnements';
 import GestionFamilles from './components/GestionFamilles';
@@ -25,7 +26,7 @@ import EspaceSouscription from './components/EspaceSouscription';
 import GestionCommandesLivraison from './components/GestionCommandesLivraison';
 import GrilleTarifaireLivraison from './components/GrilleTarifaireLivraison';
 
-// Importation de votre nouveau module de livraison
+// Importation de votre module de livraison
 import ModuleLivraison from './livraison/page';
 
 function DashboardContent() {
@@ -119,6 +120,10 @@ function DashboardContent() {
 
     if (moduleActif === 'grille_tarifaire') {
       return <GrilleTarifaireLivraison entrepriseId={entrepriseId} />;
+    }
+
+    if (moduleActif === 'challenges_commerciaux') {
+      return <GestionChallengesCommerciaux entrepriseId={entrepriseId} />;
     }
 
     switch (moduleActif) {
@@ -381,9 +386,10 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Fournisseurs</span>
               </div>
 
+              {/* Remplacement du libellé par Gestion du Personnel */}
               <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
               </div>
 
               <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -437,9 +443,10 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Familles d'Articles</span>
               </div>
 
-              <div onClick={() => setModuleActif('categories')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Catégories Clients</span>
+              {/* Remplacement de Catégories Clients par Challenges Commerciaux */}
+              <div onClick={() => setModuleActif('challenges_commerciaux')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🏆</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Challenges Commerciaux</span>
               </div>
 
               <div onClick={() => setModuleActif('mouvements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -462,9 +469,10 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion Partenaire</span>
               </div>
 
+              {/* Remplacement du libellé par Gestion du Personnel en Livraison */}
               <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Comptes Utilisateurs</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
               </div>
 
               <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">

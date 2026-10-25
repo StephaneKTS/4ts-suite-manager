@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [caisses, setCaisses] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
   const [afficherForm, setAfficherForm] = useState(false);
@@ -138,6 +139,8 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerCaisse = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
     if (caisseEnEdition && !permissions.peutModifier) {
       setMsg({ type: 'error', text: '⛔ Action non autorisée : Vous n’avez pas le droit de modifier les caisses.' });
       return;
@@ -155,37 +158,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     const codeSaisi = codeCaisse.trim().toUpperCase();
     const nomSaisi = nomCaisse.trim().toUpperCase();
 
+    setEnTrainDeSauvegarder(true);
+    setMsg({ type: '', text: '' });
+
     try {
-      const { data: caissesExistantes, error: errVerif } = await supabase
-        .from('caisses')
-        .select('id, code_caisse, nom_caisse')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-
-      if (errVerif) throw errVerif;
-
-      const liste = caissesExistantes || [];
-
-      const doublonCode = liste.some(c => 
-        String(c.code_caisse || '').toUpperCase() === codeSaisi && 
-        (!caisseEnEdition || String(c.id) !== String(caisseEnEdition.id))
-      );
-
-      if (doublonCode) {
-        setMsg({ type: 'error', text: `⛔ Erreur : Le code caisse "${codeSaisi}" existe déjà.` });
-        return;
-      }
-
-      const doublonNom = liste.some(c => 
-        String(c.nom_caisse || '').toUpperCase() === nomSaisi && 
-        (!caisseEnEdition || String(c.id) !== String(caisseEnEdition.id))
-      );
-
-      if (doublonNom) {
-        setMsg({ type: 'error', text: `⛔ Erreur : Le nom de caisse "${nomSaisi}" existe déjà.` });
-        return;
-      }
-
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -212,14 +188,19 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       }
 
       annulerForm();
-      chargerPermissionsEtCaisses();
+      await chargerPermissionsEtCaisses();
     } catch (err) {
-      setMsg({ type: 'error', text: 'Erreur : ' + err.message });
+      if (err.code === '23505') {
+        setMsg({ type: 'error', text: '⛔ Erreur : Ce code caisse ou ce nom de caisse existe déjà.' });
+      } else {
+        setMsg({ type: 'error', text: 'Erreur : ' + err.message });
+      }
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const supprimerCaisse = async () => {
-    // Double vérification stricte de la permission de suppression
     if (!permissions.peutSupprimer) {
       setMsg({ type: 'error', text: '⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des caisses.' });
       return;
@@ -237,7 +218,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
       setMsg({ type: 'success', text: 'Caisse supprimée avec succès.' });
       annulerForm();
-      chargerPermissionsEtCaisses();
+      await chargerPermissionsEtCaisses();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
     }
@@ -300,6 +281,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
             </h3>
             <button
               type="button"
+              disabled={enTrainDeSauvegarder}
               onClick={annulerForm}
               className="text-slate-400 hover:text-slate-700 font-black text-xs px-1"
             >
@@ -316,7 +298,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setCodeCaisse(e.target.value.toUpperCase())}
                 placeholder="C01"
                 required
-                disabled={caisseEnEdition && !permissions.peutModifier}
+                disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-mono font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
@@ -329,7 +311,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setNomCaisse(e.target.value.toUpperCase())}
                 placeholder="CAISSE PRINCIPALE"
                 required
-                disabled={caisseEnEdition && !permissions.peutModifier}
+                disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </div>
@@ -339,7 +321,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               <select
                 value={natureCaisse}
                 onChange={(e) => setNatureCaisse(e.target.value)}
-                disabled={caisseEnEdition && !permissions.peutModifier}
+                disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-black text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
                 {moduleActuel === 'LIVRAISON' ? (
@@ -358,10 +340,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-            {/* Le bouton de suppression s'affiche uniquement si l'utilisateur a explicitement la permission */}
             {caisseEnEdition && permissions.peutSupprimer ? (
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={supprimerCaisse}
                 className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded text-[10px] transition"
               >
@@ -372,6 +354,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
             <div className="flex gap-1.5">
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={annulerForm}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded text-[10px] transition"
               >
@@ -380,9 +363,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               {((caisseEnEdition && permissions.peutModifier) || (!caisseEnEdition && permissions.peutCreer)) && (
                 <button
                   type="submit"
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition"
+                  disabled={enTrainDeSauvegarder}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition flex items-center gap-1"
                 >
-                  {caisseEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (caisseEnEdition ? 'Mettre à jour' : 'Enregistrer')}
                 </button>
               )}
             </div>

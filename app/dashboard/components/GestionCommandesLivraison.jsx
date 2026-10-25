@@ -16,6 +16,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [approvisionnements, setApprovisionnements] = useState([]);
   const [ventesHistoriques, setVentesHistoriques] = useState([]);
   const [chargement, setChargement] = useState(false);
+  const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
   const [vueActive, setVueActive] = useState('LISTE');
   const [commandeEnEdition, setCommandeEnEdition] = useState(null);
@@ -26,53 +27,76 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [depotId, setDepotId] = useState('AUCUN_DEPOT');
   const [montantSaisi, setMontantSaisi] = useState('');
   
-  // Gestion Point A, Point B et Nature du Colis
+  const inputNumeroCmdRef = useRef(null);
+  const inputMontantRef = useRef(null);
+
   const [pointADepart, setPointADepart] = useState('');
-  const [adresseLivraison, setAdresseLivraison] = useState(''); // Point B
+  const [adresseLivraison, setAdresseLivraison] = useState('');
   const [natureColis, setNatureColis] = useState('');
   const [zoneGrilleSelectionnee, setZoneGrilleSelectionnee] = useState('');
   const [fraisLivraisonSaisi, setFraisLivraisonSaisi] = useState('');
   const [livreurAssigne, setLivreurAssigne] = useState('');
   const [statutCommandeSaisi, setStatutCommandeSaisi] = useState('EN ATTENTE');
 
-  // --- GESTION DU STOCKAGE DU PARTENAIRE ---
+  const [modalPartenaireOuverte, setModalPartenaireOuverte] = useState(false);
+  const [recherchePartenaireInput, setRecherchePartenaireInput] = useState('');
+
+  const [modalLivreurOuverte, setModalLivreurOuverte] = useState(false);
+  const [rechercheLivreurInput, setRechercheLivreurInput] = useState('');
+
+  const [modalArticleOuverte, setModalArticleOuverte] = useState(false);
+  const [rechercheArticleInput, setRechercheArticleInput] = useState('');
+
   const [partenaireSansStockage, setPartenaireSansStockage] = useState(false);
 
   const dateDuJourStr = new Date().toISOString().split('T')[0];
 
   const [filtrePartenaire, setFiltrePartenaire] = useState('');
+  const [modalFiltrePartenaireOuverte, setModalFiltrePartenaireOuverte] = useState(false);
+  const [rechercheFiltrePartenaireInput, setRechercheFiltrePartenaireInput] = useState('');
+
   const [filtreLivreur, setFiltreLivreur] = useState('');
+  const [modalFiltreLivreurOuverte, setModalFiltreLivreurOuverte] = useState(false);
+  const [rechercheFiltreLivreurInput, setRechercheFiltreLivreurInput] = useState('');
+
   const [filtreDateDebut, setFiltreDateDebut] = useState(dateDuJourStr);
   const [filtreDateFin, setFiltreDateFin] = useState(dateDuJourStr);
   const [filtreStatut, setFiltreStatut] = useState('');
 
   const [rapportDateDebut, setRapportDateDebut] = useState(dateDuJourStr);
   const [rapportDateFin, setRapportDateFin] = useState(dateDuJourStr);
+  
   const [rapportLivreur, setRapportLivreur] = useState('');
+  const [modalRapportLivreurOuverte, setModalRapportLivreurOuverte] = useState(false);
+  const [rechercheRapportLivreurInput, setRechercheRapportLivreurInput] = useState('');
+
   const [rapportPartenaire, setRapportPartenaire] = useState('');
+  const [modalRapportPartenaireOuverte, setModalRapportPartenaireOuverte] = useState(false);
+  const [rechercheRapportPartenaireInput, setRechercheRapportPartenaireInput] = useState('');
 
   const [colonneTri, setColonneTri] = useState('date');
   const [ordreTri, setOrdreTri] = useState('asc');
 
-  const [menuPartageOuvert, setMenuPartageOuvert] = useState(false);
-
   const rapportRef = useRef(null);
-  const menuRef = useRef(null);
 
   const [lignesSaisies, setLignesSaisies] = useState([]);
-  const [rechercheArticleInput, setRechercheArticleInput] = useState('');
 
   const moduleActuel = 'LIVRAISON';
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuPartageOuvert(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const formaterDateCourte = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const [annee, mois, jour] = dateStr.split('-');
+      const dateObj = new Date(parseInt(annee), parseInt(mois) - 1, parseInt(jour));
+      
+      const options = { weekday: 'short' };
+      let nomJour = dateObj.toLocaleDateString('fr-FR', options).replace('.', '').toUpperCase();
+      
+      return `${nomJour} ${jour}/${mois}/${annee}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
 
   const formaterDateEnFrancais = (dateStr) => {
     if (!dateStr) return '';
@@ -197,6 +221,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setDepotId('AUCUN_DEPOT');
       setPartenaireSansStockage(false);
     }
+
+    setTimeout(() => {
+      if (inputNumeroCmdRef.current) {
+        inputNumeroCmdRef.current.focus();
+        inputNumeroCmdRef.current.select();
+      }
+    }, 50);
   };
 
   const handleChangementAdresse = (valeur) => {
@@ -208,16 +239,14 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setZoneGrilleSelectionnee(zoneCorrespondante.nom_zone);
       setFraisLivraisonSaisi(String(zoneCorrespondante.frais));
     }
-  };
 
-  const handleSelectionZoneEffective = (valeur) => {
-    setZoneGrilleSelectionnee(valeur);
-    const tarifTrouve = grilleTarifaire.find(
-      t => (t.nom_zone || '').trim().toUpperCase() === valeur.trim().toUpperCase()
-    );
-
-    if (tarifTrouve) {
-      setFraisLivraisonSaisi(String(tarifTrouve.frais));
+    if (zoneCorrespondante) {
+      setTimeout(() => {
+        if (inputMontantRef.current) {
+          inputMontantRef.current.focus();
+          inputMontantRef.current.select();
+        }
+      }, 50);
     }
   };
 
@@ -292,7 +321,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       }
       if (typeMvt === 'ENTREE' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+      } else if (typeMvt === 'SORTIE' || typeMvt.includes('AVARIES')) {
         if (matchDepotSource) stockDepot -= qte;
       } else {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
@@ -354,25 +383,44 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     return calculerStockPourUnDepot(articleId, depotId);
   };
 
-  const getStockArticlePourLivreur = (articleId, nomLivreur) => {
-    if (!nomLivreur || !nomLivreur.trim()) return 'N/A';
-    const empTrouve = emplacements.find(e => 
-      (e.nom_emplacement || '').trim().toUpperCase() === nomLivreur.trim().toUpperCase() ||
-      (e.responsable_emplacement || '').trim().toUpperCase() === nomLivreur.trim().toUpperCase()
-    );
-    if (!empTrouve) return 0;
-    return calculerStockPourEmplacement(articleId, empTrouve.id);
+  // FILTRAGE STRICT DES LIVREURS UNIQUEMENT DEPUIS LA TABLE UTILISATEURS DE L'ENTREPRISE CONNECTÉE
+  const listeLivreursUniques = () => {
+    const setLivreurs = new Set();
+    
+    utilisateurs
+      .filter(u => String(u.id_entreprise || '').trim() === String(entrepriseId || '').trim())
+      .forEach(u => {
+        let nom = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
+        if (!nom && u.email) nom = u.email.split('@')[0].toUpperCase();
+        if (nom) setLivreurs.add(nom);
+      });
+
+    return Array.from(setLivreurs).sort();
   };
+
+  const partenairesFiltres = partenaires.filter(p => {
+    const nom = (p.nom_fournisseur || p.nom || '').toLowerCase();
+    return nom.includes(recherchePartenaireInput.toLowerCase());
+  });
+
+  const filtrePartenairesFiltres = partenaires.filter(p => {
+    const nom = (p.nom_fournisseur || p.nom || '').toLowerCase();
+    return nom.includes(rechercheFiltrePartenaireInput.toLowerCase());
+  });
+
+  const rapportPartenairesFiltres = partenaires.filter(p => {
+    const nom = (p.nom_fournisseur || p.nom || '').toLowerCase();
+    return nom.includes(rechercheRapportPartenaireInput.toLowerCase());
+  });
+
+  const livreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheLivreurInput.toLowerCase()));
+  const filtreLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheFiltreLivreurInput.toLowerCase()));
+  const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
 
   const articlesFiltres = articles.filter((a) => {
     if (!idPartenaire) return false;
-    
-    const stockDisp = getStockReelArticle(a);
-    if (stockDisp <= 0) return false;
-
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
-    const correspondRecherche = designation.includes(rechercheArticleInput.toUpperCase());
-    return correspondRecherche;
+    return designation.includes(rechercheArticleInput.toUpperCase());
   });
 
   const enteteValide = partenaireSansStockage 
@@ -486,9 +534,10 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   };
 
   const supprimerCommandeActuelle = async () => {
-    if (!commandeEnEdition) return;
+    if (!commandeEnEdition || sauvegardeEnCours) return;
     if (!confirm(`Voulez-vous vraiment supprimer la commande ${commandeEnEdition.numero_commande} ?`)) return;
 
+    setSauvegardeEnCours(true);
     try {
       await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
       
@@ -514,11 +563,14 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       chargerDonnees();
     } catch (err) {
       alert('Erreur lors de la suppression : ' + err.message);
+    } finally {
+      setSauvegardeEnCours(false);
     }
   };
 
   const sauvegarderCommande = async (e) => {
     if (e) e.preventDefault();
+    if (sauvegardeEnCours) return; // Protection anti-double clic
     
     if (!numeroCommande.trim() || !idPartenaire || montantSaisi === '' || !adresseLivraison.trim()) {
       alert('⚠️ Veuillez remplir tous les champs obligatoires (Partenaire, N° CMD, Montant et Point B / Adresse de livraison).');
@@ -535,6 +587,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       return;
     }
 
+    setSauvegardeEnCours(true);
     try {
       const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
@@ -690,6 +743,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       chargerDonnees();
     } catch (err) {
       alert('Erreur technique : ' + (err.message || err));
+    } finally {
+      setSauvegardeEnCours(false);
     }
   };
 
@@ -703,7 +758,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       matchPartenaire = String(cmd.id_partenaire) === String(filtrePartenaire);
     }
     if (filtreLivreur) {
-      matchLivreur = (cmd.vendeur_livreur || '').toUpperCase().includes(filtreLivreur.toUpperCase());
+      matchLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase() === filtreLivreur.trim().toUpperCase();
     }
     if (filtreDateDebut && filtreDateFin) {
       matchDate = cmd.date_commande >= filtreDateDebut && cmd.date_commande <= filtreDateFin;
@@ -789,8 +844,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const totalFraisRapport = commandesRapport.reduce((acc, cmd) => acc + Number(cmd.frais_livraison || 0), 0);
   const resteAVerserRapport = totalMontantRapport - totalFraisRapport;
 
-  const nomPartenaireRapport = rapportPartenaire ? (partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom || 'Tous les partenaires') : 'Tous les partenaires';
-  const nomLivreurRapport = rapportLivreur || 'Tous les livreurs';
+  const nomPartenaireRapport = rapportPartenaire ? (partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom || 'TOUS LES PARTENAIRES') : 'TOUS LES PARTENAIRES';
+  const nomLivreurRapport = rapportLivreur || 'TOUS LES LIVREURS';
 
   const libellePeriode = rapportDateDebut === rapportDateFin 
     ? formaterDateJJMMAAAA(rapportDateDebut) 
@@ -799,7 +854,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const titrePrincipalRapport = `RAPPORT DE LIVRAISON - ${nomPartenaireRapport.toUpperCase()} - ${libellePeriode}`;
 
   const imprimerRapport = () => {
-    setMenuPartageOuvert(false);
     setTimeout(() => {
       if (!rapportRef.current) return;
       const contenuHTML = rapportRef.current.innerHTML;
@@ -810,36 +864,56 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             <head>
               <title>${titrePrincipalRapport}</title>
               <style>
-                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; background: white; color: #111827; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .titre-rapport-principal { font-size: 16px !important; font-weight: 900 !important; color: #ea580c !important; text-transform: uppercase !important; margin-bottom: 4px !important; }
-                .sous-titre-livreur { font-size: 12px !important; font-weight: bold !important; color: #1e293b !important; margin-bottom: 15px !important; text-transform: uppercase !important; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 25px; background: white; color: #111827; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                .print-header { border-bottom: 2px solid #ea580c; padding-bottom: 12px; margin-bottom: 20px; }
+                .print-header h1 { font-size: 18px; font-weight: 900; color: #ea580c; text-transform: uppercase; margin: 0 0 5px 0; }
+                .print-header p { font-size: 12px; font-weight: bold; color: #334155; margin: 2px 0; text-transform: uppercase; }
+                table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
                 th, td { border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 11px; text-align: left; }
                 th { background-color: #f1f5f9 !important; color: #334155; font-weight: bold; text-transform: uppercase; }
-                .bg-emerald-900 { 
+                .print-footer { 
                   background-color: #064e3b !important; 
                   color: white !important; 
-                  padding: 14px 16px !important; 
-                  margin-top: 15px !important; 
+                  padding: 15px !important; 
+                  margin-top: 20px !important; 
                   border-radius: 8px !important; 
-                  display: grid !important;
-                  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-                  gap: 12px !important;
+                  display: flex !important;
+                  justify-content: space-between !important;
                   align-items: center !important;
                 }
-                .bg-emerald-900 > div { text-align: left; }
-                .bg-emerald-900 > div:nth-child(2) { border-left: 1px solid #047857 !important; border-right: 1px solid #047857 !important; padding-left: 12px; padding-right: 12px; }
-                .bg-emerald-900 > div:nth-child(3) { text-align: right; }
-                .text-emerald-200 { color: #a7f3d0 !important; font-size: 9px; text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 3px; }
-                .text-emerald-300 { color: #6ee7b7 !important; font-family: monospace; font-size: 14px; font-weight: 900; }
-                .text-orange-300 { color: #fde047 !important; font-family: monospace; font-size: 14px; font-weight: 900; }
+                .print-footer > div { text-align: center; flex: 1; border-right: 1px solid #047857; }
+                .print-footer > div:last-child { border-right: none; }
+                .print-footer .label { color: #a7f3d0 !important; font-size: 9px; text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 4px; }
+                .print-footer .valeur { color: #6ee7b7 !important; font-family: monospace; font-size: 14px; font-weight: 900; }
+                .print-footer .valeur-orange { color: #fde047 !important; font-family: monospace; font-size: 14px; font-weight: 900; }
                 button, .print-hide { display: none !important; }
               </style>
             </head>
             <body>
-              <div style="max-width: 800px; margin: 0 auto;">
-                ${contenuHTML}
+              <div class="print-header">
+                <h1>RAPPORT DE LIVRAISON (COMMANDES LIVRÉES)</h1>
+                <p>Partenaire : ${nomPartenaireRapport}</p>
+                <p>Livreur : ${nomLivreurRapport}</p>
+                <p>Période : ${libellePeriode}</p>
               </div>
+
+              ${rapportRef.current.querySelector('.overflow-x-auto') ? rapportRef.current.querySelector('.overflow-x-auto').innerHTML : ''}
+
+              <div class="print-footer">
+                <div>
+                  <span class="label">Montant Total</span>
+                  <span class="valeur">${totalMontantRapport.toLocaleString('fr-FR')} CFA</span>
+                </div>
+                <div>
+                  <span class="label">Total Frais</span>
+                  <span class="valeur">${totalFraisRapport.toLocaleString('fr-FR')} CFA</span>
+                </div>
+                <div>
+                  <span class="label">Reste à verser</span>
+                  <span class="valeur-orange">${resteAVerserRapport.toLocaleString('fr-FR')} CFA</span>
+                </div>
+              </div>
+
               <script>
                 window.onload = function() {
                   setTimeout(() => {
@@ -856,35 +930,19 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     }, 150);
   };
 
-  const partagerWhatsAppTexte = () => {
-    setMenuPartageOuvert(false);
-    const texte = encodeURIComponent(
-      `📊 *${titrePrincipalRapport}*\n` +
-      `Livreur : ${nomLivreurRapport}\n` +
-      `----------------------------------\n` +
-      `• Total livraisons : ${commandesRapport.length}\n` +
-      `• Montant Total : ${totalMontantRapport.toLocaleString('fr-FR')} CFA\n` +
-      `• Frais : ${totalFraisRapport.toLocaleString('fr-FR')} CFA\n` +
-      `• Reste à verser : ${resteAVerserRapport.toLocaleString('fr-FR')} CFA\n` +
-      `----------------------------------\n` +
-      `*(Rapport officiel ISMA Logistique)*`
-    );
-    window.open(`https://api.whatsapp.com/send?text=${texte}`, '_blank');
-  };
-
   return (
     <div className="space-y-3 text-[11px] font-sans">
       
-      <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+      <div className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-2">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 shrink-0">
-          <span>📦</span> SUIVI LIVRAISON
+          <span>📦</span> GESTION LIVRAISON
         </h3>
         
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setVueActive('LISTE')}
-            className={`font-bold px-2 py-1.5 rounded-lg transition shadow-2xs text-[11px] border ${
+            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border ${
               vueActive === 'LISTE' 
                 ? 'bg-slate-900 text-white border-slate-900' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
@@ -911,19 +969,19 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               setLignesSaisies([]);
               setVueActive('CREATION');
             }}
-            className={`font-bold px-2 py-1.5 rounded-lg transition shadow-2xs text-[11px] border ${
+            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border ${
               vueActive === 'CREATION' 
                 ? 'bg-orange-600 text-white border-orange-600' 
                 : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
             }`}
           >
-            + Créer Commande
+            + Créer
           </button>
 
           <button
             type="button"
             onClick={() => setVueActive('RAPPORT')}
-            className={`font-bold px-2 py-1.5 rounded-lg transition shadow-2xs text-[11px] border ${
+            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border ${
               vueActive === 'RAPPORT' 
                 ? 'bg-blue-900 text-white border-blue-900' 
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
@@ -936,10 +994,10 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
       {vueActive === 'RAPPORT' && (
         <div className="space-y-3">
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <span className="font-black text-blue-900 uppercase text-[10px] flex items-center gap-1">
-                📊 RAPPORT SYNTHÉTIQUE DES LIVRAISONS (STATUT : LIVRÉ)
+                📊 RAPPORT DE LIVRAISON : COMMANDES LIVRÉES
               </span>
               {(rapportDateDebut !== dateDuJourStr || rapportDateFin !== dateDuJourStr || rapportLivreur || rapportPartenaire) && (
                 <button
@@ -952,13 +1010,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   }}
                   className="text-blue-600 hover:text-blue-700 font-bold text-[10px] underline"
                 >
-                  Réinitialiser le rapport
+                  Réinitialiser
                 </button>
               )}
             </div>
 
             <div className="space-y-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
                   <input
@@ -980,35 +1038,31 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
-                  <select
-                    value={rapportLivreur}
-                    onChange={(e) => setRapportLivreur(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] uppercase"
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheRapportLivreurInput(''); setModalRapportLivreurOuverte(true); }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
                   >
-                    <option value="">-- Tous les livreurs --</option>
-                    {emplacements.map((emp) => {
-                      const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
-                      if (!nomEmp) return null;
-                      return <option key={emp.id} value={nomEmp.toUpperCase()}>{nomEmp.toUpperCase()}</option>;
-                    })}
-                  </select>
+                    <span className="truncate">{rapportLivreur || 'TOUS'}</span>
+                    <span className="text-slate-400 shrink-0">🔍</span>
+                  </button>
                 </div>
 
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
-                  <select
-                    value={rapportPartenaire}
-                    onChange={(e) => setRapportPartenaire(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheRapportPartenaireInput(''); setModalRapportPartenaireOuverte(true); }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] text-left flex justify-between items-center truncate"
                   >
-                    <option value="">-- Tous les partenaires --</option>
-                    {partenaires.map((p) => (
-                      <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
-                    ))}
-                  </select>
+                    <span className="truncate">
+                      {rapportPartenaire ? (partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom || 'TOUS') : 'TOUS'}
+                    </span>
+                    <span className="text-slate-400 shrink-0">🔍</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1016,65 +1070,36 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
           <div ref={rapportRef} className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg overflow-hidden space-y-0 p-3">
             
-            <div className="bg-slate-900 text-white pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800">
-              <div>
-                <h4 className="titre-rapport-principal font-black text-sm uppercase tracking-wider text-orange-400">
-                  RAPPORT DE LIVRAISON - {nomPartenaireRapport.toUpperCase()} - {libellePeriode}
+            <div className="bg-slate-900 text-white pb-3 flex flex-row justify-between items-center gap-2 border-b border-slate-800">
+              <div className="truncate">
+                <h4 className="titre-rapport-principal font-black text-xs uppercase tracking-wider text-orange-400 truncate">
+                  RAPPORT DE LIVRAISON
                 </h4>
-                <p className="sous-titre-livreur text-[11px] text-slate-200 font-extrabold mt-1">
+                <p className="sous-titre-livreur text-[10px] text-slate-200 font-extrabold mt-0.5 truncate">
                   Livreur : <span className="text-blue-400 uppercase">{nomLivreurRapport}</span>
                 </p>
               </div>
               
-              <div className="flex items-center gap-2">
-                <div className="bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-[10px] font-bold">
-                  Total livraisons : <strong className="text-emerald-400">{commandesRapport.length}</strong>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 text-[9px] font-bold">
+                  Total livré : <strong className="text-emerald-400">{commandesRapport.length}</strong>
                 </div>
 
                 <button
                   type="button"
                   onClick={imprimerRapport}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black px-2 py-1 rounded-lg text-[10px] transition flex items-center gap-1 shadow-2xs print-hide"
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black px-2 py-1 rounded-lg text-[9px] transition flex items-center gap-1 shadow-2xs print-hide"
                 >
                   🖨️ Imprimer
                 </button>
-
-                <div className="relative print-hide" ref={menuRef}>
-                  <button
-                    type="button"
-                    onClick={() => setMenuPartageOuvert(!menuPartageOuvert)}
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-black px-2.5 py-1 rounded-lg text-[10px] transition flex items-center gap-1 shadow-2xs"
-                  >
-                    📤 Partager ▾
-                  </button>
-
-                  {menuPartageOuvert && (
-                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={imprimerRapport}
-                        className="w-full text-left px-3 py-2 text-[10px] font-bold text-slate-800 hover:bg-orange-50 hover:text-orange-600 transition border-b border-slate-100 flex items-center gap-1.5"
-                      >
-                        <span>📄</span> Exporter en PDF
-                      </button>
-                      <button
-                        type="button"
-                        onClick={partagerWhatsAppTexte}
-                        className="w-full text-left px-3 py-2 text-[10px] font-bold text-slate-800 hover:bg-emerald-50 hover:text-emerald-600 transition flex items-center gap-1.5"
-                      >
-                        <span>🟢</span> WhatsApp (Rapport)
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
             {chargement ? (
-              <div className="p-8 text-center text-slate-400 font-bold bg-white">Chargement du rapport...</div>
+              <div className="p-8 text-center text-slate-400 font-bold bg-white">Chargement...</div>
             ) : commandesRapport.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-b-xl">
-                Aucune livraison validée ne correspond à vos critères pour cette période.
+              <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-b-xl text-[10px]">
+                Aucune livraison validée ne correspond à vos critères.
               </div>
             ) : (
               <div className="bg-white rounded-xl overflow-hidden shadow-sm mt-3">
@@ -1082,25 +1107,25 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-100 text-slate-700 uppercase text-[9px] font-black border-b border-slate-200">
-                        <th className="p-2.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('date')}>
+                        <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('date')}>
                           Date {colonneTri === 'date' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
-                        <th className="p-2.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('numero')}>
+                        <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('numero')}>
                           N° Cmd {colonneTri === 'numero' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                         {!rapportPartenaire && (
-                          <th className="p-2.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('partenaire')}>
+                          <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('partenaire')}>
                             Partenaire {colonneTri === 'partenaire' && (ordreTri === 'asc' ? '▲' : '▼')}
                           </th>
                         )}
-                        <th className="p-2.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('article')}>
-                          Détails / Trajet (Point A ➔ B) {colonneTri === 'article' && (ordreTri === 'asc' ? '▲' : '▼')}
+                        <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('article')}>
+                          Détails / Trajet {colonneTri === 'article' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
-                        {!rapportLivreur && <th className="p-2.5">Livreur</th>}
-                        <th className="p-2.5 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('montant')}>
+                        {!rapportLivreur && <th className="p-2">Livreur</th>}
+                        <th className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('montant')}>
                           Montant (F) {colonneTri === 'montant' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
-                        <th className="p-2.5 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('frais')}>
+                        <th className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('frais')}>
                           Frais (F) {colonneTri === 'frais' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                       </tr>
@@ -1110,10 +1135,10 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                         const lignesCmd = lignesCommandesMap[cmd.id] || [];
                         return (
                           <tr key={cmd.id} className="hover:bg-slate-50 transition">
-                            <td className="p-2.5 font-bold text-slate-600 whitespace-nowrap">{formaterDateJJMMAAAA(cmd.date_commande)}</td>
-                            <td className="p-2.5 font-mono font-black text-orange-600 whitespace-nowrap">{cmd.numero_commande}</td>
-                            {!rapportPartenaire && <td className="p-2.5 font-extrabold text-slate-900">{cmd.nom_partenaire}</td>}
-                            <td className="p-2.5">
+                            <td className="p-2 font-bold text-slate-600 whitespace-nowrap">{formaterDateJJMMAAAA(cmd.date_commande)}</td>
+                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{cmd.numero_commande}</td>
+                            {!rapportPartenaire && <td className="p-2 font-extrabold text-slate-900">{cmd.nom_partenaire}</td>}
+                            <td className="p-2">
                               {lignesCmd.length > 0 ? (
                                 <div className="flex flex-wrap gap-1">
                                   {lignesCmd.map((l, idx) => (
@@ -1123,18 +1148,18 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                                   ))}
                                 </div>
                               ) : cmd.point_a ? (
-                                <span className="text-slate-800 font-bold text-[9.5px]">
-                                  📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong> {cmd.nature_colis ? `(${cmd.nature_colis})` : ''}
+                                <span className="text-slate-800 font-bold text-[9px]">
+                                  📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
                                 </span>
                               ) : (
-                                <span className="text-slate-400 italic">Sans stockage (En-tête seul)</span>
+                                <span className="text-slate-400 italic">Sans stockage</span>
                               )}
                             </td>
-                            {!rapportLivreur && <td className="p-2.5 font-bold text-blue-700 uppercase">{cmd.vendeur_livreur || '-'}</td>}
-                            <td className="p-2.5 text-right font-mono font-black text-emerald-700 whitespace-nowrap">
+                            {!rapportLivreur && <td className="p-2 font-bold text-blue-700 uppercase">{cmd.vendeur_livreur || '-'}</td>}
+                            <td className="p-2 text-right font-mono font-black text-emerald-700 whitespace-nowrap">
                               {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')}
                             </td>
-                            <td className="p-2.5 text-right font-mono font-bold text-slate-600 whitespace-nowrap">
+                            <td className="p-2 text-right font-mono font-bold text-slate-600 whitespace-nowrap">
                               {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')}
                             </td>
                           </tr>
@@ -1144,18 +1169,18 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </table>
                 </div>
 
-                <div className="bg-emerald-900 text-white p-3 border-t border-emerald-800 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-black text-center sm:text-left">
+                <div className="bg-emerald-900 text-white p-2.5 border-t border-emerald-800 grid grid-cols-3 gap-2 text-[10px] font-black text-center">
                   <div>
-                    <span className="block text-[9px] text-emerald-200 uppercase">Montant total</span>
-                    <span className="text-emerald-300 font-mono text-sm">{totalMontantRapport.toLocaleString('fr-FR')} CFA</span>
+                    <span className="block text-[8px] text-emerald-200 uppercase">Montant total</span>
+                    <span className="text-emerald-300 font-mono">{totalMontantRapport.toLocaleString('fr-FR')} F</span>
                   </div>
-                  <div className="sm:border-x sm:border-emerald-700 sm:px-2">
-                    <span className="block text-[9px] text-emerald-200 uppercase">Frais</span>
-                    <span className="text-emerald-300 font-mono text-sm">{totalFraisRapport.toLocaleString('fr-FR')} CFA</span>
+                  <div className="border-x border-emerald-700 px-1">
+                    <span className="block text-[8px] text-emerald-200 uppercase">Frais</span>
+                    <span className="text-emerald-300 font-mono">{totalFraisRapport.toLocaleString('fr-FR')} F</span>
                   </div>
-                  <div className="sm:text-right">
-                    <span className="block text-[9px] text-emerald-200 uppercase">Reste à verser</span>
-                    <span className="text-orange-300 font-mono text-sm">{resteAVerserRapport.toLocaleString('fr-FR')} CFA</span>
+                  <div>
+                    <span className="block text-[8px] text-emerald-200 uppercase">À verser</span>
+                    <span className="text-orange-300 font-mono">{resteAVerserRapport.toLocaleString('fr-FR')} F</span>
                   </div>
                 </div>
               </div>
@@ -1165,105 +1190,36 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       )}
 
       {vueActive === 'CREATION' && (
-        <div className="bg-slate-900 border-2 border-orange-500 p-3 rounded-2xl space-y-3 shadow-xl">
-          
-          <div className="bg-white p-3 rounded-xl shadow-inner space-y-3">
+        <div className="space-y-3">
+          <div className="bg-slate-900 border-2 border-orange-500 p-3 rounded-2xl space-y-3 shadow-xl">
             
-            {/* LIGNE 1 : Date & Partenaire sur la même ligne */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={dateCommande}
-                  onChange={(e) => setDateCommande(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire *</label>
-                <select
-                  required
-                  value={idPartenaire}
-                  onChange={(e) => handleChangementPartenaire(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                >
-                  <option value="">-- Choisir un partenaire --</option>
-                  {partenaires.map((p) => {
-                    return (
-                      <option key={p.id} value={p.id}>
-                        {p.nom_fournisseur || p.nom}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            </div>
-
-            {/* CHAMPS SPÉCIFIQUES PARTENAIRE SANS STOCKAGE : POINT A & POINT B SUR LA MÊME LIGNE */}
-            {partenaireSansStockage && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="bg-white p-3 rounded-xl shadow-inner space-y-3">
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Point de départ / Enlèvement) *</label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
                   <input
-                    type="text"
+                    type="date"
                     required
-                    value={pointADepart}
-                    onChange={(e) => setPointADepart(e.target.value)}
+                    value={dateCommande}
+                    onChange={(e) => setDateCommande(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    placeholder="Ex: Quartier Hippodrome, Boutique Akwa..."
-                    className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Point B (Adresse de Livraison) *</label>
-                  <input
-                    type="text"
-                    required
-                    list="liste-zones-commandes"
-                    value={adresseLivraison}
-                    onChange={(e) => handleChangementAdresse(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="Tapez ou sélectionnez un quartier..."
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
-                  />
-                  <datalist id="liste-zones-commandes">
-                    {grilleTarifaire.map((tarif) => (
-                      <option key={tarif.id} value={tarif.nom_zone}>
-                        {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
-                      </option>
-                    ))}
-                  </datalist>
-                </div>
-              </div>
-            )}
-
-            {/* LIGNE CLASSIQUE (SI AVEC STOCKAGE) : ADRESSE DE LIVRAISON (INITIALE) & N° CMD SUR LA MÊME LIGNE */}
-            {!partenaireSansStockage && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse de Livraison (Initiale) *</label>
-                  <input
-                    type="text"
-                    required
-                    list="liste-zones-commandes"
-                    value={adresseLivraison}
-                    onChange={(e) => handleChangementAdresse(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="Tapez ou sélectionnez un quartier..."
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
-                  />
-                  <datalist id="liste-zones-commandes">
-                    {grilleTarifaire.map((tarif) => (
-                      <option key={tarif.id} value={tarif.nom_zone}>
-                        {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
-                      </option>
-                    ))}
-                  </datalist>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire *</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRecherchePartenaireInput(''); setModalPartenaireOuverte(true); }}
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs text-left flex justify-between items-center"
+                  >
+                    <span className="truncate">
+                      {idPartenaire ? (partenaires.find(p => String(p.id) === String(idPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(idPartenaire))?.nom || '-- Choisir un partenaire --') : '-- Choisir un partenaire --'}
+                    </span>
+                    <span className="text-slate-400">🔍</span>
+                  </button>
                 </div>
 
                 <div>
@@ -1273,6 +1229,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                       CMD-
                     </span>
                     <input
+                      ref={inputNumeroCmdRef}
                       type="text"
                       required
                       value={numeroCommande}
@@ -1284,119 +1241,100 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* SI SANS STOCKAGE : N° CMD, MONTANT, NATURE DU COLIS ET STATUT COMMANDE SUR LA MÊME LIGNE (4 COLONNES) */}
-            {partenaireSansStockage ? (
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
-                  <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
-                      CMD-
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      value={numeroCommande}
-                      onChange={(e) => setNumeroCommande(e.target.value.toUpperCase())}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="01-03"
-                      className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 uppercase focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant à récupérer *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={montantSaisi}
-                    onChange={(e) => setMontantSaisi(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature du colis</label>
-                  <input
-                    type="text"
-                    value={natureColis}
-                    onChange={(e) => setNatureColis(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="Ex: Colis fragile, Vêtement..."
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
-                  />
-                </div>
-
-                {!commandeEnEdition && (
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Commande *</label>
-                    <select
-                      value={statutCommandeSaisi}
-                      onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                    >
-                      <option value="EN ATTENTE">EN ATTENTE</option>
-                      <option value="LIVRÉ">LIVRÉ</option>
-                      <option value="REPORTÉ">REPORTÉ</option>
-                      <option value="ANNULÉ">ANNULÉ</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* SI AVEC STOCKAGE : MONTANT À RÉCUPÉRER & STATUT COMMANDE SUR LA MÊME LIGNE */
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant à récupérer *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={montantSaisi}
-                    onChange={(e) => setMontantSaisi(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                  />
-                </div>
-
-                {!commandeEnEdition && (
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Commande *</label>
-                    <select
-                      value={statutCommandeSaisi}
-                      onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                    >
-                      <option value="EN ATTENTE">EN ATTENTE</option>
-                      <option value="LIVRÉ">LIVRÉ</option>
-                      <option value="REPORTÉ">REPORTÉ</option>
-                      <option value="ANNULÉ">ANNULÉ</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ZONE RÉSERVÉE AUX SUPERVISEURS SANS SOUS-TITRE ENTRE PARENTHÈSES */}
-            <div className="bg-blue-50/70 border-2 border-blue-200 p-2.5 rounded-xl space-y-2.5 mt-2">
-              <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
-                <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
-                  🔒 ZONE RÉSERVÉE AUX SUPERVISEURS
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                {/* FRAIS DE LIVRAISON (CALCULÉ) & LIVREUR ASSIGNÉ SUR LA MÊME LIGNE */}
+              {partenaireSansStockage && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais de Livraison (Calculé)</label>
+                    <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Départ) *</label>
+                    <input
+                      type="text"
+                      required
+                      value={pointADepart}
+                      onChange={(e) => setPointADepart(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="Ex: Quartier Hippodrome..."
+                      className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature colis</label>
+                    <input
+                      type="text"
+                      value={natureColis}
+                      onChange={(e) => setNatureColis(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="Ex: Colis fragile..."
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
+                    Adresse *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    list="liste-zones-commandes"
+                    value={adresseLivraison}
+                    onChange={(e) => handleChangementAdresse(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="Quartier..."
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                  />
+                  <datalist id="liste-zones-commandes">
+                    {grilleTarifaire.map((tarif) => (
+                      <option key={tarif.id} value={tarif.nom_zone}>
+                        {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
+                  <input
+                    ref={inputMontantRef}
+                    type="number"
+                    step="0.01"
+                    required
+                    value={montantSaisi}
+                    onChange={(e) => setMontantSaisi(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut *</label>
+                  <select
+                    value={statutCommandeSaisi}
+                    onChange={(e) => setStatutCommandeSaisi(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                  >
+                    <option value="EN ATTENTE">EN ATTENTE</option>
+                    <option value="LIVRÉ">LIVRÉ</option>
+                    <option value="REPORTÉ">REPORTÉ</option>
+                    <option value="ANNULÉ">ANNULÉ</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-blue-50/70 border-2 border-blue-200 p-2.5 rounded-xl space-y-2.5 mt-2">
+                <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
+                  <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
+                    🔒 ZONE SUPERVISEUR
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1409,384 +1347,371 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </div>
 
                   <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur Assigné</label>
+                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur</label>
+                    <button
+                      type="button"
+                      onClick={() => { setRechercheLivreurInput(''); setModalLivreurOuverte(true); }}
+                      className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase text-left flex justify-between items-center"
+                    >
+                      <span className="truncate">{livreurAssigne || '-- Choisir --'}</span>
+                      <span className="text-slate-400">🔍</span>
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livré à</label>
                     <input
                       type="text"
-                      list="liste-utilisateurs-livreurs"
-                      value={livreurAssigne}
-                      onChange={(e) => setLivreurAssigne(e.target.value)}
+                      list="liste-zones-effective-grille"
+                      value={zoneGrilleSelectionnee}
+                      onChange={(e) => setZoneGrilleSelectionnee(e.target.value)}
                       onFocus={(e) => e.target.select()}
-                      placeholder="Tapez le nom ou les initiales..."
+                      placeholder="Quartier..."
                       className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase"
                     />
-                    <datalist id="liste-utilisateurs-livreurs">
-                      {emplacements.map((emp) => {
-                        const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
-                        return <option key={emp.id} value={nomEmp.toUpperCase()} />;
-                      })}
-                      {utilisateurs.map((u) => {
-                        let nomAffichage = u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '';
-                        if (!nomAffichage && u.email) {
-                          nomAffichage = u.email.split('@')[0];
-                        }
-                        nomAffichage = nomAffichage.toUpperCase();
-                        return <option key={u.id} value={nomAffichage} />;
-                      })}
+                    <datalist id="liste-zones-effective-grille">
+                      {grilleTarifaire.map((tarif) => (
+                        <option key={tarif.id} value={tarif.nom_zone}>
+                          {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
+                        </option>
+                      ))}
                     </datalist>
                   </div>
                 </div>
+              </div>
 
-                {/* ZONE EFFECTIVE SUR SA PROPRE LIGNE */}
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Zone Effective (Livraison)</label>
-                  <input
-                    type="text"
-                    list="liste-zones-effective-grille"
-                    value={zoneGrilleSelectionnee}
-                    onChange={(e) => handleSelectionZoneEffective(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="Tapez le quartier ou la zone..."
-                    className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase"
-                  />
-                  <datalist id="liste-zones-effective-grille">
-                    {grilleTarifaire.map((tarif) => (
-                      <option key={tarif.id} value={tarif.nom_zone}>
-                        {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
-                      </option>
-                    ))}
-                  </datalist>
+            </div>
+
+            {!partenaireSansStockage ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                
+                <div className="bg-white p-3 rounded-xl shadow-md flex flex-col space-y-2.5">
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="font-black text-slate-900 uppercase text-xs">
+                      ARTICLE DISPONIBLE
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setModalArticleOuverte(true)}
+                      disabled={!enteteValide}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-2 py-1 rounded-lg text-[10px] flex items-center gap-1 shadow-2xs transition disabled:opacity-50"
+                    >
+                      <span>🔍</span> Rechercher
+                    </button>
+                  </div>
+
+                  {!enteteValide ? (
+                    <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
+                      ⚠️ Remplir d'abord l'en-tête (Partenaire, N° CMD, Montant, Adresse).
+                    </div>
+                  ) : articlesFiltres.length === 0 ? (
+                    <div className="p-4 text-center text-slate-500 font-bold text-xs bg-slate-50 rounded-xl border border-slate-200">
+                      Aucun article trouvé avec du stock disponible.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 overflow-y-auto max-h-[250px] pr-1">
+                      {articlesFiltres.map((art) => {
+                        const idArt = art.id_article || art.id;
+                        const designation = art.Designation || art.designation || art.nom;
+                        const stockDisp = getStockReelArticle(art);
+                        const estEpuise = stockDisp <= 0;
+
+                        return (
+                          <div
+                            key={idArt}
+                            onClick={() => ajouterArticleAuPanier(art)}
+                            className={`p-2.5 rounded-xl border transition cursor-pointer flex justify-between items-center shadow-2xs ${
+                              estEpuise 
+                                ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
+                                : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
+                            }`}
+                          >
+                            <div>
+                              <h5 className={`font-black uppercase text-xs ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
+                            </div>
+                            <div className="text-right">
+                              <span className={`font-black text-xs ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
+                                Stock : {stockDisp}
+                              </span>
+                              {estEpuise && (
+                                <p className="text-[8px] font-bold text-rose-600 uppercase">(Épuisé)</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white p-3 rounded-xl shadow-md flex flex-col justify-between space-y-2.5">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-1">
+                      <span className="font-black text-slate-900 uppercase text-xs">Panier</span>
+                    </div>
+
+                    {lignesSaisies.length === 0 ? (
+                      <div className="py-8 text-center text-slate-400 font-bold text-xs italic">
+                        Le panier est vide. Cliquez sur un article.
+                      </div>
+                    ) : (
+                      <div className="space-y-1 overflow-y-auto max-h-[160px] pr-1">
+                        {lignesSaisies.map((l, index) => (
+                          <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-xs">
+                            <div className="flex-1 truncate pr-1">
+                              <p className="font-black uppercase text-slate-900 truncate text-[10px]">{l.designation}</p>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => modifierQuantiteLigne(index, -1)}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
+                              >
+                                -
+                              </button>
+                              <span className="font-black text-orange-600 w-5 text-center text-[10px]">{l.quantite}</span>
+                              <button
+                                type="button"
+                                onClick={() => modifierQuantiteLigne(index, 1)}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
+                              >
+                                +
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => supprimerLignePanier(index)}
+                                className="text-red-600 font-bold ml-0.5 text-[10px] px-0.5 hover:underline"
+                                title="Supprimer la ligne"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 pt-1 border-t border-slate-200">
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 bg-slate-100 px-2.5 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
+                        <span className="font-black text-slate-900 text-[10px] uppercase">NAP :</span>
+                        <span className="font-black text-emerald-700 text-xs font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={sauvegardeEnCours}
+                        onClick={() => {
+                          setLignesSaisies([]);
+                          setVueActive('LISTE');
+                          setCommandeEnEdition(null);
+                        }}
+                        className="bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-3 rounded-lg text-[10px] transition text-center shrink-0 disabled:opacity-50"
+                      >
+                        Annuler
+                      </button>
+
+                      {commandeEnEdition && (
+                        <button
+                          type="button"
+                          disabled={sauvegardeEnCours}
+                          onClick={supprimerCommandeActuelle}
+                          className="bg-red-600 hover:bg-red-700 text-white font-black px-2.5 py-2 rounded-lg text-[10px] transition shadow-xs shrink-0 disabled:opacity-50"
+                          title="Supprimer"
+                        >
+                          🗑️
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={sauvegardeEnCours}
+                        onClick={sauvegarderCommande}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-[10px] transition shadow-xs text-center shrink-0"
+                      >
+                        {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider ➔')}
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="bg-white p-3 rounded-xl shadow-md space-y-2.5">
+                <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs space-y-1">
+                  <span className="block font-black text-orange-900 uppercase">Résumé du Trajet :</span>
+                  <p className="font-bold text-slate-800">
+                    📍 Départ : <strong className="text-slate-900">{pointADepart || 'Non défini'}</strong>
+                  </p>
+                  <p className="font-bold text-slate-800">
+                    🎯 Arrivée : <strong className="text-orange-600">{adresseLivraison || 'Non défini'}</strong>
+                  </p>
+                  {natureColis && (
+                    <p className="font-bold text-slate-800">
+                      📦 Colis : <strong className="text-blue-700">{natureColis}</strong>
+                    </p>
+                  )}
+                  <p className="font-bold text-slate-800">
+                    🛵 Livreur : <strong className="text-blue-600 uppercase">{livreurAssigne || 'Non assigné'}</strong>
+                  </p>
+                </div>
+
+                <div className="flex justify-between items-center bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
+                  <span className="font-black text-slate-900 text-xs uppercase">Total à récupérer :</span>
+                  <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                </div>
+
+                <div className="flex gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    disabled={sauvegardeEnCours}
+                    onClick={() => {
+                      setLignesSaisies([]);
+                      setVueActive('LISTE');
+                      setCommandeEnEdition(null);
+                    }}
+                    className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-xs transition text-center disabled:opacity-50"
+                  >
+                    Annuler
+                  </button>
+
+                  {commandeEnEdition && (
+                    <button
+                      type="button"
+                      disabled={sauvegardeEnCours}
+                      onClick={supprimerCommandeActuelle}
+                      className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs transition shadow-xs disabled:opacity-50"
+                      title="Supprimer"
+                    >
+                      🗑️ Supprimer
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={sauvegardeEnCours}
+                    onClick={sauvegarderCommande}
+                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
+                  >
+                    {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
 
           </div>
 
-          {/* SECTION ARTICLES / PANIER : MASQUÉE SI PARTENAIRE SANS STOCKAGE */}
-          {!partenaireSansStockage ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              
-              <div className="bg-white p-3 rounded-xl shadow-md flex flex-col space-y-2.5">
-                <div className="flex justify-between items-center gap-2">
-                  <span className="font-black text-slate-900 uppercase text-xs">
-                    Article Disponible (Jomo) {livreurAssigne ? `(${livreurAssigne})` : ''}
-                  </span>
-                  <div className="relative flex-1 max-w-[160px]">
-                    <input
-                      type="text"
-                      value={rechercheArticleInput}
-                      onChange={(e) => setRechercheArticleInput(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="🔍 RECHERCHER..."
-                      disabled={!enteteValide}
-                      className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-[10px] font-extrabold uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
-                    />
-                  </div>
+          {modalPartenaireOuverte && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                    <span>🔍</span> PARTENAIRE
+                  </h4>
+                  <button type="button" onClick={() => setModalPartenaireOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
                 </div>
-
-                {!enteteValide ? (
-                  <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
-                    ⚠️ Veuillez d'abord remplir le <strong>Partenaire</strong>, le <strong>N° CMD</strong>, le <strong>Montant</strong> et l'<strong>Adresse de livraison (Point B)</strong>.
+                <div>
+                  <input
+                    type="text"
+                    value={recherchePartenaireInput}
+                    onChange={(e) => setRecherchePartenaireInput(e.target.value)}
+                    placeholder="RECHERCHER..."
+                    autoFocus
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+                  <div onClick={() => { handleChangementPartenaire(''); setModalPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">
+                    -- Réinitialiser --
                   </div>
-                ) : !idPartenaire ? (
-                  <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
-                    ⚠️ Veuillez sélectionner un partenaire valide.
-                  </div>
-                ) : articlesFiltres.length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 font-bold text-xs bg-slate-50 rounded-xl border border-amber-200">
-                    Aucun article trouvé avec du stock disponible.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 overflow-y-auto max-h-[250px] pr-1">
-                    {articlesFiltres.map((art) => {
-                      const idArt = art.id_article || art.id;
-                      const designation = art.Designation || art.designation || art.nom;
-                      const prixVente = Number(art.P_V || art.prix_vente || art.prix_unitaire || art.prix || 0);
-                      const stockDisp = getStockReelArticle(art);
-                      const estEpuise = stockDisp <= 0;
-
-                      return (
-                        <div
-                          key={idArt}
-                          onClick={() => ajouterArticleAuPanier(art)}
-                          className={`p-2.5 rounded-xl border transition cursor-pointer flex justify-between items-center shadow-2xs ${
-                            estEpuise 
-                              ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
-                              : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
-                          }`}
-                        >
-                          <div>
-                            <h5 className={`font-black uppercase text-xs ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
-                            <p className={`text-[10px] font-black font-mono mt-0.5 ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
-                              {prixVente.toLocaleString('fr-FR')} F
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <span className={`font-black text-xs ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
-                              Stock : {stockDisp}
-                            </span>
-                            {estEpuise && (
-                              <p className="text-[8px] font-bold text-rose-600 uppercase">(Épuisé)</p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-white p-3 rounded-xl shadow-md flex flex-col justify-between space-y-2.5">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-                    <span className="font-black text-slate-900 uppercase text-xs">Panier</span>
-                  </div>
-
-                  {lignesSaisies.length === 0 ? (
-                    <div className="py-8 text-center text-slate-400 font-bold text-xs italic">
-                      Le panier est vide. Cliquez sur un article.
+                  {partenairesFiltres.map((p) => (
+                    <div key={p.id} onClick={() => { handleChangementPartenaire(p.id); setModalPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex justify-between items-center shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase">{p.nom_fournisseur || p.nom}</span>
                     </div>
-                  ) : (
-                    <div className="space-y-1 overflow-y-auto max-h-[160px] pr-1">
-                      {lignesSaisies.map((l, index) => (
-                        <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-xs">
-                          <div className="flex-1 truncate pr-1">
-                            <p className="font-black uppercase text-slate-900 truncate text-[10px]">{l.designation}</p>
-                          </div>
-                          
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => modifierQuantiteLigne(index, -1)}
-                              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
-                            >
-                              -
-                            </button>
-                            <span className="font-black text-orange-600 w-5 text-center text-[10px]">{l.quantite}</span>
-                            <button
-                              type="button"
-                              onClick={() => modifierQuantiteLigne(index, 1)}
-                              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
-                            >
-                              +
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => supprimerLignePanier(index)}
-                              className="text-red-600 font-bold ml-0.5 text-[10px] px-0.5 hover:underline"
-                              title="Supprimer la ligne"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  ))}
                 </div>
-
-                <div className="space-y-2 pt-1 border-t border-slate-200">
-
-                  <div className="flex justify-between items-center bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200">
-                    <span className="font-black text-slate-900 text-[10px] uppercase">NAP :</span>
-                    <span className="font-black text-emerald-700 text-xs font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
-                  </div>
-
-                  {commandeEnEdition && (
-                    <div className="bg-slate-100 p-1.5 rounded-lg border border-slate-300 space-y-1">
-                      <span className="block font-black text-slate-800 uppercase text-[8px]">
-                        Statut (Superviseur) :
-                      </span>
-                      <div className="grid grid-cols-4 gap-1">
-                        <button
-                          type="button"
-                          disabled={statutCommandeSaisi === 'ANNULÉ' || statutCommandeSaisi === 'LIVRÉ'}
-                          onClick={() => setStatutCommandeSaisi('EN ATTENTE')}
-                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                            statutCommandeSaisi === 'EN ATTENTE'
-                              ? 'bg-amber-500 text-white border-amber-600 ring-1 ring-amber-300'
-                              : 'bg-white text-slate-800 border-slate-300 hover:bg-amber-50'
-                          } disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                          Attente
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={statutCommandeSaisi === 'ANNULÉ' || statutCommandeSaisi === 'LIVRÉ'}
-                          onClick={() => setStatutCommandeSaisi('REPORTÉ')}
-                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                            statutCommandeSaisi === 'REPORTÉ'
-                              ? 'bg-blue-600 text-white border-blue-700 ring-1 ring-blue-300'
-                              : 'bg-white text-slate-800 border-slate-300 hover:bg-blue-50'
-                          } disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                          Reporté
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={statutCommandeSaisi === 'LIVRÉ'}
-                          onClick={() => setStatutCommandeSaisi('ANNULÉ')}
-                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                            statutCommandeSaisi === 'ANNULÉ'
-                              ? 'bg-rose-600 text-white border-rose-700 ring-1 ring-rose-300'
-                              : 'bg-white text-slate-800 border-slate-300 hover:bg-rose-50'
-                          } disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                          Annulé
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={statutCommandeSaisi === 'ANNULÉ'}
-                          onClick={() => setStatutCommandeSaisi('LIVRÉ')}
-                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                            statutCommandeSaisi === 'LIVRÉ'
-                              ? 'bg-emerald-600 text-white border-emerald-700 ring-1 ring-emerald-300'
-                              : 'bg-white text-slate-800 border-slate-300 hover:bg-emerald-50'
-                          } disabled:opacity-40 disabled:cursor-not-allowed`}
-                        >
-                          Livré
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-1 pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLignesSaisies([]);
-                        setVueActive('LISTE');
-                        setCommandeEnEdition(null);
-                      }}
-                      className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-1.5 px-1 rounded-lg text-[10px] transition text-center"
-                    >
-                      Annuler
-                    </button>
-
-                    {commandeEnEdition && (
-                      <button
-                        type="button"
-                        onClick={supprimerCommandeActuelle}
-                        className="bg-red-600 hover:bg-red-700 text-white font-black px-2 py-1.5 rounded-lg text-[10px] transition shadow-xs"
-                        title="Supprimer"
-                      >
-                        🗑️
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={sauvegarderCommande}
-                      className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1.5 px-2 rounded-lg text-[10px] transition shadow-xs text-center"
-                    >
-                      {commandeEnEdition ? 'Mettre à jour ➔' : 'Valider ➔'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          ) : (
-            /* BOUTONS DE VALIDATION POUR LES PARTENAIRES SANS STOCKAGE (TRAJET POINT A ➔ POINT B) */
-            <div className="bg-white p-3 rounded-xl shadow-md space-y-2.5">
-              <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs space-y-1">
-                <span className="block font-black text-orange-900 uppercase">Résumé du Trajet :</span>
-                <p className="font-bold text-slate-800">
-                  📍 Départ (Point A) : <strong className="text-slate-900">{pointADepart || 'Non défini'}</strong>
-                </p>
-                <p className="font-bold text-slate-800">
-                  🎯 Arrivée (Point B) : <strong className="text-orange-600">{adresseLivraison || 'Non défini'}</strong>
-                </p>
-                {natureColis && (
-                  <p className="font-bold text-slate-800">
-                    📦 Nature du colis : <strong className="text-blue-700">{natureColis}</strong>
-                  </p>
-                )}
-                <p className="font-bold text-slate-800">
-                  🛵 Livreur : <strong className="text-blue-600 uppercase">{livreurAssigne || 'Non assigné'}</strong>
-                </p>
-              </div>
-
-              <div className="flex justify-between items-center bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
-                <span className="font-black text-slate-900 text-xs uppercase">Montant total à récupérer :</span>
-                <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
-              </div>
-
-              {commandeEnEdition && (
-                <div className="bg-slate-100 p-2 rounded-lg border border-slate-300 space-y-1">
-                  <span className="block font-black text-slate-800 uppercase text-[9px]">
-                    Statut (Superviseur) :
-                  </span>
-                  <div className="grid grid-cols-4 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setStatutCommandeSaisi('EN ATTENTE')}
-                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'EN ATTENTE' ? 'bg-amber-500 text-white border-amber-600' : 'bg-white text-slate-800'}`}
-                    >
-                      Attente
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStatutCommandeSaisi('REPORTÉ')}
-                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'REPORTÉ' ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-800'}`}
-                    >
-                      Reporté
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStatutCommandeSaisi('ANNULÉ')}
-                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'ANNULÉ' ? 'bg-rose-600 text-white border-rose-700' : 'bg-white text-slate-800'}`}
-                    >
-                      Annulé
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStatutCommandeSaisi('LIVRÉ')}
-                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'LIVRÉ' ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-slate-800'}`}
-                    >
-                      Livré
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-1.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLignesSaisies([]);
-                    setVueActive('LISTE');
-                    setCommandeEnEdition(null);
-                  }}
-                  className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-xs transition text-center"
-                >
-                  Annuler
-                </button>
-
-                {commandeEnEdition && (
-                  <button
-                    type="button"
-                    onClick={supprimerCommandeActuelle}
-                    className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs transition shadow-xs"
-                    title="Supprimer"
-                  >
-                    🗑️ Supprimer
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={sauvegarderCommande}
-                  className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
-                >
-                  {commandeEnEdition ? 'Mettre à jour la commande ➔' : 'Valider la commande ➔'}
-                </button>
               </div>
             </div>
           )}
 
+          {modalLivreurOuverte && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                    <span>🔍</span> LIVREUR
+                  </h4>
+                  <button type="button" onClick={() => setModalLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={rechercheLivreurInput}
+                    onChange={(e) => setRechercheLivreurInput(e.target.value)}
+                    placeholder="RECHERCHER..."
+                    autoFocus
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+                  <div onClick={() => { setLivreurAssigne(''); setModalLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">
+                    -- Non assigné --
+                  </div>
+                  {livreursFiltres.map((nomEmp, idx) => (
+                    <div key={idx} onClick={() => { setLivreurAssigne(nomEmp); setModalLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex justify-between items-center shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase">{nomEmp}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalArticleOuverte && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                    <span>🔍</span> ARTICLE
+                  </h4>
+                  <button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={rechercheArticleInput}
+                    onChange={(e) => setRechercheArticleInput(e.target.value)}
+                    placeholder="RECHERCHER..."
+                    autoFocus
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+                  {articlesFiltres.length === 0 ? (
+                    <div className="py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+                  ) : (
+                    articlesFiltres.map((art) => {
+                      const idArt = art.id_article || art.id;
+                      const designation = art.Designation || art.designation || art.nom;
+                      const stockDisp = getStockReelArticle(art);
+                      const estEpuise = stockDisp <= 0;
+
+                      return (
+                        <div key={idArt} onClick={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} className={`p-3 rounded-xl border transition cursor-pointer flex justify-between items-center shadow-2xs ${estEpuise ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'}`}>
+                          <span className="font-black text-xs text-slate-900 uppercase">{designation}</span>
+                          <span className="font-black text-xs text-slate-900">Stock : <strong className={estEpuise ? 'text-rose-600' : 'text-emerald-700'}>{stockDisp}</strong></span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1810,28 +1735,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   }}
                   className="text-orange-600 hover:text-orange-700 font-bold text-[10px] underline"
                 >
-                  Réinitialiser les filtres
+                  Réinitialiser
                 </button>
               )}
             </div>
 
             <div className="space-y-2">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
-                <select
-                  value={filtrePartenaire}
-                  onChange={(e) => setFiltrePartenaire(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                >
-                  <option value="">Tous les partenaires</option>
-                  {partenaires.map((p) => (
-                    <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* DATE DÉBUT & DATE FIN SUR LA MÊME LIGNE */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
                   <input
@@ -1855,34 +1765,47 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 </div>
               </div>
 
-              {/* LIVREUR & STATUT SUR LA MÊME LIGNE */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
-                  <input
-                    type="text"
-                    value={filtreLivreur}
-                    onChange={(e) => setFiltreLivreur(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="Livreur..."
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] uppercase"
-                  />
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheFiltrePartenaireInput(''); setModalFiltrePartenaireOuverte(true); }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] text-left flex justify-between items-center truncate"
+                  >
+                    <span className="truncate">
+                      {filtrePartenaire ? (partenaires.find(p => String(p.id) === String(filtrePartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(filtrePartenaire))?.nom || 'Tous') : 'Tous'}
+                    </span>
+                    <span className="text-slate-400 shrink-0">🔍</span>
+                  </button>
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-                  <select
-                    value={filtreStatut}
-                    onChange={(e) => setFiltreStatut(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
                   >
-                    <option value="">Tous les statuts</option>
-                    <option value="EN ATTENTE">EN ATTENTE</option>
-                    <option value="LIVRÉ">LIVRÉ</option>
-                    <option value="REPORTÉ">REPORTÉ</option>
-                    <option value="ANNULÉ">ANNULÉ</option>
-                  </select>
+                    <span className="truncate">{filtreLivreur || 'Tous'}</span>
+                    <span className="text-slate-400 shrink-0">🔍</span>
+                  </button>
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+                <select
+                  value={filtreStatut}
+                  onChange={(e) => setFiltreStatut(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                >
+                  <option value="">Tous les statuts</option>
+                  <option value="EN ATTENTE">EN ATTENTE</option>
+                  <option value="LIVRÉ">LIVRÉ</option>
+                  <option value="REPORTÉ">REPORTÉ</option>
+                  <option value="ANNULÉ">ANNULÉ</option>
+                </select>
               </div>
             </div>
           </div>
@@ -1895,7 +1818,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : commandesFiltrees.length === 0 ? (
             <div className="p-6 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-              Aucune commande ne correspond aux filtres sélectionnés.
+              Aucune commande ne correspond aux filtres.
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -1912,59 +1835,62 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   <div
                     key={cmd.id}
                     onClick={() => ouvrirCommandePourModification(cmd)}
-                    className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex justify-between items-center"
+                    className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1.5"
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-black text-orange-600 text-xs">{cmd.numero_commande}</span>
-                        <span className="bg-slate-100 text-slate-800 text-[9px] font-bold px-1.5 py-0.5 rounded border">
-                          📅 {formaterDateEnFrancais(cmd.date_commande)}
-                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span className="font-extrabold text-slate-900 text-[10px] uppercase">{cmd.nom_partenaire}</span>
+                        <span className="text-slate-300">•</span>
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${badgeColor}`}>
                           {statut}
                         </span>
                       </div>
-                      <p className="font-extrabold text-slate-900 text-[10px]">🏢 Partenaire : {cmd.nom_partenaire}</p>
                       
-                      <div className="text-[9.5px] font-bold space-y-0.5">
+                      <div className="shrink-0">
+                        <span className="bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded border">
+                          📅 {formaterDateCourte(cmd.date_commande)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end items-center gap-2">
+                      <div className="text-right shrink-0">
+                        <span className="font-black text-emerald-700 text-xs font-mono">{Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F</span>
+                      </div>
+                    </div>
+
+                    <div className="text-[9.5px] font-bold text-slate-600 flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                      <div className="truncate flex items-center gap-1.5">
                         {cmd.point_a ? (
-                          <p className="text-slate-700">
-                            📍 Trajet : <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong> {cmd.nature_colis ? `(Colis: ${cmd.nature_colis})` : ''}
-                          </p>
+                          <span>
+                            📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
+                          </span>
                         ) : (
-                          <p className="text-slate-500">📍 Adresse Initiale : {cmd.adresse_livraison}</p>
+                          <span>
+                            📍 <strong className="text-slate-900">{cmd.adresse_livraison}</strong>
+                          </span>
                         )}
+
                         {cmd.zone_effective_livraison && cmd.zone_effective_livraison !== cmd.adresse_livraison && (
-                          <p className="text-orange-600 font-extrabold">🚀 Livré à : {cmd.zone_effective_livraison}</p>
+                          <span className="text-orange-600 font-extrabold ml-1">🚀 {cmd.zone_effective_livraison}</span>
+                        )}
+
+                        {lignesCmd.length > 0 && (
+                          <span className="text-slate-400 font-normal">| {lignesCmd.map(l => `${l.designation} (x${l.quantite})`).join(', ')}</span>
+                        )}
+
+                        {cmd.vendeur_livreur && (
+                          <span className="text-blue-600 font-extrabold uppercase ml-1">🛵 {cmd.vendeur_livreur}</span>
                         )}
                       </div>
 
-                      {cmd.vendeur_livreur && (
-                        <p className="text-[9.5px] text-blue-600 font-extrabold">🛵 Livreur : {cmd.vendeur_livreur}</p>
-                      )}
-
-                      {lignesCmd.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 pt-1">
-                          {lignesCmd.map((l, idx) => {
-                            const stockLivreur = getStockArticlePourLivreur(l.id_article, cmd.vendeur_livreur);
-                            return (
-                              <span key={idx} className="bg-orange-50 border border-orange-200 text-orange-900 text-[9px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-1">
-                                <span>📦 Stock Livreur: {stockLivreur}</span>
-                                <span className="text-slate-300">|</span>
-                                <span>🛍️ {l.designation} <strong className="text-orange-600">x{l.quantite}</strong></span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-[9.5px] text-slate-400 italic pt-0.5">🏷️ Commande sans stockage (Point A ➔ Point B)</p>
-                      )}
+                      <div className="text-right shrink-0">
+                        <span className="text-[9px] text-slate-400 font-bold">(Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F)</span>
+                      </div>
                     </div>
 
-                    <div className="text-right space-y-0.5">
-                      <p className="font-black text-emerald-700 text-xs">{Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F</p>
-                      <p className="text-[9px] text-slate-500 font-bold">Frais : {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F</p>
-                    </div>
                   </div>
                 );
               })}
@@ -1972,6 +1898,79 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           )}
         </div>
       )}
+
+      {modalFiltrePartenaireOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">PARTENAIRE</h4>
+              <button type="button" onClick={() => setModalFiltrePartenaireOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
+            </div>
+            <input type="text" value={rechercheFiltrePartenaireInput} onChange={(e) => setRechercheFiltrePartenaireInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">Tous</div>
+              {filtrePartenairesFiltres.map(p => (
+                <div key={p.id} onClick={() => { setFiltrePartenaire(p.id); setModalFiltrePartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{p.nom_fournisseur || p.nom}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalFiltreLivreurOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR</h4>
+              <button type="button" onClick={() => setModalFiltreLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
+            </div>
+            <input type="text" value={rechercheFiltreLivreurInput} onChange={(e) => setRechercheFiltreLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+              <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">Tous</div>
+              {filtreLivreursFiltres.map((nom, idx) => (
+                <div key={idx} onClick={() => { setFiltreLivreur(nom); setModalFiltreLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{nom}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalRapportLivreurOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR (RAPPORT)</h4>
+              <button type="button" onClick={() => setModalRapportLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
+            </div>
+            <input type="text" value={rechercheRapportLivreurInput} onChange={(e) => setRechercheRapportLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+              <div onClick={() => { setRapportLivreur(''); setModalRapportLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">-- Tous --</div>
+              {rapportLivreursFiltres.map((nom, idx) => (
+                <div key={idx} onClick={() => { setRapportLivreur(nom); setModalRapportLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{nom}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalRapportPartenaireOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">PARTENAIRE (RAPPORT)</h4>
+              <button type="button" onClick={() => setModalRapportPartenaireOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
+            </div>
+            <input type="text" value={rechercheRapportPartenaireInput} onChange={(e) => setRechercheRapportPartenaireInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+              <div onClick={() => { setRapportPartenaire(''); setModalRapportPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">-- Tous --</div>
+              {rapportPartenairesFiltres.map(p => (
+                <div key={p.id} onClick={() => { setRapportPartenaire(p.id); setModalRapportPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{p.nom_fournisseur || p.nom}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

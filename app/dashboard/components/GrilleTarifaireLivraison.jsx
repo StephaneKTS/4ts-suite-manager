@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) {
   const [grilleTarifs, setGrilleTarifs] = useState([]);
   const [chargement, setChargement] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [afficherForm, setAfficherForm] = useState(false);
   const [tarifEnEdition, setTarifEnEdition] = useState(null);
@@ -123,11 +124,14 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
 
   const sauvegarderTarif = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
     if (!nomZone.trim() || fraisZone === '') {
       alert('⚠️ Veuillez remplir le nom de la zone et le montant des frais.');
       return;
     }
 
+    setEnTrainDeSauvegarder(true);
     try {
       const payload = {
         id_entreprise: entrepriseId,
@@ -157,9 +161,11 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
       setTarifEnEdition(null);
       setNomZone('');
       setFraisZone('');
-      chargerTarifs();
+      await chargerTarifs();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -237,6 +243,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={() => setAfficherForm(false)}
                 className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg text-xs transition"
               >
@@ -244,9 +251,10 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
               </button>
               <button
                 type="submit"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition shadow-md"
+                disabled={enTrainDeSauvegarder}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition shadow-md flex items-center gap-1"
               >
-                {tarifEnEdition ? 'Mettre à jour' : 'Enregistrer la zone'}
+                {enTrainDeSauvegarder ? 'Enregistrement...' : (tarifEnEdition ? 'Mettre à jour' : 'Enregistrer la zone')}
               </button>
             </div>
           </form>

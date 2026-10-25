@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [modeAffichage, setModeAffichage] = useState('LISTE'); // 'LISTE' ou 'SAISIE'
   const [familleSelectionnee, setFamilleSelectionnee] = useState(null);
   
@@ -60,11 +61,14 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerFamille = async (e) => {
     if (e) e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
     if (!nouveauFamille.nom_famille.trim()) {
       alert('⚠️ Veuillez renseigner le nom de la famille.');
       return;
     }
 
+    setEnTrainDeSauvegarder(true);
     try {
       const payload = {
         id_entreprise: entrepriseId,
@@ -91,15 +95,19 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       setModeAffichage('LISTE');
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const reinitialiser = () => {
+    if (enTrainDeSauvegarder) return;
     setFamilleSelectionnee(null);
     setNouveauFamille({ nom_famille: '' });
   };
 
   const ouvrirFicheDetail = (famille) => {
+    if (enTrainDeSauvegarder) return;
     setFamilleSelectionnee(famille);
     setNouveauFamille({
       nom_famille: famille.nom_famille || '',
@@ -107,13 +115,14 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const supprimerFamille = async () => {
-    if (!familleSelectionnee) return;
+    if (enTrainDeSauvegarder || !familleSelectionnee) return;
 
+    setEnTrainDeSauvegarder(true);
     try {
       const { data: tousLesArticles, error: errArticles } = await supabase
         .from('articles_stock')
         .select('*')
-        .eq('ID_Entreprise', entrepriseId)
+        .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
 
       if (errArticles) throw errArticles;
@@ -131,10 +140,14 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       if (articlesRattaches.length > 0) {
         const exempleArticle = articlesRattaches[0].Designation || articlesRattaches[0].designation || 'ARTICLE';
         alert(`❌ SUPPRESSION BLOQUÉE : Cette famille ("${familleSelectionnee.nom_famille}") contient encore ${articlesRattaches.length} article(s) rattaché(s) (ex: "${exempleArticle}"). Vous devez d'abord réaffecter ou supprimer ces articles avant de pouvoir supprimer cette famille.`);
+        setEnTrainDeSauvegarder(false);
         return;
       }
 
-      if (!confirm(`Voulez-vous vraiment supprimer définitivement la famille "${familleSelectionnee.nom_famille}" ?`)) return;
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement la famille "${familleSelectionnee.nom_famille}" ?`)) {
+        setEnTrainDeSauvegarder(false);
+        return;
+      }
 
       const { error } = await supabase.from('familles_articles').delete().eq('id', familleSelectionnee.id);
       if (error) throw error;
@@ -144,6 +157,8 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       chargerFamilles();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -156,6 +171,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         </h3>
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => {
             if (modeAffichage === 'SAISIE') {
               reinitialiser();
@@ -165,7 +181,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
               setModeAffichage('SAISIE');
             }
           }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
         >
           {modeAffichage === 'SAISIE' ? '✖' : 'Nouveau'}
         </button>
@@ -174,6 +190,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => {
             reinitialiser();
             setModeAffichage('LISTE');
@@ -194,7 +211,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
               Nouvelle famille d'articles
             </span>
-            <button type="button" onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
           </div>
 
           <div className="space-y-2 text-[11px]">
@@ -205,6 +222,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
               <input
                 type="text"
                 required
+                disabled={enTrainDeSauvegarder}
                 value={nouveauFamille.nom_famille}
                 onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
                 placeholder="EX: BOISSONS, LAIT BEBE..."
@@ -216,6 +234,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
           <div className="pt-2 flex justify-end gap-1.5 border-t border-slate-200">
             <button
               type="button"
+              disabled={enTrainDeSauvegarder}
               onClick={() => {
                 reinitialiser();
                 setModeAffichage('LISTE');
@@ -226,9 +245,10 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             </button>
             <button
               type="submit"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs"
+              disabled={enTrainDeSauvegarder}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs"
             >
-              ✅ Enregistrer
+              {enTrainDeSauvegarder ? 'Enregistrement...' : '✅ Enregistrer'}
             </button>
           </div>
         </form>
@@ -256,7 +276,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   familles.map((fam) => (
                     <tr
                       key={fam.id}
-                      onClick={() => ouvrirFicheDetail(fam)}
+                      onClick={() => !enTrainDeSauvegarder && ouvrirFicheDetail(fam)}
                       className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                     >
                       <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">
@@ -276,7 +296,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden flex flex-col">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-xs font-black">
               <span>🏷️ MODIFIER LA FAMILLE</span>
-              <button onClick={reinitialiser} className="text-slate-300 hover:text-white font-black text-xs">✕</button>
+              <button disabled={enTrainDeSauvegarder} onClick={reinitialiser} className="text-slate-300 hover:text-white font-black text-xs">✕</button>
             </div>
 
             <div className="p-3 space-y-2.5 text-[11px] bg-slate-50">
@@ -286,6 +306,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 </label>
                 <input
                   type="text"
+                  disabled={enTrainDeSauvegarder}
                   value={nouveauFamille.nom_famille}
                   onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
@@ -296,15 +317,17 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-between">
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={supprimerFamille}
-                className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
+                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
               >
-                🗑️ Supprimer
+                {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
               </button>
               
               <div className="flex gap-1.5">
                 <button
                   type="button"
+                  disabled={enTrainDeSauvegarder}
                   onClick={reinitialiser}
                   className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
                 >
@@ -312,10 +335,11 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 </button>
                 <button
                   type="button"
+                  disabled={enTrainDeSauvegarder}
                   onClick={enregistrerFamille}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3.5 py-1.5 rounded text-[10px] shadow-xs"
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3.5 py-1.5 rounded text-[10px] shadow-xs"
                 >
-                  ✅ Mettre à jour
+                  {enTrainDeSauvegarder ? 'Mise à jour...' : '✅ Mettre à jour'}
                 </button>
               </div>
             </div>

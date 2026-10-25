@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
@@ -21,6 +21,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
 
+  const designationInputRef = useRef(null);
+
   const obtenirDateDuJour = () => {
     const d = new Date();
     const annee = d.getFullYear();
@@ -29,8 +31,17 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return `${annee}-${mois}-${jour}`;
   };
 
-  const [dateDebutStat, setDateDebutStat] = useState('');
-  const [dateFinStat, setDateFinStat] = useState('');
+  const formaterDateFR = (dateStr) => {
+    if (!dateStr) return '-';
+    if (dateStr.includes('-') && dateStr.split('-')[0].length === 4) {
+      const [annee, mois, jour] = dateStr.split('-');
+      return `${jour}/${mois}/${annee}`;
+    }
+    return dateStr;
+  };
+
+  const [dateDebutStat, setDateDebutStat] = useState(obtenirDateDuJour());
+  const [dateFinStat, setDateFinStat] = useState(obtenirDateDuJour());
 
   const [dateDebutRapport, setDateDebutRapport] = useState(obtenirDateDuJour());
   const [dateFinRapport, setDateFinRapport] = useState(obtenirDateDuJour());
@@ -40,6 +51,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const [chargement, setChargement] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [afficherForm, setAfficherForm] = useState(false);
   const [articleEnEdition, setArticleEnEdition] = useState(null);
 
@@ -376,7 +388,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       }
       if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt === 'AVARIES') {
+      } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt.includes('AVARIES')) {
         if (matchDepotSource) stockDepot -= qte;
       } else {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
@@ -474,6 +486,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerArticle = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
+    setEnTrainDeSauvegarder(true);
     try {
       const payloadArticle = {
         id_entreprise: entrepriseId,
@@ -507,10 +522,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       }
 
       annulerForm();
-      chargerArticles();
-      chargerDonneesReference();
+      await chargerArticles();
+      await chargerDonneesReference();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -637,6 +654,95 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const colSpanTotal = 2 + emplacements.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
 
+  const imprimerOngletActif = (titreDocument) => {
+    const contenuActuel = document.getElementById(`section-impression-${modeVue}`);
+    if (!contenuActuel) {
+      window.print();
+      return;
+    }
+
+    const nomEntreprise = entrepriseInfo?.nom_entreprise || entrepriseInfo?.nom || '4TS : ISMA LOGISTIQUE';
+    const dateImpression = new Date().toLocaleDateString('fr-FR');
+    
+    let infosFiltresHtml = '';
+    if (modeVue === 'catalogue') {
+      const famObj = familles.find(f => String(f.id) === String(familleFiltre));
+      const depObj = depots.find(d => String(d.id) === String(depotFiltre));
+      const empObj = emplacements.find(e => String(e.id) === String(emplacementFiltre));
+      infosFiltresHtml = `
+        <div class="meta-info">
+          <span><strong>Famille :</strong> ${famObj ? (famObj.nom_famille || famObj.Nom_Famille) : 'Toutes'}</span>
+          <span><strong>Dépôt :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
+          <span><strong>Emplacement :</strong> ${empObj ? empObj.nom_emplacement : 'Tous'}</span>
+        </div>
+      `;
+    } else if (modeVue === 'statistiques') {
+      const depObj = depots.find(d => String(d.id) === String(depotStatFiltre));
+      const empObj = emplacements.find(e => String(e.id) === String(livreurStatFiltre));
+      infosFiltresHtml = `
+        <div class="meta-info">
+          <span><strong>Période :</strong> du ${formaterDateFR(dateDebutStat)} au ${formaterDateFR(dateFinStat)}</span>
+          <span><strong>Partenaire / Dépôt :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
+          <span><strong>Livreur :</strong> ${empObj ? (empObj.nom_emplacement || empObj.responsable_emplacement) : 'Tous'}</span>
+          <span><strong>Article :</strong> ${articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-'}</span>
+        </div>
+      `;
+    } else if (modeVue === 'rapport_stock') {
+      const depObj = depots.find(d => String(d.id) === String(depotRapportFiltre));
+      infosFiltresHtml = `
+        <div class="meta-info">
+          <span><strong>Période :</strong> du ${formaterDateFR(dateDebutRapport)} au ${formaterDateFR(dateFinRapport)}</span>
+          <span><strong>Partenaire :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
+        </div>
+      `;
+    }
+
+    const fenetreImpression = window.open('', '_blank', 'width=950,height=700');
+    fenetreImpression.document.write(`
+      <html>
+        <head>
+          <title>${titreDocument}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 25px; color: #0f172a; background: #fff; }
+            .header-box { border-bottom: 3px solid #f97316; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .company-title { font-size: 18px; font-weight: 900; color: #0f172a; text-transform: uppercase; margin: 0; }
+            .doc-subtitle { font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 4px; }
+            .print-date { font-size: 11px; font-weight: bold; color: #475569; text-align: right; }
+            .meta-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 20px; font-size: 11px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+            th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: left; }
+            th { background-color: #f1f5f9; text-transform: uppercase; font-weight: 900; font-size: 10px; color: #334155; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+          </style>
+        </head>
+        <body>
+          <div class="header-box">
+            <div>
+              <h1 class="company-title">📦 ${nomEntreprise}</h1>
+              <div class="doc-subtitle">${titreDocument}</div>
+            </div>
+            <div class="print-date">
+              Édité le : ${dateImpression}
+            </div>
+          </div>
+
+          ${infosFiltresHtml}
+
+          <div>
+            ${contenuActuel.innerHTML}
+          </div>
+        </body>
+      </html>
+    `);
+    fenetreImpression.document.close();
+    fenetreImpression.focus();
+    setTimeout(() => {
+      fenetreImpression.print();
+      fenetreImpression.close();
+    }, 500);
+  };
+
   return (
     <div className="space-y-2 font-sans text-xs">
       
@@ -662,7 +768,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* Navigation des 3 onglets (Stock Article, Stats Article, Rapport Stock) sur une seule ligne sans retour */}
       <div className="grid grid-cols-3 gap-1 w-full">
         <button
           type="button"
@@ -711,59 +816,59 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       </div>
 
       {modeVue === 'catalogue' && (
-        <>
+        <div className="space-y-2">
           {afficherForm ? (
             <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
               
-              <div className="pb-1 border-b border-slate-100">
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block font-black text-[10px] text-slate-700 uppercase">Famille *</label>
-                  <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
+              <div className="flex justify-end pb-0">
+                <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
+              </div>
+
+              {/* FAMILLE et DÉSIGNATION sur la même ligne (Famille réduite, Désignation élargie) */}
+              <div className="grid grid-cols-[4fr_7fr] gap-2">
+                <div>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">Famille *</label>
+                  <select
+                    required
+                    value={nouveauArticle.Famille}
+                    onChange={(e) => {
+                      setNouveauArticle({ ...nouveauArticle, Famille: e.target.value });
+                      setTimeout(() => {
+                        if (designationInputRef.current) {
+                          designationInputRef.current.focus();
+                        }
+                      }, 50);
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-[10.5px] font-black text-orange-700 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="">-- Choisir --</option>
+                    {familles.map((fam) => (
+                      <option key={fam.id} value={fam.id}>
+                        🏷️ {fam.nom_famille || fam.Nom_Famille}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <select
-                  required
-                  value={nouveauArticle.Famille}
-                  onChange={(e) => setNouveauArticle({ ...nouveauArticle, Famille: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-orange-700 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                >
-                  <option value="">-- Sélectionner Famille --</option>
-                  {familles.map((fam) => (
-                    <option key={fam.id} value={fam.id}>
-                      🏷️ {fam.nom_famille || fam.Nom_Famille}
-                    </option>
-                  ))}
-                </select>
+
+                <div>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">Désignation *</label>
+                  <input
+                    ref={designationInputRef}
+                    type="text"
+                    required
+                    value={nouveauArticle.Designation}
+                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value.toUpperCase() })}
+                    placeholder="EX: JUS 250ML"
+                    style={{ textTransform: 'uppercase' }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-[10.5px] font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-black text-[10px] text-slate-700 uppercase mb-0.5">Désignation *</label>
-                <input
-                  type="text"
-                  required
-                  value={nouveauArticle.Designation}
-                  onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value.toUpperCase() })}
-                  placeholder="Ex: JUS DE PAPAYE 250ML"
-                  style={{ textTransform: 'uppercase' }}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-1.5 items-end">
-                {moduleActuel !== 'LIVRAISON' && (
-                  <div>
-                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A</label>
-                    <input
-                      type="number"
-                      value={nouveauArticle.Prix_Achat}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Achat: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs"
-                    />
-                  </div>
-                )}
-
-                <div className={moduleActuel === 'LIVRAISON' ? 'col-span-1.5' : ''}>
-                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.V *</label>
+              {/* P.V, S.ALERTE (sélection au clic) et CODE-BARRES sur la même ligne */}
+              <div className="grid grid-cols-3 gap-1.5">
+                <div>
+                  <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">P.V *</label>
                   <input
                     type="number"
                     required
@@ -775,41 +880,40 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
 
                 <div>
-                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">S.Alerte</label>
+                  <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">S.ALERTE</label>
                   <input
                     type="number"
                     value={nouveauArticle.Seuil_Alerte}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Seuil_Alerte: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs"
                   />
                 </div>
-              </div>
 
-              <div className={`grid ${isGestionPerissablesActive() ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5 items-end`}>
                 <div>
-                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Code-Barres</label>
+                  <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">CODE-BARRES</label>
                   <input
                     type="text"
                     value={nouveauArticle.Code_Barre}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value.toUpperCase() })}
                     placeholder="600123"
                     style={{ textTransform: 'uppercase' }}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 font-mono shadow-xs uppercase"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-bold text-slate-900 font-mono shadow-xs uppercase"
                   />
                 </div>
-
-                {isGestionPerissablesActive() && (
-                  <div>
-                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date Péremption</label>
-                    <input
-                      type="date"
-                      value={nouveauArticle.date_peremption}
-                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, date_peremption: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                    />
-                  </div>
-                )}
               </div>
+
+              {isGestionPerissablesActive() && (
+                <div>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date Péremption</label>
+                  <input
+                    type="date"
+                    value={nouveauArticle.date_peremption}
+                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, date_peremption: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              )}
 
               <div className="pt-2 border-t border-slate-100 space-y-1">
                 <label className="block font-black text-[10px] text-slate-700 uppercase">Photo de l'article</label>
@@ -858,9 +962,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                     <label 
                       className="bg-slate-100 hover:bg-orange-100 text-slate-800 border border-slate-300 px-3 py-1.5 rounded-lg font-black text-xs cursor-pointer flex items-center justify-center transition shrink-0 shadow-xs"
-                      title="Prendre ou joindre une photo"
+                      title="Ouvrir l'appareil photo"
                     >
-                      <span>📷 Joindre / Filmer</span>
+                      <span>📷 Filmer</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -902,15 +1006,18 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                 <div className="flex gap-1.5">
                   <button type="button" onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
-                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded-lg shadow-xs text-xs">
-                    {articleEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                  <button 
+                    type="submit" 
+                    disabled={enTrainDeSauvegarder}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg shadow-xs text-xs transition flex items-center gap-1"
+                  >
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (articleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
                   </button>
                 </div>
               </div>
             </form>
           ) : (
             <>
-              {/* FILTRES CATALOGUE SUR UNE SEULE LIGNE (Famille, Dépôt, Emplacement) */}
               <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
                 <div className="grid grid-cols-3 gap-1">
                   <div>
@@ -963,7 +1070,18 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-xs">
+              <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
+                <h4 className="font-black uppercase text-[9.5px]">📦 Stock des Articles</h4>
+                <button
+                  type="button"
+                  onClick={() => imprimerOngletActif('STOCK DES ARTICLES')}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
+                >
+                  <span>🖨️ Imprimer</span>
+                </button>
+              </div>
+
+              <div id="section-impression-catalogue" className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-xs">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
@@ -1061,54 +1179,54 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
             </>
           )}
-        </>
+        </div>
       )}
 
       {modeVue === 'statistiques' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
           
           <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE DÉBUT</label>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date début</label>
                 <input
                   type="date"
                   value={dateDebutStat}
                   onChange={(e) => setDateDebutStat(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE FIN</label>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date fin</label>
                 <input
                   type="date"
                   value={dateFinStat}
                   onChange={(e) => setDateFinStat(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Dépôt / Partenaire</label>
+                <select
+                  value={depotStatFiltre}
+                  onChange={(e) => setDepotStatFiltre(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  <option value="TOUS">Tous les dépôts</option>
+                  {depots.map((dep) => (
+                    <option key={dep.id} value={dep.id}>
+                      {dep.nom_depot || dep.Nom_Depot}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT / PARTENAIRE</label>
-                <select
-                  value={depotStatFiltre}
-                  onChange={(e) => setDepotStatFiltre(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                >
-                  <option value="TOUS">Tous les dépôts</option>
-                  {depots.map((dep) => (
-                    <option key={dep.id} value={dep.id}>
-                      🏢 {dep.nom_depot || dep.Nom_Depot}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">LIVREUR</label>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">Livreur</label>
                 <select
                   value={livreurStatFiltre}
                   onChange={(e) => setLivreurStatFiltre(e.target.value)}
@@ -1122,21 +1240,21 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   })}
                 </select>
               </div>
-            </div>
 
-            <div>
-              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">ARTICLE</label>
-              <div
-                onClick={() => {
-                  setRechercheModalArticle('');
-                  setAfficherModalSelectionArticle(true);
-                }}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
-              >
-                <span className="truncate uppercase">
-                  {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner un article --'}
-                </span>
-                <span className="text-[10px] text-slate-400">🔍</span>
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">Article</label>
+                <div
+                  onClick={() => {
+                    setRechercheModalArticle('');
+                    setAfficherModalSelectionArticle(true);
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+                >
+                  <span className="truncate uppercase">
+                    {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner --'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">🔍</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1186,13 +1304,23 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             return (
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <h4 className="font-black text-slate-800 uppercase text-[10px]">📈 Historique chronologique et dynamique :</h4>
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                  <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
+                    <h4 className="font-black uppercase text-[9.5px]">📈 Statistique Article : {articleStatObjet.Designation || articleStatObjet.designation}</h4>
+                    <button
+                      type="button"
+                      onClick={() => imprimerOngletActif(`STATISTIQUE ARTICLE - ${articleStatObjet.Designation || articleStatObjet.designation}`)}
+                      className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
+                    >
+                      <span>🖨️ Imprimer</span>
+                    </button>
+                  </div>
+
+                  <div id="section-impression-statistiques" className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                     <table className="w-full text-left text-xs">
                       <thead>
                         <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
                           <th className="p-2.5 w-[22%]">Date</th>
-                          <th className="p-2.5 w-[36%]">Mouvement (AP / TR / LIV)</th>
+                          <th className="p-2.5 w-[36%]">Mouvement</th>
                           <th className="p-2.5 w-[22%] text-right">QTÉ</th>
                           <th className="p-2.5 w-[20%] text-right">STOCK</th>
                         </tr>
@@ -1205,8 +1333,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         ) : (
                           fluxAvecStockProgressif.map((f, i) => {
                             const estNegatif = f.qteDelta < 0;
-                            const estTransfert = f.type === 'TR' || f.type === 'TRANSFERT';
-                            const libelleAffichage = estTransfert ? `${f.remarque || 'TR'} (inter-emplacement)` : (f.remarque ? `${f.type} (${f.remarque})` : f.type);
+                            const libelleAffichage = f.type;
 
                             let badgeStyle = 'bg-slate-100 text-slate-800 border-slate-300';
                             if (f.type === 'AP') badgeStyle = 'bg-emerald-100 text-emerald-800 border-emerald-300';
@@ -1216,7 +1343,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                             return (
                               <tr key={i} className="hover:bg-slate-50 transition">
                                 <td className="p-2.5 font-mono text-slate-600 font-bold whitespace-nowrap">
-                                  {f.date ? new Date(f.date).toLocaleDateString('fr-FR') : '-'}
+                                  {f.date ? formaterDateFR(f.date.split('T')[0]) : '-'}
                                 </td>
                                 <td className="p-2.5 font-bold text-slate-900">
                                   <span className={`px-2 py-0.5 rounded font-black text-[9.5px] border inline-block ${badgeStyle}`}>
@@ -1250,60 +1377,70 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
           
           <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-2">
-            <div className="grid grid-cols-2 gap-1.5 items-end">
+            <div className="grid grid-cols-3 gap-1.5 items-end">
               <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE DÉBUT</label>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date début</label>
                 <input
                   type="date"
                   value={dateDebutRapport}
                   onChange={(e) => setDateDebutRapport(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE FIN</label>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date fin</label>
                 <input
                   type="date"
                   value={dateFinRapport}
                   onChange={(e) => setDateFinRapport(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>
-            </div>
 
-            <div className="pt-1 border-t border-slate-200/80">
-              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">SÉLECTIONNER LE DÉPÔT DU PARTENAIRE *</label>
-              <select
-                value={depotRapportFiltre}
-                onChange={(e) => setDepotRapportFiltre(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-              >
-                {depots.length === 0 ? (
-                  <option value="TOUS">Aucun dépôt enregistré</option>
-                ) : (
-                  depots.map((dep) => (
-                    <option key={dep.id} value={dep.id}>
-                      🏢 {dep.nom_depot || dep.Nom_Depot}
-                    </option>
-                  ))
-                )}
-              </select>
+              <div>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Partenaire</label>
+                <select
+                  value={depotRapportFiltre}
+                  onChange={(e) => setDepotRapportFiltre(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  {depots.length === 0 ? (
+                    <option value="TOUS">Aucun dépôt</option>
+                  ) : (
+                    depots.map((dep) => (
+                      <option key={dep.id} value={dep.id}>
+                        {dep.nom_depot || dep.Nom_Depot}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
             </div>
           </div>
 
           <div className="space-y-1">
-            <h4 className="font-black text-slate-800 uppercase text-[10px]">📋 Rapport journalier du stock partenaire :</h4>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-              <table className="w-full text-left text-[11px] border-collapse">
+            <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
+              <h4 className="font-black uppercase text-[9.5px]">📋 RAPPORT DE STOCK</h4>
+              <button
+                type="button"
+                onClick={() => imprimerOngletActif('RAPPORT DE STOCK')}
+                className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
+              >
+                <span>🖨️ Imprimer</span>
+              </button>
+            </div>
+
+            <div id="section-impression-rapport_stock" className="border border-slate-200 rounded-xl bg-white shadow-2xs">
+              <table className="w-full text-left text-[10px] border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[8.5px] font-black">
-                    <th className="p-2">Désignation</th>
-                    <th className="p-2 text-center">Stock I.</th>
-                    <th className="p-2 text-center">Entrée</th>
-                    <th className="p-2 text-center">Total</th>
-                    <th className="p-2 text-center">Sortie</th>
-                    <th className="p-2 text-center">Stock Réel</th>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[8px] font-black">
+                    <th className="py-2 px-1">Désignation</th>
+                    <th className="py-2 px-1 text-center whitespace-nowrap">Stock I.</th>
+                    <th className="py-2 px-1 text-center whitespace-nowrap">Entrée</th>
+                    <th className="py-2 px-1 text-center whitespace-nowrap">Total</th>
+                    <th className="py-2 px-1 text-center whitespace-nowrap">Sortie</th>
+                    <th className="py-2 px-1 text-center whitespace-nowrap">Stock Réel</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1336,27 +1473,27 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                       return (
                         <tr key={artId} className="hover:bg-slate-50 transition">
-                          <td className="p-2 font-black uppercase text-slate-900 whitespace-nowrap text-[10px]">
+                          <td className="py-2 px-1 font-black uppercase text-slate-900 text-[9.5px] max-w-[90px] truncate">
                             {art.Designation || art.designation}
                           </td>
-                          <td className="p-2 text-center font-mono font-bold text-slate-700">
+                          <td className="py-2 px-1 text-center font-mono font-bold text-slate-700 whitespace-nowrap">
                             {rapport.stockInitial}
                           </td>
-                          <td className="p-2 text-center font-mono font-bold text-emerald-700">
-                            <span className="bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block">
+                          <td className="py-2 px-1 text-center font-mono font-bold text-emerald-700 whitespace-nowrap">
+                            <span className="bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200 inline-block">
                               +{rapport.totalEntrees}
                             </span>
                           </td>
-                          <td className="p-2 text-center font-mono font-extrabold text-blue-800">
+                          <td className="py-2 px-1 text-center font-mono font-extrabold text-blue-800 whitespace-nowrap">
                             {rapport.totalDisponible}
                           </td>
-                          <td className="p-2 text-center font-mono font-bold text-rose-700">
-                            <span className="bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 inline-block">
+                          <td className="py-2 px-1 text-center font-mono font-bold text-rose-700 whitespace-nowrap">
+                            <span className="bg-rose-50 px-1 py-0.5 rounded border border-rose-200 inline-block">
                               -{rapport.totalSorties}
                             </span>
                           </td>
-                          <td className="p-2 text-center font-mono font-black text-slate-900">
-                            <span className={`px-2 py-0.5 rounded text-[10px] ${rapport.stockReel > 0 ? 'bg-orange-100 text-orange-900 border border-orange-200' : 'bg-slate-100 text-slate-500'}`}>
+                          <td className="py-2 px-1 text-center font-mono font-black text-slate-900 whitespace-nowrap">
+                            <span className={`px-1.5 py-0.5 rounded text-[9.5px] ${rapport.stockReel > 0 ? 'bg-orange-100 text-orange-900 border border-orange-200' : 'bg-slate-100 text-slate-500'}`}>
                               {rapport.stockReel}
                             </span>
                           </td>

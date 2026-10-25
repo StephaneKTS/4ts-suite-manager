@@ -18,6 +18,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [approvisionnements, setApprovisionnements] = useState([]);
   const [ventesHistoriques, setVentesHistoriques] = useState([]);
   const [chargement, setChargement] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   
   const [recherche, setRecherche] = useState('');
   const [filtreModePaiement, setFiltreModePaiement] = useState('TOUS');
@@ -172,6 +173,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   }, [entrepriseId, moduleActuel]);
 
   const changerCaisseSelectionnee = (idCaisseSel) => {
+    if (enTrainDeSauvegarder) return;
     setCaisseId(idCaisseSel);
     const trouve = caissesList.find(c => c.id === idCaisseSel);
     if (trouve) {
@@ -252,6 +254,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   const annulerVenteEnCours = () => {
+    if (enTrainDeSauvegarder) return;
     if (confirm('Voulez-vous vraiment annuler cette vente en cours ? Le panier sera vidé.')) {
       setPanier([]);
       setNomClientLibre('');
@@ -262,6 +265,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   const mettreTicketEnAttente = () => {
+    if (enTrainDeSauvegarder) return;
     if (panier.length === 0) {
       alert('⚠️ Le panier est vide, impossible de mettre en attente.');
       return;
@@ -292,6 +296,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   const rappelerTicket = (ticketAttente) => {
+    if (enTrainDeSauvegarder) return;
     setPanier(ticketAttente.panier);
     setNumeroTicket(ticketAttente.numeroTicket);
     setClientNomSelectionne(ticketAttente.client);
@@ -308,6 +313,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   const selectionnerClient = (client) => {
+    if (enTrainDeSauvegarder) return;
     setClientId(client.id);
     setClientSelectionneObj(client);
     setClientNomSelectionne((client.nom_client || 'CLIENT').toUpperCase());
@@ -318,8 +324,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   const ajouterAuPanier = (article) => {
+    if (enTrainDeSauvegarder) return;
     const articleId = article.id_article || article.id;
-    const designation = (article.Designation || article.designation || article.nom || '').toUpperCase();
+    const designation = (article.Designation || article.nom || '').toUpperCase();
     const prixU = Number(article.Prix_Vente || article.prix_vente || article.prix || 0);
     const stockDispo = getStockReelArticle(article);
 
@@ -340,6 +347,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   };
 
   const modifierQuantite = (id, qte) => {
+    if (enTrainDeSauvegarder) return;
     if (qte <= 0) {
       setPanier(panier.filter((item) => item.id !== id));
       return;
@@ -383,6 +391,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const totalFinal = baseImposable + montantTva;
 
   const validerEtEnregistrerVente = async () => {
+    if (enTrainDeSauvegarder) return;
     if (!permissions.creation) {
       alert('⛔ Action non autorisée : Vous n’avez pas le droit de créer des ventes.');
       return;
@@ -409,21 +418,22 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
     let nomClientFacture = (nomClientLibre.trim() || clientNomSelectionne || 'CLIENTS DIVERS').toUpperCase();
 
-    const payloadVente = {
-      id_entreprise: entrepriseId,
-      module: moduleActuel,
-      numero_ticket: numeroTicket,
-      mode_paiement: modePaiementTicket,
-      total_montant: totalFinal,
-      montant_regle: totalFinal,
-      details_articles: panier,
-      id_caisse: caisseId || null,
-      id_depot: depotId || null,
-      nom_client: nomClientFacture,
-      id_client: clientId ? parseInt(clientId) : null
-    };
-
+    setEnTrainDeSauvegarder(true);
     try {
+      const payloadVente = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+        numero_ticket: numeroTicket,
+        mode_paiement: modePaiementTicket,
+        total_montant: totalFinal,
+        montant_regle: totalFinal,
+        details_articles: panier,
+        id_caisse: caisseId || null,
+        id_depot: depotId || null,
+        nom_client: nomClientFacture,
+        id_client: clientId ? parseInt(clientId) : null
+      };
+
       let { error: errVente } = await supabase.from('ventes_historiques').insert([payloadVente]);
 
       if (errVente && errVente.message.includes('column')) {
@@ -433,7 +443,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         const resFallback = await supabase.from('ventes_historiques').insert([payloadVente]);
         if (resFallback.error) throw resFallback.error;
       } else if (errVente) {
-        throw errVente;
+        if (errVente.code === '23505') {
+          alert('⛔ Erreur : Ce numéro de ticket existe déjà.');
+        } else {
+          throw errVente;
+        }
+        setEnTrainDeSauvegarder(false);
+        return;
       }
 
       for (const item of panier) {
@@ -463,15 +479,20 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       setModeSaisie(false);
     } catch (err) {
       alert('Erreur enregistrement : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const supprimerTicket = async (id) => {
+    if (enTrainDeSauvegarder) return;
     if (!permissions.suppression) {
       alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des tickets ou des ventes.');
       return;
     }
     if (!confirm('Voulez-vous vraiment supprimer ce ticket ?')) return;
+    
+    setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('ventes_historiques').delete().eq('id', id);
       if (error) throw error;
@@ -479,6 +500,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       await chargerDonneesEtPermissions();
     } catch (err) {
       alert('Erreur suppression : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -510,6 +533,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       
       <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
         <button
+          disabled={enTrainDeSauvegarder}
           onClick={() => setModeSaisie(true)}
           className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
             modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
@@ -518,6 +542,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
           🛒 Caisse
         </button>
         <button
+          disabled={enTrainDeSauvegarder}
           onClick={() => setModeSaisie(false)}
           className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
             !modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
@@ -536,6 +561,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE</label>
                 <select
+                  disabled={enTrainDeSauvegarder}
                   value={caisseId}
                   onChange={(e) => changerCaisseSelectionnee(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-bold text-[10px] text-slate-900"
@@ -552,6 +578,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DATE</label>
                 <input
                   type="date"
+                  disabled={enTrainDeSauvegarder}
                   value={dateJour}
                   onChange={(e) => setDateJour(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-mono font-bold text-[10px] text-slate-900"
@@ -573,6 +600,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DÉPÔT</label>
                 <select
+                  disabled={enTrainDeSauvegarder}
                   value={depotId}
                   onChange={(e) => setDepotId(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-bold text-[10px] text-slate-900"
@@ -594,7 +622,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   {moduleActuel === 'LIVRAISON' ? 'LIVREUR' : 'CLIENT'}
                 </label>
                 <div
-                  onClick={() => setAfficherModalClient(true)}
+                  onClick={() => !enTrainDeSauvegarder && setAfficherModalClient(true)}
                   className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[24px]"
                 >
                   <span className="truncate">{clientNomSelectionne}</span>
@@ -608,6 +636,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 </label>
                 <input
                   type="text"
+                  disabled={enTrainDeSauvegarder}
                   value={nomClientLibre}
                   onChange={(e) => setNomClientLibre(e.target.value.toUpperCase())}
                   placeholder={moduleActuel === 'LIVRAISON' ? 'LIVREUR LIBRE...' : 'NOM LIBRE...'}
@@ -625,6 +654,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <span className="font-extrabold text-slate-700 text-[11px] uppercase">Articles</span>
                 <div className="flex items-center gap-1">
                   <button
+                    disabled={enTrainDeSauvegarder}
                     onClick={() => setOrdreAlphabetique(ordreAlphabetique === 'ASC' ? 'DESC' : 'ASC')}
                     title={ordreAlphabetique === 'ASC' ? 'Tri alphabétique A-Z (cliquer pour inverser)' : 'Tri alphabétique Z-A (cliquer pour inverser)'}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded text-[10px] transition border border-slate-200 shadow-2xs flex items-center gap-0.5"
@@ -633,8 +663,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     <span>{ordreAlphabetique === 'ASC' ? '▲' : '▼'}</span>
                   </button>
                   <button
+                    disabled={enTrainDeSauvegarder}
                     onClick={() => setAfficherModalArticle(true)}
-                    className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-2.5 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
+                    className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-2.5 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
                   >
                     🔍 recherche
                   </button>
@@ -655,7 +686,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     return (
                       <div
                         key={artId}
-                        onClick={() => !estEpuise && ajouterAuPanier(art)}
+                        onClick={() => !enTrainDeSauvegarder && !estEpuise && ajouterAuPanier(art)}
                         className={`p-2.5 border rounded-lg flex justify-between items-center transition gap-2 shadow-2xs ${
                           estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 border-slate-200 cursor-pointer'
                         }`}
@@ -681,6 +712,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <div className="flex justify-between items-center border-b border-slate-100 pb-1">
                   <span className="font-extrabold text-slate-800 uppercase text-[10px]">Panier & Règlements</span>
                   <select
+                    disabled={enTrainDeSauvegarder}
                     value={modePaiementTicket}
                     onChange={(e) => setModePaiementTicket(e.target.value)}
                     className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-900"
@@ -705,16 +737,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                           </p>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">-</button>
+                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">-</button>
                           <input
                             type="number"
+                            disabled={enTrainDeSauvegarder}
                             value={item.quantite}
                             onChange={(e) => modifierQuantite(item.id, Number(e.target.value))}
                             onFocus={(e) => e.target.select()}
                             onKeyDown={handleKeyDownQuantite}
                             className="w-10 bg-slate-50 border border-slate-200 rounded text-center font-bold font-mono text-[10px] text-slate-900"
                           />
-                          <button onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">+</button>
+                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">+</button>
                           <span className="font-black text-emerald-700 font-mono ml-1 w-14 text-right">
                             {Number(item.quantite * item.prix_unitaire).toLocaleString('fr-FR')} F
                           </span>
@@ -730,6 +763,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <div className="flex gap-2 items-center justify-between">
                   <div className="flex items-center gap-1">
                     <select
+                      disabled={enTrainDeSauvegarder}
                       value={typeRemise}
                       onChange={(e) => setTypeRemise(e.target.value)}
                       className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[8px] font-bold text-slate-800"
@@ -740,6 +774,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     <input
                       type="number"
                       min="0"
+                      disabled={enTrainDeSauvegarder}
                       value={valeurRemise}
                       onChange={(e) => setValeurRemise(e.target.value)}
                       onFocus={(e) => e.target.select()}
@@ -750,6 +785,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   <div className="flex items-center gap-1">
                     <span className="text-[9px] font-bold text-slate-700">TVA :</span>
                     <select
+                      disabled={enTrainDeSauvegarder}
                       value={appliquerTva}
                       onChange={(e) => setAppliquerTva(e.target.value)}
                       className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold text-slate-900"
@@ -762,15 +798,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
                 <div className="grid grid-cols-2 gap-1">
                   <button
+                    disabled={enTrainDeSauvegarder || panier.length === 0}
                     onClick={mettreTicketEnAttente}
-                    disabled={panier.length === 0}
-                    className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold px-2 py-1 rounded text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+                    className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-2 py-1 rounded text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
                   >
                     ⏳ Mettre en attente
                   </button>
                   <button
+                    disabled={enTrainDeSauvegarder}
                     onClick={() => setAfficherModalAttente(true)}
-                    className="bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 font-bold px-2 py-1 rounded text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+                    className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-2 py-1 rounded text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
                   >
                     📂 Rappel ticket ({ticketsEnAttente.length})
                   </button>
@@ -785,8 +822,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   </div>
                   <div className="flex gap-1">
                     <button
+                      disabled={enTrainDeSauvegarder}
                       onClick={annulerVenteEnCours}
-                      className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1.5 rounded text-[10px] transition shadow-2xs"
+                      className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-2 py-1.5 rounded text-[10px] transition shadow-2xs"
                     >
                       ❌ Annuler
                     </button>
@@ -794,12 +832,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     {permissions.creation && (
                       <button
                         onClick={validerEtEnregistrerVente}
-                        disabled={panier.length === 0}
+                        disabled={panier.length === 0 || enTrainDeSauvegarder}
                         className={`font-bold px-3 py-1.5 rounded text-[10px] transition shadow-2xs ${
-                          panier.length > 0 ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          panier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         }`}
                       >
-                        Valider
+                        {enTrainDeSauvegarder ? 'Validation...' : 'Valider'}
                       </button>
                     )}
                   </div>
@@ -814,12 +852,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
           <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2 shadow-2xs">
             <input
               type="text"
+              disabled={enTrainDeSauvegarder}
               value={recherche}
               onChange={(e) => setRecherche(e.target.value.toUpperCase())}
               placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER TICKET OU LIVREUR..." : "RECHERCHER TICKET OU CLIENT..."}
               className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
             />
             <select
+              disabled={enTrainDeSauvegarder}
               value={filtreModePaiement}
               onChange={(e) => setFiltreModePaiement(e.target.value)}
               className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-900"
@@ -854,7 +894,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     return (
                       <tr
                         key={v.id}
-                        onClick={() => setTicketSelectionne(v)}
+                        onClick={() => !enTrainDeSauvegarder && setTicketSelectionne(v)}
                         className="hover:bg-slate-50/80 cursor-pointer transition"
                       >
                         <td className="p-2 text-slate-600 font-mono text-[9px] font-bold">
@@ -1008,7 +1048,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
           <div className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px]">
               <span className="font-bold font-mono">Ticket #{ticketSelectionne.numero_ticket}</span>
-              <button onClick={() => setTicketSelectionne(null)} className="text-slate-400 hover:text-white font-bold">✕</button>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setTicketSelectionne(null)} className="text-slate-400 hover:text-white font-bold">✕</button>
             </div>
 
             <div className="p-3 overflow-y-auto space-y-2 font-mono text-[10px] bg-slate-50">
@@ -1060,15 +1100,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               </div>
             </div>
 
-            {/* Pied de modale corrigé et responsive pour téléphones et tablettes */}
             <div className="p-2.5 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2">
               <div className="w-full sm:w-auto text-center sm:text-left">
                 {permissions.suppression ? (
                   <button
+                    disabled={enTrainDeSauvegarder}
                     onClick={() => supprimerTicket(ticketSelectionne.id)}
-                    className="w-full sm:w-auto bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1.5 rounded text-[10px] transition"
+                    className="w-full sm:w-auto bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-2 py-1.5 rounded text-[10px] transition"
                   >
-                    🗑️ Supprimer
+                    {enTrainDeSauvegarder ? 'Suppression...' : '🗑️ Supprimer'}
                   </button>
                 ) : (
                   <span className="text-slate-400 text-[9px] italic block">Suppression non autorisée pour votre profil</span>
@@ -1077,12 +1117,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               
               <div className="flex gap-1.5 w-full sm:w-auto justify-end">
                 <button
+                  disabled={enTrainDeSauvegarder}
                   onClick={() => window.print()}
                   className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] transition text-center"
                 >
                   🖨️ Imprimer
                 </button>
                 <button
+                  disabled={enTrainDeSauvegarder}
                   onClick={() => setTicketSelectionne(null)}
                   className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded text-[10px] transition text-center"
                 >

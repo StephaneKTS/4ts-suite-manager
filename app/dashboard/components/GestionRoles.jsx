@@ -30,9 +30,64 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
+  // Rôles par défaut prédéfinis par module (avec COMMERCIAUX ajouté en livraison)
+  const rolesParModuleParDefaut = {
+    BOUTIQUE: [
+      'COMMERCIAUX',
+      'CAISSIER(E)',
+      'COMPTABLE',
+      'CHAUFFEUR',
+      'MAGASINIER',
+      'VENDEUR(SE)',
+      'PERSONNEL',
+      'DIRECTEUR'
+    ],
+    LIVRAISON: [
+      'LIVREUR',
+      'SUPERVISEUR',
+      'DIRECTEUR',
+      'CHAUFFEUR MOTO',
+      'CHAUFFEUR TAXI',
+      'CAISSIER(E)',
+      'COMMERCIAUX'
+    ]
+  };
+
+  const rolesDefinis = rolesParModuleParDefaut[moduleActuel] || [];
+
+  // Fonction pour initialiser automatiquement les rôles par défaut pour l'entreprise connectée
+  const verifierEtCreerRolesParDefaut = async () => {
+    try {
+      const { data: existingRoles, error } = await supabase
+        .from('roles')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+
+      if (error) throw error;
+
+      const existingNames = (existingRoles || []).map(r => (r.nom_role || '').trim().toUpperCase());
+      const missingRoles = rolesDefinis.filter(nom => !existingNames.includes(nom));
+
+      if (missingRoles.length > 0) {
+        const rowsToInsert = missingRoles.map(nom => ({
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          nom_role: nom,
+        }));
+
+        await supabase.from('roles').insert(rowsToInsert);
+      }
+    } catch (err) {
+      console.error('Erreur initialisation rôles par défaut :', err.message);
+    }
+  };
+
   const chargerRoles = async () => {
     setChargement(true);
     try {
+      await verifierEtCreerRolesParDefaut();
+
       const { data, error } = await supabase
         .from('roles')
         .select('*')
@@ -53,31 +108,47 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     chargerRoles();
   }, [entrepriseId, moduleActuel]);
 
+  const estRoleSysteme = (nomRole) => {
+    return rolesDefinis.includes((nomRole || '').trim().toUpperCase());
+  };
+
   const enregistrerRole = async (e) => {
     e.preventDefault();
-    if (!nouveauRole.nom_role.trim()) {
+    const nomSaisi = nouveauRole.nom_role.trim().toUpperCase();
+
+    if (!nomSaisi) {
       alert('⚠️ Veuillez renseigner le nom du rôle.');
       return;
     }
 
     try {
-      const payload = {
-        id_entreprise: entrepriseId,
-        module: moduleActuel,
-        nom_role: nouveauRole.nom_role.trim().toUpperCase(),
-      };
-
       if (roleEnEdition) {
+        if (estRoleSysteme(roleEnEdition.nom_role)) {
+          alert(`❌ Impossible de modifier ce rôle système ("${roleEnEdition.nom_role}"). Seuls les rôles personnalisés peuvent être modifiés.`);
+          return;
+        }
+
         const { error } = await supabase
           .from('roles')
-          .update(payload)
+          .update({ nom_role: nomSaisi })
           .eq('id', roleEnEdition.id);
 
         if (error) throw error;
         alert(`Rôle mis à jour avec succès dans le module ${moduleActuel} !`);
       } else {
-        const { error } = await supabase.from('roles').insert([payload]);
+        const existeDeja = roles.some(r => (r.nom_role || '').trim().toUpperCase() === nomSaisi);
+        if (existeDeja) {
+          alert(`⚠️ Ce rôle existe déjà dans le module ${moduleActuel}.`);
+          return;
+        }
 
+        const payload = {
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          nom_role: nomSaisi,
+        };
+
+        const { error } = await supabase.from('roles').insert([payload]);
         if (error) throw error;
         alert(`Rôle créé avec succès dans le module ${moduleActuel} !`);
       }
@@ -107,6 +178,11 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerRole = async () => {
     if (!roleEnEdition) return;
+
+    if (estRoleSysteme(roleEnEdition.nom_role)) {
+      alert(`❌ SUPPRESSION INTERDITE : "${roleEnEdition.nom_role}" est un rôle système prédéterminé de l'application. Il ne peut pas être supprimé.`);
+      return;
+    }
 
     try {
       const { data: tousLesUsers, error: errUsers } = await supabase
@@ -175,6 +251,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       return 0;
     });
 
+  const estSystemeEnEdition = roleEnEdition ? estRoleSysteme(roleEnEdition.nom_role) : false;
+
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
@@ -195,7 +273,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           }}
           className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
         >
-          {afficherForm ? '✖' : 'Nouveau'}
+          {afficherForm ? '✖' : '＋ Nouveau Rôle'}
         </button>
       </div>
 
@@ -217,7 +295,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerRole} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {roleEnEdition ? `✏️ Fiche du rôle (${moduleActuel})` : `➕ Nouveau rôle (${moduleActuel})`}
+              {roleEnEdition ? (estSystemeEnEdition ? `🔒 Fiche du Rôle Système (${moduleActuel})` : `✏️ Fiche du Rôle Personnalisé (${moduleActuel})`) : `➕ Nouveau Rôle Personnalisé (${moduleActuel})`}
             </h4>
             <button
               type="button"
@@ -228,22 +306,31 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             </button>
           </div>
 
+          {estSystemeEnEdition && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-900 p-2 rounded-lg text-[10px] font-bold">
+              ⚠️ Ce rôle est un standard système de l'application. Vous pouvez le consulter mais son nom ne peut pas être modifié ni supprimé.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-2">
             <div>
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom du Rôle / Fonction *</label>
               <input
                 type="text"
                 required
+                disabled={estSystemeEnEdition}
                 value={nouveauRole.nom_role}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
-                placeholder="EX: CAISSIER, LIVREUR..."
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
+                placeholder="EX: SUPERVISEUR, COMMERCIAL..."
+                className={`w-full border rounded p-1.5 font-extrabold uppercase text-xs shadow-xs ${
+                  estSystemeEnEdition ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'bg-white text-slate-900 border-slate-300'
+                }`}
               />
             </div>
           </div>
 
           <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
-            {roleEnEdition ? (
+            {roleEnEdition && !estSystemeEnEdition ? (
               <button
                 type="button"
                 onClick={supprimerRole}
@@ -252,17 +339,19 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                 🗑️ Supprimer
               </button>
             ) : <div />}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 ml-auto">
               <button
                 type="button"
                 onClick={annulerForm}
                 className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
               >
-                Annuler
+                {estSystemeEnEdition ? 'Fermer' : 'Annuler'}
               </button>
-              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
-                {roleEnEdition ? 'Mettre à jour' : 'Enregistrer'}
-              </button>
+              {!estSystemeEnEdition && (
+                <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
+                  {roleEnEdition ? 'Mettre à jour' : 'Enregistrer'}
+                </button>
+              )}
             </div>
           </div>
         </form>
@@ -301,20 +390,28 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                  {rolesFiltres.map((r) => (
-                    <tr
-                      key={r.id}
-                      onClick={() => ouvrirEdition(r)}
-                      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                      title="Cliquer pour modifier"
-                    >
-                      <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">
-                        <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
-                          🛡️ {r.nom_role}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {rolesFiltres.map((r) => {
+                    const isSystem = estRoleSysteme(r.nom_role);
+                    return (
+                      <tr
+                        key={r.id}
+                        onClick={() => ouvrirEdition(r)}
+                        className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                        title="Cliquer pour consulter / modifier"
+                      >
+                        <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate flex items-center justify-between">
+                          <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
+                            🛡️ {r.nom_role}
+                          </span>
+                          {isSystem && (
+                            <span className="bg-blue-100 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black">
+                              🔒 Système
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

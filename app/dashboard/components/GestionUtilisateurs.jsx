@@ -199,7 +199,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
 
     try {
-      // Payload sécurisé de base compatible avec toutes les versions de schémas
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -215,7 +214,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         permissions: nouveauUser.acces_application ? nouveauUser.permissions : null,
       };
 
-      // Ajout dynamique sécurisé pour éviter les crashs si les colonnes n'ont pas encore migré
       payload.prenom = (nouveauUser.prenom || '').trim().toUpperCase();
       if (estModeLivraison) {
         payload.id_emplacement = nouveauUser.id_emplacement || null;
@@ -224,11 +222,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       if (userEnEdition) {
         const { error } = await supabase.from('utilisateurs').update(payload).eq('id', userEnEdition.id);
         if (error) throw error;
-        alert(`Utilisateur mis à jour avec succès dans le module ${moduleActuel} !`);
+        alert('Collaborateur mis à jour avec succès !');
       } else {
         const { error } = await supabase.from('utilisateurs').insert([payload]);
         if (error) throw error;
-        alert(`Utilisateur créé avec succès dans le module ${moduleActuel} !`);
+        alert('Collaborateur créé avec succès !');
       }
 
       annulerForm();
@@ -346,7 +344,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div>
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-            <span>👥</span> COMPTES & INTERVENANTS [{moduleActuel}]
+            <span>👥</span> GESTION DU PERSONNEL
           </h3>
           <p className="text-[9.5px] text-slate-600 font-bold mt-0.5">
             Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-600' : 'text-emerald-700'}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
@@ -379,7 +377,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste [{moduleActuel}] ({utilisateurs.length})
+          📋 Liste du personnel ({utilisateurs.length})
         </button>
       </div>
 
@@ -387,7 +385,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerUtilisateur} autoComplete="off" className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[60vh] overflow-y-auto pr-2 pb-24">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {userEnEdition ? `✏️ Fiche du collaborateur (${moduleActuel})` : `➕ Nouveau collaborateur (${moduleActuel})`}
+              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
             </h4>
             <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
           </div>
@@ -589,7 +587,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       {!afficherForm && (
         <>
           <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder={`RECHERCHER PAR NOM OU EMAIL [${moduleActuel}]...`} className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400" />
+            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400" />
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
@@ -599,7 +597,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           {chargement ? (
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">Aucun enregistrement trouvé pour le module {moduleActuel}.</div>
+            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">Aucun enregistrement trouvé.</div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
               <table className="w-full text-left text-xs">
