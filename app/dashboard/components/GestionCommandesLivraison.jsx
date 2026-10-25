@@ -771,7 +771,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
   const titrePrincipalRapport = `RAPPORT DE LIVRAISON - ${nomPartenaireRapport.toUpperCase()} - ${libellePeriode}`;
 
-  // Fonction d'impression / export PDF
   const imprimerRapport = () => {
     setMenuPartageOuvert(false);
     setTimeout(() => {
@@ -830,17 +829,20 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     }, 150);
   };
 
-  // Nouvelle fonction pour WhatsApp (Image / PDF)
-  const envoyerWhatsAppImage = () => {
+  const partagerWhatsAppTexte = () => {
     setMenuPartageOuvert(false);
-    // 1. Ouvre la fenêtre d'impression/enregistrement PDF (qui sert de capture propre et fidèle)
-    imprimerRapport();
-    
-    // 2. Ouvre simultanément WhatsApp Web/App avec un message d'accompagnement invitant à joindre le fichier
-    setTimeout(() => {
-      const message = encodeURIComponent(`Bonjour, voici le rapport de livraison (${libellePeriode}) - Partenaire : ${nomPartenaireRapport}. (Veuillez joindre le fichier PDF ou l'image enregistrée ci-joint).`);
-      window.open(`https://api.whatsapp.com/send?text=${message}`, '_blank');
-    }, 600);
+    const texte = encodeURIComponent(
+      `📊 *${titrePrincipalRapport}*\n` +
+      `Livreur : ${nomLivreurRapport}\n` +
+      `----------------------------------\n` +
+      `• Total livraisons : ${commandesRapport.length}\n` +
+      `• Montant Total : ${totalMontantRapport.toLocaleString('fr-FR')} CFA\n` +
+      `• Frais : ${totalFraisRapport.toLocaleString('fr-FR')} CFA\n` +
+      `• Reste à verser : ${resteAVerserRapport.toLocaleString('fr-FR')} CFA\n` +
+      `----------------------------------\n` +
+      `*(Rapport officiel ISMA Logistique)*`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${texte}`, '_blank');
   };
 
   return (
@@ -904,6 +906,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
       {vueActive === 'RAPPORT' && (
         <div className="space-y-3">
+          {/* SECTION DES FILTRES MODIFIÉE : DATE DÉBUT/FIN SUR UNE LIGNE, LIVREUR/PARTENAIRE SUR UNE LIGNE */}
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <span className="font-black text-blue-900 uppercase text-[10px] flex items-center gap-1">
@@ -925,55 +928,61 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
-                <input
-                  type="date"
-                  value={rapportDateDebut}
-                  onChange={(e) => setRapportDateDebut(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                />
+            <div className="space-y-2">
+              {/* Ligne 1 : Date début & Date fin */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
+                  <input
+                    type="date"
+                    value={rapportDateDebut}
+                    onChange={(e) => setRapportDateDebut(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
+                  <input
+                    type="date"
+                    value={rapportDateFin}
+                    onChange={(e) => setRapportDateFin(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
-                <input
-                  type="date"
-                  value={rapportDateFin}
-                  onChange={(e) => setRapportDateFin(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                />
-              </div>
+              {/* Ligne 2 : Livreur & Partenaire */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
+                  <select
+                    value={rapportLivreur}
+                    onChange={(e) => setRapportLivreur(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] uppercase"
+                  >
+                    <option value="">-- Tous les livreurs --</option>
+                    {emplacements.map((emp) => {
+                      const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
+                      if (!nomEmp) return null;
+                      return <option key={emp.id} value={nomEmp.toUpperCase()}>{nomEmp.toUpperCase()}</option>;
+                    })}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
-                <select
-                  value={rapportLivreur}
-                  onChange={(e) => setRapportLivreur(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] uppercase"
-                >
-                  <option value="">-- Tous les livreurs --</option>
-                  {emplacements.map((emp) => {
-                    const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
-                    if (!nomEmp) return null;
-                    return <option key={emp.id} value={nomEmp.toUpperCase()}>{nomEmp.toUpperCase()}</option>;
-                  })}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
-                <select
-                  value={rapportPartenaire}
-                  onChange={(e) => setRapportPartenaire(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                >
-                  <option value="">-- Tous les partenaires --</option>
-                  {partenaires.map((p) => (
-                    <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
-                  ))}
-                </select>
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
+                  <select
+                    value={rapportPartenaire}
+                    onChange={(e) => setRapportPartenaire(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  >
+                    <option value="">-- Tous les partenaires --</option>
+                    {partenaires.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -1003,7 +1012,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   🖨️ Imprimer
                 </button>
 
-                {/* BOUTON PARTAGER ET SON MENU MIS À JOUR */}
                 <div className="relative print-hide" ref={menuRef}>
                   <button
                     type="button"
@@ -1014,7 +1022,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </button>
 
                   {menuPartageOuvert && (
-                    <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                    <div className="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
                       <button
                         type="button"
                         onClick={imprimerRapport}
@@ -1024,10 +1032,10 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                       </button>
                       <button
                         type="button"
-                        onClick={envoyerWhatsAppImage}
+                        onClick={partagerWhatsAppTexte}
                         className="w-full text-left px-3 py-2 text-[10px] font-bold text-slate-800 hover:bg-emerald-50 hover:text-emerald-600 transition flex items-center gap-1.5"
                       >
-                        <span>🟢</span> WhatsApp (Image / Fichier)
+                        <span>🟢</span> WhatsApp (Rapport)
                       </button>
                     </div>
                   )}
@@ -1105,6 +1113,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </table>
                 </div>
 
+                {/* PIED DE PAGE VERT : MONTANT TOTAL, FRAIS, RESTE À VERSER SUR LA MÊME LIGNE */}
                 <div className="bg-emerald-900 text-white p-3 border-t border-emerald-800 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-black text-center sm:text-left">
                   <div>
                     <span className="block text-[9px] text-emerald-200 uppercase">Montant total</span>
