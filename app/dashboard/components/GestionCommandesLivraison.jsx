@@ -383,7 +383,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     return calculerStockPourUnDepot(articleId, depotId);
   };
 
-  // FILTRAGE STRICT DES LIVREURS UNIQUEMENT DEPUIS LA TABLE UTILISATEURS DE L'ENTREPRISE CONNECTÉE
   const listeLivreursUniques = () => {
     const setLivreurs = new Set();
     
@@ -570,10 +569,10 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
   const sauvegarderCommande = async (e) => {
     if (e) e.preventDefault();
-    if (sauvegardeEnCours) return; // Protection anti-double clic
+    if (sauvegardeEnCours) return;
     
     if (!numeroCommande.trim() || !idPartenaire || montantSaisi === '' || !adresseLivraison.trim()) {
-      alert('⚠️ Veuillez remplir tous les champs obligatoires (Partenaire, N° CMD, Montant et Point B / Adresse de livraison).');
+      alert('⚠️ Veuillez remplir tous les champs obligatoires (Partenaire, N° CMD, Montant et Adresse).');
       return;
     }
 
@@ -856,7 +855,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const imprimerRapport = () => {
     setTimeout(() => {
       if (!rapportRef.current) return;
-      const contenuHTML = rapportRef.current.innerHTML;
       const fenetreImpression = window.open('', '_blank', 'width=900,height=700');
       if (fenetreImpression) {
         fenetreImpression.document.write(`
@@ -933,16 +931,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   return (
     <div className="space-y-3 text-[11px] font-sans">
       
-      <div className="bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-2">
-        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 shrink-0">
-          <span>📦</span> GESTION LIVRAISON
+      <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1.5 overflow-hidden">
+        <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
+          <span>📦</span> LIVRAISON
         </h3>
         
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setVueActive('LISTE')}
-            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border ${
+            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
               vueActive === 'LISTE' 
                 ? 'bg-slate-900 text-white border-slate-900' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
@@ -969,7 +967,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               setLignesSaisies([]);
               setVueActive('CREATION');
             }}
-            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border ${
+            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
               vueActive === 'CREATION' 
                 ? 'bg-orange-600 text-white border-orange-600' 
                 : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
@@ -981,7 +979,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           <button
             type="button"
             onClick={() => setVueActive('RAPPORT')}
-            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border ${
+            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
               vueActive === 'RAPPORT' 
                 ? 'bg-blue-900 text-white border-blue-900' 
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
@@ -1332,7 +1330,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
                     <input
@@ -1357,26 +1355,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                       <span className="text-slate-400">🔍</span>
                     </button>
                   </div>
-
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livré à</label>
-                    <input
-                      type="text"
-                      list="liste-zones-effective-grille"
-                      value={zoneGrilleSelectionnee}
-                      onChange={(e) => setZoneGrilleSelectionnee(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="Quartier..."
-                      className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase"
-                    />
-                    <datalist id="liste-zones-effective-grille">
-                      {grilleTarifaire.map((tarif) => (
-                        <option key={tarif.id} value={tarif.nom_zone}>
-                          {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
-                        </option>
-                      ))}
-                    </datalist>
-                  </div>
                 </div>
               </div>
 
@@ -1387,8 +1365,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 
                 <div className="bg-white p-3 rounded-xl shadow-md flex flex-col space-y-2.5">
                   <div className="flex justify-between items-center gap-2">
+                    {/* MODIFICATION ICI : "ARTICLE" SIMPLEMENT */}
                     <span className="font-black text-slate-900 uppercase text-xs">
-                      ARTICLE DISPONIBLE
+                      ARTICLE
                     </span>
                     <button
                       type="button"
@@ -1493,14 +1472,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                     )}
                   </div>
 
-                  <div className="space-y-2 pt-1 border-t border-slate-200">
+                  {/* BAS DE PAGE DU PANIER : NAP SUR UNE LIGNE SEULE, BOUTONS D'ACTION SUR UNE DEUXIÈME LIGNE SEULE */}
+                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                    
+                    {/* PREMIÈRE LIGNE : NET À PAYER (NAP) SEUL SUR UNE LIGNE */}
+                    <div className="w-full bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
+                      <span className="font-black text-slate-900 text-[11px] uppercase">Net à payer :</span>
+                      <span className="font-black text-emerald-700 text-xs font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                    </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1 bg-slate-100 px-2.5 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
-                        <span className="font-black text-slate-900 text-[10px] uppercase">NAP :</span>
-                        <span className="font-black text-emerald-700 text-xs font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
-                      </div>
-
+                    {/* DEUXIÈME LIGNE : BOUTONS D'ACTION (ANNULER, SUPPRIMER, VALIDER) SUR UNE LIGNE SEULE */}
+                    <div className="flex items-center gap-2 w-full">
                       <button
                         type="button"
                         disabled={sauvegardeEnCours}
@@ -1509,7 +1491,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                           setVueActive('LISTE');
                           setCommandeEnEdition(null);
                         }}
-                        className="bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-3 rounded-lg text-[10px] transition text-center shrink-0 disabled:opacity-50"
+                        className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-[10px] transition text-center disabled:opacity-50 shadow-2xs"
                       >
                         Annuler
                       </button>
@@ -1530,7 +1512,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                         type="button"
                         disabled={sauvegardeEnCours}
                         onClick={sauvegarderCommande}
-                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-[10px] transition shadow-xs text-center shrink-0"
+                        className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-3 rounded-lg text-[10px] transition shadow-xs text-center"
                       >
                         {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider ➔')}
                       </button>
@@ -1560,12 +1542,14 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </p>
                 </div>
 
-                <div className="flex justify-between items-center bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
-                  <span className="font-black text-slate-900 text-xs uppercase">Total à récupérer :</span>
+                {/* SANS STOCKAGE : NET À PAYER SUR UNE LIGNE SEULE */}
+                <div className="w-full bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
+                  <span className="font-black text-slate-900 text-xs uppercase">Net à payer :</span>
                   <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
                 </div>
 
-                <div className="flex gap-1.5 pt-1">
+                {/* SANS STOCKAGE : BOUTONS D'ACTION SUR UNE DEUXIÈME LIGNE SEULE */}
+                <div className="flex gap-2 w-full pt-1">
                   <button
                     type="button"
                     disabled={sauvegardeEnCours}
