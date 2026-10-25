@@ -12,12 +12,23 @@ export default function ConnexionEntreprise() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Nettoyage immédiat de toute session précédente pour forcer l'identification manuelle via le lien
+  // 1. Nettoyage total de la session et verrouillage du bouton "Retour" du navigateur
   useEffect(() => {
     localStorage.removeItem('utilisateurConnecte');
     localStorage.removeItem('emailConnecte');
     localStorage.removeItem('entrepriseId');
     localStorage.removeItem('utilisateur_connecte');
+
+    // Empêche le retour en arrière dans l'historique
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
   const handleConnexion = async (e) => {
@@ -82,8 +93,8 @@ export default function ConnexionEntreprise() {
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
 
-      // Redirection vers le dashboard de l'entreprise
-      router.push(`/dashboard?entreprise=${entrepriseIdCible}`);
+      // Redirection définitive avec remplacement d'historique (bloque le retour arrière vers le login)
+      window.location.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
 
     } catch (err) {
       console.error('Erreur connexion :', err);
