@@ -1361,34 +1361,34 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             </div>
 
             {!partenaireSansStockage ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              /* CORRECTION APPLICIQUÉE ICI : grid-cols-2 au lieu de grid-cols-1 lg:grid-cols-2 pour forcer l'affichage côte à côte sur mobile */
+              <div className="grid grid-cols-2 gap-2">
                 
-                <div className="bg-white p-3 rounded-xl shadow-md flex flex-col space-y-2.5">
-                  <div className="flex justify-between items-center gap-2">
-                    {/* MODIFICATION ICI : "ARTICLE" SIMPLEMENT */}
-                    <span className="font-black text-slate-900 uppercase text-xs">
+                <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col space-y-2">
+                  <div className="flex justify-between items-center gap-1">
+                    <span className="font-black text-slate-900 uppercase text-[11px] truncate">
                       ARTICLE
                     </span>
                     <button
                       type="button"
                       onClick={() => setModalArticleOuverte(true)}
                       disabled={!enteteValide}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-2 py-1 rounded-lg text-[10px] flex items-center gap-1 shadow-2xs transition disabled:opacity-50"
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center gap-0.5 shadow-2xs transition disabled:opacity-50 shrink-0"
                     >
                       <span>🔍</span> Rechercher
                     </button>
                   </div>
 
                   {!enteteValide ? (
-                    <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
-                      ⚠️ Remplir d'abord l'en-tête (Partenaire, N° CMD, Montant, Adresse).
+                    <div className="p-2 text-center text-amber-700 font-bold text-[10px] bg-amber-50 rounded-lg border border-amber-200">
+                      ⚠️ Remplir l'en-tête d'abord.
                     </div>
                   ) : articlesFiltres.length === 0 ? (
-                    <div className="p-4 text-center text-slate-500 font-bold text-xs bg-slate-50 rounded-xl border border-slate-200">
-                      Aucun article trouvé avec du stock disponible.
+                    <div className="p-2 text-center text-slate-500 font-bold text-[10px] bg-slate-50 rounded-lg border border-slate-200">
+                      Aucun article disponible.
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 gap-2 overflow-y-auto max-h-[250px] pr-1">
+                    <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
                       {articlesFiltres.map((art) => {
                         const idArt = art.id_article || art.id;
                         const designation = art.Designation || art.designation || art.nom;
@@ -1399,23 +1399,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                           <div
                             key={idArt}
                             onClick={() => ajouterArticleAuPanier(art)}
-                            className={`p-2.5 rounded-xl border transition cursor-pointer flex justify-between items-center shadow-2xs ${
+                            className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
                               estEpuise 
                                 ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
                                 : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
                             }`}
                           >
-                            <div>
-                              <h5 className={`font-black uppercase text-xs ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
-                            </div>
-                            <div className="text-right">
-                              <span className={`font-black text-xs ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
-                                Stock : {stockDisp}
-                              </span>
-                              {estEpuise && (
-                                <p className="text-[8px] font-bold text-rose-600 uppercase">(Épuisé)</p>
-                              )}
-                            </div>
+                            <h5 className={`font-black uppercase text-[10px] truncate ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
+                            <span className={`font-black text-[9px] mt-1 ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
+                              Stock : {stockDisp}
+                            </span>
                           </div>
                         );
                       })}
@@ -1423,45 +1416,44 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   )}
                 </div>
 
-                <div className="bg-white p-3 rounded-xl shadow-md flex flex-col justify-between space-y-2.5">
+                <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col justify-between space-y-2">
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-                      <span className="font-black text-slate-900 uppercase text-xs">Panier</span>
+                      <span className="font-black text-slate-900 uppercase text-[11px]">Panier</span>
                     </div>
 
                     {lignesSaisies.length === 0 ? (
-                      <div className="py-8 text-center text-slate-400 font-bold text-xs italic">
-                        Le panier est vide. Cliquez sur un article.
+                      <div className="py-6 text-center text-slate-400 font-bold text-[10px] italic">
+                        Panier vide. Cliquez sur un article.
                       </div>
                     ) : (
-                      <div className="space-y-1 overflow-y-auto max-h-[160px] pr-1">
+                      <div className="space-y-1 overflow-y-auto max-h-[140px] pr-0.5">
                         {lignesSaisies.map((l, index) => (
-                          <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-xs">
+                          <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1 rounded-md text-[10px]">
                             <div className="flex-1 truncate pr-1">
-                              <p className="font-black uppercase text-slate-900 truncate text-[10px]">{l.designation}</p>
+                              <p className="font-black uppercase text-slate-900 truncate text-[9px]">{l.designation}</p>
                             </div>
                             
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className="flex items-center gap-0.5 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => modifierQuantiteLigne(index, -1)}
-                                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
+                                className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
                               >
                                 -
                               </button>
-                              <span className="font-black text-orange-600 w-5 text-center text-[10px]">{l.quantite}</span>
+                              <span className="font-black text-orange-600 w-4 text-center text-[9px]">{l.quantite}</span>
                               <button
                                 type="button"
                                 onClick={() => modifierQuantiteLigne(index, 1)}
-                                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
+                                className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
                               >
                                 +
                               </button>
                               <button
                                 type="button"
                                 onClick={() => supprimerLignePanier(index)}
-                                className="text-red-600 font-bold ml-0.5 text-[10px] px-0.5 hover:underline"
-                                title="Supprimer la ligne"
+                                className="text-red-600 font-bold ml-0.5 text-[9px] px-0.5"
                               >
                                 ✕
                               </button>
@@ -1472,17 +1464,14 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                     )}
                   </div>
 
-                  {/* BAS DE PAGE DU PANIER : NAP SUR UNE LIGNE SEULE, BOUTONS D'ACTION SUR UNE DEUXIÈME LIGNE SEULE */}
-                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                  <div className="space-y-1.5 pt-1.5 border-t border-slate-200">
                     
-                    {/* PREMIÈRE LIGNE : NET À PAYER (NAP) SEUL SUR UNE LIGNE */}
-                    <div className="w-full bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
-                      <span className="font-black text-slate-900 text-[11px] uppercase">Net à payer :</span>
-                      <span className="font-black text-emerald-700 text-xs font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                    <div className="w-full bg-slate-100 px-2 py-1.5 rounded-md border border-slate-200 flex flex-col items-center justify-center text-center">
+                      <span className="font-black text-slate-900 text-[9px] uppercase">Net à payer</span>
+                      <span className="font-black text-emerald-700 text-[10px] font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
                     </div>
 
-                    {/* DEUXIÈME LIGNE : BOUTONS D'ACTION (ANNULER, SUPPRIMER, VALIDER) SUR UNE LIGNE SEULE */}
-                    <div className="flex items-center gap-2 w-full">
+                    <div className="flex items-center gap-1 w-full">
                       <button
                         type="button"
                         disabled={sauvegardeEnCours}
@@ -1491,7 +1480,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                           setVueActive('LISTE');
                           setCommandeEnEdition(null);
                         }}
-                        className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-[10px] transition text-center disabled:opacity-50 shadow-2xs"
+                        className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-1.5 px-1 rounded-md text-[9px] transition text-center disabled:opacity-50"
                       >
                         Annuler
                       </button>
@@ -1501,7 +1490,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                           type="button"
                           disabled={sauvegardeEnCours}
                           onClick={supprimerCommandeActuelle}
-                          className="bg-red-600 hover:bg-red-700 text-white font-black px-2.5 py-2 rounded-lg text-[10px] transition shadow-xs shrink-0 disabled:opacity-50"
+                          className="bg-red-600 hover:bg-red-700 text-white font-black p-1.5 rounded-md text-[9px] transition shrink-0"
                           title="Supprimer"
                         >
                           🗑️
@@ -1512,9 +1501,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                         type="button"
                         disabled={sauvegardeEnCours}
                         onClick={sauvegarderCommande}
-                        className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-3 rounded-lg text-[10px] transition shadow-xs text-center"
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-1 rounded-md text-[9px] transition text-center shadow-xs"
                       >
-                        {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider ➔')}
+                        {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
                       </button>
                     </div>
 
@@ -1542,13 +1531,11 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </p>
                 </div>
 
-                {/* SANS STOCKAGE : NET À PAYER SUR UNE LIGNE SEULE */}
                 <div className="w-full bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
                   <span className="font-black text-slate-900 text-xs uppercase">Net à payer :</span>
                   <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
                 </div>
 
-                {/* SANS STOCKAGE : BOUTONS D'ACTION SUR UNE DEUXIÈME LIGNE SEULE */}
                 <div className="flex gap-2 w-full pt-1">
                   <button
                     type="button"
