@@ -26,17 +26,24 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [depotId, setDepotId] = useState('AUCUN_DEPOT');
   const [montantSaisi, setMontantSaisi] = useState('');
   
-  const [adresseLivraison, setAdresseLivraison] = useState('');
+  // Gestion Point A, Point B et Nature du Colis
+  const [pointADepart, setPointADepart] = useState('');
+  const [adresseLivraison, setAdresseLivraison] = useState(''); // Point B
+  const [natureColis, setNatureColis] = useState('');
   const [zoneGrilleSelectionnee, setZoneGrilleSelectionnee] = useState('');
   const [fraisLivraisonSaisi, setFraisLivraisonSaisi] = useState('');
   const [livreurAssigne, setLivreurAssigne] = useState('');
   const [statutCommandeSaisi, setStatutCommandeSaisi] = useState('EN ATTENTE');
 
+  // --- GESTION DU STOCKAGE DU PARTENAIRE ---
+  const [partenaireSansStockage, setPartenaireSansStockage] = useState(false);
+
   const dateDuJourStr = new Date().toISOString().split('T')[0];
 
   const [filtrePartenaire, setFiltrePartenaire] = useState('');
   const [filtreLivreur, setFiltreLivreur] = useState('');
-  const [filtreDate, setFiltreDate] = useState(dateDuJourStr);
+  const [filtreDateDebut, setFiltreDateDebut] = useState(dateDuJourStr);
+  const [filtreDateFin, setFiltreDateFin] = useState(dateDuJourStr);
   const [filtreStatut, setFiltreStatut] = useState('');
 
   const [rapportDateDebut, setRapportDateDebut] = useState(dateDuJourStr);
@@ -152,11 +159,23 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
     if (!partenaireId) {
       setDepotId('AUCUN_DEPOT');
+      setPartenaireSansStockage(false);
       return;
     }
 
     const partObj = partenaires.find(p => String(p.id) === String(partenaireId));
     if (partObj) {
+      const statutStock = (partObj.statut_stockage || partObj.statut || '').toString().trim().toUpperCase();
+      const sansStock = statutStock === 'SANS_STOCKAGE';
+      
+      setPartenaireSansStockage(Boolean(sansStock));
+
+      if (sansStock) {
+        if (partObj.adresse) {
+          setPointADepart(partObj.adresse);
+        }
+      }
+
       if (partObj.id_depot) {
         setDepotId(partObj.id_depot);
       } else {
@@ -176,6 +195,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       }
     } else {
       setDepotId('AUCUN_DEPOT');
+      setPartenaireSansStockage(false);
     }
   };
 
@@ -355,11 +375,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     return correspondRecherche;
   });
 
-  const enteteValide = idPartenaire && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '';
+  const enteteValide = partenaireSansStockage 
+    ? (idPartenaire && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '')
+    : (idPartenaire && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '');
 
   const ajouterArticleAuPanier = (artObj) => {
     if (!enteteValide) {
-      alert('⚠️ Veuillez d\'abord remplir le Partenaire, le N° CMD, le Montant et l\'Adresse de livraison initiale avant d\'ajouter des articles.');
+      alert('⚠️ Veuillez d\'abord remplir tous les champs obligatoires (Partenaire, N° CMD, Montant, Point A et Point B) avant d\'ajouter des articles.');
       return;
     }
 
@@ -427,7 +449,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     setDateCommande(cmd.date_commande || new Date().toISOString().split('T')[0]);
     setIdPartenaire(cmd.id_partenaire || '');
     setMontantSaisi(cmd.montant_commande !== undefined && cmd.montant_commande !== null ? String(cmd.montant_commande) : '0');
+    setPointADepart(cmd.point_a || '');
     setAdresseLivraison(cmd.adresse_livraison || '');
+    setNatureColis(cmd.nature_colis || '');
     setZoneGrilleSelectionnee(cmd.zone_effective_livraison || cmd.adresse_livraison || '');
     setFraisLivraisonSaisi(cmd.frais_livraison !== undefined && cmd.frais_livraison !== null ? String(cmd.frais_livraison) : '');
     setLivreurAssigne(cmd.vendeur_livreur || '');
@@ -475,6 +499,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setNumeroCommande('');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
+      setPartenaireSansStockage(false);
+      setPointADepart('');
+      setNatureColis('');
       setLignesSaisies([]);
       setMontantSaisi('');
       setAdresseLivraison('');
@@ -492,12 +519,19 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
   const sauvegarderCommande = async (e) => {
     if (e) e.preventDefault();
+    
     if (!numeroCommande.trim() || !idPartenaire || montantSaisi === '' || !adresseLivraison.trim()) {
-      alert('⚠️ Veuillez remplir tous les champs obligatoires (Partenaire, N° CMD, Montant et Adresse de livraison initiale).');
+      alert('⚠️ Veuillez remplir tous les champs obligatoires (Partenaire, N° CMD, Montant et Point B / Adresse de livraison).');
       return;
     }
-    if (lignesSaisies.length === 0) {
-      alert('⚠️ Le panier est vide. Veuillez ajouter au moins un article.');
+
+    if (partenaireSansStockage && !pointADepart.trim()) {
+      alert('⚠️ Pour un partenaire sans stockage, veuillez préciser le Point A (point de départ).');
+      return;
+    }
+    
+    if (!partenaireSansStockage && lignesSaisies.length === 0) {
+      alert('⚠️ Le panier est vide. Veuillez ajouter au moins un article pour ce partenaire avec stockage.');
       return;
     }
 
@@ -526,7 +560,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         if (empObj) empIdTrouve = empObj.id;
       }
 
-      if (statutCommandeSaisi === 'LIVRÉ') {
+      if (!partenaireSansStockage && statutCommandeSaisi === 'LIVRÉ') {
         if (!empIdTrouve) {
           alert(`❌ Impossible de passer la commande au statut LIVRÉ : Aucun livreur valide n'est assigné à cette commande.`);
           return;
@@ -543,22 +577,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         }
       }
 
-      if (livreurAssigne.trim() !== '' && statutCommandeSaisi !== 'LIVRÉ') {
-        if (empIdTrouve) {
-          for (const item of lignesSaisies) {
-            const stockEmp = calculerStockPourEmplacement(item.id_article, empIdTrouve);
-            if (stockEmp < item.quantite) {
-              const confirmationRupture = window.confirm(
-                `⚠️ ALERTE RUPTURE DE STOCK :\nLe livreur [${livreurAssigne}] n'a que ${stockEmp} en stock pour l'article "${item.designation}" (quantité commandée : ${item.quantite}).\n\nVoulez-vous toujours confirmer l'assignation de la commande ${numeroComplet} ?`
-              );
-              if (!confirmationRupture) {
-                return;
-              }
-            }
-          }
-        }
-      }
-
       const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
 
       const payload = {
@@ -569,7 +587,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         id_partenaire: idPartenaire,
         nom_partenaire: partObj ? (partObj.nom_fournisseur || partObj.nom) : '',
         montant_commande: napGlobal,
+        point_a: partenaireSansStockage ? pointADepart : null,
         adresse_livraison: adresseLivraison,
+        nature_colis: partenaireSansStockage ? natureColis : null,
         zone_effective_livraison: zoneGrilleSelectionnee || adresseLivraison,
         frais_livraison: parseFloat(fraisLivraisonSaisi) || 0,
         vendeur_livreur: livreurAssigne,
@@ -590,7 +610,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
         await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
 
-        if (statutCommandeSaisi === 'LIVRÉ' && statutPrecedent !== 'LIVRÉ') {
+        if (!partenaireSansStockage && statutCommandeSaisi === 'LIVRÉ' && statutPrecedent !== 'LIVRÉ') {
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: entrepriseId,
@@ -617,7 +637,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         if (errCmd) throw errCmd;
         if (cmdInseree) idCmdCourante = cmdInseree.id;
 
-        if (statutCommandeSaisi === 'LIVRÉ') {
+        if (!partenaireSansStockage && statutCommandeSaisi === 'LIVRÉ') {
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: entrepriseId,
@@ -635,7 +655,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         }
       }
 
-      if (lignesSaisies.length > 0 && idCmdCourante) {
+      if (!partenaireSansStockage && lignesSaisies.length > 0 && idCmdCourante) {
         const payloadLignes = lignesSaisies.map(l => ({
           id_commande: idCmdCourante,
           id_article: l.id_article,
@@ -655,6 +675,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setNumeroCommande('');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
+      setPartenaireSansStockage(false);
+      setPointADepart('');
+      setNatureColis('');
       setLignesSaisies([]);
       setMontantSaisi('');
       setAdresseLivraison('');
@@ -682,8 +705,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     if (filtreLivreur) {
       matchLivreur = (cmd.vendeur_livreur || '').toUpperCase().includes(filtreLivreur.toUpperCase());
     }
-    if (filtreDate) {
-      matchDate = cmd.date_commande === filtreDate;
+    if (filtreDateDebut && filtreDateFin) {
+      matchDate = cmd.date_commande >= filtreDateDebut && cmd.date_commande <= filtreDateFin;
+    } else if (filtreDateDebut) {
+      matchDate = cmd.date_commande >= filtreDateDebut;
+    } else if (filtreDateFin) {
+      matchDate = cmd.date_commande <= filtreDateFin;
     }
     if (filtreStatut) {
       matchStatut = (cmd.statut_commande || 'EN ATTENTE') === filtreStatut;
@@ -740,9 +767,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       valB = b.nom_partenaire || '';
     } else if (colonneTri === 'article') {
       const lignesA = lignesCommandesMap[a.id] || [];
-      valA = lignesA.length > 0 ? lignesA.map(l => `${l.designation} x${l.quantite}`).join(', ') : '';
+      valA = lignesA.length > 0 ? lignesA.map(l => `${l.designation} x${l.quantite}`).join(', ') : (a.point_a ? `Point A: ${a.point_a} ➔ B: ${a.adresse_livraison}` : '');
       const lignesB = lignesCommandesMap[b.id] || [];
-      valB = lignesB.length > 0 ? lignesB.map(l => `${l.designation} x${l.quantite}`).join(', ') : '';
+      valB = lignesB.length > 0 ? lignesB.map(l => `${l.designation} x${l.quantite}`).join(', ') : (b.point_a ? `Point A: ${b.point_a} ➔ B: ${b.adresse_livraison}` : '');
     } else if (colonneTri === 'montant') {
       valA = Number(a.montant_commande || 0);
       valB = Number(b.montant_commande || 0);
@@ -872,6 +899,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               setCommandeEnEdition(null);
               setNumeroCommande('');
               setIdPartenaire('');
+              setPartenaireSansStockage(false);
+              setPointADepart('');
+              setNatureColis('');
               setMontantSaisi('');
               setAdresseLivraison('');
               setZoneGrilleSelectionnee('');
@@ -906,7 +936,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
       {vueActive === 'RAPPORT' && (
         <div className="space-y-3">
-          {/* SECTION DES FILTRES MODIFIÉE : DATE DÉBUT/FIN SUR UNE LIGNE, LIVREUR/PARTENAIRE SUR UNE LIGNE */}
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <span className="font-black text-blue-900 uppercase text-[10px] flex items-center gap-1">
@@ -929,7 +958,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             </div>
 
             <div className="space-y-2">
-              {/* Ligne 1 : Date début & Date fin */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
@@ -952,7 +980,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 </div>
               </div>
 
-              {/* Ligne 2 : Livreur & Partenaire */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
@@ -1067,7 +1094,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                           </th>
                         )}
                         <th className="p-2.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('article')}>
-                          Article {colonneTri === 'article' && (ordreTri === 'asc' ? '▲' : '▼')}
+                          Détails / Trajet (Point A ➔ B) {colonneTri === 'article' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                         {!rapportLivreur && <th className="p-2.5">Livreur</th>}
                         <th className="p-2.5 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('montant')}>
@@ -1095,8 +1122,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                                     </span>
                                   ))}
                                 </div>
+                              ) : cmd.point_a ? (
+                                <span className="text-slate-800 font-bold text-[9.5px]">
+                                  📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong> {cmd.nature_colis ? `(${cmd.nature_colis})` : ''}
+                                </span>
                               ) : (
-                                <span className="text-slate-400 italic">Aucun article</span>
+                                <span className="text-slate-400 italic">Sans stockage (En-tête seul)</span>
                               )}
                             </td>
                             {!rapportLivreur && <td className="p-2.5 font-bold text-blue-700 uppercase">{cmd.vendeur_livreur || '-'}</td>}
@@ -1113,7 +1144,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </table>
                 </div>
 
-                {/* PIED DE PAGE VERT : MONTANT TOTAL, FRAIS, RESTE À VERSER SUR LA MÊME LIGNE */}
                 <div className="bg-emerald-900 text-white p-3 border-t border-emerald-800 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-black text-center sm:text-left">
                   <div>
                     <span className="block text-[9px] text-emerald-200 uppercase">Montant total</span>
@@ -1139,7 +1169,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           
           <div className="bg-white p-3 rounded-xl shadow-inner space-y-3">
             
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* LIGNE 1 : Date & Partenaire */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
                 <input
@@ -1147,6 +1178,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   required
                   value={dateCommande}
                   onChange={(e) => setDateCommande(e.target.value)}
+                  onFocus={(e) => e.target.select()}
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
                 />
               </div>
@@ -1160,82 +1192,200 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
                 >
                   <option value="">-- Choisir un partenaire --</option>
-                  {partenaires.map((p) => (
-                    <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
-                  ))}
+                  {partenaires.map((p) => {
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.nom_fournisseur || p.nom}
+                      </option>
+                    );
+                  })}
                 </select>
-              </div>
-
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse de Livraison (Initiale) *</label>
-                <input
-                  type="text"
-                  required
-                  list="liste-zones-commandes"
-                  value={adresseLivraison}
-                  onChange={(e) => handleChangementAdresse(e.target.value)}
-                  placeholder="Tapez ou sélectionnez un quartier..."
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
-                />
-                <datalist id="liste-zones-commandes">
-                  {grilleTarifaire.map((tarif) => (
-                    <option key={tarif.id} value={tarif.nom_zone}>
-                      {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
-                    </option>
-                  ))}
-                </datalist>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
-                <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                  <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
-                    CMD-
-                  </span>
+            {/* CHAMPS SPÉCIFIQUES PARTENAIRE SANS STOCKAGE : POINT A & POINT B SUR LA MÊME LIGNE */}
+            {partenaireSansStockage && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Point de départ / Enlèvement) *</label>
                   <input
                     type="text"
                     required
-                    value={numeroCommande}
-                    onChange={(e) => setNumeroCommande(e.target.value.toUpperCase())}
-                    placeholder="01-03"
-                    className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 uppercase focus:outline-none"
+                    value={pointADepart}
+                    onChange={(e) => setPointADepart(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="Ex: Quartier Hippodrome, Boutique Akwa..."
+                    className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  value={montantSaisi}
-                  onChange={(e) => setMontantSaisi(e.target.value)}
-                  placeholder="0"
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                />
-              </div>
-
-              {!commandeEnEdition && (
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Commande *</label>
-                  <select
-                    value={statutCommandeSaisi}
-                    onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                  >
-                    <option value="EN ATTENTE">EN ATTENTE</option>
-                    <option value="LIVRÉ">LIVRÉ</option>
-                    <option value="REPORTÉ">REPORTÉ</option>
-                    <option value="ANNULÉ">ANNULÉ</option>
-                  </select>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Point B (Adresse de Livraison) *</label>
+                  <input
+                    type="text"
+                    required
+                    list="liste-zones-commandes"
+                    value={adresseLivraison}
+                    onChange={(e) => handleChangementAdresse(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="Tapez ou sélectionnez un quartier..."
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                  />
+                  <datalist id="liste-zones-commandes">
+                    {grilleTarifaire.map((tarif) => (
+                      <option key={tarif.id} value={tarif.nom_zone}>
+                        {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
-            <div className="bg-blue-50/70 border-2 border-blue-200 p-2.5 rounded-xl space-y-2 mt-2">
+            {/* LIGNE CLASSIQUE (SI AVEC STOCKAGE) : ADRESSE DE LIVRAISON & N° CMD */}
+            {!partenaireSansStockage && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse de Livraison (Initiale) *</label>
+                  <input
+                    type="text"
+                    required
+                    list="liste-zones-commandes"
+                    value={adresseLivraison}
+                    onChange={(e) => handleChangementAdresse(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="Tapez ou sélectionnez un quartier..."
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                  />
+                  <datalist id="liste-zones-commandes">
+                    {grilleTarifaire.map((tarif) => (
+                      <option key={tarif.id} value={tarif.nom_zone}>
+                        {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
+                  <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
+                      CMD-
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={numeroCommande}
+                      onChange={(e) => setNumeroCommande(e.target.value.toUpperCase())}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="01-03"
+                      className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 uppercase focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SI SANS STOCKAGE : N° CMD, MONTANT, NATURE DU COLIS ET STATUT COMMANDE SUR LA MÊME LIGNE (4 COLONNES) */}
+            {partenaireSansStockage ? (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
+                  <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
+                      CMD-
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={numeroCommande}
+                      onChange={(e) => setNumeroCommande(e.target.value.toUpperCase())}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="01-03"
+                      className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 uppercase focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant à récupérer *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={montantSaisi}
+                    onChange={(e) => setMontantSaisi(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature du colis</label>
+                  <input
+                    type="text"
+                    value={natureColis}
+                    onChange={(e) => setNatureColis(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="Ex: Colis fragile, Vêtement..."
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                  />
+                </div>
+
+                {!commandeEnEdition && (
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Commande *</label>
+                    <select
+                      value={statutCommandeSaisi}
+                      onChange={(e) => setStatutCommandeSaisi(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                    >
+                      <option value="EN ATTENTE">EN ATTENTE</option>
+                      <option value="LIVRÉ">LIVRÉ</option>
+                      <option value="REPORTÉ">REPORTÉ</option>
+                      <option value="ANNULÉ">ANNULÉ</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* SI AVEC STOCKAGE : MONTANT & STATUT COMMANDE SUR LA MÊME LIGNE */
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant à récupérer *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={montantSaisi}
+                    onChange={(e) => setMontantSaisi(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                  />
+                </div>
+
+                {!commandeEnEdition && (
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Commande *</label>
+                    <select
+                      value={statutCommandeSaisi}
+                      onChange={(e) => setStatutCommandeSaisi(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                    >
+                      <option value="EN ATTENTE">EN ATTENTE</option>
+                      <option value="LIVRÉ">LIVRÉ</option>
+                      <option value="REPORTÉ">REPORTÉ</option>
+                      <option value="ANNULÉ">ANNULÉ</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ZONE RÉSERVÉE AUX SUPERVISEURS */}
+            <div className="bg-blue-50/70 border-2 border-blue-200 p-2.5 rounded-xl space-y-2.5 mt-2">
               <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
                 <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
                   🔒 Zone réservée aux superviseurs
@@ -1245,7 +1395,51 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="space-y-2">
+                {/* Ligne 1 Superviseur : Frais de livraison & Livreur assigné */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais de Livraison (Calculé)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={fraisLivraisonSaisi}
+                      onChange={(e) => setFraisLivraisonSaisi(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="0"
+                      className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur Assigné</label>
+                    <input
+                      type="text"
+                      list="liste-utilisateurs-livreurs"
+                      value={livreurAssigne}
+                      onChange={(e) => setLivreurAssigne(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="Tapez le nom ou les initiales..."
+                      className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase"
+                    />
+                    <datalist id="liste-utilisateurs-livreurs">
+                      {emplacements.map((emp) => {
+                        const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
+                        return <option key={emp.id} value={nomEmp.toUpperCase()} />;
+                      })}
+                      {utilisateurs.map((u) => {
+                        let nomAffichage = u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '';
+                        if (!nomAffichage && u.email) {
+                          nomAffichage = u.email.split('@')[0];
+                        }
+                        nomAffichage = nomAffichage.toUpperCase();
+                        return <option key={u.id} value={nomAffichage} />;
+                      })}
+                    </datalist>
+                  </div>
+                </div>
+
+                {/* Ligne 2 Superviseur : Zone effective sur sa propre ligne */}
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Zone Effective (Livraison)</label>
                   <input
@@ -1253,6 +1447,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                     list="liste-zones-effective-grille"
                     value={zoneGrilleSelectionnee}
                     onChange={(e) => handleSelectionZoneEffective(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     placeholder="Tapez le quartier ou la zone..."
                     className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase"
                   />
@@ -1264,274 +1459,337 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                     ))}
                   </datalist>
                 </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais de Livraison</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={fraisLivraisonSaisi}
-                    onChange={(e) => setFraisLivraisonSaisi(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0"
-                    className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur Assigné</label>
-                  <input
-                    type="text"
-                    list="liste-utilisateurs-livreurs"
-                    value={livreurAssigne}
-                    onChange={(e) => setLivreurAssigne(e.target.value)}
-                    placeholder="Tapez le nom ou les initiales..."
-                    className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase"
-                  />
-                  <datalist id="liste-utilisateurs-livreurs">
-                    {emplacements.map((emp) => {
-                      const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
-                      return <option key={emp.id} value={nomEmp.toUpperCase()} />;
-                    })}
-                    {utilisateurs.map((u) => {
-                      let nomAffichage = u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '';
-                      if (!nomAffichage && u.email) {
-                        nomAffichage = u.email.split('@')[0];
-                      }
-                      nomAffichage = nomAffichage.toUpperCase();
-                      return <option key={u.id} value={nomAffichage} />;
-                    })}
-                  </datalist>
-                </div>
               </div>
             </div>
 
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            
-            <div className="bg-white p-3 rounded-xl shadow-md flex flex-col space-y-2.5">
-              <div className="flex justify-between items-center gap-2">
-                <span className="font-black text-slate-900 uppercase text-xs">
-                  Article Disponible (Jomo) {livreurAssigne ? `(${livreurAssigne})` : ''}
-                </span>
-                <div className="relative flex-1 max-w-[160px]">
-                  <input
-                    type="text"
-                    value={rechercheArticleInput}
-                    onChange={(e) => setRechercheArticleInput(e.target.value)}
-                    placeholder="🔍 RECHERCHER..."
-                    disabled={!enteteValide}
-                    className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-[10px] font-extrabold uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
-                  />
-                </div>
-              </div>
-
-              {!enteteValide ? (
-                <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
-                  ⚠️ Veuillez d'abord remplir le <strong>Partenaire</strong>, le <strong>N° CMD</strong>, le <strong>Montant</strong> et l'<strong>Adresse de livraison initiale</strong>.
-                </div>
-              ) : !idPartenaire ? (
-                <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
-                  ⚠️ Veuillez sélectionner un partenaire valide.
-                </div>
-              ) : articlesFiltres.length === 0 ? (
-                <div className="p-4 text-center text-slate-500 font-bold text-xs bg-slate-50 rounded-xl border border-slate-200">
-                  Aucun article trouvé avec du stock disponible.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 overflow-y-auto max-h-[250px] pr-1">
-                  {articlesFiltres.map((art) => {
-                    const idArt = art.id_article || art.id;
-                    const designation = art.Designation || art.designation || art.nom;
-                    const prixVente = Number(art.P_V || art.prix_vente || art.prix_unitaire || art.prix || 0);
-                    const stockDisp = getStockReelArticle(art);
-                    const estEpuise = stockDisp <= 0;
-
-                    return (
-                      <div
-                        key={idArt}
-                        onClick={() => ajouterArticleAuPanier(art)}
-                        className={`p-2.5 rounded-xl border transition cursor-pointer flex justify-between items-center shadow-2xs ${
-                          estEpuise 
-                            ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
-                            : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
-                        }`}
-                      >
-                        <div>
-                          <h5 className={`font-black uppercase text-xs ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
-                          <p className={`text-[10px] font-black font-mono mt-0.5 ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
-                            {prixVente.toLocaleString('fr-FR')} F
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`font-black text-xs ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
-                            Stock : {stockDisp}
-                          </span>
-                          {estEpuise && (
-                            <p className="text-[8px] font-bold text-rose-600 uppercase">(Épuisé)</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white p-3 rounded-xl shadow-md flex flex-col justify-between space-y-2.5">
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-                  <span className="font-black text-slate-900 uppercase text-xs">Panier</span>
+          {/* SECTION ARTICLES / PANIER : MASQUÉE SI PARTENAIRE SANS STOCKAGE */}
+          {!partenaireSansStockage ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              
+              <div className="bg-white p-3 rounded-xl shadow-md flex flex-col space-y-2.5">
+                <div className="flex justify-between items-center gap-2">
+                  <span className="font-black text-slate-900 uppercase text-xs">
+                    Article Disponible (Jomo) {livreurAssigne ? `(${livreurAssigne})` : ''}
+                  </span>
+                  <div className="relative flex-1 max-w-[160px]">
+                    <input
+                      type="text"
+                      value={rechercheArticleInput}
+                      onChange={(e) => setRechercheArticleInput(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="🔍 RECHERCHER..."
+                      disabled={!enteteValide}
+                      className="w-full bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 text-[10px] font-extrabold uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
+                    />
+                  </div>
                 </div>
 
-                {lignesSaisies.length === 0 ? (
-                  <div className="py-8 text-center text-slate-400 font-bold text-xs italic">
-                    Le panier est vide. Cliquez sur un article.
+                {!enteteValide ? (
+                  <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
+                    ⚠️ Veuillez d'abord remplir le <strong>Partenaire</strong>, le <strong>N° CMD</strong>, le <strong>Montant</strong> et l'<strong>Adresse de livraison (Point B)</strong>.
+                  </div>
+                ) : !idPartenaire ? (
+                  <div className="p-4 text-center text-amber-700 font-bold text-xs bg-amber-50 rounded-xl border border-amber-200">
+                    ⚠️ Veuillez sélectionner un partenaire valide.
+                  </div>
+                ) : articlesFiltres.length === 0 ? (
+                  <div className="p-4 text-center text-slate-500 font-bold text-xs bg-slate-50 rounded-xl border border-amber-200">
+                    Aucun article trouvé avec du stock disponible.
                   </div>
                 ) : (
-                  <div className="space-y-1 overflow-y-auto max-h-[160px] pr-1">
-                    {lignesSaisies.map((l, index) => (
-                      <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-xs">
-                        <div className="flex-1 truncate pr-1">
-                          <p className="font-black uppercase text-slate-900 truncate text-[10px]">{l.designation}</p>
+                  <div className="grid grid-cols-1 gap-2 overflow-y-auto max-h-[250px] pr-1">
+                    {articlesFiltres.map((art) => {
+                      const idArt = art.id_article || art.id;
+                      const designation = art.Designation || art.designation || art.nom;
+                      const prixVente = Number(art.P_V || art.prix_vente || art.prix_unitaire || art.prix || 0);
+                      const stockDisp = getStockReelArticle(art);
+                      const estEpuise = stockDisp <= 0;
+
+                      return (
+                        <div
+                          key={idArt}
+                          onClick={() => ajouterArticleAuPanier(art)}
+                          className={`p-2.5 rounded-xl border transition cursor-pointer flex justify-between items-center shadow-2xs ${
+                            estEpuise 
+                              ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
+                              : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
+                          }`}
+                        >
+                          <div>
+                            <h5 className={`font-black uppercase text-xs ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
+                            <p className={`text-[10px] font-black font-mono mt-0.5 ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
+                              {prixVente.toLocaleString('fr-FR')} F
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className={`font-black text-xs ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
+                              Stock : {stockDisp}
+                            </span>
+                            {estEpuise && (
+                              <p className="text-[8px] font-bold text-rose-600 uppercase">(Épuisé)</p>
+                            )}
+                          </div>
                         </div>
-                        
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => modifierQuantiteLigne(index, -1)}
-                            className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
-                          >
-                            -
-                          </button>
-                          <span className="font-black text-orange-600 w-5 text-center text-[10px]">{l.quantite}</span>
-                          <button
-                            type="button"
-                            onClick={() => modifierQuantiteLigne(index, 1)}
-                            className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
-                          >
-                            +
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => supprimerLignePanier(index)}
-                            className="text-red-600 font-bold ml-0.5 text-[10px] px-0.5 hover:underline"
-                            title="Supprimer la ligne"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              <div className="space-y-2 pt-1 border-t border-slate-200">
+              <div className="bg-white p-3 rounded-xl shadow-md flex flex-col justify-between space-y-2.5">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-1">
+                    <span className="font-black text-slate-900 uppercase text-xs">Panier</span>
+                  </div>
 
-                <div className="flex justify-between items-center bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200">
-                  <span className="font-black text-slate-900 text-[10px] uppercase">NAP :</span>
-                  <span className="font-black text-emerald-700 text-xs font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                  {lignesSaisies.length === 0 ? (
+                    <div className="py-8 text-center text-slate-400 font-bold text-xs italic">
+                      Le panier est vide. Cliquez sur un article.
+                    </div>
+                  ) : (
+                    <div className="space-y-1 overflow-y-auto max-h-[160px] pr-1">
+                      {lignesSaisies.map((l, index) => (
+                        <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-xs">
+                          <div className="flex-1 truncate pr-1">
+                            <p className="font-black uppercase text-slate-900 truncate text-[10px]">{l.designation}</p>
+                          </div>
+                          
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => modifierQuantiteLigne(index, -1)}
+                              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
+                            >
+                              -
+                            </button>
+                            <span className="font-black text-orange-600 w-5 text-center text-[10px]">{l.quantite}</span>
+                            <button
+                              type="button"
+                              onClick={() => modifierQuantiteLigne(index, 1)}
+                              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[10px]"
+                            >
+                              +
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => supprimerLignePanier(index)}
+                              className="text-red-600 font-bold ml-0.5 text-[10px] px-0.5 hover:underline"
+                              title="Supprimer la ligne"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {commandeEnEdition && (
-                  <div className="bg-slate-100 p-1.5 rounded-lg border border-slate-300 space-y-1">
-                    <span className="block font-black text-slate-800 uppercase text-[8px]">
-                      Statut (Superviseur) :
-                    </span>
-                    <div className="grid grid-cols-4 gap-1">
-                      <button
-                        type="button"
-                        disabled={statutCommandeSaisi === 'ANNULÉ' || statutCommandeSaisi === 'LIVRÉ'}
-                        onClick={() => setStatutCommandeSaisi('EN ATTENTE')}
-                        className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                          statutCommandeSaisi === 'EN ATTENTE'
-                            ? 'bg-amber-500 text-white border-amber-600 ring-1 ring-amber-300'
-                            : 'bg-white text-slate-800 border-slate-300 hover:bg-amber-50'
-                        } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        Attente
-                      </button>
+                <div className="space-y-2 pt-1 border-t border-slate-200">
 
-                      <button
-                        type="button"
-                        disabled={statutCommandeSaisi === 'ANNULÉ' || statutCommandeSaisi === 'LIVRÉ'}
-                        onClick={() => setStatutCommandeSaisi('REPORTÉ')}
-                        className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                          statutCommandeSaisi === 'REPORTÉ'
-                            ? 'bg-blue-600 text-white border-blue-700 ring-1 ring-blue-300'
-                            : 'bg-white text-slate-800 border-slate-300 hover:bg-blue-50'
-                        } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        Reporté
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={statutCommandeSaisi === 'LIVRÉ'}
-                        onClick={() => setStatutCommandeSaisi('ANNULÉ')}
-                        className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                          statutCommandeSaisi === 'ANNULÉ'
-                            ? 'bg-rose-600 text-white border-rose-700 ring-1 ring-rose-300'
-                            : 'bg-white text-slate-800 border-slate-300 hover:bg-rose-50'
-                        } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        Annulé
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={statutCommandeSaisi === 'ANNULÉ'}
-                        onClick={() => setStatutCommandeSaisi('LIVRÉ')}
-                        className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
-                          statutCommandeSaisi === 'LIVRÉ'
-                            ? 'bg-emerald-600 text-white border-emerald-700 ring-1 ring-emerald-300'
-                            : 'bg-white text-slate-800 border-slate-300 hover:bg-emerald-50'
-                        } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        Livré
-                      </button>
-                    </div>
+                  <div className="flex justify-between items-center bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200">
+                    <span className="font-black text-slate-900 text-[10px] uppercase">NAP :</span>
+                    <span className="font-black text-emerald-700 text-xs font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
                   </div>
-                )}
-
-                <div className="flex gap-1 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLignesSaisies([]);
-                      setVueActive('LISTE');
-                      setCommandeEnEdition(null);
-                    }}
-                    className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-1.5 px-1 rounded-lg text-[10px] transition text-center"
-                  >
-                    Annuler
-                  </button>
 
                   {commandeEnEdition && (
-                    <button
-                      type="button"
-                      onClick={supprimerCommandeActuelle}
-                      className="bg-red-600 hover:bg-red-700 text-white font-black px-2 py-1.5 rounded-lg text-[10px] transition shadow-xs"
-                      title="Supprimer"
-                    >
-                      🗑️
-                    </button>
+                    <div className="bg-slate-100 p-1.5 rounded-lg border border-slate-300 space-y-1">
+                      <span className="block font-black text-slate-800 uppercase text-[8px]">
+                        Statut (Superviseur) :
+                      </span>
+                      <div className="grid grid-cols-4 gap-1">
+                        <button
+                          type="button"
+                          disabled={statutCommandeSaisi === 'ANNULÉ' || statutCommandeSaisi === 'LIVRÉ'}
+                          onClick={() => setStatutCommandeSaisi('EN ATTENTE')}
+                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
+                            statutCommandeSaisi === 'EN ATTENTE'
+                              ? 'bg-amber-500 text-white border-amber-600 ring-1 ring-amber-300'
+                              : 'bg-white text-slate-800 border-slate-300 hover:bg-amber-50'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          Attente
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={statutCommandeSaisi === 'ANNULÉ' || statutCommandeSaisi === 'LIVRÉ'}
+                          onClick={() => setStatutCommandeSaisi('REPORTÉ')}
+                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
+                            statutCommandeSaisi === 'REPORTÉ'
+                              ? 'bg-blue-600 text-white border-blue-700 ring-1 ring-blue-300'
+                              : 'bg-white text-slate-800 border-slate-300 hover:bg-blue-50'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          Reporté
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={statutCommandeSaisi === 'LIVRÉ'}
+                          onClick={() => setStatutCommandeSaisi('ANNULÉ')}
+                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
+                            statutCommandeSaisi === 'ANNULÉ'
+                              ? 'bg-rose-600 text-white border-rose-700 ring-1 ring-rose-300'
+                              : 'bg-white text-slate-800 border-slate-300 hover:bg-rose-50'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          Annulé
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={statutCommandeSaisi === 'ANNULÉ'}
+                          onClick={() => setStatutCommandeSaisi('LIVRÉ')}
+                          className={`py-1 px-0.5 rounded font-black text-[9px] uppercase transition truncate border ${
+                            statutCommandeSaisi === 'LIVRÉ'
+                              ? 'bg-emerald-600 text-white border-emerald-700 ring-1 ring-emerald-300'
+                              : 'bg-white text-slate-800 border-slate-300 hover:bg-emerald-50'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          Livré
+                        </button>
+                      </div>
+                    </div>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={sauvegarderCommande}
-                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1.5 px-2 rounded-lg text-[10px] transition shadow-xs text-center"
-                  >
-                    {commandeEnEdition ? 'Mettre à jour ➔' : 'Valider ➔'}
-                  </button>
+                  <div className="flex gap-1 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLignesSaisies([]);
+                        setVueActive('LISTE');
+                        setCommandeEnEdition(null);
+                      }}
+                      className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-1.5 px-1 rounded-lg text-[10px] transition text-center"
+                    >
+                      Annuler
+                    </button>
+
+                    {commandeEnEdition && (
+                      <button
+                        type="button"
+                        onClick={supprimerCommandeActuelle}
+                        className="bg-red-600 hover:bg-red-700 text-white font-black px-2 py-1.5 rounded-lg text-[10px] transition shadow-xs"
+                        title="Supprimer"
+                      >
+                        🗑️
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={sauvegarderCommande}
+                      className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-1.5 px-2 rounded-lg text-[10px] transition shadow-xs text-center"
+                    >
+                      {commandeEnEdition ? 'Mettre à jour ➔' : 'Valider ➔'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-          </div>
+            </div>
+          ) : (
+            /* BOUTONS DE VALIDATION POUR LES PARTENAIRES SANS STOCKAGE (TRAJET POINT A ➔ POINT B) */
+            <div className="bg-white p-3 rounded-xl shadow-md space-y-2.5">
+              <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs space-y-1">
+                <span className="block font-black text-orange-900 uppercase">Résumé du Trajet :</span>
+                <p className="font-bold text-slate-800">
+                  📍 Départ (Point A) : <strong className="text-slate-900">{pointADepart || 'Non défini'}</strong>
+                </p>
+                <p className="font-bold text-slate-800">
+                  🎯 Arrivée (Point B) : <strong className="text-orange-600">{adresseLivraison || 'Non défini'}</strong>
+                </p>
+                {natureColis && (
+                  <p className="font-bold text-slate-800">
+                    📦 Nature du colis : <strong className="text-blue-700">{natureColis}</strong>
+                  </p>
+                )}
+                <p className="font-bold text-slate-800">
+                  🛵 Livreur : <strong className="text-blue-600 uppercase">{livreurAssigne || 'Non assigné'}</strong>
+                </p>
+              </div>
+
+              <div className="flex justify-between items-center bg-slate-100 px-3 py-2 rounded-lg border border-slate-200">
+                <span className="font-black text-slate-900 text-xs uppercase">Montant total à récupérer :</span>
+                <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+              </div>
+
+              {commandeEnEdition && (
+                <div className="bg-slate-100 p-2 rounded-lg border border-slate-300 space-y-1">
+                  <span className="block font-black text-slate-800 uppercase text-[9px]">
+                    Statut (Superviseur) :
+                  </span>
+                  <div className="grid grid-cols-4 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setStatutCommandeSaisi('EN ATTENTE')}
+                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'EN ATTENTE' ? 'bg-amber-500 text-white border-amber-600' : 'bg-white text-slate-800'}`}
+                    >
+                      Attente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatutCommandeSaisi('REPORTÉ')}
+                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'REPORTÉ' ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-800'}`}
+                    >
+                      Reporté
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatutCommandeSaisi('ANNULÉ')}
+                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'ANNULÉ' ? 'bg-rose-600 text-white border-rose-700' : 'bg-white text-slate-800'}`}
+                    >
+                      Annulé
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatutCommandeSaisi('LIVRÉ')}
+                      className={`py-1 px-1 rounded font-black text-[9px] uppercase transition border ${statutCommandeSaisi === 'LIVRÉ' ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-slate-800'}`}
+                    >
+                      Livré
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLignesSaisies([]);
+                    setVueActive('LISTE');
+                    setCommandeEnEdition(null);
+                  }}
+                  className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-xs transition text-center"
+                >
+                  Annuler
+                </button>
+
+                {commandeEnEdition && (
+                  <button
+                    type="button"
+                    onClick={supprimerCommandeActuelle}
+                    className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs transition shadow-xs"
+                    title="Supprimer"
+                  >
+                    🗑️ Supprimer
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={sauvegarderCommande}
+                  className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
+                >
+                  {commandeEnEdition ? 'Mettre à jour la commande ➔' : 'Valider la commande ➔'}
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
@@ -1541,15 +1799,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
               <span className="font-black text-slate-900 uppercase text-[10px] flex items-center gap-1">
-                🔍 Filtrer les commandes
+                🔍 FILTRER LES COMMANDES
               </span>
-              {(filtrePartenaire || filtreLivreur || filtreDate !== dateDuJourStr || filtreStatut) && (
+              {(filtrePartenaire || filtreLivreur || filtreDateDebut !== dateDuJourStr || filtreDateFin !== dateDuJourStr || filtreStatut) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFiltrePartenaire('');
                     setFiltreLivreur('');
-                    setFiltreDate(dateDuJourStr);
+                    setFiltreDateDebut(dateDuJourStr);
+                    setFiltreDateFin(dateDuJourStr);
                     setFiltreStatut('');
                   }}
                   className="text-orange-600 hover:text-orange-700 font-bold text-[10px] underline"
@@ -1559,61 +1818,78 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
-                <select
-                  value={filtrePartenaire}
-                  onChange={(e) => setFiltrePartenaire(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                >
-                  <option value="">Tous les partenaires</option>
-                  {partenaires.map((p) => (
-                    <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
-                  ))}
-                </select>
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
+                  <select
+                    value={filtrePartenaire}
+                    onChange={(e) => setFiltrePartenaire(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  >
+                    <option value="">Tous les partenaires</option>
+                    {partenaires.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nom_fournisseur || p.nom}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
+                  <input
+                    type="date"
+                    value={filtreDateDebut}
+                    onChange={(e) => setFiltreDateDebut(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
+                  <input
+                    type="date"
+                    value={filtreDateFin}
+                    onChange={(e) => setFiltreDateFin(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
-                <input
-                  type="text"
-                  value={filtreLivreur}
-                  onChange={(e) => setFiltreLivreur(e.target.value)}
-                  placeholder="Livreur..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] uppercase"
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
+                  <input
+                    type="text"
+                    value={filtreLivreur}
+                    onChange={(e) => setFiltreLivreur(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="Livreur..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px] uppercase"
+                  />
+                </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-                <select
-                  value={filtreStatut}
-                  onChange={(e) => setFiltreStatut(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                >
-                  <option value="">Tous les statuts</option>
-                  <option value="EN ATTENTE">EN ATTENTE</option>
-                  <option value="LIVRÉ">LIVRÉ</option>
-                  <option value="REPORTÉ">REPORTÉ</option>
-                  <option value="ANNULÉ">ANNULÉ</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date</label>
-                <input
-                  type="date"
-                  value={filtreDate}
-                  onChange={(e) => setFiltreDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                />
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+                  <select
+                    value={filtreStatut}
+                    onChange={(e) => setFiltreStatut(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  >
+                    <option value="">Tous les statuts</option>
+                    <option value="EN ATTENTE">EN ATTENTE</option>
+                    <option value="LIVRÉ">LIVRÉ</option>
+                    <option value="REPORTÉ">REPORTÉ</option>
+                    <option value="ANNULÉ">ANNULÉ</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800 shadow-2xs flex justify-between items-center text-[10px] font-black">
-            <span>Commandes trouvées : <strong className="text-orange-400">{commandesFiltrees.length}</strong> / {commandes.length}</span>
+            <span>Commandes ({commandesFiltrees.length})</span>
           </div>
 
           {chargement ? (
@@ -1652,7 +1928,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                       <p className="font-extrabold text-slate-900 text-[10px]">🏢 Partenaire : {cmd.nom_partenaire}</p>
                       
                       <div className="text-[9.5px] font-bold space-y-0.5">
-                        <p className="text-slate-500">📍 Adresse Initiale : {cmd.adresse_livraison}</p>
+                        {cmd.point_a ? (
+                          <p className="text-slate-700">
+                            📍 Trajet : <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong> {cmd.nature_colis ? `(Colis: ${cmd.nature_colis})` : ''}
+                          </p>
+                        ) : (
+                          <p className="text-slate-500">📍 Adresse Initiale : {cmd.adresse_livraison}</p>
+                        )}
                         {cmd.zone_effective_livraison && cmd.zone_effective_livraison !== cmd.adresse_livraison && (
                           <p className="text-orange-600 font-extrabold">🚀 Livré à : {cmd.zone_effective_livraison}</p>
                         )}
@@ -1662,7 +1944,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                         <p className="text-[9.5px] text-blue-600 font-extrabold">🛵 Livreur : {cmd.vendeur_livreur}</p>
                       )}
 
-                      {lignesCmd.length > 0 && (
+                      {lignesCmd.length > 0 ? (
                         <div className="flex flex-wrap gap-1 pt-1">
                           {lignesCmd.map((l, idx) => {
                             const stockLivreur = getStockArticlePourLivreur(l.id_article, cmd.vendeur_livreur);
@@ -1675,6 +1957,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                             );
                           })}
                         </div>
+                      ) : (
+                        <p className="text-[9.5px] text-slate-400 italic pt-0.5">🏷️ Commande sans stockage (Point A ➔ Point B)</p>
                       )}
                     </div>
 

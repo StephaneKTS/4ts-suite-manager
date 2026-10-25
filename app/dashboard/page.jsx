@@ -31,7 +31,6 @@ import ModuleLivraison from './livraison/page';
 function DashboardContent() {
   const searchParams = useSearchParams();
   
-  // Correction sécurisée blindée contre le crash localStorage is not defined sur le serveur
   const entrepriseIdUrl = searchParams.get('entreprise') || 
     (typeof window !== 'undefined' ? localStorage.getItem('entrepriseId') : null) || 
     '4TS-234321';
@@ -49,7 +48,6 @@ function DashboardContent() {
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   const [moduleCourant, setModuleCourant] = useState('BOUTIQUE');
   
-  // Récupération du nom de l'utilisateur stocké lors de la connexion
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('UTILISATEUR');
   const [emailConnecte, setEmailConnecte] = useState('');
 
@@ -63,7 +61,6 @@ function DashboardContent() {
     }
   }, []);
 
-  // Charger les informations de l'entreprise depuis Supabase sans bloquer
   useEffect(() => {
     async function fetchEntrepriseData() {
       try {
@@ -402,29 +399,32 @@ function DashboardContent() {
             </h2>
 
             <div className="grid grid-cols-3 gap-2 w-full">
-              <div onClick={() => setModuleActif('ventes')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
-                <span className="text-2xl group-hover:scale-110 transition">🛒</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Saisie Livraison</span>
-              </div>
-
-              <div onClick={() => setModuleActif('commandes_livraison')} className="bg-slate-900/80 hover:bg-orange-600/20 border border-slate-800 hover:border-orange-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+              {/* 1ère icône : Gestion des commandes et livraisons */}
+              <div onClick={() => setModuleActif('commandes_livraison')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                <span className="font-bold text-white text-[11px] leading-tight">Commandes Livraison</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des commandes et livraisons</span>
               </div>
 
-              <div onClick={() => setModuleActif('grille_tarifaire')} className="bg-slate-900/80 hover:bg-orange-600/20 border border-slate-800 hover:border-orange-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+              {/* 2ème icône : Stock articles */}
+              <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Stock Articles</span>
+              </div>
+
+              {/* 3ème icône : Grille tarifaire */}
+              <div onClick={() => setModuleActif('grille_tarifaire')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
-                <span className="font-bold text-white text-[11px] leading-tight">Grille Tarifaire</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Grille Tarifaire</span>
+              </div>
+
+              <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Création Caisse</span>
               </div>
 
               <div onClick={() => setModuleActif('emplacements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">📍</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Emplacements Livreurs</span>
-              </div>
-
-              <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Stock Articles</span>
               </div>
 
               <div onClick={() => setModuleActif('depots')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -450,11 +450,6 @@ function DashboardContent() {
               <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">📥</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
-              </div>
-
-              <div onClick={() => setModuleActif('clients')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">👥</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion Livreur</span>
               </div>
 
               <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">

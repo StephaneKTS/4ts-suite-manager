@@ -110,7 +110,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     setCaisseEnEdition(null);
     setCodeCaisse('');
     setNomCaisse('');
-    setNatureCaisse('FACTURATION');
+    setNatureCaisse(moduleActuel === 'LIVRAISON' ? 'CAISSE ENTREPRISE' : 'FACTURATION');
     setAfficherForm(true);
     setMsg({ type: '', text: '' });
   };
@@ -123,7 +123,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     setCaisseEnEdition(caisse);
     setCodeCaisse(caisse.code_caisse || '');
     setNomCaisse(caisse.nom_caisse || '');
-    setNatureCaisse(caisse.nature || 'FACTURATION');
+    setNatureCaisse(caisse.nature || (moduleActuel === 'LIVRAISON' ? 'CAISSE ENTREPRISE' : 'FACTURATION'));
     setAfficherForm(true);
     setMsg({ type: '', text: '' });
   };
@@ -132,7 +132,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     setCaisseEnEdition(null);
     setCodeCaisse('');
     setNomCaisse('');
-    setNatureCaisse('FACTURATION');
+    setNatureCaisse(moduleActuel === 'LIVRAISON' ? 'CAISSE ENTREPRISE' : 'FACTURATION');
     setAfficherForm(false);
   };
 
@@ -342,8 +342,17 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 disabled={caisseEnEdition && !permissions.peutModifier}
                 className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-black text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
-                <option value="FACTURATION">FACTURATION</option>
-                <option value="PRINCIPALE">PRINCIPALE</option>
+                {moduleActuel === 'LIVRAISON' ? (
+                  <>
+                    <option value="CAISSE ENTREPRISE">CAISSE ENTREPRISE</option>
+                    <option value="BANQUE">BANQUE</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="FACTURATION">FACTURATION</option>
+                    <option value="PRINCIPALE">PRINCIPALE</option>
+                  </>
+                )}
               </select>
             </div>
           </div>
@@ -407,7 +416,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                   <div className="space-y-1">
                     <div>
                       <span className={`inline-block text-[8px] px-1.5 py-0.5 rounded font-black border ${
-                        c.nature === 'PRINCIPALE'
+                        c.nature === 'PRINCIPALE' || c.nature === 'CAISSE ENTREPRISE'
                           ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                           : 'bg-blue-100 text-blue-800 border-blue-200'
                       }`}>

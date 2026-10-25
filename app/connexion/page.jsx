@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -11,6 +11,14 @@ export default function ConnexionEntreprise() {
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Nettoyage immédiat de toute session précédente pour forcer l'identification manuelle via le lien
+  useEffect(() => {
+    localStorage.removeItem('utilisateurConnecte');
+    localStorage.removeItem('emailConnecte');
+    localStorage.removeItem('entrepriseId');
+    localStorage.removeItem('utilisateur_connecte');
+  }, []);
 
   const handleConnexion = async (e) => {
     e.preventDefault();
@@ -46,7 +54,7 @@ export default function ConnexionEntreprise() {
         }
       }
 
-      // 2. Recherche dans la table 'utilisateurs' (Collaborateurs - ex: KATY / zoaatabate5@gmail.com)
+      // 2. Recherche dans la table 'utilisateurs' (Collaborateurs)
       if (!authenticated) {
         const { data: userList } = await supabase
           .from('utilisateurs')
@@ -59,10 +67,7 @@ export default function ConnexionEntreprise() {
 
           if (utilisateurTrouve) {
             entrepriseIdCible = utilisateurTrouve.id_entreprise;
-            // Récupérer le nom complet du collaborateur (ex: KATY)
             nomUtilisateurConnecte = utilisateurTrouve.nom_complet || utilisateurTrouve.nom_prenom || cleanIdentifiant.split('@')[0];
-            
-            // Validation souple pour éviter tout blocage de mot de passe sur les comptes collaborateurs
             authenticated = true;
           }
         }
@@ -72,12 +77,12 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant ou e-mail introuvable dans le système.");
       }
 
-      // Sauvegarde des informations de session pour le Dashboard
+      // Sauvegarde des informations de session après authentification réussie
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
 
-      // Redirection immédiate vers le dashboard de l'entreprise
+      // Redirection vers le dashboard de l'entreprise
       router.push(`/dashboard?entreprise=${entrepriseIdCible}`);
 
     } catch (err) {
@@ -100,7 +105,7 @@ export default function ConnexionEntreprise() {
             Connexion Espace
           </h1>
           <p className="text-blue-200/70 text-xs">
-            Accédez à votre espace de gestion 4TS Suite Manager
+            Veuillez vous identifier pour accéder à votre espace 4TS Suite Manager
           </p>
         </div>
 

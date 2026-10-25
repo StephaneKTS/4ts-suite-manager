@@ -11,11 +11,31 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [depots, setDepots] = useState([]); 
   const [emplacements, setEmplacements] = useState([]);
   const [familles, setFamilles] = useState([]);
+  const [commandesLivraison, setCommandesLivraison] = useState([]);
   const [entrepriseInfo, setInfosEntreprise] = useState(null);
 
   const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
+  const [livreurStatFiltre, setLivreurStatFiltre] = useState('TOUS');
+
+  // Filtre spécifique pour le Rapport de Stock (par défaut le premier dépôt ou TOUS)
+  const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
+
+  const obtenirDateDuJour = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = String(d.getMonth() + 1).padStart(2, '0');
+    const jour = String(d.getDate()).padStart(2, '0');
+    return `${annee}-${mois}-${jour}`;
+  };
+
+  const [dateDebutStat, setDateDebutStat] = useState('');
+  const [dateFinStat, setDateFinStat] = useState('');
+
+  // Dates pour le rapport de stock (par défaut aujourd'hui)
+  const [dateDebutRapport, setDateDebutRapport] = useState(obtenirDateDuJour());
+  const [dateFinRapport, setDateFinRapport] = useState(obtenirDateDuJour());
 
   const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
   const [rechercheModalArticle, setRechercheModalArticle] = useState('');
@@ -78,6 +98,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
+      if (listeDepots.length > 0 && depotRapportFiltre === 'TOUS') {
+        setDepotRapportFiltre(String(listeDepots[0].id));
+      }
 
       const { data: dataEmp } = await supabase
         .from('emplacements_stock')
@@ -94,6 +117,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       const { data: dataVentes } = await supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setVentesHistoriques(dataVentes || []);
+
+      const { data: dataCmd } = await supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
+      setCommandesLivraison(dataCmd || []);
     } catch (err) {
       console.error('Erreur chargement références :', err.message);
     }
@@ -140,62 +166,205 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
-    if (!valeurDepotFlux || !depotCibleId) return false;
+    if (!depotCibleId || depotCibleId === 'TOUS') return true;
+    if (!valeurDepotFlux) return false;
     if (String(valeurDepotFlux) === String(depotCibleId)) return true;
     const depotObj = depots.find((d) => String(d.id) === String(depotCibleId));
     if (depotObj && depotObj.nom_depot && String(valeurDepotFlux).trim().toUpperCase() === String(depotObj.nom_depot).trim().toUpperCase()) return true;
     return false;
   };
 
-  const obtenirTousLesFluxArticle = (articleId, depotCibleId = 'TOUS') => {
+  const correspondAuLivreur = (mvt, livreurCibleId) => {
+    if (!livreurCibleId || livreurCibleId === 'TOUS') return true;
+    const empCible = emplacements.find(e => String(e.id) === String(livreurCibleId));
+    if (!empCible) return false;
+
+    const empIdCible = String(empCible.id);
+    const nomEmpCible = (empCible.nom_emplacement || empCible.responsable_emplacement || '').trim().toUpperCase();
+    
+    const srcId = String(mvt.id_emplacement_source || '');
+    const destId = String(mvt.id_emplacement_destination || '');
+
+    if (srcId === empIdCible || destId === empIdCible) {
+      return true;
+    }
+
+    const remarque = (mvt.motif_remarque || '').toUpperCase();
+    if (nomEmpCible && remarque.includes(nomEmpCible)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  const obtenirTousLesFluxArticle = (articleId, depotCibleId = 'TOUS', livreurCibleId = 'TOUS', avecFiltreDate = true) => {
     let flux = [];
     
     mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
-      if (depotCibleId === 'TOUS' || correspondAuDepot(m.id_depot_source, depotCibleId) || correspondAuDepot(m.id_depot_destination, depotCibleId)) {
+      let depotSourceFlux = m.id_depot_source;
+      let depotDestFlux = m.id_depot_destination;
+
+      let typeMvt = (m.type_mouvement || '').toUpperCase();
+      let libelleRemarque = m.motif_remarque || '';
+
+      if (typeMvt === 'SORTIE' && (libelleRemarque.includes('LIVRAISON EFFECTIVE') || libelleRemarque.includes('CMD-') || libelleRemarque.includes('VENTE'))) {
+        const matchCmd = commandesLivraison.find(c => libelleRemarque.includes(c.numero_commande));
+        if (matchCmd) {
+          libelleRemarque = matchCmd.numero_commande;
+          typeMvt = 'LIV';
+          if (!depotSourceFlux && matchCmd.id_depot) depotSourceFlux = matchCmd.id_depot;
+        } else {
+          typeMvt = 'LIV';
+        }
+      } else if ((typeMvt === 'ENTREE' && libelleRemarque.includes('APPRO')) || typeMvt.includes('APPROVISIONNEMENT')) {
+        typeMvt = 'AP';
+      } else if (typeMvt === 'TRANSFERT') {
+        typeMvt = 'TR';
+      }
+
+      const matchDepotSource = correspondAuDepot(depotSourceFlux, depotCibleId);
+      const matchDepotDest = correspondAuDepot(depotDestFlux, depotCibleId);
+      const matchDepot = depotCibleId === 'TOUS' || matchDepotSource || matchDepotDest;
+
+      const matchLivreur = correspondAuLivreur(m, livreurCibleId);
+
+      if (matchDepot && matchLivreur) {
+        const dateMvtStr = m.created_at ? m.created_at.split('T')[0] : '';
+        if (avecFiltreDate) {
+          if (dateDebutStat && dateMvtStr && dateMvtStr < dateDebutStat) return;
+          if (dateFinStat && dateMvtStr && dateMvtStr > dateFinStat) return;
+        }
+
         flux.push({ 
           date: m.created_at || '', 
-          depot_source: m.id_depot_source, 
-          depot_destination: m.id_depot_destination,
+          depot_source: depotSourceFlux, 
+          depot_destination: depotDestFlux,
           emplacement_source: m.id_emplacement_source,
           emplacement_destination: m.id_emplacement_destination,
           quantite: parseInt(m.quantite || 0), 
-          type: (m.type_mouvement || '').toUpperCase(),
-          remarque: m.motif_remarque || '',
+          type: typeMvt,
+          remarque: libelleRemarque,
           referenceObjet: null
         });
       }
     });
 
-    approvisionnements.forEach((app) => {
-      if (depotCibleId === 'TOUS' || correspondAuDepot(app.id_depot_destination, depotCibleId)) {
-        let articlesAppro = [];
-        if (app.details_articles) {
-          if (typeof app.details_articles === 'string') { try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} }
-          else if (Array.isArray(app.details_articles)) { articlesAppro = app.details_articles; }
-        }
-        articlesAppro.forEach((ligne) => {
-          if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
-            flux.push({ 
-              date: app.created_at || '', 
-              depot_source: app.id_depot_destination, 
-              depot_destination: null, 
-              quantite: parseInt(ligne.quantite || 0), 
-              type: 'APPROVISIONNEMENT',
-              remarque: app.reference || `APP-${app.id || '01'}`,
-              referenceObjet: app 
-            });
+    if (!livreurCibleId || livreurCibleId === 'TOUS') {
+      approvisionnements.forEach((app) => {
+        if (depotCibleId === 'TOUS' || correspondAuDepot(app.id_depot_destination, depotCibleId)) {
+          let articlesAppro = [];
+          if (app.details_articles) {
+            if (typeof app.details_articles === 'string') { try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} }
+            else if (Array.isArray(app.details_articles)) { articlesAppro = app.details_articles; }
           }
-        });
-      }
-    });
+          articlesAppro.forEach((ligne) => {
+            if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
+              const dateAppStr = app.created_at ? app.created_at.split('T')[0] : '';
+              if (avecFiltreDate) {
+                if (dateDebutStat && dateAppStr && dateAppStr < dateDebutStat) return;
+                if (dateFinStat && dateAppStr && dateAppStr > dateFinStat) return;
+              }
+
+              flux.push({ 
+                date: app.created_at || '', 
+                depot_source: app.id_depot_destination, 
+                depot_destination: null, 
+                quantite: parseInt(ligne.quantite || 0), 
+                type: 'AP',
+                remarque: app.reference || `APP-${app.id || '01'}`,
+                referenceObjet: app 
+              });
+            }
+          });
+        }
+      });
+    }
 
     flux.sort((a, b) => new Date(a.date) - new Date(b.date));
     return flux;
   };
 
+  // Calcul spécifique pour le Rapport de Stock par partenaire (Dépôt)
+  const calculerLigneRapportStock = (articleId, depotId, dateDebut, dateFin) => {
+    let stockInitial = 0;
+    let totalEntrees = 0;
+    let totalSorties = 0;
+
+    const fluxTous = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
+    
+    // 1. Calcul du Stock Initial (flux strictement antérieurs à dateDebut)
+    fluxTous.forEach((m) => {
+      const dateMvtStr = m.date ? m.date.split('T')[0] : '';
+      const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
+      const matchDepotDest = correspondAuDepot(m.depot_destination, depotId);
+      const qte = m.quantite;
+      const type = m.type;
+
+      if (dateDebut && dateMvtStr && dateMvtStr < dateDebut) {
+        if (type === 'INVENTAIRE' && matchDepotSource) {
+          stockInitial = qte;
+        } else if (type === 'TR' || type === 'TRANSFERT') {
+          // Pas d'impact global dépôt
+        } else if (type === 'ENTREE' || type === 'AP' || type === 'ME' || type.includes('ACHAT') || type.includes('APPROVISIONNEMENT')) {
+          if (matchDepotSource || matchDepotDest) stockInitial += qte;
+        } else if (type === 'SORTIE' || type === 'LIV' || type === 'MS' || type.includes('AVARIES')) {
+          if (matchDepotSource) stockInitial -= qte;
+        } else {
+          if (matchDepotSource || matchDepotDest) stockInitial += qte;
+        }
+      }
+    });
+    stockInitial = Math.max(0, stockInitial);
+
+    // 2. Calcul des mouvements de la période [dateDebut, dateFin]
+    fluxTous.forEach((m) => {
+      const dateMvtStr = m.date ? m.date.split('T')[0] : '';
+      if (dateDebut && dateMvtStr && dateMvtStr < dateDebut) return;
+      if (dateFin && dateMvtStr && dateMvtStr > dateFin) return;
+
+      const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
+      const matchDepotDest = correspondAuDepot(m.depot_destination, depotId);
+      const qte = m.quantite;
+      const type = m.type;
+
+      if (type === 'INVENTAIRE' && matchDepotSource) {
+        totalEntrees += qte;
+      } else if (type === 'AP' || type.includes('APPRO')) {
+        totalEntrees += qte;
+      } else if (type === 'ENTREE' || type === 'ME') {
+        totalEntrees += qte;
+      } else if (type === 'LIV' || type.includes('LIVRAISON')) {
+        if (matchDepotSource) {
+          totalSorties += qte;
+        }
+      } else if (type === 'SORTIE' || type === 'MS' || type.includes('AVARIES')) {
+        if (matchDepotSource) {
+          totalSorties += qte;
+        }
+      } else {
+        if (matchDepotDest && !matchDepotSource) {
+          totalEntrees += qte;
+        } else if (matchDepotSource && !matchDepotDest) {
+          totalSorties += qte;
+        }
+      }
+    });
+
+    const totalDisponible = stockInitial + totalEntrees;
+    const stockReel = Math.max(0, totalDisponible - totalSorties);
+
+    return {
+      stockInitial,
+      totalEntrees,
+      totalDisponible,
+      totalSorties,
+      stockReel
+    };
+  };
+
   const calculerStockPourUnDepot = (articleId, depotId) => {
     let stockDepot = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId);
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS');
     
     fluxArticle.forEach((m) => {
       const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
@@ -207,12 +376,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         stockDepot = qte; 
         return; 
       }
-      if (typeMvt === 'TRANSFERT') { 
+      if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') { 
         return; 
       }
-      if (typeMvt === 'ENTREE' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
+      if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+      } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt === 'AVARIES') {
         if (matchDepotSource) stockDepot -= qte;
       } else {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
@@ -222,9 +391,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return Math.max(0, stockDepot);
   };
 
-  const calculerStockPourEmplacement = (articleId, emplacementId) => {
+  const calculerStockPourEmplacement = (articleId, emplacementId, depotId = 'TOUS') => {
     let stockEmp = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId);
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, emplacementId);
     
     fluxArticle.forEach((m) => {
       const qte = m.quantite;
@@ -236,13 +405,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         stockEmp = qte;
         return;
       }
-      if (typeMvt === 'TRANSFERT') {
-        if (matchDest) stockEmp += qte;
-        if (matchSource) stockEmp -= qte;
+      if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
+        if (matchDest && !matchSource) stockEmp += qte;
+        if (matchSource && !matchDest) stockEmp -= qte;
         return;
       }
-      if (matchDest) stockEmp += qte;
-      if (matchSource) stockEmp -= qte;
+      if (matchDest && !matchSource) stockEmp += qte;
+      if (matchSource && !matchDest) stockEmp -= qte;
     });
 
     return Math.max(0, stockEmp);
@@ -251,12 +420,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const aEteMouvementeParDepot = (articleId, depotId) => {
     if (!depotId || depotId === 'TOUS') return true;
     const fluxArticle = obtenirTousLesFluxArticle(articleId);
-    return fluxArticle.some(m => correspondAuDepot(m.depot_source, depotId) || correspondAuDepot(m.depot_destination, depotId));
+    return fluxArticle.some(m => correspondAuDepot(m.id_depot_source, depotId) || correspondAuDepot(m.id_depot_destination, depotId));
   };
 
   const calculerStockParFiltre = (articleId) => {
     if (emplacementFiltre !== 'TOUS') {
-      return calculerStockPourEmplacement(articleId, emplacementFiltre);
+      return calculerStockPourEmplacement(articleId, emplacementFiltre, depotFiltre);
     } else if (depotFiltre !== 'TOUS') {
       return calculerStockPourUnDepot(articleId, depotFiltre);
     } else {
@@ -416,7 +585,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     if (!matchFamille) return false;
 
     if (emplacementFiltre !== 'TOUS') {
-      const stockEmp = calculerStockPourEmplacement(artId, emplacementFiltre);
+      const stockEmp = calculerStockPourEmplacement(artId, emplacementFiltre, depotFiltre);
       if (stockEmp <= 0) return false;
     } else if (depotFiltre !== 'TOUS') {
       const stockDep = calculerStockPourUnDepot(artId, depotFiltre);
@@ -474,7 +643,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const colSpanTotal = 2 + emplacements.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
 
   return (
-    <div className="space-y-2.5 font-sans text-xs">
+    <div className="space-y-2 font-sans text-xs">
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-wrap">
@@ -498,20 +667,21 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 w-full">
+      {/* Navigation des 3 onglets (Stock Article, Stat Article, Rapport Stock) */}
+      <div className="grid grid-cols-3 gap-1.5 w-full">
         <button
           type="button"
           onClick={() => {
             setModeVue('catalogue');
             annulerForm();
           }}
-          className={`w-full px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
+          className={`w-full px-2 py-2 rounded-lg font-black text-[10.5px] transition text-center border shadow-2xs ${
             modeVue === 'catalogue' && !afficherForm 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📄 Stock Article ({articles.length})
+          📄 Stock ({articles.length})
         </button>
 
         <button
@@ -520,13 +690,28 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             setModeVue('statistiques');
             annulerForm();
           }}
-          className={`w-full px-3 py-2 rounded-lg font-black text-[11px] transition text-center border shadow-2xs ${
+          className={`w-full px-2 py-2 rounded-lg font-black text-[10.5px] transition text-center border shadow-2xs ${
             modeVue === 'statistiques' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📊 Stat Article
+          📊 Stats Article
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setModeVue('rapport_stock');
+            annulerForm();
+          }}
+          className={`w-full px-2 py-2 rounded-lg font-black text-[10.5px] transition text-center border shadow-2xs ${
+            modeVue === 'rapport_stock' 
+              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
+              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+          }`}
+        >
+          📋 Rapport Stock
         </button>
       </div>
 
@@ -853,7 +1038,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                             </td>
 
                             {emplacements.map((emp) => {
-                              const stockEmp = calculerStockPourEmplacement(artId, emp.id);
+                              const stockEmp = calculerStockPourEmplacement(artId, emp.id, depotFiltre);
                               return (
                                 <td key={emp.id} className="p-2.5 text-center whitespace-nowrap">
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
@@ -886,61 +1071,129 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       {modeVue === 'statistiques' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
           
-          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT / PARTENAIRE</label>
-              <select
-                value={depotStatFiltre}
-                onChange={(e) => setDepotStatFiltre(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-              >
-                <option value="TOUS">Tous les dépôts / partenaires</option>
-                {depots.map((dep) => (
-                  <option key={dep.id} value={dep.id}>
-                    🏢 {dep.nom_depot || dep.Nom_Depot}
-                  </option>
-                ))}
-              </select>
+          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE DÉBUT</label>
+                <input
+                  type="date"
+                  value={dateDebutStat}
+                  onChange={(e) => setDateDebutStat(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE FIN</label>
+                <input
+                  type="date"
+                  value={dateFinStat}
+                  onChange={(e) => setDateFinStat(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => { setDateDebutStat(obtenirDateDuJour()); setDateFinStat(obtenirDateDuJour()); }}
+                  className="flex-1 bg-orange-100 hover:bg-orange-200 text-orange-800 font-black px-2.5 py-2 rounded-lg text-[11px] transition"
+                >
+                  Aujourd'hui
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDateDebutStat(''); setDateFinStat(''); }}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-2.5 py-2 rounded-lg text-[11px] transition"
+                >
+                  Tout voir
+                </button>
+              </div>
             </div>
 
-            <div>
-              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">ARTICLE</label>
-              <div
-                onClick={() => {
-                  setRechercheModalArticle('');
-                  setAfficherModalSelectionArticle(true);
-                }}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
-              >
-                <span className="truncate uppercase">
-                  {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner un article --'}
-                </span>
-                <span className="text-[10px] text-slate-400">🔍</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-200/80">
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT / PARTENAIRE</label>
+                <select
+                  value={depotStatFiltre}
+                  onChange={(e) => setDepotStatFiltre(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  <option value="TOUS">Tous les dépôts / partenaires</option>
+                  {depots.map((dep) => (
+                    <option key={dep.id} value={dep.id}>
+                      🏢 {dep.nom_depot || dep.Nom_Depot}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">LIVREUR</label>
+                <select
+                  value={livreurStatFiltre}
+                  onChange={(e) => setLivreurStatFiltre(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
+                >
+                  <option value="TOUS">Tous les livreurs</option>
+                  {emplacements.map((emp) => {
+                    const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
+                    if (!nomEmp) return null;
+                    return <option key={emp.id} value={emp.id}>{nomEmp.toUpperCase()}</option>;
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">ARTICLE</label>
+                <div
+                  onClick={() => {
+                    setRechercheModalArticle('');
+                    setAfficherModalSelectionArticle(true);
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+                >
+                  <span className="truncate uppercase">
+                    {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner un article --'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">🔍</span>
+                </div>
               </div>
             </div>
           </div>
 
           {articleStatObjet ? (() => {
             const artId = String(articleStatObjet.id_article || articleStatObjet.id);
-            const fluxArt = obtenirTousLesFluxArticle(artId, depotStatFiltre);
+            const fluxArt = obtenirTousLesFluxArticle(artId, depotStatFiltre, livreurStatFiltre);
 
             let stockCourant = 0;
             const fluxAvecStockProgressif = fluxArt.map((f) => {
-              const estSortie = f.type.includes('SORTIE') || f.type.includes('AVARIES');
-              const estTransfertInterne = f.type === 'TRANSFERT';
-              
+              const baseQte = f.quantite;
               let qteDelta = 0;
+
               if (f.type === 'INVENTAIRE') {
-                stockCourant = f.quantite;
-                qteDelta = f.quantite;
-              } else if (estTransfertInterne) {
-                qteDelta = 0;
-                stockCourant += 0;
-              } else if (estSortie) {
-                qteDelta = -f.quantite;
+                stockCourant = baseQte;
+                qteDelta = baseQte;
+              } else if (f.type === 'TR' || f.type === 'TRANSFERT') {
+                if (livreurStatFiltre !== 'TOUS') {
+                  const matchDest = String(f.emplacement_destination) === String(livreurStatFiltre);
+                  const matchSource = String(f.emplacement_source) === String(livreurStatFiltre);
+                  if (matchDest && !matchSource) {
+                    qteDelta = baseQte;
+                  } else if (matchSource && !matchDest) {
+                    qteDelta = -baseQte;
+                  } else {
+                    qteDelta = 0;
+                  }
+                } else {
+                  qteDelta = 0;
+                }
+                stockCourant += qteDelta;
+              } else if (f.type === 'LIV' || f.type.includes('SORTIE') || f.type.includes('AVARIES')) {
+                qteDelta = -baseQte;
                 stockCourant += qteDelta;
               } else {
-                qteDelta = f.quantite;
+                qteDelta = baseQte;
                 stockCourant += qteDelta;
               }
 
@@ -960,7 +1213,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       <thead>
                         <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
                           <th className="p-2.5 w-[22%]">Date</th>
-                          <th className="p-2.5 w-[36%]">Mouvement</th>
+                          <th className="p-2.5 w-[36%]">Mouvement (AP / TR / LIV)</th>
                           <th className="p-2.5 w-[22%] text-right">QTÉ</th>
                           <th className="p-2.5 w-[20%] text-right">STOCK</th>
                         </tr>
@@ -968,13 +1221,18 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       <tbody className="divide-y divide-slate-100 text-[10.5px]">
                         {fluxAvecStockProgressif.length === 0 ? (
                           <tr>
-                            <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré pour cet article.</td>
+                            <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré pour cet article avec ces filtres.</td>
                           </tr>
                         ) : (
                           fluxAvecStockProgressif.map((f, i) => {
                             const estNegatif = f.qteDelta < 0;
-                            const estTransfert = f.type === 'TRANSFERT';
-                            const libelleAffichage = estTransfert ? `${f.remarque || 'TR'} (inter-emplacement)` : (f.remarque || f.type);
+                            const estTransfert = f.type === 'TR' || f.type === 'TRANSFERT';
+                            const libelleAffichage = estTransfert ? `${f.remarque || 'TR'} (inter-emplacement)` : (f.remarque ? `${f.type} (${f.remarque})` : f.type);
+
+                            let badgeStyle = 'bg-slate-100 text-slate-800 border-slate-300';
+                            if (f.type === 'AP') badgeStyle = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                            if (f.type === 'TR') badgeStyle = 'bg-blue-100 text-blue-800 border-blue-300';
+                            if (f.type === 'LIV') badgeStyle = 'bg-orange-100 text-orange-800 border-orange-300';
 
                             return (
                               <tr key={i} className="hover:bg-slate-50 transition">
@@ -982,12 +1240,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                                   {f.date ? new Date(f.date).toLocaleDateString('fr-FR') : '-'}
                                 </td>
                                 <td className="p-2.5 font-bold text-slate-900">
-                                  <span className="bg-orange-100 text-orange-900 px-2 py-0.5 rounded font-black text-[9.5px] border border-orange-200 inline-block">
+                                  <span className={`px-2 py-0.5 rounded font-black text-[9.5px] border inline-block ${badgeStyle}`}>
                                     {libelleAffichage}
                                   </span>
                                 </td>
                                 <td className={`p-2.5 text-right font-black font-mono whitespace-nowrap ${estNegatif ? 'text-red-600' : (f.qteDelta > 0 ? 'text-emerald-700' : 'text-slate-500')}`}>
-                                  {estNegatif ? f.qteDelta : (f.qteDelta > 0 ? `+${f.qteDelta}` : '0')}
+                                  {estNegatif ? f.qteDelta : (f.qteDelta > 0 ? `+${f.qteDelta}` : f.qteDelta)}
                                 </td>
                                 <td className="p-2.5 text-right font-black font-mono text-slate-900 whitespace-nowrap">
                                   {f.stockProgressif}
@@ -1005,6 +1263,151 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           })() : (
             <div className="p-6 text-center text-slate-500 font-bold">Veuillez sélectionner un article.</div>
           )}
+
+        </div>
+      )}
+
+      {/* NOUVEL ONGLET : RAPPORT DE STOCK PARTENAIRE AVEC FILTRE D'AFFICHAGE CONDITIONNEL */}
+      {modeVue === 'rapport_stock' && (
+        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+          
+          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 items-end">
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE DÉBUT</label>
+                <input
+                  type="date"
+                  value={dateDebutRapport}
+                  onChange={(e) => setDateDebutRapport(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE FIN</label>
+                <input
+                  type="date"
+                  value={dateFinRapport}
+                  onChange={(e) => setDateFinRapport(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => { setDateDebutRapport(obtenirDateDuJour()); setDateFinRapport(obtenirDateDuJour()); }}
+                  className="flex-1 bg-orange-100 hover:bg-orange-200 text-orange-800 font-black px-2 py-1.5 rounded-lg text-[10px] transition"
+                >
+                  Aujourd'hui
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDateDebutRapport(''); setDateFinRapport(''); }}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-2 py-1.5 rounded-lg text-[10px] transition"
+                >
+                  Tout voir
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-1 border-t border-slate-200/80">
+              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">SÉLECTIONNER LE DÉPÔT DU PARTENAIRE *</label>
+              <select
+                value={depotRapportFiltre}
+                onChange={(e) => setDepotRapportFiltre(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+              >
+                {depots.length === 0 ? (
+                  <option value="TOUS">Aucun dépôt enregistré</option>
+                ) : (
+                  depots.map((dep) => (
+                    <option key={dep.id} value={dep.id}>
+                      🏢 {dep.nom_depot || dep.Nom_Depot}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <h4 className="font-black text-slate-800 uppercase text-[10px]">📋 Rapport journalier du stock partenaire :</h4>
+            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+              <table className="w-full text-left text-[11px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[8.5px] font-black">
+                    <th className="p-2">Désignation</th>
+                    <th className="p-2 text-center">Stock I.</th>
+                    <th className="p-2 text-center">Entrée</th>
+                    <th className="p-2 text-center">Total</th>
+                    <th className="p-2 text-center">Sortie</th>
+                    <th className="p-2 text-center">Stock Réel</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {articles.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article disponible.</td>
+                    </tr>
+                  ) : depotRapportFiltre === 'TOUS' ? (
+                    <tr>
+                      <td colSpan="6" className="p-4 text-center text-orange-600 font-bold">Veuillez sélectionner un dépôt partenaire ci-dessus.</td>
+                    </tr>
+                  ) : (() => {
+                    // Filtrage : l'article ne s'affiche que s'il a déjà été au moins une fois chez ce partenaire (stock initial > 0 ou entrées > 0 ou sorties > 0)
+                    const articlesFiltresPartenaire = articles.filter((art) => {
+                      const artId = art.id_article || art.id;
+                      const rapport = calculerLigneRapportStock(artId, depotRapportFiltre, dateDebutRapport, dateFinRapport);
+                      return rapport.stockInitial > 0 || rapport.totalEntrees > 0 || rapport.totalSorties > 0;
+                    });
+
+                    if (articlesFiltresPartenaire.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article n'a encore transité par ce dépôt.</td>
+                        </tr>
+                      );
+                    }
+
+                    return articlesFiltresPartenaire.map((art) => {
+                      const artId = art.id_article || art.id;
+                      const rapport = calculerLigneRapportStock(artId, depotRapportFiltre, dateDebutRapport, dateFinRapport);
+
+                      return (
+                        <tr key={artId} className="hover:bg-slate-50 transition">
+                          <td className="p-2 font-black uppercase text-slate-900 whitespace-nowrap text-[10px]">
+                            {art.Designation || art.designation}
+                          </td>
+                          <td className="p-2 text-center font-mono font-bold text-slate-700">
+                            {rapport.stockInitial}
+                          </td>
+                          <td className="p-2 text-center font-mono font-bold text-emerald-700">
+                            <span className="bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block">
+                              +{rapport.totalEntrees}
+                            </span>
+                          </td>
+                          <td className="p-2 text-center font-mono font-extrabold text-blue-800">
+                            {rapport.totalDisponible}
+                          </td>
+                          <td className="p-2 text-center font-mono font-bold text-rose-700">
+                            <span className="bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 inline-block">
+                              -{rapport.totalSorties}
+                            </span>
+                          </td>
+                          <td className="p-2 text-center font-mono font-black text-slate-900">
+                            <span className={`px-2 py-0.5 rounded text-[10px] ${rapport.stockReel > 0 ? 'bg-orange-100 text-orange-900 border border-orange-200' : 'bg-slate-100 text-slate-500'}`}>
+                              {rapport.stockReel}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
         </div>
       )}

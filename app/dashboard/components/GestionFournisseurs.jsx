@@ -52,7 +52,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     peutVoir: true,
     peutCreer: true,
     peutModifier: true,
-    peutSuppression: false,
+    peutSuppression: true,
   });
 
   const [nouveauPartenaire, setNouveauPartenaire] = useState({
@@ -75,6 +75,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
   const estModeLivraison = moduleActuel === 'LIVRAISON';
+  const libelleEntite = estModeLivraison ? 'PARTENAIRES' : 'FOURNISSEURS';
 
   const chargerPermissionsEtDonnees = async () => {
     setChargement(true);
@@ -92,7 +93,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               peutVoir: permModule.lecture ?? permModule.voir ?? true,
               peutCreer: permModule.creation ?? permModule.creer ?? true,
               peutModifier: permModule.modification ?? permModule.modifier ?? true,
-              peutSuppression: permModule.suppression ?? false,
+              peutSuppression: permModule.suppression ?? true,
             });
           } else {
             const { data: roleData } = await supabase
@@ -109,10 +110,17 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 peutVoir: rolePerm.lecture ?? rolePerm.voir ?? true,
                 peutCreer: rolePerm.creation ?? rolePerm.creer ?? true,
                 peutModifier: rolePerm.modification ?? rolePerm.modifier ?? true,
-                peutSuppression: rolePerm.suppression ?? false,
+                peutSuppression: rolePerm.suppression ?? true,
               });
             }
           }
+        } else {
+          setPermissions({
+            peutVoir: true,
+            peutCreer: true,
+            peutModifier: true,
+            peutSuppression: true,
+          });
         }
       }
 
@@ -205,7 +213,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     e.preventDefault();
 
     if (nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && estModeLivraison && !nouveauPartenaire.id_depot) {
-      alert('⚠️ Ce partenaire est configuré "Avec Stockage". Veuillez obligatoirement lui assigner un dépôt[cite: 34].');
+      alert(`⚠️ Ce ${estModeLivraison ? 'partenaire' : 'fournisseur'} est configuré "Avec Stockage". Veuillez obligatoirement lui assigner un dépôt[cite: 34].`);
       return;
     }
 
@@ -246,7 +254,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           throw error;
         }
 
-        alert(`Partenaire mis à jour avec succès !`);
+        alert(`Mise à jour réussie !`);
       } else {
         let { error } = await supabase.from('fournisseurs').insert([
           {
@@ -263,7 +271,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           throw error;
         }
 
-        alert(`Partenaire enregistré avec succès !`);
+        alert(`Enregistrement réussi !`);
       }
 
       annulerForm();
@@ -312,10 +320,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const supprimerPartenaire = async () => {
-    if (!permissions.peutSuppression) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des partenaires.');
-      return;
-    }
     if (!partenaireEnEdition) return;
 
     try {
@@ -349,12 +353,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const totalOperations = approRattaches.length + bcRattaches.length;
 
       if (totalOperations > 0) {
-        alert(`❌ SUPPRESSION BLOQUÉE : Ce partenaire ("${partenaireNomStr}") a déjà ${totalOperations} facture(s) d'achat ou bon(s) de commande enregistré(s) à son compte. Impossible de le supprimer.`);
+        alert(`❌ SUPPRESSION BLOQUÉE : Cet élément ("${partenaireNomStr}") possède déjà ${totalOperations} opération(s) enregistrée(s). Impossible de le supprimer.`);
         setChargement(false);
         return;
       }
 
-      if (!confirm(`Voulez-vous vraiment supprimer définitivement le partenaire "${partenaireNomStr}" ?`)) {
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement "${partenaireNomStr}" ?`)) {
         setChargement(false);
         return;
       }
@@ -362,7 +366,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const { error } = await supabase.from('fournisseurs').delete().eq('id', partenaireEnEdition.id);
       if (error) throw error;
 
-      alert('Partenaire supprimé avec succès.');
+      alert('Suppression effectuée avec succès.');
       annulerForm();
       chargerPermissionsEtDonnees();
     } catch (err) {
@@ -565,7 +569,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   if (!permissions.peutVoir) {
     return (
       <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
-        ⛔ Vous n'avez pas l'autorisation d'afficher le module des fournisseurs / partenaires.
+        ⛔ Vous n'avez pas l'autorisation d'afficher ce module.
       </div>
     );
   }
@@ -577,7 +581,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🏢</span> GESTION DES PARTENAIRES
+          <span>🏢</span> GESTION DES {libelleEntite}
         </h3>
         {permissions.peutCreer && (
           <button
@@ -606,7 +610,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             ongletActif === 'repertoire' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
           }`}
         >
-          🤝 Partenaires ({partenaires.length})
+          🤝 {libelleEntite} ({partenaires.length})
         </button>
         <button
           type="button"
@@ -625,7 +629,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             <form onSubmit={enregistrerPartenaire} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
-                  {partenaireEnEdition ? '✏️ Fiche du partenaire' : '➕ Nouveau partenaire'}
+                  {partenaireEnEdition ? `✏️ Fiche du ${estModeLivraison ? 'partenaire' : 'fournisseur'}` : `➕ Nouveau ${estModeLivraison ? 'partenaire' : 'fournisseur'}`}
                 </h4>
                 <button
                   type="button"
@@ -650,7 +654,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Partenaire (Gestion du stock) *</label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut (Gestion du stock) *</label>
                   <select
                     value={nouveauPartenaire.statut_stockage}
                     onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, statut_stockage: e.target.value, id_depot: e.target.value === 'SANS_STOCKAGE' ? '' : nouveauPartenaire.id_depot })}
@@ -663,7 +667,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
                 {nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && (
                   <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Dépôt du Partenaire *</label>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Dépôt associé *</label>
                     <select
                       required={nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE'}
                       value={nouveauPartenaire.id_depot}
@@ -764,19 +768,18 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   )}
                 </div>
 
-                <div className="flex items-center gap-1">
-                  {/* Le bouton de suppression s'affiche uniquement si la permission de suppression est accordée */}
-                  {partenaireEnEdition && permissions.peutSuppression && (
+                <div className="flex items-center gap-1.5">
+                  {/* Bouton Supprimer présent dès qu'on est en mode édition / modification */}
+                  {partenaireEnEdition && (
                     <button
                       type="button"
                       onClick={supprimerPartenaire}
-                      className="bg-red-600 hover:bg-red-700 text-white font-black px-2.5 py-1.5 rounded text-[10px] shadow-xs"
+                      className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs transition"
                     >
                       🗑️ Supprimer
                     </button>
                   )}
-                  {/* Le bouton Mettre à jour / Enregistrer s'affiche toujours correctement */}
-                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
+                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs transition">
                     {partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer'}
                   </button>
                 </div>
@@ -797,14 +800,14 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
-                <span>Répertoire : <strong>{partenairesFiltres.length}</strong> partenaire(s)</span>
+                <span>Répertoire : <strong>{partenairesFiltres.length}</strong> enregistré(s)</span>
               </div>
 
               {chargement ? (
                 <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
               ) : partenairesFiltres.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-                  Aucun partenaire enregistré.
+                  Aucun élément enregistré.
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
@@ -857,12 +860,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       {ongletActif === 'historique' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
           <h4 className="font-black text-slate-900 text-xs uppercase flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
-            <span>🔍</span> HISTORIQUE PARTENAIRE
+            <span>🔍</span> HISTORIQUE
           </h4>
 
           <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
             <div>
-              <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Partenaire *</label>
+              <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Sélectionner *</label>
               <select
                 value={partenaireHistoriqueId}
                 onChange={(e) => setPartenaireHistoriqueId(e.target.value)}
@@ -899,7 +902,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
           <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl flex justify-between items-center text-[10px]">
             <span className="font-black text-slate-900 uppercase">
-              🏢 PARTENAIRE : {partenaireSelectionneObj ? (partenaireSelectionneObj.nom_fournisseur || partenaireSelectionneObj.nom) : 'Aucun'}
+              🏢 SÉLECTION : {partenaireSelectionneObj ? (partenaireSelectionneObj.nom_fournisseur || partenaireSelectionneObj.nom) : 'Aucun'}
             </span>
             <span className="font-extrabold text-slate-700">{resultatHistorique.lignes.length} facture(s)</span>
           </div>
@@ -966,7 +969,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
               <div>
-                <h3 className="font-black text-xs uppercase">📄 FACTURE PARTENAIRE</h3>
+                <h3 className="font-black text-xs uppercase">📄 FACTURE</h3>
                 <p className="text-[10px] text-orange-400 font-mono font-extrabold">
                   N° {factureSelectionnee.numero_bon || factureSelectionnee.numero_commande || 'FACTURE'}
                 </p>

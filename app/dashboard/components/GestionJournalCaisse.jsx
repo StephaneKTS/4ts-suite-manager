@@ -25,14 +25,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const [comptes, setComptes] = useState([]);
   const [mouvements, setMouvements] = useState([]);
   const [ventes, setVentes] = useState([]);
+  const [commandesLivraison, setCommandesLivraison] = useState([]);
+  const [emplacementsStock, setEmplacementsStock] = useState([]);
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [roles, setRoles] = useState([]);
   const [etatsCaisseList, setEtatsCaisseList] = useState([]);
   const [chargement, setChargement] = useState(false);
 
-  // --- ÉTATS DE FILTRAGE DES ÉTATS DE CAISSE ---
-  const [filtreDateDebut, setFiltreDateDebut] = useState('');
-  const [filtreDateFin, setFiltreDateFin] = useState('');
+  // --- ÉTATS DE FILTRAGE DES ÉTATS DE CAISSE (PRÉREMPLIS AVEC LA DATE DU JOUR) ---
+  const [filtreDateDebut, setFiltreDateDebut] = useState(new Date().toISOString().split('T')[0]);
+  const [filtreDateFin, setFiltreDateFin] = useState(new Date().toISOString().split('T')[0]);
   const [filtreCaisseId, setFiltreCaisseId] = useState('');
   const [filtreCaissierId, setFiltreCaissierId] = useState('');
 
@@ -40,10 +42,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const [colonneTri, setColonneTri] = useState('date_debut');
   const [ordreTri, setOrdreTri] = useState('desc');
 
-  // --- CONTRÔLE DE CAISSE ---
+  // --- CONTRÔLE DE CAISSE & LIVRAISON ---
   const [dateControle, setDateControle] = useState(new Date().toISOString().split('T')[0]);
   const [caisseControleId, setCaisseControleId] = useState('');
   const [caissierFiltre, setCaissierFiltre] = useState('');
+  const [livreurControle, setLivreurControle] = useState('');
   const [montantVerse, setMontantVerse] = useState('');
   
   const [dernierEtatIdValidé, setDernierEtatIdValidé] = useState(null);
@@ -59,15 +62,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   });
   const [ligneUnique, setLigneUnique] = useState({
     id_compte: '',
-    libelle: '',
     montant: '',
     piece_physique: ''
   });
+  const [utilisateurMotif, setUtilisateurMotif] = useState('');
 
+  // --- GRAND LIVRE : FILTRES AVANCÉS ---
   const [dateDebutLivre, setDateDebutLivre] = useState(new Date().toISOString().split('T')[0]);
   const [dateFinLivre, setDateFinLivre] = useState(new Date().toISOString().split('T')[0]);
   const [compteLivreId, setCompteLivreId] = useState('');
-  const [resultatGrandLivre, setResultatGrandLivre] = useState([]);
+  const [tiersLivreFiltre, setTiersLivreFiltre] = useState('');
 
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
@@ -89,7 +93,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
       setCaisses(dataCaisses || []);
 
-      const caissesPrincipales = (dataCaisses || []).filter(c => (c.nature || '').toUpperCase() === 'PRINCIPALE');
+      const caissesPrincipales = (dataCaisses || []).filter(c => (c.nature || '').toUpperCase() === 'PRINCIPALE' || (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE');
       if (caissesPrincipales.length > 0 && !caisseSelectionneeJournal) {
         setCaisseSelectionneeJournal(caissesPrincipales[0].id);
       }
@@ -123,11 +127,22 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
         .eq('module', moduleActuel);
       setVentes(dataVentes || []);
 
+      const { data: dataCmdLivr } = await supabase
+        .from('commandes_livraison_en_tete')
+        .select('*')
+        .eq('id_entreprise', entrepriseId);
+      setCommandesLivraison(dataCmdLivr || []);
+
+      const { data: dataEmp } = await supabase
+        .from('emplacements_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId);
+      setEmplacementsStock(dataEmp || []);
+
       const { data: dataUsers } = await supabase
         .from('utilisateurs')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+        .eq('id_entreprise', entrepriseId);
       setUtilisateurs(dataUsers || []);
 
       const { data: dataEtats } = await supabase
@@ -155,6 +170,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const preparerNouvelleCloture = () => {
     setCaisseControleId('');
     setCaissierFiltre('');
+    setLivreurControle('');
     setMontantVerse('');
     setDernierEtatIdValidé(null);
     const prochainNum = `CL-${etatsCaisseList.length + 1}`;
@@ -171,19 +187,26 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
   const enregistrerOperationUnique = async (e) => {
     e.preventDefault();
-    if (!enteteSaisie.id_caisse) {
+    if (moduleActuel !== 'LIVRAISON' && !enteteSaisie.id_caisse) {
       alert('Veuillez sélectionner une caisse.');
       return;
     }
 
     try {
+      let libelleFinal = '';
+      if (utilisateurMotif) {
+        libelleFinal = utilisateurMotif.toUpperCase();
+      } else {
+        libelleFinal = enteteSaisie.type_mouvement === 'ENTREE' ? 'CHARGE INTERNE' : 'DEPENSE INTERNE';
+      }
+
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        id_caisse: enteteSaisie.id_caisse,
+        id_caisse: moduleActuel === 'LIVRAISON' ? (caisses[0]?.id || null) : enteteSaisie.id_caisse,
         type_mouvement: enteteSaisie.type_mouvement,
         montant: Number(ligneUnique.montant),
-        libelle: (ligneUnique.libelle || '').toUpperCase(),
+        libelle: libelleFinal,
         id_compte: ligneUnique.id_compte || null,
         piece_physique: ligneUnique.piece_physique || null,
         created_at: new Date(enteteSaisie.date).toISOString(),
@@ -204,7 +227,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
         alert(`Opération enregistrée avec succès par ${utilisateurActif} dans le module ${moduleActuel}.`);
       }
 
-      setLigneUnique({ id_compte: '', libelle: '', montant: '', piece_physique: '' });
+      setLigneUnique({ id_compte: '', montant: '', piece_physique: '' });
+      setUtilisateurMotif('');
       chargerDonneesGlobales();
       setModeSaisie('historique');
     } catch (err) {
@@ -224,10 +248,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     });
     setLigneUnique({
       id_compte: mvt.id_compte || '',
-      libelle: mvt.libelle || '',
       montant: mvt.montant || '',
       piece_physique: mvt.piece_physique || ''
     });
+    setUtilisateurMotif(mvt.libelle && !['DEPENSE INTERNE', 'CHARGE INTERNE'].includes(mvt.libelle) ? mvt.libelle : '');
     setModeSaisie('nouveau');
   };
 
@@ -242,7 +266,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
       alert('Opération supprimée avec succès !');
       setIdOperationEnCoursModif(null);
       setNumeroPieceEnCoursModif('');
-      setLigneUnique({ id_compte: '', libelle: '', montant: '', piece_physique: '' });
+      setLigneUnique({ id_compte: '', montant: '', piece_physique: '' });
+      setUtilisateurMotif('');
       chargerDonneesGlobales();
       setModeSaisie('historique');
     } catch (err) {
@@ -250,8 +275,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     }
   };
 
-  const caissesPrincipalesPourSaisie = caisses.filter(c => (c.nature || '').toUpperCase() === 'PRINCIPALE');
+  const caissesPrincipalesPourSaisie = caisses.filter(c => (c.nature || '').toUpperCase() === 'PRINCIPALE' || (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE');
   const caissesFacturationPourControle = caisses.filter(c => (c.nature || '').toUpperCase() === 'FACTURATION');
+
+  const listeLivreurs = Array.from(new Set([
+    ...(commandesLivraison.map(c => c.vendeur_livreur).filter(Boolean)),
+    ...(emplacementsStock.map(e => e.nom_emplacement || e.responsable_emplacement).filter(Boolean))
+  ])).map(l => l.toUpperCase());
 
   const obtenirCaissiersFiltres = (caisseIdSelectionnee = '') => {
     return utilisateurs.filter(u => {
@@ -356,17 +386,28 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
   const soldeActuelCaisseSelectionnee = calculerSoldeCaisse(caisseSelectionneeJournal);
 
-  const montantAttenduCaisse = caisseControleId
-    ? ventes
-        .filter(v => {
-          if (String(v.id_caisse) !== String(caisseControleId)) return false;
-          const dateVente = v.created_at ? v.created_at.split('T')[0] : '';
-          if (dateControle && dateVente !== dateControle) return false;
-          if (caissierFiltre && String(v.id_utilisateur || v.vendeur) !== String(caissierFiltre)) return false;
-          return true;
-        })
-        .reduce((sum, v) => sum + (Number(v.total_montant) || 0), 0)
-    : 0;
+  const montantAttenduCaisse = moduleActuel === 'LIVRAISON'
+    ? (livreurControle
+        ? commandesLivraison
+            .filter(cmd => {
+              if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
+              if (dateControle && cmd.date_commande !== dateControle) return false;
+              if (livreurControle && (cmd.vendeur_livreur || '').trim().toUpperCase() !== livreurControle.trim().toUpperCase()) return false;
+              return true;
+            })
+            .reduce((sum, cmd) => sum + (Number(cmd.montant_commande) || 0), 0)
+        : 0)
+    : (caisseControleId
+        ? ventes
+            .filter(v => {
+              if (String(v.id_caisse) !== String(caisseControleId)) return false;
+              const dateVente = v.created_at ? v.created_at.split('T')[0] : '';
+              if (dateControle && dateVente !== dateControle) return false;
+              if (caissierFiltre && String(v.id_utilisateur || v.vendeur) !== String(caissierFiltre)) return false;
+              return true;
+            })
+            .reduce((sum, v) => sum + (Number(v.total_montant) || 0), 0)
+        : 0);
 
   const ecartCaisse = montantVerse !== '' ? Number(montantVerse) - montantAttenduCaisse : 0;
 
@@ -379,16 +420,19 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     return idOuNom;
   };
 
-  const lancerEditionGrandLivre = () => {
-    const filtres = mouvements.filter(m => {
-      if (compteLivreId && String(m.id_compte) !== String(compteLivreId)) return false;
-      const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
-      if (dateDebutLivre && dateMvt < dateDebutLivre) return false;
-      if (dateFinLivre && dateMvt > dateFinLivre) return false;
-      return true;
-    });
-    setResultatGrandLivre(filtres);
-  };
+  // --- FILTRAGE DYNAMIQUE DU GRAND LIVRE (COMPTE + TIERS) ---
+  const resultatGrandLivre = mouvements.filter(m => {
+    if (compteLivreId && String(m.id_compte) !== String(compteLivreId)) return false;
+    if (tiersLivreFiltre) {
+      const libMvt = (m.libelle || '').toUpperCase();
+      const tiersCible = tiersLivreFiltre.toUpperCase();
+      if (!libMvt.includes(tiersCible)) return false;
+    }
+    const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
+    if (dateDebutLivre && dateMvt < dateDebutLivre) return false;
+    if (dateFinLivre && dateMvt > dateFinLivre) return false;
+    return true;
+  });
 
   const gererTriGrandLivre = (colonne) => {
     if (colonneTriGrandLivre === colonne) {
@@ -426,19 +470,31 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     return 0;
   });
 
-  const totalMontantGrandLivre = resultatGrandLivreTries.reduce((acc, m) => {
-    const montantNum = Number(m.montant || 0);
-    return m.type_mouvement === 'ENTREE' ? acc + montantNum : acc - montantNum;
-  }, 0);
+  const totalEntreesGrandLivre = resultatGrandLivreTries
+    .filter(m => m.type_mouvement === 'ENTREE')
+    .reduce((acc, m) => acc + Number(m.montant || 0), 0);
+
+  const totalSortiesGrandLivre = resultatGrandLivreTries
+    .filter(m => m.type_mouvement === 'SORTIE')
+    .reduce((acc, m) => acc + Number(m.montant || 0), 0);
+
+  const resultatNetGrandLivre = totalEntreesGrandLivre - totalSortiesGrandLivre;
 
   const validerFormulaireControle = () => {
-    if (!caisseControleId) {
-      alert('⚠️ Veuillez obligatoirement sélectionner une caisse.');
-      return false;
-    }
-    if (!caissierFiltre) {
-      alert('⚠️ Veuillez obligatoirement sélectionner un caissier.');
-      return false;
+    if (moduleActuel === 'LIVRAISON') {
+      if (!livreurControle) {
+        alert('⚠️ Veuillez obligatoirement sélectionner un livreur.');
+        return false;
+      }
+    } else {
+      if (!caisseControleId) {
+        alert('⚠️ Veuillez obligatoirement sélectionner une caisse.');
+        return false;
+      }
+      if (!caissierFiltre) {
+        alert('⚠️ Veuillez obligatoirement sélectionner un caissier.');
+        return false;
+      }
     }
     if (montantVerse === '' || isNaN(Number(montantVerse))) {
       alert('⚠️ Veuillez obligatoirement renseigner le montant versé.');
@@ -454,10 +510,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
       const payloadEtat = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        id_caisse: caisseControleId,
+        id_caisse: moduleActuel === 'LIVRAISON' ? null : caisseControleId,
         date_debut: dateControle,
         date_fin: dateControle,
-        caissier: caissierFiltre,
+        caissier: moduleActuel === 'LIVRAISON' ? livreurControle : caissierFiltre,
         montant_attendu: montantAttenduCaisse,
         montant_verse: montantV,
         ecart: ecartCaisse,
@@ -485,7 +541,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     try {
       const etatConcerne = etatsCaisseList.find(e => String(e.id) === String(dernierEtatIdValidé)) || {
         montant_verse: Number(montantVerse),
-        caissier: caissierFiltre,
+        caissier: moduleActuel === 'LIVRAISON' ? livreurControle : caissierFiltre,
         code_piece: numeroPieceCloture
       };
 
@@ -617,27 +673,28 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const totalVerse = etatsCaisseTries.reduce((acc, curr) => acc + (Number(curr.montant_verse) || 0), 0);
 
   return (
-    <div className="space-y-3 text-xs font-sans max-w-full overflow-hidden px-1 sm:px-0">
+    <div className="space-y-2 text-[11px] font-sans max-w-full overflow-hidden px-0.5 sm:px-0">
       
       {/* 1. VUE : SAISIE DES OPÉRATIONS */}
       {vueInitiale === 'saisie_operations' && (
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3 rounded-2xl border border-slate-200 shadow-sm gap-2">
-            <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm uppercase leading-tight">
-              Saisie des opérations [{moduleActuel}]
+        <div className="space-y-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-2.5 rounded-2xl border border-slate-200 shadow-2xs gap-1.5">
+            <h4 className="font-extrabold text-slate-900 text-xs uppercase leading-tight">
+              Saisie [{moduleActuel}]
             </h4>
-            <div className="grid grid-cols-2 gap-1.5 w-full sm:w-auto">
+            <div className="grid grid-cols-2 gap-1 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => {
                   setIdOperationEnCoursModif(null);
                   setNumeroPieceEnCoursModif('');
-                  setLigneUnique({ id_compte: '', libelle: '', montant: '', piece_physique: '' });
+                  setLigneUnique({ id_compte: '', montant: '', piece_physique: '' });
+                  setUtilisateurMotif('');
                   setModeSaisie('nouveau');
                 }}
-                className={`py-1.5 px-3 rounded-xl font-black text-xs transition shadow-2xs text-center ${
+                className={`py-1 px-2.5 rounded-xl font-black text-[11px] transition shadow-2xs text-center ${
                   modeSaisie === 'nouveau'
-                    ? 'bg-orange-600 text-white shadow-xs'
+                    ? 'bg-orange-600 text-white shadow-2xs'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                 }`}
               >
@@ -646,9 +703,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
               <button
                 type="button"
                 onClick={() => setModeSaisie('historique')}
-                className={`py-1.5 px-3 rounded-xl font-black text-xs transition shadow-2xs text-center ${
+                className={`py-1 px-2.5 rounded-xl font-black text-[11px] transition shadow-2xs text-center ${
                   modeSaisie === 'historique'
-                    ? 'bg-slate-900 text-white shadow-xs'
+                    ? 'bg-slate-900 text-white shadow-2xs'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                 }`}
               >
@@ -658,67 +715,69 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
           </div>
 
           {modeSaisie === 'nouveau' ? (
-            <form onSubmit={enregistrerOperationUnique} className="bg-white p-3 sm:p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                <span className="font-bold text-slate-500 uppercase text-[10px]">
-                  {idOperationEnCoursModif ? 'Modifier l’opération' : 'Formulaire de Saisie'}
+            <form onSubmit={enregistrerOperationUnique} className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+                <span className="font-bold text-slate-500 uppercase text-[9px]">
+                  {idOperationEnCoursModif ? 'Modifier' : 'Formulaire'}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   {idOperationEnCoursModif && numeroPieceEnCoursModif && (
-                    <div className="bg-orange-50 text-orange-800 px-3 py-1.5 rounded-xl text-right border border-orange-200 shadow-2xs">
-                      <span className="block text-[9px] uppercase text-orange-600 font-black">N° PIÈCE</span>
-                      <span className="text-xs sm:text-sm font-mono font-black text-orange-700">
+                    <div className="bg-orange-50 text-orange-800 px-2 py-1 rounded-xl text-right border border-orange-200 shadow-2xs">
+                      <span className="block text-[8px] uppercase text-orange-600 font-black">N° PIÈCE</span>
+                      <span className="text-[11px] font-mono font-black text-orange-700">
                         {numeroPieceEnCoursModif}
                       </span>
                     </div>
                   )}
-                  {enteteSaisie.id_caisse && (
-                    <div className="bg-slate-100 text-slate-800 px-3 py-1.5 rounded-xl text-right border border-slate-300 shadow-2xs">
-                      <span className="block text-[9px] uppercase text-slate-600 font-black">SOLDE CAISSE</span>
-                      <span className="text-xs sm:text-sm font-black text-slate-950">
-                        {calculerSoldeCaisse(enteteSaisie.id_caisse).toLocaleString('fr-FR')} F
+                  {moduleActuel !== 'LIVRAISON' && enteteSaisie.id_caisse && (
+                    <div className="bg-slate-100 text-slate-800 px-2 py-1 rounded-xl text-right border border-slate-300 shadow-2xs">
+                      <span className="block text-[8px] uppercase text-slate-600 font-black">SOLDE</span>
+                      <span className="text-[11px] font-black text-slate-950">
+                        {calculerSoldeCaisse(enteteSaisie.id_caisse).toLocaleString('fr-FR')}
                       </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="space-y-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <div className={`grid ${moduleActuel === 'LIVRAISON' ? 'grid-cols-1' : 'grid-cols-2'} gap-1.5`}>
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Date *</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Date *</label>
                     <input
                       type="date"
                       required
                       value={enteteSaisie.date}
                       onChange={(e) => setEnteteSaisie({ ...enteteSaisie, date: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[11px] shadow-2xs"
                     />
                   </div>
 
-                  <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Caisse *</label>
-                    <select
-                      required
-                      value={enteteSaisie.id_caisse}
-                      onChange={(e) => setEnteteSaisie({ ...enteteSaisie, id_caisse: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate shadow-2xs"
-                    >
-                      <option value="">-- Caisse --</option>
-                      {caissesPrincipalesPourSaisie.map((c) => (
-                        <option key={c.id} value={c.id}>💵 {c.nom_caisse || c.code_caisse}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {moduleActuel !== 'LIVRAISON' && (
+                    <div>
+                      <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Caisse *</label>
+                      <select
+                        required
+                        value={enteteSaisie.id_caisse}
+                        onChange={(e) => setEnteteSaisie({ ...enteteSaisie, id_caisse: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[11px] truncate shadow-2xs"
+                      >
+                        <option value="">-- Caisse --</option>
+                        {caissesPrincipalesPourSaisie.map((c) => (
+                          <option key={c.id} value={c.id}>💵 {c.nom_caisse || c.code_caisse}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Type *</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Type *</label>
                     <select
                       value={enteteSaisie.type_mouvement}
                       onChange={(e) => setEnteteSaisie({ ...enteteSaisie, type_mouvement: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[11px] shadow-2xs"
                     >
                       <option value="ENTREE">🟢 Entrée</option>
                       <option value="SORTIE">🔴 Sortie</option>
@@ -726,12 +785,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Compte *</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Compte *</label>
                     <select
                       required
                       value={ligneUnique.id_compte}
                       onChange={(e) => setLigneUnique({ ...ligneUnique, id_compte: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-black text-slate-900 shadow-2xs truncate"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 shadow-2xs truncate"
                     >
                       <option value="">-- Compte --</option>
                       {comptes
@@ -743,33 +802,41 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block text-[10px] text-slate-700 font-black mb-1">Motif *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="EX: ACHAT FOURNITURES..."
-                      value={ligneUnique.libelle}
-                      onChange={(e) => setLigneUnique({ ...ligneUnique, libelle: e.target.value.toUpperCase() })}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-900 uppercase placeholder:text-slate-400 placeholder:normal-case shadow-2xs"
-                    />
+                    <label className="block text-[9px] text-slate-700 font-black mb-0.5">Motif / Utilisateur</label>
+                    <select
+                      value={utilisateurMotif}
+                      onChange={(e) => setUtilisateurMotif(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 shadow-2xs truncate"
+                    >
+                      <option value="">-- Aucun (Interne) --</option>
+                      {moduleActuel === 'LIVRAISON' ? (
+                        listeLivreurs.map((l, idx) => (
+                          <option key={idx} value={l}>{l}</option>
+                        ))
+                      ) : (
+                        utilisateurs.map((u) => (
+                          <option key={u.id} value={u.nom_complet || u.email}>{u.nom_complet || u.email}</option>
+                        ))
+                      )}
+                    </select>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] text-slate-700 font-black mb-1">Numéro pièce</label>
+                    <label className="block text-[9px] text-slate-700 font-black mb-0.5">N° pièce</label>
                     <input
                       type="text"
                       placeholder="OPTIONNEL"
                       value={ligneUnique.piece_physique}
                       onChange={(e) => setLigneUnique({ ...ligneUnique, piece_physique: e.target.value.toUpperCase() })}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-mono font-bold text-slate-900 uppercase placeholder:text-slate-400 placeholder:normal-case shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-mono font-bold text-slate-900 uppercase placeholder:text-slate-400 placeholder:normal-case shadow-2xs"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] text-slate-700 font-black mb-1">Montant (F CFA) *</label>
+                  <label className="block text-[9px] text-slate-700 font-black mb-0.5">Montant *</label>
                   <input
                     type="number"
                     required
@@ -777,31 +844,33 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                     placeholder="0"
                     value={ligneUnique.montant}
                     onChange={(e) => setLigneUnique({ ...ligneUnique, montant: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs font-black text-orange-600 shadow-2xs"
+                    onFocus={(e) => e.target.select()}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-orange-600 shadow-2xs"
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-between items-center pt-2 border-t border-slate-100 gap-2">
-                <div className="flex gap-2 w-full sm:w-auto">
+              <div className="flex flex-col sm:flex-row justify-between items-center pt-1.5 border-t border-slate-100 gap-1.5">
+                <div className="flex gap-1.5 w-full sm:w-auto">
                   {idOperationEnCoursModif && (
                     <>
                       <button
                         type="button"
                         onClick={() => supprimerOperation(idOperationEnCoursModif)}
-                        className="bg-red-600 hover:bg-red-500 text-white font-black px-4 py-2.5 rounded-xl text-xs shadow"
+                        className="bg-red-600 hover:bg-red-500 text-white font-black px-3 py-1.5 rounded-xl text-[11px] shadow-2xs"
                       >
-                        🗑️ Supprimer
+                        🗑️ Suppr
                       </button>
                       <button
                         type="button"
                         onClick={() => {
                           setIdOperationEnCoursModif(null);
                           setNumeroPieceEnCoursModif('');
-                          setLigneUnique({ id_compte: '', libelle: '', montant: '', piece_physique: '' });
+                          setLigneUnique({ id_compte: '', montant: '', piece_physique: '' });
+                          setUtilisateurMotif('');
                           setModeSaisie('historique');
                         }}
-                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-4 py-2.5 rounded-xl text-xs"
+                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-3 py-1.5 rounded-xl text-[11px]"
                       >
                         Annuler
                       </button>
@@ -810,89 +879,90 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                 </div>
                 <button
                   type="submit"
-                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 py-2.5 rounded-xl shadow transition text-xs text-center"
+                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-black px-5 py-1.5 rounded-xl shadow-2xs transition text-[11px] text-center"
                 >
                   {idOperationEnCoursModif ? '💾 Mettre à jour' : '💾 Valider'}
                 </button>
               </div>
             </form>
           ) : (
-            <div className="bg-white p-3 sm:p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-              <div className="flex flex-col gap-2 border-b border-slate-100 pb-2.5">
-                <h5 className="font-extrabold text-slate-900 text-xs uppercase">Historique des saisies</h5>
+            <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex flex-col gap-1.5 border-b border-slate-100 pb-2">
+                <h5 className="font-extrabold text-slate-900 text-[11px] uppercase">Historique</h5>
                 
-                <div className="flex items-center gap-1.5 w-full">
-                  <label className="font-bold text-slate-700 text-[10px] whitespace-nowrap">Caisse :</label>
+                <div className="flex items-center gap-1 w-full">
+                  <label className="font-bold text-slate-700 text-[9px] whitespace-nowrap">Caisse :</label>
                   <select
                     value={caisseSelectionneeJournal}
                     onChange={(e) => setCaisseSelectionneeJournal(e.target.value)}
-                    className="bg-slate-50 border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-xs shadow-2xs w-full truncate"
+                    className="bg-slate-50 border border-slate-300 rounded-lg p-1 font-black text-slate-900 text-[11px] shadow-2xs w-full truncate"
                   >
-                    {caissesPrincipalesPourSaisie.map((c) => (
+                    <option value="">-- Toutes les caisses --</option>
+                    {caisses.map((c) => (
                       <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Début :</label>
+                  <label className="block font-black text-slate-800 mb-0.5 text-[8px]">Début :</label>
                   <input
                     type="date"
                     value={dateDebutJournal}
                     onChange={(e) => setDateDebutJournal(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] shadow-2xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1 font-black text-slate-900 text-[10px] shadow-2xs"
                   />
                 </div>
                 <div>
-                  <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Fin :</label>
+                  <label className="block font-black text-slate-800 mb-0.5 text-[8px]">Fin :</label>
                   <input
                     type="date"
                     value={dateFinJournal}
                     onChange={(e) => setDateFinJournal(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] shadow-2xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1 font-black text-slate-900 text-[10px] shadow-2xs"
                   />
                 </div>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-2xs">
-                <table className="w-full text-left text-[11px]">
-                  <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black uppercase text-[10px]">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black uppercase text-[9px]">
                     <tr>
-                      <th onClick={() => gererTriJournal('created_at')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
+                      <th onClick={() => gererTriJournal('created_at')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
                         Date {colonneTriJournal === 'created_at' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('piece')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none font-mono whitespace-nowrap">
+                      <th onClick={() => gererTriJournal('piece')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none font-mono whitespace-nowrap">
                         N° Pièce {colonneTriJournal === 'piece' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('compte')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTriJournal('compte')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
                         Compte {colonneTriJournal === 'compte' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('libelle')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
-                        Libellé {colonneTriJournal === 'libelle' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
+                      <th onClick={() => gererTriJournal('libelle')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
+                        Motif {colonneTriJournal === 'libelle' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('montant')} className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
+                      <th onClick={() => gererTriJournal('montant')} className="p-1.5 text-right cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
                         Montant {colonneTriJournal === 'montant' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
                     {reportAntérieur !== 0 && (
-                      <tr className="bg-slate-50 italic text-[10px]">
-                        <td className="p-2 font-bold text-slate-600">-</td>
-                        <td className="p-2 font-mono font-bold text-slate-600 whitespace-nowrap">REPORT</td>
-                        <td className="p-2 font-bold text-slate-600">Report Antérieur</td>
-                        <td className="p-2 font-bold text-slate-600">Avant {dateDebutJournal}</td>
-                        <td className={`p-2 font-black text-right whitespace-nowrap ${reportAntérieur >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {reportAntérieur >= 0 ? `+ ${reportAntérieur.toLocaleString('fr-FR')} F` : `${reportAntérieur.toLocaleString('fr-FR')} F`}
+                      <tr className="bg-slate-50 italic text-[9px]">
+                        <td className="p-1.5 font-bold text-slate-600">-</td>
+                        <td className="p-1.5 font-mono font-bold text-slate-600 whitespace-nowrap">REPORT</td>
+                        <td className="p-1.5 font-bold text-slate-600">Report Antérieur</td>
+                        <td className="p-1.5 font-bold text-slate-600">Avant {dateDebutJournal}</td>
+                        <td className={`p-1.5 font-black text-right whitespace-nowrap ${reportAntérieur >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {reportAntérieur >= 0 ? `+ ${reportAntérieur.toLocaleString('fr-FR')}` : `${reportAntérieur.toLocaleString('fr-FR')}`}
                         </td>
                       </tr>
                     )}
 
                     {mouvementsManuelsFiltres.length === 0 && reportAntérieur === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-4 text-center text-slate-500 font-bold text-xs">Aucune opération manuelle pour cette période.</td>
+                        <td colSpan="5" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucune opération.</td>
                       </tr>
                     ) : (
                       mouvementsManuelsFiltres.map((m, indexMvt) => {
@@ -909,16 +979,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                             className="transition cursor-pointer hover:bg-orange-50"
                             title="Cliquer pour modifier ou supprimer"
                           >
-                            <td className="p-2 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{numeroPieceSequence}</td>
-                            <td className="p-2 font-bold text-slate-900 truncate max-w-[120px] uppercase">
+                            <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{numeroPieceSequence}</td>
+                            <td className="p-1.5 font-bold text-slate-900 truncate max-w-[100px] uppercase">
                               {nomCompteAffichage}
                             </td>
-                            <td className="p-2 font-extrabold uppercase truncate max-w-[120px]">
+                            <td className="p-1.5 font-extrabold uppercase truncate max-w-[100px]">
                               {m.libelle || '-'}
                             </td>
-                            <td className={`p-2 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')} F` : `- ${Number(m.montant).toLocaleString('fr-FR')} F`}
+                            <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
                           </tr>
                         );
@@ -928,10 +998,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                 </table>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex justify-between items-center">
-                <span className="font-black text-slate-700 uppercase text-[10px]">Solde Actuel en Caisse :</span>
-                <span className={`text-xs sm:text-sm font-black ${soldeActuelCaisseSelectionnee >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {soldeActuelCaisseSelectionnee.toLocaleString('fr-FR')} F CFA
+              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 flex justify-between items-center text-[10px]">
+                <span className="font-black text-slate-700 uppercase">Solde :</span>
+                <span className={`font-black ${soldeActuelCaisseSelectionnee >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {soldeActuelCaisseSelectionnee.toLocaleString('fr-FR')}
                 </span>
               </div>
             </div>
@@ -941,21 +1011,21 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
       {/* 2. VUE : GRAND LIVRE & JOURNAL DE CAISSE */}
       {vueInitiale === 'grand_livre' && (
-        <div className="bg-white p-3 sm:p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+        <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
           
-          <div className="flex gap-2 border-b border-slate-200 pb-2">
+          <div className="flex gap-1.5 border-b border-slate-200 pb-1.5">
             <button
               onClick={() => setSousOngletGrandLivreJournal('grand_livre')}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs transition ${
-                sousOngletGrandLivreJournal === 'grand_livre' ? 'bg-orange-600 text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition ${
+                sousOngletGrandLivreJournal === 'grand_livre' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               📖 Grand Livre
             </button>
             <button
               onClick={() => setSousOngletGrandLivreJournal('journal')}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs transition ${
-                sousOngletGrandLivreJournal === 'journal' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition ${
+                sousOngletGrandLivreJournal === 'journal' ? 'bg-slate-900 text-white shadow-2xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               📋 Journal de Caisse
@@ -963,84 +1033,97 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
           </div>
 
           {sousOngletGrandLivreJournal === 'grand_livre' ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
                 <div>
-                  <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs uppercase">📖 GRAND LIVRE</h4>
-                  <p className="text-slate-700 font-semibold text-[10px]">Consultation des mouvements de compte</p>
+                  <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] uppercase">📖 GRAND LIVRE</h4>
                 </div>
                 <button
                   onClick={() => window.print()}
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2.5 py-1.5 rounded-xl transition shadow text-[10px] shrink-0"
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2 py-1 rounded-xl transition shadow-2xs text-[9px] shrink-0"
                 >
                   🖨️ Imprimer
                 </button>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
-                <div className="grid grid-cols-2 gap-2">
+              {/* FILTRES DU GRAND LIVRE : COMPTE & TIERS */}
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Du :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Du :</label>
                     <input
                       type="date"
                       value={dateDebutLivre}
                       onChange={(e) => setDateDebutLivre(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] shadow-2xs"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Au :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Au :</label>
                     <input
                       type="date"
                       value={dateFinLivre}
                       onChange={(e) => setDateFinLivre(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] shadow-2xs"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 items-end">
+                <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Compte :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Compte :</label>
                     <select
                       value={compteLivreId}
                       onChange={(e) => setCompteLivreId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] truncate shadow-2xs"
                     >
-                      <option value="">-- Tous --</option>
+                      <option value="">-- Tous les comptes --</option>
                       {comptes.map((c) => (
                         <option key={c.id} value={c.id}>{c.intitule_compte}</option>
                       ))}
                     </select>
                   </div>
 
-                  <button
-                    onClick={lancerEditionGrandLivre}
-                    className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 px-3 rounded-xl shadow transition text-xs text-center"
-                  >
-                    🔍 Consulter
-                  </button>
+                  <div>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Tiers (Personnel / Livreur) :</label>
+                    <select
+                      value={tiersLivreFiltre}
+                      onChange={(e) => setTiersLivreFiltre(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] truncate shadow-2xs uppercase"
+                    >
+                      <option value="">-- Tous les tiers --</option>
+                      {moduleActuel === 'LIVRAISON' ? (
+                        listeLivreurs.map((l, idx) => (
+                          <option key={idx} value={l}>{l}</option>
+                        ))
+                      ) : (
+                        utilisateurs.map((u) => (
+                          <option key={u.id} value={u.nom_complet || u.email}>{u.nom_complet || u.email}</option>
+                        ))
+                      )}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
-                <table className="w-full text-left text-[11px]">
-                  <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 font-black text-[10px] uppercase">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 font-black text-[9px] uppercase">
                     <tr>
-                      <th onClick={() => gererTriGrandLivre('created_at')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
+                      <th onClick={() => gererTriGrandLivre('created_at')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
                         Date {colonneTriGrandLivre === 'created_at' ? (ordreTriGrandLivre === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriGrandLivre('piece')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none font-mono whitespace-nowrap">
+                      <th onClick={() => gererTriGrandLivre('piece')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none font-mono whitespace-nowrap">
                         N° Pièce {colonneTriGrandLivre === 'piece' ? (ordreTriGrandLivre === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriGrandLivre('compte')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTriGrandLivre('compte')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
                         Compte {colonneTriGrandLivre === 'compte' ? (ordreTriGrandLivre === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriGrandLivre('libelle')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
-                        Libellé {colonneTriGrandLivre === 'libelle' ? (ordreTriGrandLivre === 'asc' ? '▲' : '▼') : '↕'}
+                      <th onClick={() => gererTriGrandLivre('libelle')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
+                        Motif / Tiers {colonneTriGrandLivre === 'libelle' ? (ordreTriGrandLivre === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriGrandLivre('montant')} className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
+                      <th onClick={() => gererTriGrandLivre('montant')} className="p-1.5 text-right cursor-pointer hover:bg-slate-200 transition select-none whitespace-nowrap">
                         Montant {colonneTriGrandLivre === 'montant' ? (ordreTriGrandLivre === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
                     </tr>
@@ -1048,7 +1131,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {resultatGrandLivreTries.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-4 text-center text-slate-500 font-bold text-xs">Cliquez sur &quot;Consulter&quot; pour afficher les mouvements de la période.</td>
+                        <td colSpan="5" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucun mouvement trouvé pour cette sélection.</td>
                       </tr>
                     ) : (
                       resultatGrandLivreTries.map((m, idx) => {
@@ -1056,13 +1139,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                         const compteAssocie = comptes.find(c => String(c.id) === String(m.id_compte));
                         return (
                           <tr key={m.id} className="hover:bg-slate-50">
-                            <td className="p-2 text-slate-800 font-bold whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{m.piece_physique || `PC-${String(idx + 1).padStart(2, '0')}`}</td>
-                            <td className="p-2 font-bold text-slate-900 truncate max-w-[120px]">
+                            <td className="p-1.5 text-slate-800 font-bold whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{m.piece_physique || `PC-${String(idx + 1).padStart(2, '0')}`}</td>
+                            <td className="p-1.5 font-bold text-slate-900 truncate max-w-[100px]">
                               {compteAssocie ? compteAssocie.intitule_compte : '-'}
                             </td>
-                            <td className="p-2 font-black text-slate-900 uppercase truncate max-w-[120px]">{m.libelle}</td>
-                            <td className={`p-2 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-700' : 'text-red-600'}`}>
+                            <td className="p-1.5 font-black text-slate-900 uppercase truncate max-w-[100px]">{m.libelle}</td>
+                            <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-700' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
                           </tr>
@@ -1071,11 +1154,23 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                     )}
                   </tbody>
                   {resultatGrandLivreTries.length > 0 && (
-                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900">
+                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
                       <tr>
-                        <td colSpan="4" className="p-2.5 uppercase text-[10px]">Total :</td>
-                        <td className={`p-2.5 text-right font-black ${totalMontantGrandLivre >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
-                          {totalMontantGrandLivre >= 0 ? `+ ${totalMontantGrandLivre.toLocaleString('fr-FR')}` : `${totalMontantGrandLivre.toLocaleString('fr-FR')}`}
+                        <td colSpan="4" className="p-2 uppercase text-[9px]">Total Entrées :</td>
+                        <td className="p-2 text-right font-black text-emerald-800">
+                          +{totalEntreesGrandLivre.toLocaleString('fr-FR')}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan="4" className="p-2 uppercase text-[9px]">Total Sorties :</td>
+                        <td className="p-2 text-right font-black text-red-700">
+                          -{totalSortiesGrandLivre.toLocaleString('fr-FR')}
+                        </td>
+                      </tr>
+                      <tr className="bg-orange-50 border-t border-slate-200">
+                        <td colSpan="4" className="p-2 uppercase text-[9px] text-orange-900 font-black">Résultat Net :</td>
+                        <td className={`p-2 text-right font-black ${resultatNetGrandLivre >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {resultatNetGrandLivre >= 0 ? `+${resultatNetGrandLivre.toLocaleString('fr-FR')}` : resultatNetGrandLivre.toLocaleString('fr-FR')}
                         </td>
                       </tr>
                     </tfoot>
@@ -1084,79 +1179,80 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-2">
-                <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs uppercase whitespace-nowrap">📋 JOURNAL DE CAISSE</h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
+                <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] uppercase whitespace-nowrap">📋 JOURNAL DE CAISSE</h4>
                 <button
                   onClick={() => window.print()}
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2.5 py-1.5 rounded-xl transition shadow text-[10px] whitespace-nowrap shrink-0"
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2 py-1 rounded-xl transition shadow-2xs text-[9px] whitespace-nowrap shrink-0"
                 >
                   🖨️ Imprimer
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5 w-full">
-                <label className="font-bold text-slate-700 text-[10px] whitespace-nowrap">Caisse :</label>
+              {/* SÉLECTEUR DE CAISSE POUR LE JOURNAL DE CAISSE */}
+              <div className="flex items-center gap-1.5 w-full bg-slate-50 p-2 rounded-xl border border-slate-200">
+                <label className="font-black text-slate-800 text-[9px] whitespace-nowrap">Caisse :</label>
                 <select
                   value={caisseSelectionneeJournal}
                   onChange={(e) => setCaisseSelectionneeJournal(e.target.value)}
-                  className="bg-slate-50 border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-xs shadow-2xs w-full truncate"
+                  className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs w-full truncate"
                 >
-                  <option value="">-- Toutes les caisses principales --</option>
-                  {caissesPrincipalesPourSaisie.map((c) => (
+                  <option value="">-- Toutes les caisses --</option>
+                  {caisses.map((c) => (
                     <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Début :</label>
+                  <label className="block font-black text-slate-800 mb-0.5 text-[8px]">Début :</label>
                   <input
                     type="date"
                     value={dateDebutJournal}
                     onChange={(e) => setDateDebutJournal(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] shadow-2xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1 font-black text-slate-900 text-[10px] shadow-2xs"
                   />
                 </div>
                 <div>
-                  <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Fin :</label>
+                  <label className="block font-black text-slate-800 mb-0.5 text-[8px]">Fin :</label>
                   <input
                     type="date"
                     value={dateFinJournal}
                     onChange={(e) => setDateFinJournal(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] shadow-2xs"
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1 font-black text-slate-900 text-[10px] shadow-2xs"
                   />
                 </div>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-sm">
-                <table className="w-full text-left text-[11px]">
-                  <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black text-[10px] uppercase">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black text-[9px] uppercase">
                     <tr>
-                      <th onClick={() => gererTriJournal('created_at')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTriJournal('created_at')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
                         Date {colonneTriJournal === 'created_at' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('piece')} className="p-2 font-mono cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTriJournal('piece')} className="p-1.5 font-mono cursor-pointer hover:bg-slate-200 transition select-none">
                         N° Pièce {colonneTriJournal === 'piece' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('caisse')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTriJournal('caisse')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
                         Caisse {colonneTriJournal === 'caisse' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('compte')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTriJournal('compte')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
                         Compte {colonneTriJournal === 'compte' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTriJournal('libelle')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
-                        Libellé {colonneTriJournal === 'libelle' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
+                      <th onClick={() => gererTriJournal('libelle')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
+                        Motif {colonneTriJournal === 'libelle' ? (ordreTriJournal === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th className="p-2 text-right">Entrée</th>
-                      <th className="p-2 text-right">Sortie</th>
+                      <th className="p-1.5 text-right">Entrée</th>
+                      <th className="p-1.5 text-right">Sortie</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
                     {mouvementsJournalTries.length === 0 ? (
                       <tr>
-                        <td colSpan="7" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré pour cette période.</td>
+                        <td colSpan="7" className="p-3 text-center text-slate-500 font-bold">Aucun mouvement.</td>
                       </tr>
                     ) : (
                       mouvementsJournalTries.map((m, idx) => {
@@ -1175,15 +1271,15 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
                         return (
                           <tr key={m.id} className="hover:bg-slate-50">
-                            <td className="p-2 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{m.piece_physique || `PC-${String(idx + 1).padStart(2, '0')}`}</td>
-                            <td className="p-2 font-bold text-slate-900 truncate max-w-[100px]">{caisseObj ? caisseObj.nom_caisse : '-'}</td>
-                            <td className="p-2 font-bold text-slate-900 truncate max-w-[100px] uppercase">{nomCompteAffichage}</td>
-                            <td className="p-2 font-black text-slate-900 uppercase truncate max-w-[120px]">{m.libelle}</td>
-                            <td className="p-2 font-black text-emerald-700 text-right whitespace-nowrap">
+                            <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{m.piece_physique || `PC-${String(idx + 1).padStart(2, '0')}`}</td>
+                            <td className="p-1.5 font-bold text-slate-900 truncate max-w-[80px]">{caisseObj ? caisseObj.nom_caisse : '-'}</td>
+                            <td className="p-1.5 font-bold text-slate-900 truncate max-w-[80px] uppercase">{nomCompteAffichage}</td>
+                            <td className="p-1.5 font-black text-slate-900 uppercase truncate max-w-[90px]">{m.libelle}</td>
+                            <td className="p-1.5 font-black text-emerald-700 text-right whitespace-nowrap">
                               {estEntree ? `${montantNum.toLocaleString('fr-FR')}` : '-'}
                             </td>
-                            <td className="p-2 font-black text-red-600 text-right whitespace-nowrap">
+                            <td className="p-1.5 font-black text-red-600 text-right whitespace-nowrap">
                               {!estEntree ? `${montantNum.toLocaleString('fr-FR')}` : '-'}
                             </td>
                           </tr>
@@ -1192,20 +1288,20 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                     )}
                   </tbody>
                   {mouvementsJournalTries.length > 0 && (
-                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900">
+                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
                       <tr>
-                        <td colSpan="5" className="p-2.5 uppercase text-[10px]">Totaux & Solde :</td>
-                        <td className="p-2.5 text-right font-black text-emerald-800">
-                          {totalEntreesJournal.toLocaleString('fr-FR')} F
+                        <td colSpan="5" className="p-2 uppercase text-[9px]">Totaux :</td>
+                        <td className="p-2 text-right font-black text-emerald-800">
+                          {totalEntreesJournal.toLocaleString('fr-FR')}
                         </td>
-                        <td className="p-2.5 text-right font-black text-red-700">
-                          {totalSortiesJournal.toLocaleString('fr-FR')} F
+                        <td className="p-2 text-right font-black text-red-700">
+                          {totalSortiesJournal.toLocaleString('fr-FR')}
                         </td>
                       </tr>
                       <tr className="bg-orange-50 border-t border-slate-200">
-                        <td colSpan="5" className="p-2.5 uppercase text-[10px] text-orange-900 font-black">Solde de Caisse :</td>
-                        <td colSpan="2" className={`p-2.5 text-right font-black text-sm ${soldeJournal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {soldeJournal.toLocaleString('fr-FR')} F CFA
+                        <td colSpan="5" className="p-2 uppercase text-[9px] text-orange-900 font-black">Solde :</td>
+                        <td colSpan="2" className={`p-2 text-right font-black ${soldeJournal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {soldeJournal.toLocaleString('fr-FR')}
                         </td>
                       </tr>
                     </tfoot>
@@ -1220,33 +1316,33 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
       {/* 3. VUE : CONTRÔLE & CLÔTURE & ÉTATS DE CAISSE */}
       {vueInitiale === 'controle_cloture' && (
-        <div className="bg-white p-3 sm:p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+        <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
           
-          <div className="flex gap-2 border-b border-slate-200 pb-2">
+          <div className="flex gap-1.5 border-b border-slate-200 pb-1.5">
             <button
               onClick={() => setSousOngletControle('nouveau_controle')}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs transition ${
-                sousOngletControle === 'nouveau_controle' ? 'bg-orange-600 text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition ${
+                sousOngletControle === 'nouveau_controle' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               🛡️ Contrôle & Clôture
             </button>
             <button
               onClick={() => setSousOngletControle('etats_caisse')}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs transition ${
-                sousOngletControle === 'etats_caisse' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              className={`px-2.5 py-1 rounded-xl font-black text-[10px] transition ${
+                sousOngletControle === 'etats_caisse' ? 'bg-slate-900 text-white shadow-2xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              📋 États de caisse ({etatsCaisseList.length})
+              📋 États ({etatsCaisseList.length})
             </button>
           </div>
 
           {sousOngletControle === 'nouveau_controle' ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <h4 className="font-extrabold text-slate-900 text-[11px] sm:text-xs uppercase whitespace-nowrap">CONTRÔLE & CLÔTURE</h4>
-                  <span className="bg-orange-100 text-orange-800 font-mono font-black text-[9.5px] px-2 py-0.5 rounded-md border border-orange-200 whitespace-nowrap">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
+                <div className="flex items-center gap-1 min-w-0">
+                  <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] uppercase whitespace-nowrap">CLÔTURE</h4>
+                  <span className="bg-orange-100 text-orange-800 font-mono font-black text-[9px] px-1.5 py-0.5 rounded-md border border-orange-200 whitespace-nowrap">
                     {numeroPieceCloture}
                   </span>
                 </div>
@@ -1254,116 +1350,135 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   <button
                     type="button"
                     onClick={preparerNouvelleCloture}
-                    className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-1.5 rounded-xl transition shadow text-[10px] whitespace-nowrap uppercase"
+                    className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2 py-1 rounded-xl transition shadow-2xs text-[9px] whitespace-nowrap uppercase"
                   >
                     <span>＋</span> Nouvelle
                   </button>
                   <button
                     onClick={() => window.print()}
-                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2.5 py-1.5 rounded-xl transition shadow text-[10px] whitespace-nowrap"
+                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2 py-1 rounded-xl transition shadow-2xs text-[9px] whitespace-nowrap"
                   >
                     🖨️ Imprimer
                   </button>
                 </div>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
-                <div className="grid grid-cols-1 gap-2">
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+                <div className="grid grid-cols-1 gap-1.5">
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Date de clôture * :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Date de clôture * :</label>
                     <input
                       type="date"
                       required
                       disabled={Boolean(dernierEtatIdValidé)}
                       value={dateControle}
                       onChange={(e) => setDateControle(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                {moduleActuel === 'LIVRAISON' ? (
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Caisse * :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Livreur * :</label>
                     <select
                       required
                       disabled={Boolean(dernierEtatIdValidé)}
-                      value={caisseControleId}
-                      onChange={(e) => setCaisseControleId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
+                      value={livreurControle}
+                      onChange={(e) => setLivreurControle(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] truncate shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed uppercase"
                     >
                       <option value="">-- Sélectionnez --</option>
-                      {caissesFacturationPourControle.map((c) => (
-                        <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
+                      {listeLivreurs.map((l, idx) => (
+                        <option key={idx} value={l}>{l}</option>
                       ))}
                     </select>
                   </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Caisse * :</label>
+                      <select
+                        required
+                        disabled={Boolean(dernierEtatIdValidé)}
+                        value={caisseControleId}
+                        onChange={(e) => setCaisseControleId(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] truncate shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
+                      >
+                        <option value="">-- Sélectionnez --</option>
+                        {caissesFacturationPourControle.map((c) => (
+                          <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Caissier * :</label>
-                    <select
-                      required
-                      disabled={Boolean(dernierEtatIdValidé)}
-                      value={caissierFiltre}
-                      onChange={(e) => setCaissierFiltre(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-xs truncate shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
-                    >
-                      <option value="">-- Sélectionnez --</option>
-                      {caissiersFiltresControle.map((u) => (
-                        <option key={u.id} value={u.id}>{u.nom_complet || u.email}</option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Caissier * :</label>
+                      <select
+                        required
+                        disabled={Boolean(dernierEtatIdValidé)}
+                        value={caissierFiltre}
+                        onChange={(e) => setCaissierFiltre(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] truncate shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
+                      >
+                        <option value="">-- Sélectionnez --</option>
+                        {caissiersFiltresControle.map((u) => (
+                          <option key={u.id} value={u.id}>{u.nom_complet || u.email}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-200">
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Montant Attendu :</label>
-                    <div className="bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-950 text-xs text-center truncate shadow-2xs">
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Attendu :</label>
+                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-950 text-[10px] text-center truncate shadow-2xs">
                       {montantAttenduCaisse.toLocaleString('fr-FR')}
                     </div>
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-800 mb-1 text-[10px]">Montant versé * :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Versé * :</label>
                     <input
                       type="number"
                       required
                       disabled={Boolean(dernierEtatIdValidé)}
-                      placeholder="Ex: 500000"
+                      placeholder="0"
                       value={montantVerse}
                       onChange={(s) => setMontantVerse(s.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-emerald-700 text-xs shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
+                      onFocus={(e) => e.target.select()}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-emerald-700 text-[10px] shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-black text-slate-800 mb-1 text-[10px]">Écart :</label>
-                  <div className={`p-2 rounded-xl border text-xs font-black text-center shadow-2xs ${montantVerse === '' ? 'bg-white border-slate-300 text-slate-400' : ecartCaisse === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : ecartCaisse > 0 ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
+                  <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Écart :</label>
+                  <div className={`p-1.5 rounded-lg border text-[10px] font-black text-center shadow-2xs ${montantVerse === '' ? 'bg-white border-slate-300 text-slate-400' : ecartCaisse === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : ecartCaisse > 0 ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
                     {montantVerse === '' ? '-' : ecartCaisse === 0 ? '0 (Parfait)' : ecartCaisse > 0 ? `+ ${ecartCaisse.toLocaleString('fr-FR')} (Excédent)` : `${ecartCaisse.toLocaleString('fr-FR')} (Manquant)`}
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-100">
                 <button
                   type="button"
                   disabled={Boolean(dernierEtatIdValidé)}
                   onClick={validerClotureCaisse}
-                  className={`w-full py-2.5 px-2 rounded-2xl shadow transition text-[11px] font-black text-center truncate ${
+                  className={`w-full py-2 px-1.5 rounded-xl shadow-2xs transition text-[10px] font-black text-center truncate ${
                     !dernierEtatIdValidé
                       ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
                 >
-                  💾 Valider la Clôture
+                  💾 Valider Clôture
                 </button>
                 <button
                   type="button"
                   disabled={!dernierEtatIdValidé}
                   onClick={executerVersementActif}
-                  className={`w-full py-2.5 px-2 rounded-2xl shadow transition text-[11px] font-black text-center truncate ${
+                  className={`w-full py-2 px-1.5 rounded-xl shadow-2xs transition text-[10px] font-black text-center truncate ${
                     dernierEtatIdValidé 
                       ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer' 
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -1374,12 +1489,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               
-              {/* FILTRES DE RECHERCHE RESTRUCTURÉS */}
-              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2.5">
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="font-extrabold text-slate-800 text-[10px] uppercase">🔍 Filtres de recherche</span>
+                  <span className="font-extrabold text-slate-800 text-[9px] uppercase">🔍 Filtres</span>
                   {(filtreDateDebut || filtreDateFin || filtreCaisseId || filtreCaissierId) && (
                     <button
                       onClick={() => {
@@ -1388,113 +1502,112 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                         setFiltreCaisseId('');
                         setFiltreCaissierId('');
                       }}
-                      className="text-orange-600 hover:underline font-bold text-[10px]"
+                      className="text-orange-600 hover:underline font-bold text-[9px]"
                     >
                       Réinitialiser
                     </button>
                   )}
                 </div>
 
-                {/* Ligne 1 : Date Du / Au sur la même ligne */}
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Du :</label>
+                    <label className="block font-black text-slate-700 text-[8px] mb-0.5">Du :</label>
                     <input
                       type="date"
                       value={filtreDateDebut}
                       onChange={(e) => setFiltreDateDebut(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[11px]"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1 font-bold text-slate-900 text-[10px]"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Au :</label>
+                    <label className="block font-black text-slate-700 text-[8px] mb-0.5">Au :</label>
                     <input
                       type="date"
                       value={filtreDateFin}
                       onChange={(e) => setFiltreDateFin(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[11px]"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1 font-bold text-slate-900 text-[10px]"
                     />
                   </div>
                 </div>
 
-                {/* Ligne 2 : Caisse / Caissier sur la même ligne */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Caisse :</label>
-                    <select
-                      value={filtreCaisseId}
-                      onChange={(e) => {
-                        setFiltreCaisseId(e.target.value);
-                        setFiltreCaissierId('');
-                      }}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] truncate"
-                    >
-                      <option value="">-- Toutes --</option>
-                      {caisses.map((c) => (
-                        <option key={c.id} value={c.id}>{c.nom_caisse}</option>
-                      ))}
-                    </select>
-                  </div>
+                {moduleActuel !== 'LIVRAISON' && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="block font-black text-slate-700 text-[8px] mb-0.5">Caisse :</label>
+                      <select
+                        value={filtreCaisseId}
+                        onChange={(e) => {
+                          setFiltreCaisseId(e.target.value);
+                          setFiltreCaissierId('');
+                        }}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-1 font-black text-slate-900 text-[10px] truncate"
+                      >
+                        <option value="">-- Toutes --</option>
+                        {caisses.map((c) => (
+                          <option key={c.id} value={c.id}>{c.nom_caisse}</option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Caissier :</label>
-                    <select
-                      value={filtreCaissierId}
-                      onChange={(e) => setFiltreCaissierId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-black text-slate-900 text-[11px] truncate"
-                    >
-                      <option value="">-- Tous --</option>
-                      {caissiersFiltresRecherche.map((u) => (
-                        <option key={u.id} value={u.id}>{u.nom_complet || u.email}</option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block font-black text-slate-700 text-[8px] mb-0.5">Caissier :</label>
+                      <select
+                        value={filtreCaissierId}
+                        onChange={(e) => setFiltreCaissierId(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-1 font-black text-slate-900 text-[10px] truncate"
+                      >
+                        <option value="">-- Tous --</option>
+                        {caissiersFiltresRecherche.map((u) => (
+                          <option key={u.id} value={u.id}>{u.nom_complet || u.email}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="flex justify-between items-center">
-                <h5 className="font-extrabold text-slate-900 text-xs uppercase">Liste des États de Caisse Validés ({etatsCaisseTries.length})</h5>
-                <span className="text-[10px] text-slate-400 italic">Cliquez sur un en-tête pour trier</span>
+                <h5 className="font-extrabold text-slate-900 text-[10px] uppercase">Liste ({etatsCaisseTries.length})</h5>
               </div>
               
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-xs max-h-[380px]">
-                <table className="w-full text-left text-[11px] border-collapse">
-                  <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black text-[10px] uppercase sticky top-0 z-10">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs max-h-[340px]">
+                <table className="w-full text-left text-[10px] border-collapse">
+                  <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black text-[9px] uppercase sticky top-0 z-10">
                     <tr>
-                      <th onClick={() => gererTri('date_debut')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none w-24">
+                      <th onClick={() => gererTri('date_debut')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none w-20">
                         Date {colonneTri === 'date_debut' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTri('code_piece')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none font-mono">
-                        N° Clôture {colonneTri === 'code_piece' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
+                      <th onClick={() => gererTri('code_piece')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none font-mono">
+                        N° {colonneTri === 'code_piece' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTri('caissier')} className="p-2 cursor-pointer hover:bg-slate-200 transition select-none">
-                        Caissier {colonneTri === 'caissier' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
+                      <th onClick={() => gererTri('caissier')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none">
+                        {moduleActuel === 'LIVRAISON' ? 'Livreur' : 'Caissier'} {colonneTri === 'caissier' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTri('montant_attendu')} className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTri('montant_attendu')} className="p-1.5 text-right cursor-pointer hover:bg-slate-200 transition select-none">
                         Attendu {colonneTri === 'montant_attendu' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTri('montant_verse')} className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTri('montant_verse')} className="p-1.5 text-right cursor-pointer hover:bg-slate-200 transition select-none">
                         Versé {colonneTri === 'montant_verse' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTri('ecart')} className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTri('ecart')} className="p-1.5 text-right cursor-pointer hover:bg-slate-200 transition select-none">
                         Écart {colonneTri === 'ecart' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th onClick={() => gererTri('statut_versement')} className="p-2 text-center cursor-pointer hover:bg-slate-200 transition select-none">
+                      <th onClick={() => gererTri('statut_versement')} className="p-1.5 text-center cursor-pointer hover:bg-slate-200 transition select-none">
                         Statut {colonneTri === 'statut_versement' ? (ordreTri === 'asc' ? '▲' : '▼') : '↕'}
                       </th>
-                      <th className="p-2 text-center">Action</th>
+                      <th className="p-1.5 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {etatsCaisseTries.length === 0 ? (
                       <tr>
-                        <td colSpan="8" className="p-4 text-center text-slate-500 font-bold">Aucun état de caisse trouvé pour cette période ou ces filtres.</td>
+                        <td colSpan="8" className="p-3 text-center text-slate-500 font-bold">Aucun état.</td>
                       </tr>
                     ) : (
                       etatsCaisseTries.map((etat, indexEtat) => {
                         const estVerse = etat.statut_versement === 'VERSE';
-                        const nomCaissierAffichage = obtenirNomCaissier(etat.caissier);
+                        const nomCaissierAffichage = moduleActuel === 'LIVRAISON' ? (etat.caissier || '-') : obtenirNomCaissier(etat.caissier);
                         
                         const dateObj = new Date(etat.date_debut);
                         const dateFormatee = !isNaN(dateObj) ? dateObj.toLocaleDateString('fr-FR') : etat.date_debut;
@@ -1506,33 +1619,33 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
                         return (
                           <tr key={etat.id} className="hover:bg-slate-50">
-                            <td className="p-2 font-bold text-slate-800 whitespace-nowrap w-24">
+                            <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap w-20">
                               {dateFormatee}
                             </td>
-                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">
+                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">
                               {numeroClotureAffichage}
                             </td>
-                            <td className="p-2 uppercase font-bold text-slate-900 truncate max-w-[120px]">{nomCaissierAffichage}</td>
-                            <td className="p-2 text-right font-bold text-slate-700">{montantAttenduNum.toLocaleString('fr-FR')}</td>
-                            <td className="p-2 text-right font-black text-emerald-700">{montantVerseNum.toLocaleString('fr-FR')}</td>
-                            <td className={`p-2 text-right font-black ${ecartNum === 0 ? 'text-slate-600' : ecartNum > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                            <td className="p-1.5 uppercase font-bold text-slate-900 truncate max-w-[90px]">{nomCaissierAffichage}</td>
+                            <td className="p-1.5 text-right font-bold text-slate-700">{montantAttenduNum.toLocaleString('fr-FR')}</td>
+                            <td className="p-1.5 text-right font-black text-emerald-700">{montantVerseNum.toLocaleString('fr-FR')}</td>
+                            <td className={`p-1.5 text-right font-black ${ecartNum === 0 ? 'text-slate-600' : ecartNum > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                               {ecartNum > 0 ? `+${ecartNum.toLocaleString('fr-FR')}` : ecartNum.toLocaleString('fr-FR')}
                             </td>
-                            <td className="p-2 text-center">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${estVerse ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
-                                {estVerse ? 'VERSÉ' : 'NON VERSÉ'}
+                            <td className="p-1.5 text-center">
+                              <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black ${estVerse ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                                {estVerse ? 'VERSÉ' : 'NON'}
                               </span>
                             </td>
-                            <td className="p-2 text-center">
+                            <td className="p-1.5 text-center">
                               {!estVerse ? (
                                 <button
                                   onClick={() => verserEtatCaisse(etat)}
-                                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-3 py-1 rounded-xl text-[10px] shadow-2xs"
+                                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-2 py-0.5 rounded-lg text-[9px] shadow-2xs"
                                 >
                                   Verser 🚀
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-slate-400 font-bold">Clôturé</span>
+                                <span className="text-[9px] text-slate-400 font-bold">Clôturé</span>
                               )}
                             </td>
                           </tr>
@@ -1541,16 +1654,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                     )}
                   </tbody>
                   {etatsCaisseTries.length > 0 && (
-                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900">
+                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
                       <tr>
-                        <td colSpan="3" className="p-2.5 uppercase text-[10px]">Totaux :</td>
-                        <td className="p-2.5 text-right font-black text-slate-950">
+                        <td colSpan="3" className="p-2 uppercase text-[9px]">Totaux :</td>
+                        <td className="p-2 text-right font-black text-slate-950">
                           {totalAttendu.toLocaleString('fr-FR')}
                         </td>
-                        <td className="p-2.5 text-right font-black text-emerald-800">
+                        <td className="p-2 text-right font-black text-emerald-800">
                           {totalVerse.toLocaleString('fr-FR')}
                         </td>
-                        <td className={`p-2.5 text-right font-black ${totalEcart === 0 ? 'text-slate-950' : totalEcart > 0 ? 'text-blue-700' : 'text-red-700'}`}>
+                        <td className={`p-2 text-right font-black ${totalEcart === 0 ? 'text-slate-950' : totalEcart > 0 ? 'text-blue-700' : 'text-red-700'}`}>
                           {totalEcart > 0 ? `+${totalEcart.toLocaleString('fr-FR')}` : totalEcart.toLocaleString('fr-FR')}
                         </td>
                         <td colSpan="2"></td>
