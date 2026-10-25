@@ -19,7 +19,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
   const [livreurStatFiltre, setLivreurStatFiltre] = useState('TOUS');
 
-  // Filtre spécifique pour le Rapport de Stock (par défaut le premier dépôt ou TOUS)
   const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
 
   const obtenirDateDuJour = () => {
@@ -33,7 +32,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [dateDebutStat, setDateDebutStat] = useState('');
   const [dateFinStat, setDateFinStat] = useState('');
 
-  // Dates pour le rapport de stock (par défaut aujourd'hui)
   const [dateDebutRapport, setDateDebutRapport] = useState(obtenirDateDuJour());
   const [dateFinRapport, setDateFinRapport] = useState(obtenirDateDuJour());
 
@@ -284,7 +282,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return flux;
   };
 
-  // Calcul spécifique pour le Rapport de Stock par partenaire (Dépôt)
   const calculerLigneRapportStock = (articleId, depotId, dateDebut, dateFin) => {
     let stockInitial = 0;
     let totalEntrees = 0;
@@ -292,7 +289,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
     const fluxTous = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
     
-    // 1. Calcul du Stock Initial (flux strictement antérieurs à dateDebut)
     fluxTous.forEach((m) => {
       const dateMvtStr = m.date ? m.date.split('T')[0] : '';
       const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
@@ -316,7 +312,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     });
     stockInitial = Math.max(0, stockInitial);
 
-    // 2. Calcul des mouvements de la période [dateDebut, dateFin]
     fluxTous.forEach((m) => {
       const dateMvtStr = m.date ? m.date.split('T')[0] : '';
       if (dateDebut && dateMvtStr && dateMvtStr < dateDebut) return;
@@ -646,9 +641,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     <div className="space-y-2 font-sans text-xs">
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-wrap">
-          <span>📦</span> GESTION DES ARTICLES [{moduleActuel}]
-          {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables Actif</span>}
+        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden text-ellipsis">
+          <span>📦</span> GESTION DES ARTICLES
+          {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables</span>}
         </h3>
         <button
           type="button"
@@ -667,21 +662,21 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {/* Navigation des 3 onglets (Stock Article, Stat Article, Rapport Stock) */}
-      <div className="grid grid-cols-3 gap-1.5 w-full">
+      {/* Navigation des 3 onglets (Stock Article, Stats Article, Rapport Stock) sur une seule ligne sans retour */}
+      <div className="grid grid-cols-3 gap-1 w-full">
         <button
           type="button"
           onClick={() => {
             setModeVue('catalogue');
             annulerForm();
           }}
-          className={`w-full px-2 py-2 rounded-lg font-black text-[10.5px] transition text-center border shadow-2xs ${
+          className={`px-1 py-2 rounded-lg font-black text-[9.5px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
             modeVue === 'catalogue' && !afficherForm 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📄 Stock ({articles.length})
+          Stock ({articles.length})
         </button>
 
         <button
@@ -690,13 +685,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             setModeVue('statistiques');
             annulerForm();
           }}
-          className={`w-full px-2 py-2 rounded-lg font-black text-[10.5px] transition text-center border shadow-2xs ${
+          className={`px-1 py-2 rounded-lg font-black text-[9.5px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
             modeVue === 'statistiques' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📊 Stats Article
+          Stats Article
         </button>
 
         <button
@@ -705,13 +700,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             setModeVue('rapport_stock');
             annulerForm();
           }}
-          className={`w-full px-2 py-2 rounded-lg font-black text-[10.5px] transition text-center border shadow-2xs ${
+          className={`px-1 py-2 rounded-lg font-black text-[9.5px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
             modeVue === 'rapport_stock' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Rapport Stock
+          Rapport Stock
         </button>
       </div>
 
@@ -915,51 +910,52 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             </form>
           ) : (
             <>
+              {/* FILTRES CATALOGUE SUR UNE SEULE LIGNE (Famille, Dépôt, Emplacement) */}
               <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
-                <div>
-                  <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Famille</label>
-                  <select
-                    value={familleFiltre}
-                    onChange={(e) => setFamilleFiltre(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                  >
-                    <option value="TOUTES">Toutes</option>
-                    {familles.map((fam) => (
-                      <option key={fam.id} value={fam.id}>
-                        {fam.nom_famille || fam.Nom_Famille}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-3 gap-1">
                   <div>
-                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Dépôt / Partenaire</label>
+                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Famille</label>
                     <select
-                      value={depotFiltre}
-                      onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                      value={familleFiltre}
+                      onChange={(e) => setFamilleFiltre(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
                     >
-                      <option value="TOUS">Tous les dépôts</option>
-                      {depots.map((dep) => (
-                        <option key={dep.id} value={dep.id}>
-                          🏢 {dep.nom_depot || dep.Nom_Depot}
+                      <option value="TOUTES">Toutes</option>
+                      {familles.map((fam) => (
+                        <option key={fam.id} value={fam.id}>
+                          {fam.nom_famille || fam.Nom_Famille}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">Emplacement / Livreur</label>
+                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Dépôt</label>
+                    <select
+                      value={depotFiltre}
+                      onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
+                    >
+                      <option value="TOUS">Tous</option>
+                      {depots.map((dep) => (
+                        <option key={dep.id} value={dep.id}>
+                          {dep.nom_depot || dep.Nom_Depot}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Emplacement</label>
                     <select
                       value={emplacementFiltre}
                       onChange={(e) => setEmplacementFiltre(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
                     >
-                      <option value="TOUS">Tous les emplacements</option>
+                      <option value="TOUS">Tous</option>
                       {emplacementsDisponibles.map((emp) => (
                         <option key={emp.id} value={emp.id}>
-                          📍 {emp.nom_emplacement} {emp.responsable_emplacement ? `(${emp.responsable_emplacement})` : ''}
+                          {emp.nom_emplacement}
                         </option>
                       ))}
                     </select>
@@ -1072,7 +1068,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
           
           <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE DÉBUT</label>
                 <input
@@ -1092,26 +1088,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => { setDateDebutStat(obtenirDateDuJour()); setDateFinStat(obtenirDateDuJour()); }}
-                  className="flex-1 bg-orange-100 hover:bg-orange-200 text-orange-800 font-black px-2.5 py-2 rounded-lg text-[11px] transition"
-                >
-                  Aujourd'hui
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setDateDebutStat(''); setDateFinStat(''); }}
-                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-2.5 py-2 rounded-lg text-[11px] transition"
-                >
-                  Tout voir
-                </button>
-              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-200/80">
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DÉPÔT / PARTENAIRE</label>
                 <select
@@ -1119,7 +1098,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   onChange={(e) => setDepotStatFiltre(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 >
-                  <option value="TOUS">Tous les dépôts / partenaires</option>
+                  <option value="TOUS">Tous les dépôts</option>
                   {depots.map((dep) => (
                     <option key={dep.id} value={dep.id}>
                       🏢 {dep.nom_depot || dep.Nom_Depot}
@@ -1135,7 +1114,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   onChange={(e) => setLivreurStatFiltre(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
                 >
-                  <option value="TOUS">Tous les livreurs</option>
+                  <option value="TOUS">Tous</option>
                   {emplacements.map((emp) => {
                     const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
                     if (!nomEmp) return null;
@@ -1143,21 +1122,21 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   })}
                 </select>
               </div>
+            </div>
 
-              <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">ARTICLE</label>
-                <div
-                  onClick={() => {
-                    setRechercheModalArticle('');
-                    setAfficherModalSelectionArticle(true);
-                  }}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
-                >
-                  <span className="truncate uppercase">
-                    {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner un article --'}
-                  </span>
-                  <span className="text-[10px] text-slate-400">🔍</span>
-                </div>
+            <div>
+              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">ARTICLE</label>
+              <div
+                onClick={() => {
+                  setRechercheModalArticle('');
+                  setAfficherModalSelectionArticle(true);
+                }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+              >
+                <span className="truncate uppercase">
+                  {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner un article --'}
+                </span>
+                <span className="text-[10px] text-slate-400">🔍</span>
               </div>
             </div>
           </div>
@@ -1267,12 +1246,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {/* NOUVEL ONGLET : RAPPORT DE STOCK PARTENAIRE AVEC FILTRE D'AFFICHAGE CONDITIONNEL */}
       {modeVue === 'rapport_stock' && (
         <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
           
           <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 items-end">
+            <div className="grid grid-cols-2 gap-1.5 items-end">
               <div>
                 <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">DATE DÉBUT</label>
                 <input
@@ -1291,23 +1269,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   onChange={(e) => setDateFinRapport(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => { setDateDebutRapport(obtenirDateDuJour()); setDateFinRapport(obtenirDateDuJour()); }}
-                  className="flex-1 bg-orange-100 hover:bg-orange-200 text-orange-800 font-black px-2 py-1.5 rounded-lg text-[10px] transition"
-                >
-                  Aujourd'hui
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setDateDebutRapport(''); setDateFinRapport(''); }}
-                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-2 py-1.5 rounded-lg text-[10px] transition"
-                >
-                  Tout voir
-                </button>
               </div>
             </div>
 
@@ -1355,7 +1316,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       <td colSpan="6" className="p-4 text-center text-orange-600 font-bold">Veuillez sélectionner un dépôt partenaire ci-dessus.</td>
                     </tr>
                   ) : (() => {
-                    // Filtrage : l'article ne s'affiche que s'il a déjà été au moins une fois chez ce partenaire (stock initial > 0 ou entrées > 0 ou sorties > 0)
                     const articlesFiltresPartenaire = articles.filter((art) => {
                       const artId = art.id_article || art.id;
                       const rapport = calculerLigneRapportStock(artId, depotRapportFiltre, dateDebutRapport, dateFinRapport);
