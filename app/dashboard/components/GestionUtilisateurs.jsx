@@ -83,6 +83,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
   const estModeLivraison = moduleActuel === 'LIVRAISON';
 
+  // Vérifier si le rôle sélectionné correspond à un livreur
+  const roleActuelObj = roles.find((r) => String(r.id) === String(nouveauUser.id_role));
+  const estRoleLivreur = roleActuelObj && roleActuelObj.nom_role.toUpperCase().includes('LIVREUR');
+
   const chargerDonnees = async () => {
     setChargement(true);
     try {
@@ -174,8 +178,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const enregistrerUtilisateur = async (e) => {
     e.preventDefault();
 
-    if (estModeLivraison && !nouveauUser.id_emplacement) {
-      alert('⚠️ Veuillez obligatoirement attribuer un emplacement (ou livreur) pour ce collaborateur en mode Livraison.');
+    if (estModeLivraison && estRoleLivreur && !nouveauUser.id_emplacement) {
+      alert('⚠️ Ce collaborateur a un rôle de Livreur. Veuillez obligatoirement lui attribuer un emplacement / livreur.');
       return;
     }
 
@@ -429,9 +433,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             <div>
               {estModeLivraison ? (
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Emplacement / Livreur *</label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
+                    Emplacement / Livreur {estRoleLivreur ? '*' : ''}
+                  </label>
                   <select 
-                    required={estModeLivraison}
+                    required={estRoleLivreur}
                     value={nouveauUser.id_emplacement} 
                     onChange={(e) => setNouveauUser({ ...nouveauUser, id_emplacement: e.target.value })} 
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs truncate"

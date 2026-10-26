@@ -14,7 +14,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
-  const [typeOperation, setTypeOperation] = useState('ENTREE');
+  const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
   const [enTeteDoc, setEnTeteDoc] = useState({
     numeroDoc: '',
@@ -46,10 +46,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const boutonSelectionArticleRef = useRef(null);
 
   const libellesTypesMouvement = {
+    TRANSFERT: 'TRANSFERT ENTRE DÉPÔTS (TR)',
     ENTREE: 'ENTRÉE DE STOCK (ME)',
     SORTIE: 'SORTIE DE STOCK (MS)',
     AVARIES: 'AVARIES & PERTES (AV)',
-    TRANSFERT: 'TRANSFERT ENTRE DÉPÔTS (TR)',
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
@@ -64,7 +64,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   const genererNumeroDocIndependant = (type, mouvementsList) => {
     const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
-    const prefix = prefixes[type] || 'ME';
+    const prefix = prefixes[type] || 'TR';
     const numsUniques = [...new Set(mouvementsList.filter((m) => m.type_mouvement === type).map(m => m.motif_remarque))];
     return `${prefix}-${String(numsUniques.length + 1).padStart(2, '0')}`;
   };
@@ -250,7 +250,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   });
 
   const verifierEnTeteAvantSaisie = () => {
-    if (!enTeteDoc.motif || !enTeteDoc.motif.trim()) { alert('⚠️ Veuillez obligatoirement saisir le motif.'); return false; }
     if (typeOperation === 'TRANSFERT') {
       if (!enTeteDoc.id_depot_source) { alert('⚠️ Sélectionnez le dépôt source.'); return false; }
       if (!enTeteDoc.id_depot_destination) { alert('⚠️ Sélectionnez le dépôt destination.'); return false; }
@@ -259,6 +258,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       if (memeDepot && enTeteDoc.id_emplacement_source) {
         if (!enTeteDoc.id_emplacement_destination) { alert('⚠️ Veuillez sélectionner l’emplacement / livreur de destination.'); return false; }
       }
+    } else {
+      if (!enTeteDoc.id_depot_source) { alert('⚠️ Sélectionnez le dépôt.'); return false; }
     }
     return true;
   };
@@ -321,7 +322,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   const annulerOperation = () => {
     if (enTrainDeSauvegarder) return;
-    if (lignesPanier.length > 0 || enTeteDoc.motif) {
+    if (lignesPanier.length > 0 || enTeteDoc.referenceDoc) {
       if (!confirm('Voulez-vous vraiment annuler cette opération en cours ?')) return;
     }
     setLignesPanier([]);
@@ -330,7 +331,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     setQuantiteSaisie(1);
     setEnTeteDoc(prev => ({
       ...prev,
-      motif: '',
       referenceDoc: '',
       numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements)
     }));
@@ -374,7 +374,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       alert(`Document validé avec succès dans le module ${moduleActuel} !`);
       setLignesPanier([]);
       setMouvementEnEditionId(null);
-      setEnTeteDoc((prev) => ({ ...prev, motif: '', referenceDoc: '' }));
+      setEnTeteDoc((prev) => ({ ...prev, referenceDoc: '' }));
       await chargerDonnees();
       setModeAffichage('LISTE_DOCS');
     } catch (err) { 
@@ -388,7 +388,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     const lignesAssociees = mouvements.filter(m => m.motif_remarque === numeroDocUnique);
     if (lignesAssociees.length === 0) return;
     const premier = lignesAssociees[0];
-    setTypeOperation(premier.type_mouvement || 'ENTREE');
+    setTypeOperation(premier.type_mouvement || 'TRANSFERT');
     setEnTeteDoc({ 
       ...enTeteDoc, 
       numeroDoc: numeroDocUnique, 
@@ -397,7 +397,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
       id_emplacement_destination: premier.id_emplacement_destination || '',
-      motif: numeroDocUnique, 
       operateur: premier.operateur || 'THÉODORE STÉPHANE' 
     });
     setLignesPanier(lignesAssociees.map(mvt => {
@@ -421,10 +420,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   const formaterNumeroDocAffichage = (motifBrut) => {
     if (!motifBrut) return 'SANS-REF';
-    const matchTicket = motifBrut.match(/(C\d+-\d+)/i);
-    if (matchTicket) {
-      return matchTicket[1];
+    
+    // Si c'est une commande (ex: LIVRAISON EFFECTIVE CMD-1 (MARIUS MARKET) -> CMD-1)
+    const matchCmd = motifBrut.match(/(CMD-\d+)/i);
+    if (matchCmd) {
+      return matchCmd[1];
     }
+
+    // Si c'est un mouvement du type TR-01, ME-01, MS-01, etc.
+    const matchType = motifBrut.match(/([A-Z]+-\d+)/i);
+    if (matchType) {
+      return matchType[1];
+    }
+
     return motifBrut;
   };
 
@@ -458,52 +466,76 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2 font-sans text-[10px]">
       <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setModeAffichage('SAISIE'); setMouvementEnEditionId(null); setLignesPanier([]); setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), motif: '' })); }} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisir'} [{moduleActuel}]</button>
-        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModeAffichage('LISTE_DOCS')} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>📋 Liste [{moduleActuel}] ({documentsGroupes.length})</button>
+        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setModeAffichage('SAISIE'); setMouvementEnEditionId(null); setLignesPanier([]); setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements) })); }} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisie mouvement'}</button>
+        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModeAffichage('LISTE_DOCS')} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>📋 Liste mouvement ({documentsGroupes.length})</button>
       </div>
 
       {modeAffichage === 'SAISIE' && (
         <>
           <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
-            <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement [{moduleActuel}]</span>
+            <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
             <select disabled={enTeteVerrouille} value={typeOperation} onChange={(e) => { const nt = e.target.value; setTypeOperation(nt); if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements) })); }} className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]">
-              <option value="ENTREE">📥 Entrée (ME)</option><option value="SORTIE">📤 Sortie (MS)</option><option value="AVARIES">⚠️ Avaries (AV)</option><option value="TRANSFERT">🔀 Transfert (TR)</option><option value="INVENTAIRE">📊 Inventaire (INV)</option>
+              <option value="TRANSFERT">🔀 Transfert (TR)</option>
+              <option value="ENTREE">📥 Entrée (ME)</option>
+              <option value="SORTIE">📤 Sortie (MS)</option>
+              <option value="AVARIES">⚠️ Avaries (AV)</option>
+              <option value="INVENTAIRE">📊 Inventaire (INV)</option>
             </select>
           </div>
 
           <div className={`bg-white border-2 border-orange-500/50 p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
-            <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} [{moduleActuel}] {enTeteVerrouille && '🔒'}</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span></div>
+            <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span></div>
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[9.5px]">
-              <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
-              <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf.</label><input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" /></div>
-              <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Opérateur</label><input type="text" disabled value={enTeteDoc.operateur} className="w-full bg-slate-100 text-slate-800 border rounded p-1 font-bold" /></div>
-              
-              <div className="space-y-1">
-                <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">{typeOperation === 'TRANSFERT' ? 'Origine (Dépôt) *' : 'Dépôt *'}</label>
-                <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-orange-600">
-                  <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
-                </select>
-                <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
-                  <option value="">-- Aucun (Prise directe Dépôt) --</option>
-                  {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
-                </select>
+            <div className="space-y-1.5 text-[9.5px]">
+              {/* LIGNE 1 : Date, Référence, Opérateur */}
+              <div className="grid grid-cols-3 gap-1.5">
+                <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
+                <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. (Optionnel)</label><input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" /></div>
+                <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Opérateur</label><input type="text" disabled value={enTeteDoc.operateur} className="w-full bg-slate-100 text-slate-800 border rounded p-1 font-bold truncate" /></div>
               </div>
 
-              {typeOperation === 'TRANSFERT' && (
-                <div className="space-y-1">
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Destination (Dépôt) *</label>
-                  <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-blue-600">
-                    <option value="">-- Dépôt Destination --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
-                  </select>
-                  <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
-                    <option value="">-- Emplacement / Livreur Dest. --</option>
-                    {emplacementsDestinationFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
-                  </select>
+              {/* LIGNE 2 : Affichage dynamique selon le type de mouvement */}
+              {typeOperation === 'TRANSFERT' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                  <div className="space-y-1">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Origine (Dépôt & Emplacement) *</label>
+                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-orange-600">
+                      <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                    </select>
+                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
+                      <option value="">-- Aucun (Prise directe Dépôt) --</option>
+                      {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Destination (Dépôt & Emplacement) *</label>
+                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-blue-600">
+                      <option value="">-- Dépôt Destination --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                    </select>
+                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
+                      <option value="">-- Emplacement / Livreur Dest. --</option>
+                      {emplacementsDestinationFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  <div>
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Dépôt *</label>
+                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-orange-600">
+                      <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Emplacement</label>
+                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
+                      <option value="">-- Aucun --</option>
+                      {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
+                    </select>
+                  </div>
                 </div>
               )}
-
-              <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Motif *</label><input type="text" disabled={enTeteVerrouille} required value={enTeteDoc.motif} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, motif: e.target.value.toUpperCase() })} placeholder="EX: AJUSTEMENT..." className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" /></div>
             </div>
           </div>
 
@@ -625,10 +657,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                 ) : (
                   documentsTries.map((doc, idx) => (
                     <tr key={idx} onClick={() => ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
-                      <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px]">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-1.5 font-bold"><span className="px-1 py-0.5 bg-slate-100 text-slate-800 rounded text-[8.5px]">{doc.type}</span></td>
-                      <td className="p-1.5 font-mono font-black text-orange-600">{doc.numeroDoc}</td>
-                      <td className="p-1.5 font-extrabold uppercase text-slate-900">{doc.operateur}</td>
+                      <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
+                      <td className="p-1.5 font-bold whitespace-nowrap"><span className="px-1 py-0.5 bg-slate-100 text-slate-800 rounded text-[8.5px]">{doc.type}</span></td>
+                      <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numeroDoc}</td>
+                      <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate max-w-[110px]" title={doc.operateur}>{doc.operateur}</td>
                     </tr>
                   ))
                 )}

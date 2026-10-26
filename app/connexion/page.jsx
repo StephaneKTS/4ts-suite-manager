@@ -44,7 +44,7 @@ export default function ConnexionEntreprise() {
       let nomUtilisateurConnecte = '';
       let authenticated = false;
 
-      // 1. Recherche prioritaire dans la table 'entreprises' (Admin)
+      // 1. Recherche prioritaire dans la table 'entreprises' (Administrateur / Gérant)
       const { data: entList } = await supabase
         .from('entreprises')
         .select('*');
@@ -52,11 +52,13 @@ export default function ConnexionEntreprise() {
       if (entList) {
         const entrepriseTrouvee = entList.find(ent => 
           (ent.id_entreprise && ent.id_entreprise.toUpperCase() === cleanIdentifiant.toUpperCase()) || 
-          (ent.email && ent.email.toLowerCase() === cleanIdentifiant.toLowerCase())
+          (ent.email && ent.email.toLowerCase() === cleanIdentifiant.toLowerCase()) ||
+          (ent.telephone && ent.telephone.replace(/[^0-9]/g, '') === cleanIdentifiant.replace(/[^0-9]/g, ''))
         );
 
         if (entrepriseTrouvee) {
           const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
+          // Si un mot de passe est défini en base, on le vérifie. S'il n'y en a pas, on valide l'accès admin.
           if (!mdpBase || mdpBase === cleanPin) {
             entrepriseIdCible = entrepriseTrouvee.id_entreprise;
             nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
@@ -65,27 +67,42 @@ export default function ConnexionEntreprise() {
         }
       }
 
-      // 2. Recherche dans la table 'utilisateurs' (Collaborateurs)
+      // 2. Recherche dans la table 'utilisateurs' (Employés / Personnel créés par l'entreprise)
       if (!authenticated) {
         const { data: userList } = await supabase
           .from('utilisateurs')
           .select('*');
 
         if (userList) {
-          const utilisateurTrouve = userList.find(u => 
-            u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase()
-          );
+          const utilisateurTrouve = userList.find(u => {
+            const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
+            const matchTel = u.telephone && u.telephone.replace(/[^0-9]/g, '') === cleanIdentifiant.replace(/[^0-9]/g, '');
+            const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
+            return matchEmail || matchTel || matchNom;
+          });
 
           if (utilisateurTrouve) {
+            // Vérification stricte si l'accès application est autorisé pour cet employé
+            if (utilisateurTrouve.acces_application === false) {
+              throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion à l'application.");
+            }
+
+            // Vérification du mot de passe / code PIN de l'employé
+            const mdpUser = String(utilisateurTrouve.mot_de_passe || '').trim();
+            if (mdpUser && mdpUser !== cleanPin) {
+              throw new Error("Mot de passe ou code PIN incorrect.");
+            }
+
             entrepriseIdCible = utilisateurTrouve.id_entreprise;
-            nomUtilisateurConnecte = utilisateurTrouve.nom_complet || utilisateurTrouve.nom_prenom || cleanIdentifiant.split('@')[0];
+            // Récupération exacte du nom et prénom du collaborateur (résout le problème de l'affichage "UTILISATEUR")
+            nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
             authenticated = true;
           }
         }
       }
 
       if (!authenticated || !entrepriseIdCible) {
-        throw new Error("Identifiant ou e-mail introuvable dans le système.");
+        throw new Error("Identifiant, e-mail ou numéro de téléphone introuvable dans le système. Accès non autorisé.");
       }
 
       // Sauvegarde des informations de session après authentification réussie
@@ -129,7 +146,7 @@ export default function ConnexionEntreprise() {
         <form onSubmit={handleConnexion} className="space-y-4">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-blue-300 mb-1.5">
-              ID Entreprise ou E-mail (Admin / Collaborateur) <span className="text-orange-500">*</span>
+              E-mail, Téléphone ou ID Entreprise <span className="text-orange-500">*</span>
             </label>
             <input
               type="text"
@@ -139,7 +156,7 @@ export default function ConnexionEntreprise() {
               spellCheck="false"
               value={identifiant}
               onChange={(e) => setIdentifiant(e.target.value)}
-              placeholder="ex: zoaatabate5@gmail.com"
+              placeholder="ex: 699000000 ou email@domaine.com"
               className="w-full bg-[#0d1b2a] border border-blue-900 rounded-xl px-3.5 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>

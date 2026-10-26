@@ -49,46 +49,61 @@ function DashboardContent() {
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   const [moduleCourant, setModuleCourant] = useState('BOUTIQUE');
   
-  const [utilisateurConnecte, setUtilisateurConnecte] = useState('UTILISATEUR');
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('CHARGEMENT...');
   const [emailConnecte, setEmailConnecte] = useState('');
+  const [permissionsUser, setPermissionsUser] = useState(null);
+
+  // États pour le Panneau Super-Admin (Gestion globale des entreprises)
+  const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
+  const [loadingAdmin, setLoadingAdmin] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte');
       const emailLocal = localStorage.getItem('emailConnecte');
-      if (userLocal) setUtilisateurConnecte(userLocal.toUpperCase());
-      if (emailLocal) setEmailConnecte(emailLocal);
+      if (userLocal && userLocal !== 'UTILISATEUR') {
+        setUtilisateurConnecte(userLocal.toUpperCase());
+      }
+      if (emailLocal) {
+        setEmailConnecte(emailLocal);
+      }
     }
   }, []);
 
   useEffect(() => {
     async function fetchEntrepriseData() {
       try {
-        const { data, error } = await supabase
+        const { data: entData, error } = await supabase
           .from('entreprises')
           .select('*')
           .eq('id_entreprise', entrepriseIdUrl)
           .maybeSingle();
 
-        if (data) {
-          setInfosEntreprise(data);
-          setEntrepriseId(data.id_entreprise);
+        if (entData) {
+          setInfosEntreprise(entData);
+          setEntrepriseId(entData.id_entreprise);
           if (typeof window !== 'undefined') {
-            localStorage.setItem('entrepriseId', data.id_entreprise);
+            localStorage.setItem('entrepriseId', entData.id_entreprise);
 
             const modLocal = localStorage.getItem('module_actif');
-            if (modLocal && data.espaces_souscrits && data.espaces_souscrits.map(m => m.toUpperCase()).includes(modLocal.toUpperCase())) {
+            if (modLocal && entData.espaces_souscrits && entData.espaces_souscrits.map(m => m.toUpperCase()).includes(modLocal.toUpperCase())) {
               setModuleCourant(modLocal.toUpperCase());
-            } else if (data.module_actif) {
-              setModuleCourant(data.module_actif.toUpperCase());
-              localStorage.setItem('module_actif', data.module_actif.toUpperCase());
+            } else if (entData.module_actif) {
+              setModuleCourant(entData.module_actif.toUpperCase());
+              localStorage.setItem('module_actif', entData.module_actif.toUpperCase());
             }
+          }
+
+          if (!localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateurConnecte') === 'UTILISATEUR') {
+            const nomAdmin = entData.nom_entreprise || 'ADMINISTRATEUR';
+            setUtilisateurConnecte(nomAdmin.toUpperCase());
+            localStorage.setItem('utilisateurConnecte', nomAdmin.toUpperCase());
           }
         } else {
           setInfosEntreprise({
             nom_entreprise: 'ISMA LOGISTIQUE',
-            email: emailConnecte || 'bureauisma26@gmail.com',
+            email: emailConnecte || 'stephs7352@gmail.com',
             espaces_souscrits: ['Boutique', 'Livraison'],
             module_actif: 'BOUTIQUE'
           });
@@ -103,11 +118,153 @@ function DashboardContent() {
     }
   }, [entrepriseIdUrl, emailConnecte]);
 
+  // Récupération des permissions de l'utilisateur connecté depuis Supabase
+  useEffect(() => {
+    async function fetchPermissions() {
+      if (!emailConnecte && !utilisateurConnecte) return;
+      try {
+        const { data, error } = await supabase
+          .from('utilisateurs')
+          .select('permissions, acces_application')
+          .eq('id_entreprise', entrepriseId)
+          .or(`email.eq.${emailConnecte.toLowerCase()},nom_complet.ilike.${utilisateurConnecte}`)
+          .maybeSingle();
+
+        if (data && data.permissions) {
+          setPermissionsUser(data.permissions);
+        }
+      } catch (err) {
+        console.error("Erreur chargement permissions :", err);
+      }
+    }
+    fetchPermissions();
+  }, [emailConnecte, utilisateurConnecte, entrepriseId]);
+
   const estModeLivraison = moduleCourant === 'LIVRAISON';
+
+  // Vérification Super-Admin englobant votre e-mail officiel stephs7352@gmail.com
+  const emailActuel = emailConnecte || infosEntreprise.email || '';
+  const estSuperAdmin = 
+    emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com' || 
+    emailActuel.toLowerCase().trim() === 'bureauisma26@gmail.com' || 
+    emailActuel.toLowerCase().trim() === 'stephanekts1312@gmail.com' ||
+    utilisateurConnecte.includes('STÉPHANE') || 
+    utilisateurConnecte.includes('KENMOE');
+
+  // Fonction de vérification des droits pour un module donné
+  const verifierPermission = (moduleId) => {
+    if (estSuperAdmin) return true; // Le super-admin a tous les droits
+    if (!permissionsUser) return true; // Par défaut si non configuré, accès libre
+    const permModule = permissionsUser[moduleId];
+    if (!permModule) return true;
+    return permModule.lecture === true;
+  };
+
+  const tenterAccesModule = (moduleId, nomModuleAffichage) => {
+    if (verifierPermission(moduleId)) {
+      setModuleActif(moduleId);
+    } else {
+      alert(`⛔ Accès refusé : Vous n'avez pas les droits de lecture sur le module "${nomModuleAffichage}".`);
+    }
+  };
+
+  // Fonction pour charger toutes les entreprises dans le Panneau Super-Admin
+  const chargerToutesLesEntreprises = async () => {
+    setLoadingAdmin(true);
+    try {
+      const { data, error } = await supabase.from('entreprises').select('*');
+      if (data) {
+        setListeEntreprisesGlobales(data);
+      }
+    } catch (err) {
+      console.error("Erreur chargement entreprises globales :", err);
+    } finally {
+      setLoadingAdmin(false);
+    }
+  };
+
+  useEffect(() => {
+    if (moduleActif === 'super_admin_panel') {
+      chargerToutesLesEntreprises();
+    }
+  }, [moduleActif]);
 
   const rendreModuleActif = () => {
     if (moduleActif === 'souscription') {
       return <EspaceSouscription entrepriseId={entrepriseId} />;
+    }
+
+    if (moduleActif === 'super_admin_panel') {
+      return (
+        <div className="space-y-4 p-2 text-xs">
+          <div className="flex justify-between items-center border-b border-blue-900 pb-2">
+            <div>
+              <h3 className="font-black text-orange-500 uppercase text-sm">🛡️ Espace Super-Admin</h3>
+              <p className="text-[10px] text-slate-300">Gestion globale de toutes vos entreprises et plateformes 4TS.</p>
+            </div>
+            <button 
+              onClick={chargerToutesLesEntreprises}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition shadow"
+            >
+              🔄 Actualiser
+            </button>
+          </div>
+
+          {loadingAdmin ? (
+            <div className="text-center py-8 text-blue-300 font-bold">Chargement des entreprises...</div>
+          ) : (
+            <div className="space-y-3">
+              <p className="font-bold text-slate-200">Total entreprises enregistrées : <span className="text-orange-400">{listeEntreprisesGlobales.length}</span></p>
+              
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                {listeEntreprisesGlobales.map((ent) => (
+                  <div key={ent.id_entreprise} className="bg-slate-900 border border-blue-900/60 p-3 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-white uppercase">{ent.nom_entreprise}</span>
+                        <span className="bg-blue-950 text-blue-400 font-mono text-[10px] px-2 py-0.5 rounded border border-blue-800">{ent.id_entreprise}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">📧 {ent.email || 'Aucun email'} | 📞 {ent.telephone || 'Aucun téléphone'}</p>
+                      <p className="text-[10px] text-orange-300">Module actif : <span className="uppercase font-bold">{ent.module_actif || 'BOUTIQUE'}</span></p>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                      <button
+                        onClick={() => {
+                          window.location.href = `/dashboard?entreprise=${ent.id_entreprise}`;
+                        }}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] transition shadow"
+                      >
+                        Accéder à l'espace →
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          if (confirm(`Voulez-vous vraiment supprimer l'entreprise "${ent.nom_entreprise}" (${ent.id_entreprise}) et toutes ses données ?`)) {
+                            try {
+                              await supabase.from('utilisateurs').delete().eq('id_entreprise', ent.id_entreprise);
+                              const { error } = await supabase.from('entreprises').delete().eq('id_entreprise', ent.id_entreprise);
+                              
+                              if (error) throw error;
+                              alert("Entreprise supprimée avec succès.");
+                              chargerToutesLesEntreprises();
+                            } catch (err) {
+                              alert("Erreur lors de la suppression : " + err.message);
+                            }
+                          }
+                        }}
+                        className="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800 font-bold px-3 py-1.5 rounded-lg text-[11px] transition"
+                      >
+                        🗑️ Supprimer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
     }
 
     if (estModeLivraison && moduleActif === 'module_livraison_specifique') {
@@ -221,29 +378,35 @@ function DashboardContent() {
             </h2>
 
             <div className="grid grid-cols-1 gap-2.5 w-full">
-              <div onClick={() => setModuleActif('journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
-                <span className="text-2xl group-hover:scale-110 transition">📝</span>
-                <div>
-                  <h3 className="font-extrabold text-slate-100 text-xs">Saisie des Opérations</h3>
-                  <p className="text-[10px] text-blue-200/70 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
+              {verifierPermission('ventes_historiques') && (
+                <div onClick={() => tenterAccesModule('journal', 'Saisie des Opérations')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">📝</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-100 text-xs">Saisie des Opérations</h3>
+                    <p className="text-[10px] text-blue-200/70 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div onClick={() => setModuleActif('controle')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
-                <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
-                <div>
-                  <h3 className="font-extrabold text-slate-100 text-xs">Contrôle & Clôture</h3>
-                  <p className="text-[10px] text-blue-200/70 mt-0.5">Vérification caisse et versement central.</p>
+              {verifierPermission('ventes_historiques') && (
+                <div onClick={() => tenterAccesModule('controle', 'Contrôle & Clôture')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-100 text-xs">Contrôle & Clôture</h3>
+                    <p className="text-[10px] text-blue-200/70 mt-0.5">Vérification caisse et versement central.</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div onClick={() => setModuleActif('grand_livre')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
-                <span className="text-2xl group-hover:scale-110 transition">📖</span>
-                <div>
-                  <h3 className="font-extrabold text-slate-100 text-xs">Grand Livre & Journal</h3>
-                  <p className="text-[10px] text-blue-200/70 mt-0.5">Mouvements par période et par compte.</p>
+              {verifierPermission('ventes_historiques') && (
+                <div onClick={() => tenterAccesModule('grand_livre', 'Grand Livre & Journal')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">📖</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-100 text-xs">Grand Livre & Journal</h3>
+                    <p className="text-[10px] text-blue-200/70 mt-0.5">Mouvements par période et par compte.</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
@@ -289,6 +452,18 @@ function DashboardContent() {
               </div>
 
               <div className="pt-3 border-t border-blue-900/40 space-y-2.5">
+                {estSuperAdmin && (
+                  <button
+                    onClick={() => setModuleActif('super_admin_panel')}
+                    className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black p-3 rounded-xl transition flex items-center justify-between shadow-md text-xs uppercase tracking-wider"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>🛡️</span> Espace Super-Admin
+                    </span>
+                    <span>→</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => setModuleActif('souscription')}
                   className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold p-3 rounded-xl transition flex items-center justify-between shadow-xs text-xs"
@@ -315,9 +490,9 @@ function DashboardContent() {
               </div>
             </div>
           </div>
-        ) : moduleActif === 'souscription' ? (
+        ) : moduleActif === 'souscription' || moduleActif === 'super_admin_panel' ? (
           <div className="bg-[#1b263b] rounded-2xl shadow p-2 sm:p-4 border border-blue-900/60 text-slate-100 w-full">
-            <EspaceSouscription entrepriseId={entrepriseId} />
+            {rendreModuleActif()}
           </div>
         ) : !moduleActif && !estModeLivraison ? (
           <div className="space-y-3 w-full">
@@ -326,76 +501,103 @@ function DashboardContent() {
             </h2>
 
             <div className="grid grid-cols-3 gap-2 w-full">
-              <div onClick={() => setModuleActif('ventes')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
-                <span className="text-2xl group-hover:scale-110 transition">🛒</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Caisse & Ventes</span>
-              </div>
+              {verifierPermission('caisse') && (
+                <div onClick={() => tenterAccesModule('ventes', 'Caisse & Ventes')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">🛒</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Caisse & Ventes</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
-                <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Création Caisse</span>
-              </div>
+              {verifierPermission('caisses') && (
+                <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Création Caisse</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('emplacements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
-                <span className="text-2xl group-hover:scale-110 transition">📍</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Emplacements Stock</span>
-              </div>
+              {verifierPermission('depots_stock') && (
+                <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Stock')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
+                  <span className="text-2xl group-hover:scale-110 transition">📍</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Emplacements Stock</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Stock Articles</span>
-              </div>
+              {verifierPermission('articles_stock') && (
+                <div onClick={() => tenterAccesModule('articles', 'Articles & Stock')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Stock Articles</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('depots')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🏢</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Dépôts de stock</span>
-              </div>
+              {verifierPermission('depots_stock') && (
+                <div onClick={() => tenterAccesModule('depots', 'Dépôts & Magasins')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Dépôts de stock</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('familles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Familles d'Articles</span>
-              </div>
+              {verifierPermission('familles_articles') && (
+                <div onClick={() => tenterAccesModule('familles', 'Familles & Catégories')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Familles d'Articles</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('categories')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Catégories Clients</span>
-              </div>
+              {verifierPermission('categories_clients') && (
+                <div onClick={() => tenterAccesModule('categories', 'Catégories Clients')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Catégories Clients</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('mouvements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Mouvement Stock</span>
-              </div>
+              {verifierPermission('mouvements_stock') && (
+                <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Mouvement Stock</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">📥</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
-              </div>
+              {verifierPermission('approvisionnements') && (
+                <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('clients')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">👥</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Clients</span>
-              </div>
+              {verifierPermission('clients') && (
+                <div onClick={() => tenterAccesModule('clients', 'Fichier Clients')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">👥</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Clients</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
-              </div>
+              {estSuperAdmin && (
+                <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🤝</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Fournisseurs</span>
-              </div>
+              {verifierPermission('fournisseurs') && (
+                <div onClick={() => tenterAccesModule('fournisseurs', 'Fournisseurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Fournisseurs</span>
+                </div>
+              )}
 
-              {/* Remplacement du libellé par Gestion du Personnel */}
-              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
-              </div>
+              {estSuperAdmin && (
+                <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
+                </div>
+              )}
 
-              <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">📚</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Plan Comptable</span>
-              </div>
+              {verifierPermission('ventes_historiques') && (
+                <div onClick={() => tenterAccesModule('plan_comptable', 'Plan Comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">📚</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Plan Comptable</span>
+                </div>
+              )}
             </div>
           </div>
         ) : !moduleActif && estModeLivraison ? (
@@ -405,19 +607,16 @@ function DashboardContent() {
             </h2>
 
             <div className="grid grid-cols-3 gap-2 w-full">
-              {/* 1ère icône : Gestion des commandes et livraisons */}
               <div onClick={() => setModuleActif('commandes_livraison')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">📦</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des commandes et livraisons</span>
               </div>
 
-              {/* 2ème icône : Stock articles */}
               <div onClick={() => setModuleActif('articles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">📦</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Stock Articles</span>
               </div>
 
-              {/* 3ème icône : Grille tarifaire */}
               <div onClick={() => setModuleActif('grille_tarifaire')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-2xs group">
                 <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Grille Tarifaire</span>
@@ -443,7 +642,6 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Familles d'Articles</span>
               </div>
 
-              {/* Remplacement de Catégories Clients par Challenges Commerciaux */}
               <div onClick={() => setModuleActif('challenges_commerciaux')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🏆</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Challenges Commerciaux</span>
@@ -459,21 +657,24 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
               </div>
 
-              <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
-              </div>
+              {estSuperAdmin && (
+                <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
+                </div>
+              )}
 
               <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">🤝</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion Partenaire</span>
               </div>
 
-              {/* Remplacement du libellé par Gestion du Personnel en Livraison */}
-              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
-              </div>
+              {estSuperAdmin && (
+                <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
+                </div>
+              )}
 
               <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">📚</span>

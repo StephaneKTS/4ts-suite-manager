@@ -771,6 +771,22 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     }
 
     return matchPartenaire && matchLivreur && matchDate && matchStatut;
+  }).sort((a, b) => {
+    const partA = (a.nom_partenaire || '').toUpperCase();
+    const partB = (b.nom_partenaire || '').toUpperCase();
+    if (partA !== partB) {
+      return partA.localeCompare(partB);
+    }
+
+    const extraireNumero = (numStr) => {
+      if (!numStr) return 0;
+      const match = numStr.match(/\d+/);
+      return match ? parseInt(match[0], 10) : 0;
+    };
+
+    const numA = extraireNumero(a.numero_commande);
+    const numB = extraireNumero(b.numero_commande);
+    return numA - numB;
   });
 
   const commandesRapport = commandes.filter((cmd) => {
@@ -1189,392 +1205,389 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
-          <div className="bg-slate-900 border-2 border-orange-500 p-3 rounded-2xl space-y-3 shadow-xl">
-            
-            <div className="bg-white p-3 rounded-xl shadow-inner space-y-3">
-              
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={dateCommande}
-                    onChange={(e) => setDateCommande(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire *</label>
-                  <button
-                    type="button"
-                    onClick={() => { setRecherchePartenaireInput(''); setModalPartenaireOuverte(true); }}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs text-left flex justify-between items-center"
-                  >
-                    <span className="truncate">
-                      {idPartenaire ? (partenaires.find(p => String(p.id) === String(idPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(idPartenaire))?.nom || '-- Choisir un partenaire --') : '-- Choisir un partenaire --'}
-                    </span>
-                    <span className="text-slate-400">🔍</span>
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
-                  <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
-                      CMD-
-                    </span>
-                    <input
-                      ref={inputNumeroCmdRef}
-                      type="text"
-                      required
-                      value={numeroCommande}
-                      onChange={(e) => setNumeroCommande(e.target.value.toUpperCase())}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="01-03"
-                      className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 uppercase focus:outline-none"
-                    />
-                  </div>
-                </div>
+          
+          {/* BLOC 01 : De Date jusqu'à Statut commande */}
+          <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={dateCommande}
+                  onChange={(e) => setDateCommande(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                />
               </div>
 
-              {partenaireSansStockage && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Départ) *</label>
-                    <input
-                      type="text"
-                      required
-                      value={pointADepart}
-                      onChange={(e) => setPointADepart(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="Ex: Quartier Hippodrome..."
-                      className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
-                    />
-                  </div>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire *</label>
+                <button
+                  type="button"
+                  onClick={() => { setRecherchePartenaireInput(''); setModalPartenaireOuverte(true); }}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs text-left flex justify-between items-center"
+                >
+                  <span className="truncate">
+                    {idPartenaire ? (partenaires.find(p => String(p.id) === String(idPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(idPartenaire))?.nom || '-- Choisir un partenaire --') : '-- Choisir un partenaire --'}
+                  </span>
+                  <span className="text-slate-400">🔍</span>
+                </button>
+              </div>
 
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature colis</label>
-                    <input
-                      type="text"
-                      value={natureColis}
-                      onChange={(e) => setNatureColis(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="Ex: Colis fragile..."
-                      className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
-                    />
-                  </div>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
+                <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                  <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
+                    CMD-
+                  </span>
+                  <input
+                    ref={inputNumeroCmdRef}
+                    type="text"
+                    required
+                    value={numeroCommande}
+                    onChange={(e) => setNumeroCommande(e.target.value.toUpperCase())}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="01-03"
+                    className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 uppercase focus:outline-none"
+                  />
                 </div>
-              )}
+              </div>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {partenaireSansStockage && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
-                    Adresse *
-                  </label>
+                  <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Départ) *</label>
                   <input
                     type="text"
                     required
-                    list="liste-zones-commandes"
-                    value={adresseLivraison}
-                    onChange={(e) => handleChangementAdresse(e.target.value)}
+                    value={pointADepart}
+                    onChange={(e) => setPointADepart(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    placeholder="Quartier..."
+                    placeholder="Ex: Quartier Hippodrome..."
+                    className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature colis</label>
+                  <input
+                    type="text"
+                    value={natureColis}
+                    onChange={(e) => setNatureColis(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="Ex: Colis fragile..."
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
                   />
-                  <datalist id="liste-zones-commandes">
-                    {grilleTarifaire.map((tarif) => (
-                      <option key={tarif.id} value={tarif.nom_zone}>
-                        {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
-                      </option>
-                    ))}
-                  </datalist>
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
-                  <input
-                    ref={inputMontantRef}
-                    type="number"
-                    step="0.01"
-                    required
-                    value={montantSaisi}
-                    onChange={(e) => setMontantSaisi(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut *</label>
-                  <select
-                    value={statutCommandeSaisi}
-                    onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-                  >
-                    <option value="EN ATTENTE">EN ATTENTE</option>
-                    <option value="LIVRÉ">LIVRÉ</option>
-                    <option value="REPORTÉ">REPORTÉ</option>
-                    <option value="ANNULÉ">ANNULÉ</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="bg-blue-50/70 border-2 border-blue-200 p-2.5 rounded-xl space-y-2.5 mt-2">
-                <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
-                  <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
-                    🔒 ZONE SUPERVISEUR
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={fraisLivraisonSaisi}
-                      onChange={(e) => setFraisLivraisonSaisi(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      placeholder="0"
-                      className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur</label>
-                    <button
-                      type="button"
-                      onClick={() => { setRechercheLivreurInput(''); setModalLivreurOuverte(true); }}
-                      className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase text-left flex justify-between items-center"
-                    >
-                      <span className="truncate">{livreurAssigne || '-- Choisir --'}</span>
-                      <span className="text-slate-400">🔍</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            {!partenaireSansStockage ? (
-              /* CORRECTION APPLICIQUÉE ICI : grid-cols-2 au lieu de grid-cols-1 lg:grid-cols-2 pour forcer l'affichage côte à côte sur mobile */
-              <div className="grid grid-cols-2 gap-2">
-                
-                <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col space-y-2">
-                  <div className="flex justify-between items-center gap-1">
-                    <span className="font-black text-slate-900 uppercase text-[11px] truncate">
-                      ARTICLE
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setModalArticleOuverte(true)}
-                      disabled={!enteteValide}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center gap-0.5 shadow-2xs transition disabled:opacity-50 shrink-0"
-                    >
-                      <span>🔍</span> Rechercher
-                    </button>
-                  </div>
-
-                  {!enteteValide ? (
-                    <div className="p-2 text-center text-amber-700 font-bold text-[10px] bg-amber-50 rounded-lg border border-amber-200">
-                      ⚠️ Remplir l'en-tête d'abord.
-                    </div>
-                  ) : articlesFiltres.length === 0 ? (
-                    <div className="p-2 text-center text-slate-500 font-bold text-[10px] bg-slate-50 rounded-lg border border-slate-200">
-                      Aucun article disponible.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
-                      {articlesFiltres.map((art) => {
-                        const idArt = art.id_article || art.id;
-                        const designation = art.Designation || art.designation || art.nom;
-                        const stockDisp = getStockReelArticle(art);
-                        const estEpuise = stockDisp <= 0;
-
-                        return (
-                          <div
-                            key={idArt}
-                            onClick={() => ajouterArticleAuPanier(art)}
-                            className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
-                              estEpuise 
-                                ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
-                                : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
-                            }`}
-                          >
-                            <h5 className={`font-black uppercase text-[10px] truncate ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
-                            <span className={`font-black text-[9px] mt-1 ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
-                              Stock : {stockDisp}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col justify-between space-y-2">
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-                      <span className="font-black text-slate-900 uppercase text-[11px]">Panier</span>
-                    </div>
-
-                    {lignesSaisies.length === 0 ? (
-                      <div className="py-6 text-center text-slate-400 font-bold text-[10px] italic">
-                        Panier vide. Cliquez sur un article.
-                      </div>
-                    ) : (
-                      <div className="space-y-1 overflow-y-auto max-h-[140px] pr-0.5">
-                        {lignesSaisies.map((l, index) => (
-                          <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1 rounded-md text-[10px]">
-                            <div className="flex-1 truncate pr-1">
-                              <p className="font-black uppercase text-slate-900 truncate text-[9px]">{l.designation}</p>
-                            </div>
-                            
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => modifierQuantiteLigne(index, -1)}
-                                className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
-                              >
-                                -
-                              </button>
-                              <span className="font-black text-orange-600 w-4 text-center text-[9px]">{l.quantite}</span>
-                              <button
-                                type="button"
-                                onClick={() => modifierQuantiteLigne(index, 1)}
-                                className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
-                              >
-                                +
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => supprimerLignePanier(index)}
-                                className="text-red-600 font-bold ml-0.5 text-[9px] px-0.5"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1.5 pt-1.5 border-t border-slate-200">
-                    
-                    <div className="w-full bg-slate-100 px-2 py-1.5 rounded-md border border-slate-200 flex flex-col items-center justify-center text-center">
-                      <span className="font-black text-slate-900 text-[9px] uppercase">Net à payer</span>
-                      <span className="font-black text-emerald-700 text-[10px] font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
-                    </div>
-
-                    <div className="flex items-center gap-1 w-full">
-                      <button
-                        type="button"
-                        disabled={sauvegardeEnCours}
-                        onClick={() => {
-                          setLignesSaisies([]);
-                          setVueActive('LISTE');
-                          setCommandeEnEdition(null);
-                        }}
-                        className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-1.5 px-1 rounded-md text-[9px] transition text-center disabled:opacity-50"
-                      >
-                        Annuler
-                      </button>
-
-                      {commandeEnEdition && (
-                        <button
-                          type="button"
-                          disabled={sauvegardeEnCours}
-                          onClick={supprimerCommandeActuelle}
-                          className="bg-red-600 hover:bg-red-700 text-white font-black p-1.5 rounded-md text-[9px] transition shrink-0"
-                          title="Supprimer"
-                        >
-                          🗑️
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        disabled={sauvegardeEnCours}
-                        onClick={sauvegarderCommande}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-1 rounded-md text-[9px] transition text-center shadow-xs"
-                      >
-                        {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-
-              </div>
-            ) : (
-              <div className="bg-white p-3 rounded-xl shadow-md space-y-2.5">
-                <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs space-y-1">
-                  <span className="block font-black text-orange-900 uppercase">Résumé du Trajet :</span>
-                  <p className="font-bold text-slate-800">
-                    📍 Départ : <strong className="text-slate-900">{pointADepart || 'Non défini'}</strong>
-                  </p>
-                  <p className="font-bold text-slate-800">
-                    🎯 Arrivée : <strong className="text-orange-600">{adresseLivraison || 'Non défini'}</strong>
-                  </p>
-                  {natureColis && (
-                    <p className="font-bold text-slate-800">
-                      📦 Colis : <strong className="text-blue-700">{natureColis}</strong>
-                    </p>
-                  )}
-                  <p className="font-bold text-slate-800">
-                    🛵 Livreur : <strong className="text-blue-600 uppercase">{livreurAssigne || 'Non assigné'}</strong>
-                  </p>
-                </div>
-
-                <div className="w-full bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
-                  <span className="font-black text-slate-900 text-xs uppercase">Net à payer :</span>
-                  <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
-                </div>
-
-                <div className="flex gap-2 w-full pt-1">
-                  <button
-                    type="button"
-                    disabled={sauvegardeEnCours}
-                    onClick={() => {
-                      setLignesSaisies([]);
-                      setVueActive('LISTE');
-                      setCommandeEnEdition(null);
-                    }}
-                    className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-xs transition text-center disabled:opacity-50"
-                  >
-                    Annuler
-                  </button>
-
-                  {commandeEnEdition && (
-                    <button
-                      type="button"
-                      disabled={sauvegardeEnCours}
-                      onClick={supprimerCommandeActuelle}
-                      className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs transition shadow-xs disabled:opacity-50"
-                      title="Supprimer"
-                    >
-                      🗑️ Supprimer
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={sauvegardeEnCours}
-                    onClick={sauvegarderCommande}
-                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
-                  >
-                    {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
-                  </button>
                 </div>
               </div>
             )}
 
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
+                  Adresse *
+                </label>
+                <input
+                  type="text"
+                  required
+                  list="liste-zones-commandes"
+                  value={adresseLivraison}
+                  onChange={(e) => handleChangementAdresse(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="Quartier..."
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                />
+                <datalist id="liste-zones-commandes">
+                  {grilleTarifaire.map((tarif) => (
+                    <option key={tarif.id} value={tarif.nom_zone}>
+                      {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
+                <input
+                  ref={inputMontantRef}
+                  type="number"
+                  step="0.01"
+                  required
+                  value={montantSaisi}
+                  onChange={(e) => setMontantSaisi(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut *</label>
+                <select
+                  value={statutCommandeSaisi}
+                  onChange={(e) => setStatutCommandeSaisi(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                >
+                  <option value="EN ATTENTE">EN ATTENTE</option>
+                  <option value="LIVRÉ">LIVRÉ</option>
+                  <option value="REPORTÉ">REPORTÉ</option>
+                  <option value="ANNULÉ">ANNULÉ</option>
+                </select>
+              </div>
+            </div>
           </div>
+
+          {/* BLOC 02 : Zone réservée au superviseur */}
+          <div className="bg-blue-50/70 border-2 border-blue-200 p-3 rounded-xl shadow-md space-y-2.5">
+            <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
+              <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
+                🔒 ZONE SUPERVISEUR
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={fraisLivraisonSaisi}
+                  onChange={(e) => setFraisLivraisonSaisi(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0"
+                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur</label>
+                <button
+                  type="button"
+                  onClick={() => { setRechercheLivreurInput(''); setModalLivreurOuverte(true); }}
+                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase text-left flex justify-between items-center"
+                >
+                  <span className="truncate">{livreurAssigne || '-- Choisir --'}</span>
+                  <span className="text-slate-400">🔍</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* BLOC 03 : Article et Panier côte à côte */}
+          {!partenaireSansStockage ? (
+            <div className="grid grid-cols-2 gap-2">
+              
+              <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col space-y-2">
+                <div className="flex justify-between items-center gap-1">
+                  <span className="font-black text-slate-900 uppercase text-[11px] truncate">
+                    ARTICLE
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setModalArticleOuverte(true)}
+                    disabled={!enteteValide}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center gap-0.5 shadow-2xs transition disabled:opacity-50 shrink-0"
+                  >
+                    <span>🔍</span> Rechercher
+                  </button>
+                </div>
+
+                {!enteteValide ? (
+                  <div className="p-2 text-center text-amber-700 font-bold text-[10px] bg-amber-50 rounded-lg border border-amber-200">
+                    ⚠️ Remplir l'en-tête d'abord.
+                  </div>
+                ) : articlesFiltres.length === 0 ? (
+                  <div className="p-2 text-center text-slate-500 font-bold text-[10px] bg-slate-50 rounded-lg border border-slate-200">
+                    Aucun article disponible.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
+                    {articlesFiltres.map((art) => {
+                      const idArt = art.id_article || art.id;
+                      const designation = art.Designation || art.designation || art.nom;
+                      const stockDisp = getStockReelArticle(art);
+                      const estEpuise = stockDisp <= 0;
+
+                      return (
+                        <div
+                          key={idArt}
+                          onClick={() => ajouterArticleAuPanier(art)}
+                          className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
+                            estEpuise 
+                              ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
+                              : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
+                          }`}
+                        >
+                          <h5 className={`font-black uppercase text-[10px] truncate ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
+                          <span className={`font-black text-[9px] mt-1 ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
+                            Stock : {stockDisp}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col justify-between space-y-2">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-1">
+                    <span className="font-black text-slate-900 uppercase text-[11px]">Panier</span>
+                  </div>
+
+                  {lignesSaisies.length === 0 ? (
+                    <div className="py-6 text-center text-slate-400 font-bold text-[10px] italic">
+                      Panier vide. Cliquez sur un article.
+                    </div>
+                  ) : (
+                    <div className="space-y-1 overflow-y-auto max-h-[140px] pr-0.5">
+                      {lignesSaisies.map((l, index) => (
+                        <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1 rounded-md text-[10px]">
+                          <div className="flex-1 truncate pr-1">
+                            <p className="font-black uppercase text-slate-900 truncate text-[9px]">{l.designation}</p>
+                          </div>
+                          
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => modifierQuantiteLigne(index, -1)}
+                              className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
+                            >
+                              -
+                            </button>
+                            <span className="font-black text-orange-600 w-4 text-center text-[9px]">{l.quantite}</span>
+                            <button
+                              type="button"
+                              onClick={() => modifierQuantiteLigne(index, 1)}
+                              className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
+                            >
+                              +
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => supprimerLignePanier(index)}
+                              className="text-red-600 font-bold ml-0.5 text-[9px] px-0.5"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1.5 pt-1.5 border-t border-slate-200">
+                  
+                  <div className="w-full bg-slate-100 px-2 py-1.5 rounded-md border border-slate-200 flex flex-col items-center justify-center text-center">
+                    <span className="font-black text-slate-900 text-[9px] uppercase">Net à payer</span>
+                    <span className="font-black text-emerald-700 text-[10px] font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                  </div>
+
+                  <div className="flex items-center gap-1 w-full">
+                    <button
+                      type="button"
+                      disabled={sauvegardeEnCours}
+                      onClick={() => {
+                        setLignesSaisies([]);
+                        setVueActive('LISTE');
+                        setCommandeEnEdition(null);
+                      }}
+                      className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-1.5 px-1 rounded-md text-[9px] transition text-center disabled:opacity-50"
+                    >
+                      Annuler
+                    </button>
+
+                    {commandeEnEdition && (
+                      <button
+                        type="button"
+                        disabled={sauvegardeEnCours}
+                        onClick={supprimerCommandeActuelle}
+                        className="bg-red-600 hover:bg-red-700 text-white font-black p-1.5 rounded-md text-[9px] transition shrink-0"
+                        title="Supprimer"
+                      >
+                        🗑️
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={sauvegardeEnCours}
+                      onClick={sauvegarderCommande}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-1 rounded-md text-[9px] transition text-center shadow-xs"
+                    >
+                      {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            <div className="bg-white p-3 rounded-xl shadow-md space-y-2.5">
+              <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs space-y-1">
+                <span className="block font-black text-orange-900 uppercase">Résumé du Trajet :</span>
+                <p className="font-bold text-slate-800">
+                  📍 Départ : <strong className="text-slate-900">{pointADepart || 'Non défini'}</strong>
+                </p>
+                <p className="font-bold text-slate-800">
+                  🎯 Arrivée : <strong className="text-orange-600">{adresseLivraison || 'Non défini'}</strong>
+                </p>
+                {natureColis && (
+                  <p className="font-bold text-slate-800">
+                    📦 Colis : <strong className="text-blue-700">{natureColis}</strong>
+                  </p>
+                )}
+                <p className="font-bold text-slate-800">
+                  🛵 Livreur : <strong className="text-blue-600 uppercase">{livreurAssigne || 'Non assigné'}</strong>
+                </p>
+              </div>
+
+              <div className="w-full bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
+                <span className="font-black text-slate-900 text-xs uppercase">Net à payer :</span>
+                <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+              </div>
+
+              <div className="flex gap-2 w-full pt-1">
+                <button
+                  type="button"
+                  disabled={sauvegardeEnCours}
+                  onClick={() => {
+                    setLignesSaisies([]);
+                    setVueActive('LISTE');
+                    setCommandeEnEdition(null);
+                  }}
+                  className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-xs transition text-center disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+
+                {commandeEnEdition && (
+                  <button
+                    type="button"
+                    disabled={sauvegardeEnCours}
+                    onClick={supprimerCommandeActuelle}
+                    className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs transition shadow-xs disabled:opacity-50"
+                    title="Supprimer"
+                  >
+                    🗑️ Supprimer
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={sauvegardeEnCours}
+                  onClick={sauvegarderCommande}
+                  className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
+                >
+                  {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
+                </button>
+              </div>
+            </div>
+          )}
 
           {modalPartenaireOuverte && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
@@ -1792,7 +1805,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               Aucune commande ne correspond aux filtres.
             </div>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {commandesFiltrees.map((cmd) => {
                 const statut = cmd.statut_commande || 'EN ATTENTE';
                 let badgeColor = 'bg-amber-100 text-amber-800 border-amber-300';
@@ -1806,7 +1819,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   <div
                     key={cmd.id}
                     onClick={() => ouvrirCommandePourModification(cmd)}
-                    className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1.5"
+                    className="bg-white border border-slate-200 p-3 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-2"
                   >
                     <div className="flex justify-between items-center gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1819,46 +1832,57 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                         </span>
                       </div>
                       
-                      <div className="shrink-0">
+                      <div className="text-right shrink-0">
                         <span className="bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded border">
                           📅 {formaterDateCourte(cmd.date_commande)}
                         </span>
+                        <div className="font-black text-emerald-700 text-xs font-mono mt-0.5">
+                          {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex justify-end items-center gap-2">
-                      <div className="text-right shrink-0">
-                        <span className="font-black text-emerald-700 text-xs font-mono">{Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F</span>
+                    <div className="border-t border-slate-100 pt-1.5 space-y-1.5 text-[10px]">
+                      <div className="font-extrabold text-blue-700 uppercase flex items-center gap-1">
+                        <span>🛵</span> {cmd.vendeur_livreur || 'Aucun livreur assigné'}
                       </div>
-                    </div>
 
-                    <div className="text-[9.5px] font-bold text-slate-600 flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
-                      <div className="truncate flex items-center gap-1.5">
-                        {cmd.point_a ? (
-                          <span>
-                            📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
-                          </span>
+                      <div className="flex justify-between items-center text-slate-800 font-bold">
+                        <div className="truncate">
+                          {cmd.point_a ? (
+                            <span>
+                              📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
+                            </span>
+                          ) : (
+                            <span>
+                              📍 <strong className="text-slate-900">{cmd.adresse_livraison}</strong>
+                            </span>
+                          )}
+
+                          {cmd.zone_effective_livraison && cmd.zone_effective_livraison !== cmd.adresse_livraison && (
+                            <span className="text-orange-600 font-extrabold ml-1">🚀 {cmd.zone_effective_livraison}</span>
+                          )}
+                        </div>
+
+                        <div className="text-right shrink-0 ml-2">
+                          <span className="text-[9px] text-slate-400 font-bold">(Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F)</span>
+                        </div>
+                      </div>
+
+                      <div className="text-slate-600 font-medium">
+                        {lignesCmd.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {lignesCmd.map((l, idx) => (
+                              <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[9px]">
+                                {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : cmd.nature_colis ? (
+                          <span className="text-blue-700 font-bold">📦 {cmd.nature_colis}</span>
                         ) : (
-                          <span>
-                            📍 <strong className="text-slate-900">{cmd.adresse_livraison}</strong>
-                          </span>
+                          <span className="text-slate-400 italic">Aucun article</span>
                         )}
-
-                        {cmd.zone_effective_livraison && cmd.zone_effective_livraison !== cmd.adresse_livraison && (
-                          <span className="text-orange-600 font-extrabold ml-1">🚀 {cmd.zone_effective_livraison}</span>
-                        )}
-
-                        {lignesCmd.length > 0 && (
-                          <span className="text-slate-400 font-normal">| {lignesCmd.map(l => `${l.designation} (x${l.quantite})`).join(', ')}</span>
-                        )}
-
-                        {cmd.vendeur_livreur && (
-                          <span className="text-blue-600 font-extrabold uppercase ml-1">🛵 {cmd.vendeur_livreur}</span>
-                        )}
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className="text-[9px] text-slate-400 font-bold">(Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F)</span>
                       </div>
                     </div>
 
