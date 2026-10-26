@@ -123,10 +123,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     chargerPermissions();
   }, [entrepriseId]);
 
-  // Fonction de vérification des droits spécifiques sur le module 'articles_stock'
   const verifierDroit = (action) => {
     if (estSuperAdmin) return true;
-    if (!permissionsUser || !permissionsUser['articles_stock']) return true; // Par défaut ouvert si non défini
+    if (!permissionsUser || !permissionsUser['articles_stock']) return true; 
     return permissionsUser['articles_stock'][action] === true;
   };
 
@@ -185,7 +184,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const chargerArticles = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('articles_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
@@ -193,7 +192,17 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      const liste = data || [];
+      
+      let liste = data || [];
+      if (liste.length === 0) {
+        const { data: dataAll } = await supabase
+          .from('articles_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .order('created_at', { ascending: false });
+        liste = dataAll || [];
+      }
+
       setArticles(liste);
       
       if (liste.length > 0) {
@@ -341,81 +350,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return flux;
   };
 
-  const calculerLigneRapportStock = (articleId, depotId, dateDebut, dateFin) => {
-    let stockInitial = 0;
-    let totalEntrees = 0;
-    let totalSorties = 0;
-
-    const fluxTous = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
-    
-    fluxTous.forEach((m) => {
-      const dateMvtStr = m.date ? m.date.split('T')[0] : '';
-      const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
-      const matchDepotDest = correspondAuDepot(m.depot_destination, depotId);
-      const qte = m.quantite;
-      const type = m.type;
-
-      if (dateDebut && dateMvtStr && dateMvtStr < dateDebut) {
-        if (type === 'INVENTAIRE' && matchDepotSource) {
-          stockInitial = qte;
-        } else if (type === 'TR' || type === 'TRANSFERT') {
-          // Pas d'impact global dépôt
-        } else if (type === 'ENTREE' || type === 'AP' || type === 'ME' || type.includes('ACHAT') || type.includes('APPROVISIONNEMENT')) {
-          if (matchDepotSource || matchDepotDest) stockInitial += qte;
-        } else if (type === 'SORTIE' || type === 'LIV' || type === 'MS' || type.includes('AVARIES')) {
-          if (matchDepotSource) stockInitial -= qte;
-        } else {
-          if (matchDepotSource || matchDepotDest) stockInitial += qte;
-        }
-      }
-    });
-    stockInitial = Math.max(0, stockInitial);
-
-    fluxTous.forEach((m) => {
-      const dateMvtStr = m.date ? m.date.split('T')[0] : '';
-      if (dateDebut && dateMvtStr && dateMvtStr < dateDebut) return;
-      if (dateFin && dateMvtStr && dateMvtStr > dateFin) return;
-
-      const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
-      const matchDepotDest = correspondAuDepot(m.depot_destination, depotId);
-      const qte = m.quantite;
-      const type = m.type;
-
-      if (type === 'INVENTAIRE' && matchDepotSource) {
-        totalEntrees += qte;
-      } else if (type === 'AP' || type.includes('APPRO')) {
-        totalEntrees += qte;
-      } else if (type === 'ENTREE' || type === 'ME') {
-        totalEntrees += qte;
-      } else if (type === 'LIV' || type.includes('LIVRAISON')) {
-        if (matchDepotSource) {
-          totalSorties += qte;
-        }
-      } else if (type === 'SORTIE' || type === 'MS' || type.includes('AVARIES')) {
-        if (matchDepotSource) {
-          totalSorties += qte;
-        }
-      } else {
-        if (matchDepotDest && !matchDepotSource) {
-          totalEntrees += qte;
-        } else if (matchDepotSource && !matchDepotDest) {
-          totalSorties += qte;
-        }
-      }
-    });
-
-    const totalDisponible = stockInitial + totalEntrees;
-    const stockReel = Math.max(0, totalDisponible - totalSorties);
-
-    return {
-      stockInitial,
-      totalEntrees,
-      totalDisponible,
-      totalSorties,
-      stockReel
-    };
-  };
-
   const calculerStockPourUnDepot = (articleId, depotId) => {
     let stockDepot = 0;
     const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS');
@@ -474,7 +408,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const aEteMouvementeParDepot = (articleId, depotId) => {
     if (!depotId || depotId === 'TOUS') return true;
     const fluxArticle = obtenirTousLesFluxArticle(articleId);
-    return fluxArticle.some(m => correspondAuDepot(m.id_depot_source, depotId) || correspondAuDepot(m.id_depot_destination, depotId));
+    return fluxArticle.some(m => correspondAuDepot(m.depot_source, depotId) || correspondAuDepot(m.depot_destination, depotId));
   };
 
   const calculerStockParFiltre = (articleId) => {
@@ -535,7 +469,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
-    // Vérification des droits d'écriture/modification
     if (articleEnEdition && !verifierDroit('modification')) {
       alert("⛔ Accès refusé : Vous n'avez pas les droits de modification sur les articles.");
       return;
@@ -623,7 +556,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const supprimerArticleDepuisFormulaire = async () => {
     if (!articleEnEdition) return;
 
-    // Vérification des droits de suppression
     if (!verifierDroit('suppression')) {
       alert("⛔ Accès refusé : Vous n'avez pas les droits de suppression sur les articles.");
       return;
@@ -655,6 +587,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
+  // Correction stricte : Ne garder l'article que s'il a un stock réel > 0 ET qu'il a effectivement connu un mouvement sur le dépôt/emplacement filtré
   const articlesFiltres = articles.filter((art) => {
     const artId = art.id_article || art.id;
     const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
@@ -662,11 +595,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
     if (emplacementFiltre !== 'TOUS') {
       const stockEmp = calculerStockPourEmplacement(artId, emplacementFiltre, depotFiltre);
-      if (stockEmp <= 0) return false;
+      const fluxEmp = obtenirTousLesFluxArticle(artId, depotFiltre, emplacementFiltre);
+      if (stockEmp <= 0 || fluxEmp.length === 0) return false;
     } else if (depotFiltre !== 'TOUS') {
       const stockDep = calculerStockPourUnDepot(artId, depotFiltre);
       const dejaMvt = aEteMouvementeParDepot(artId, depotFiltre);
-      if (stockDep <= 0 && !dejaMvt) return false;
+      if (stockDep <= 0 || !dejaMvt) return false;
+    } else {
+      const stockGlobal = calculerStockParFiltre(artId);
+      if (stockGlobal <= 0) return false;
     }
 
     return true;
@@ -816,7 +753,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables</span>}
         </h3>
         
-        {/* Masquer le bouton Nouveau si l'utilisateur n'a pas le droit de création */}
         {(estSuperAdmin || verifierDroit('creation')) && (
           <button
             type="button"
@@ -1073,7 +1009,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 <div className="flex gap-1.5">
                   <button type="button" onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
                   
-                  {/* Bouton Enregistrer / Mettre à jour masqué ou bloqué si pas les droits */}
                   {(estSuperAdmin || (articleEnEdition ? verifierDroit('modification') : verifierDroit('creation'))) && (
                     <button 
                       type="submit" 
@@ -1203,21 +1138,23 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     ) : (
                       articlesAffiches.map((art) => {
                         const artId = art.id_article || art.id;
-                        const stockVal = calculerStockParFiltre(artId);
+                        const stockVal = depotFiltre !== 'TOUS' 
+                          ? calculerStockPourUnDepot(artId, depotFiltre)
+                          : calculerStockParFiltre(artId);
                         const estEpuise = stockVal <= 0;
 
                         return (
                           <tr 
                             key={artId} 
                             onClick={() => ouvrirEdition(art)}
-                            className={`hover:bg-orange-50/70 cursor-pointer transition select-none ${estEpuise ? 'bg-slate-50/60 opacity-80' : ''}`}
+                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                           >
-                            <td className={`p-2.5 font-black text-[10px] whitespace-nowrap uppercase ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                            <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
                               {art.Designation || art.designation}
                             </td>
                             <td className="p-2.5 text-center whitespace-nowrap">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockVal > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-rose-100 text-rose-700 border border-rose-200'}`}>
-                                {stockVal} {estEpuise && '(Épuisé)'}
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                {stockVal}
                               </span>
                             </td>
 
