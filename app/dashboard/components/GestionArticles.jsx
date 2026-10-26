@@ -194,15 +194,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       if (error) throw error;
       
       let liste = data || [];
-      if (liste.length === 0) {
-        const { data: dataAll } = await supabase
-          .from('articles_stock')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .order('created_at', { ascending: false });
-        liste = dataAll || [];
-      }
-
       setArticles(liste);
       
       if (liste.length > 0) {
@@ -351,37 +342,35 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const calculerStockPourUnDepot = (articleId, depotId) => {
-    let stockDepot = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS');
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
     
+    let stockInitial = 0;
+    let totalEntrees = 0;
+    let totalSorties = 0;
+
     fluxArticle.forEach((m) => {
-      const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
-      const matchDepotDest = correspondAuDepot(m.depot_destination, depotId);
-      const qte = m.quantite; 
+      const qte = m.quantite;
       const typeMvt = m.type;
 
-      if (typeMvt === 'INVENTAIRE' && matchDepotSource) { 
-        stockDepot = qte; 
-        return; 
-      }
-      if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') { 
-        return; 
-      }
-      if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
-        if (matchDepotSource || matchDepotDest) stockDepot += qte;
+      if (typeMvt === 'INVENTAIRE') {
+        stockInitial = qte;
+      } else if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
+        // Les transferts internes au même dépôt ne modifient pas le stock global du dépôt
+        return;
+      } else if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
+        totalEntrees += qte;
       } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt.includes('AVARIES')) {
-        if (matchDepotSource) stockDepot -= qte;
-      } else {
-        if (matchDepotSource || matchDepotDest) stockDepot += qte;
+        totalSorties += qte;
       }
     });
 
-    return Math.max(0, stockDepot);
+    stockInitial = Math.max(0, stockInitial);
+    return Math.max(0, stockInitial + totalEntrees - totalSorties);
   };
 
   const calculerStockPourEmplacement = (articleId, emplacementId, depotId = 'TOUS') => {
     let stockEmp = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, emplacementId);
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, emplacementId, false);
     
     fluxArticle.forEach((m) => {
       const qte = m.quantite;
@@ -405,12 +394,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return Math.max(0, stockEmp);
   };
 
-  const aEteMouvementeParDepot = (articleId, depotId) => {
-    if (!depotId || depotId === 'TOUS') return true;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId);
-    return fluxArticle.some(m => correspondAuDepot(m.depot_source, depotId) || correspondAuDepot(m.depot_destination, depotId));
-  };
-
   const calculerStockParFiltre = (articleId) => {
     if (emplacementFiltre !== 'TOUS') {
       return calculerStockPourEmplacement(articleId, emplacementFiltre, depotFiltre);
@@ -427,6 +410,56 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       }
       return totalGlobal;
     }
+  };
+
+  // Fonction de calcul pour le Rapport de Stock
+  const calculerLigneRapportStock = (articleId, depotId, dateDebut, dateFin) => {
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
+    
+    let stockInitial = 0;
+    let totalEntrees = 0;
+    let totalSorties = 0;
+
+    fluxArticle.forEach((m) => {
+      const dateMvt = m.date ? m.date.split('T')[0] : '';
+      const qte = m.quantite;
+      const typeMvt = m.type;
+
+      if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
+        return; // Les transferts internes au même dépôt n'impactent pas le rapport global du dépôt
+      }
+
+      if (dateDebut && dateMvt < dateDebut) {
+        if (typeMvt === 'INVENTAIRE') {
+          stockInitial = qte;
+        } else if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
+          stockInitial += qte;
+        } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt.includes('AVARIES')) {
+          stockInitial -= qte;
+        }
+      } else {
+        if (dateDebut && dateMvt < dateDebut) return;
+        if (dateFin && dateMvt > dateFin) return;
+
+        if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
+          totalEntrees += qte;
+        } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt.includes('AVARIES')) {
+          totalSorties += qte;
+        }
+      }
+    });
+
+    stockInitial = Math.max(0, stockInitial);
+    const totalDisponible = stockInitial + totalEntrees;
+    const stockReel = Math.max(0, totalDisponible - totalSorties);
+
+    return {
+      stockInitial,
+      totalEntrees,
+      totalDisponible,
+      totalSorties,
+      stockReel
+    };
   };
 
   const gererUploadImage = async (e) => {
@@ -587,23 +620,23 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // Correction stricte : Ne garder l'article que s'il a un stock réel > 0 ET qu'il a effectivement connu un mouvement sur le dépôt/emplacement filtré
+  // Filtrage intelligent : Si dépôt/emplacement = 'TOUS', on affiche TOUS les articles. 
+  // Si un dépôt ou un emplacement spécifique est sélectionné, on restreint aux articles ayant un mouvement/stock effectif.
   const articlesFiltres = articles.filter((art) => {
     const artId = art.id_article || art.id;
+    
+    // 1. Filtrage par famille (toujours actif)
     const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
     if (!matchFamille) return false;
 
+    // 2. Filtrage conditionnel par dépôt ou emplacement
     if (emplacementFiltre !== 'TOUS') {
       const stockEmp = calculerStockPourEmplacement(artId, emplacementFiltre, depotFiltre);
-      const fluxEmp = obtenirTousLesFluxArticle(artId, depotFiltre, emplacementFiltre);
-      if (stockEmp <= 0 || fluxEmp.length === 0) return false;
+      if (stockEmp <= 0) return false;
     } else if (depotFiltre !== 'TOUS') {
       const stockDep = calculerStockPourUnDepot(artId, depotFiltre);
-      const dejaMvt = aEteMouvementeParDepot(artId, depotFiltre);
-      if (stockDep <= 0 || !dejaMvt) return false;
-    } else {
-      const stockGlobal = calculerStockParFiltre(artId);
-      if (stockGlobal <= 0) return false;
+      const fluxDep = obtenirTousLesFluxArticle(artId, depotFiltre, 'TOUS', false);
+      if (stockDep <= 0 && fluxDep.length === 0) return false;
     }
 
     return true;
@@ -749,7 +782,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden text-ellipsis">
-          <span>📦</span> GESTION DES ARTICLES
+          <span>📦</span> GESTION DES ARTICLES [{moduleActuel}]
           {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables</span>}
         </h3>
         
