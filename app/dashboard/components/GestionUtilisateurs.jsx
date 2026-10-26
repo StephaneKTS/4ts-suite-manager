@@ -36,6 +36,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
 
+  // Liste complète de tous les modules et tables de l'application
   const modulesApp = [
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
@@ -48,6 +49,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     { id: 'fournisseurs', nom: '🤝 Fournisseurs' },
     { id: 'caisses', nom: '💵 Gestion Caisses' },
     { id: 'ventes_historiques', nom: '📊 Historique Ventes & Rapports' },
+    { id: 'commandes_livraison', nom: '📦 Commandes & Livraisons' },
+    { id: 'grille_tarifaire', nom: '🗺️ Grille Tarifaire Livraison' },
+    { id: 'challenges_commerciaux', nom: '🏆 Challenges Commerciaux' },
+    { id: 'plan_comptable', nom: '📚 Plan Comptable & Journal' },
+    { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
   ];
 
   const initialiserPermissionsDefaut = () => {

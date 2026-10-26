@@ -14,6 +14,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [commandesLivraison, setCommandesLivraison] = useState([]);
   const [entrepriseInfo, setInfosEntreprise] = useState(null);
 
+  // Gestion des permissions de l'utilisateur connecté
+  const [permissionsUser, setPermissionsUser] = useState(null);
+  const [estSuperAdmin, setEstSuperAdmin] = useState(false);
+
   const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
@@ -82,6 +86,49 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+
+  // Chargement des permissions utilisateur au montage
+  useEffect(() => {
+    async function chargerPermissions() {
+      if (typeof window === 'undefined') return;
+      const emailLocal = localStorage.getItem('emailConnecte') || '';
+      const userLocal = localStorage.getItem('utilisateurConnecte') || '';
+
+      const estAdmin = 
+        emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com' || 
+        emailLocal.toLowerCase().trim() === 'bureauisma26@gmail.com' || 
+        emailLocal.toLowerCase().trim() === 'stephanekts1312@gmail.com' ||
+        userLocal.includes('STÉPHANE') || 
+        userLocal.includes('KENMOE');
+
+      setEstSuperAdmin(estAdmin);
+
+      if (!estAdmin && (emailLocal || userLocal)) {
+        try {
+          const { data } = await supabase
+            .from('utilisateurs')
+            .select('permissions')
+            .eq('id_entreprise', entrepriseId)
+            .or(`email.eq.${emailLocal.toLowerCase()},nom_complet.ilike.${userLocal}`)
+            .maybeSingle();
+
+          if (data && data.permissions) {
+            setPermissionsUser(data.permissions);
+          }
+        } catch (err) {
+          console.error("Erreur permissions articles :", err);
+        }
+      }
+    }
+    chargerPermissions();
+  }, [entrepriseId]);
+
+  // Fonction de vérification des droits spécifiques sur le module 'articles_stock'
+  const verifierDroit = (action) => {
+    if (estSuperAdmin) return true;
+    if (!permissionsUser || !permissionsUser['articles_stock']) return true; // Par défaut ouvert si non défini
+    return permissionsUser['articles_stock'][action] === true;
+  };
 
   const chargerDonneesReference = async () => {
     try {
@@ -488,6 +535,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
+    // Vérification des droits d'écriture/modification
+    if (articleEnEdition && !verifierDroit('modification')) {
+      alert("⛔ Accès refusé : Vous n'avez pas les droits de modification sur les articles.");
+      return;
+    }
+    if (!articleEnEdition && !verifierDroit('creation')) {
+      alert("⛔ Accès refusé : Vous n'avez pas les droits de création sur les articles.");
+      return;
+    }
+
     setEnTrainDeSauvegarder(true);
     try {
       const payloadArticle = {
@@ -565,6 +622,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerArticleDepuisFormulaire = async () => {
     if (!articleEnEdition) return;
+
+    // Vérification des droits de suppression
+    if (!verifierDroit('suppression')) {
+      alert("⛔ Accès refusé : Vous n'avez pas les droits de suppression sur les articles.");
+      return;
+    }
+
     const artId = articleEnEdition.id_article || articleEnEdition.id;
     const stockGlobalActuel = calculerStockParFiltre(artId);
 
@@ -751,21 +815,25 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           <span>📦</span> GESTION DES ARTICLES
           {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables</span>}
         </h3>
-        <button
-          type="button"
-          onClick={() => {
-            if (afficherForm) {
-              annulerForm();
-            } else {
-              setModeVue('catalogue');
-              annulerForm();
-              setAfficherForm(true);
-            }
-          }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0"
-        >
-          {afficherForm ? '✖' : 'Nouveau'}
-        </button>
+        
+        {/* Masquer le bouton Nouveau si l'utilisateur n'a pas le droit de création */}
+        {(estSuperAdmin || verifierDroit('creation')) && (
+          <button
+            type="button"
+            onClick={() => {
+              if (afficherForm) {
+                annulerForm();
+              } else {
+                setModeVue('catalogue');
+                annulerForm();
+                setAfficherForm(true);
+              }
+            }}
+            className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0"
+          >
+            {afficherForm ? '✖' : 'Nouveau'}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-1 w-full">
@@ -824,7 +892,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
               </div>
 
-              {/* FAMILLE et DÉSIGNATION sur la même ligne (Famille réduite, Désignation élargie) */}
               <div className="grid grid-cols-[4fr_7fr] gap-2">
                 <div>
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">Famille *</label>
@@ -865,7 +932,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              {/* P.V, S.ALERTE (sélection au clic) et CODE-BARRES sur la même ligne */}
               <div className="grid grid-cols-3 gap-1.5">
                 <div>
                   <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">P.V *</label>
@@ -994,7 +1060,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="pt-2 flex justify-between items-center border-t border-slate-200">
-                {articleEnEdition ? (
+                {articleEnEdition && (estSuperAdmin || verifierDroit('suppression')) ? (
                   <button 
                     type="button" 
                     onClick={supprimerArticleDepuisFormulaire} 
@@ -1006,13 +1072,17 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                 <div className="flex gap-1.5">
                   <button type="button" onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
-                  <button 
-                    type="submit" 
-                    disabled={enTrainDeSauvegarder}
-                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg shadow-xs text-xs transition flex items-center gap-1"
-                  >
-                    {enTrainDeSauvegarder ? 'Enregistrement...' : (articleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                  </button>
+                  
+                  {/* Bouton Enregistrer / Mettre à jour masqué ou bloqué si pas les droits */}
+                  {(estSuperAdmin || (articleEnEdition ? verifierDroit('modification') : verifierDroit('creation'))) && (
+                    <button 
+                      type="submit" 
+                      disabled={enTrainDeSauvegarder}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg shadow-xs text-xs transition flex items-center gap-1"
+                    >
+                      {enTrainDeSauvegarder ? 'Enregistrement...' : (articleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
