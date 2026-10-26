@@ -18,6 +18,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [chargement, setChargement] = useState(false);
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
+  const [commandesAppelees, setCommandesAppelees] = useState({});
+
   const [vueActive, setVueActive] = useState('LISTE');
   const [commandeEnEdition, setCommandeEnEdition] = useState(null);
 
@@ -27,7 +29,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [depotId, setDepotId] = useState('AUCUN_DEPOT');
   const [montantSaisi, setMontantSaisi] = useState('');
   
-  // Références pour le déplacement automatique du curseur
   const inputNumeroClientRef = useRef(null);
   const inputAdresseRef = useRef(null);
   const inputMontantRef = useRef(null);
@@ -252,7 +253,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setPartenaireSansStockage(false);
     }
 
-    // Après le choix du partenaire, le curseur tombe directement sur le numéro du client
     setTimeout(() => {
       if (inputNumeroClientRef.current) {
         inputNumeroClientRef.current.focus();
@@ -275,14 +275,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setZoneGrilleSelectionnee(zoneCorrespondante.nom_zone);
       setFraisLivraisonSaisi(String(zoneCorrespondante.frais));
     }
-
-    // Après la saisie de l'adresse, le curseur tombe directement sur la zone du montant
-    setTimeout(() => {
-      if (inputMontantRef.current) {
-        inputMontantRef.current.focus();
-        inputMontantRef.current.select();
-      }
-    }, 50);
   };
 
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
@@ -397,8 +389,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
     if (livreurAssigne.trim() !== '') {
       const empTrouve = emplacements.find(e => 
-        (e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
-        (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase()
+        String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
+        ((e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
+        (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase())
       );
       if (empTrouve) {
         return calculerStockPourEmplacement(articleId, empTrouve.id);
@@ -427,6 +420,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         let nom = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
         if (!nom && u.email) nom = u.email.split('@')[0].toUpperCase();
         if (nom) setLivreurs.add(nom);
+      });
+
+    emplacements
+      .filter(e => String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim())
+      .forEach(e => {
+        let nomEmp = (e.nom_emplacement || e.responsable_emplacement || '').trim().toUpperCase();
+        if (nomEmp) setLivreurs.add(nomEmp);
       });
 
     return Array.from(setLivreurs).sort();
@@ -661,8 +661,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       let empIdTrouve = null;
       if (livreurAssigne.trim() !== '') {
         const empObj = emplacements.find(e => 
-          (e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
-          (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase()
+          String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
+          ((e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
+          (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase())
         );
         if (empObj) empIdTrouve = empObj.id;
       }
@@ -1004,6 +1005,24 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   return (
     <div className="space-y-3 text-[11px] font-sans">
       
+      {/* Styles CSS pour les animations de clignotement */}
+      <style jsx global>{`
+        @keyframes clignoteRouge {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(1.03); }
+        }
+        @keyframes clignoteBleu {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(1.03); }
+        }
+        .animate-clignote-rouge {
+          animation: clignoteRouge 1s infinite ease-in-out;
+        }
+        .animate-clignote-bleu {
+          animation: clignoteBleu 1.4s infinite ease-in-out;
+        }
+      `}</style>
+
       <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1.5 overflow-hidden">
         <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
           <span>📦</span> LIVRAISON
@@ -1264,10 +1283,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
           
-          {/* BLOC 01 : Formulaire d'en-tête avec disposition stricte par lignes */}
           <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-2.5">
-            
-            {/* LIGNE 1 : Date, Partenaire */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
@@ -1296,7 +1312,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               </div>
             </div>
 
-            {/* LIGNE 2 : Numéro commande, Numéro client (Obligatoire, exactement 9 caractères) */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD (Auto) *</label>
@@ -1375,7 +1390,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               </div>
             )}
 
-            {/* LIGNE 3 : Adresse livraison, Montant, Statut */}
             <div className="grid grid-cols-12 gap-2 items-end">
               <div className="col-span-5">
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse *</label>
@@ -1431,7 +1445,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
           </div>
 
-          {/* ZONE SUPERVISEUR : Frais de livraison et Livreur à assigner sur une ligne */}
           <div className="bg-blue-50/70 border-2 border-blue-200 p-3 rounded-xl shadow-md space-y-2">
             <div className="flex items-center justify-between border-b border-blue-200 pb-1">
               <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
@@ -1467,7 +1480,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             </div>
           </div>
 
-          {/* BLOC 03 : Article et Panier côte à côte */}
           {!partenaireSansStockage ? (
             <div className="grid grid-cols-2 gap-2">
               
@@ -1687,7 +1699,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           )}
 
           {modalPartenaireOuverte && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                   <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -1705,13 +1717,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
-                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                  <div onClick={() => { handleChangementPartenaire(''); setModalPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                  <div onClick={() => { handleChangementPartenaire(''); setModalPartenaireOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">
                     -- Réinitialiser --
                   </div>
                   {partenairesFiltres.map((p) => (
-                    <div key={p.id} onClick={() => { handleChangementPartenaire(p.id); setModalPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex justify-between items-center shadow-2xs">
-                      <span className="font-black text-xs text-slate-900 uppercase">{p.nom_fournisseur || p.nom}</span>
+                    <div key={p.id} onClick={() => { handleChangementPartenaire(p.id); setModalPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex items-center gap-2 shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{p.nom_fournisseur || p.nom}</span>
                     </div>
                   ))}
                 </div>
@@ -1720,7 +1732,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           )}
 
           {modalLivreurOuverte && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                   <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -1738,13 +1750,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
-                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                  <div onClick={() => { setLivreurAssigne(''); setModalLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                  <div onClick={() => { setLivreurAssigne(''); setModalLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">
                     -- Non assigné --
                   </div>
                   {livreursFiltres.map((nomEmp, idx) => (
-                    <div key={idx} onClick={() => { setLivreurAssigne(nomEmp); setModalLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex justify-between items-center shadow-2xs">
-                      <span className="font-black text-xs text-slate-900 uppercase">{nomEmp}</span>
+                    <div key={idx} onClick={() => { setLivreurAssigne(nomEmp); setModalLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex items-center gap-2 shadow-2xs">
+                      <div className="w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center shrink-0 text-slate-500 font-bold text-[10px]">
+                        {nomEmp.charAt(0)}
+                      </div>
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{nomEmp}</span>
                     </div>
                   ))}
                 </div>
@@ -1753,7 +1768,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           )}
 
           {modalArticleOuverte && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                   <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -1771,9 +1786,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
-                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                   {articlesFiltres.length === 0 ? (
-                    <div className="py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
                   ) : (
                     articlesFiltres.map((art) => {
                       const idArt = art.id_article || art.id;
@@ -1782,9 +1797,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                       const estEpuise = stockDisp <= 0;
 
                       return (
-                        <div key={idArt} onClick={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} className={`p-3 rounded-xl border transition cursor-pointer flex justify-between items-center shadow-2xs ${estEpuise ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'}`}>
-                          <span className="font-black text-xs text-slate-900 uppercase">{designation}</span>
-                          <span className="font-black text-xs text-slate-900">Stock : <strong className={estEpuise ? 'text-rose-600' : 'text-emerald-700'}>{stockDisp}</strong></span>
+                        <div key={idArt} onClick={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${estEpuise ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'}`}>
+                          <span className="font-black text-xs text-slate-900 uppercase truncate">{designation}</span>
+                          <span className="font-black text-[10px] mt-1 text-slate-700">Stock : <strong className={estEpuise ? 'text-rose-600' : 'text-emerald-700'}>{stockDisp}</strong></span>
                         </div>
                       );
                     })
@@ -1912,6 +1927,21 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
                 const lignesCmd = lignesCommandesMap[cmd.id] || [];
 
+                // Gestion des couleurs et clignotements pour le statut EN ATTENTE
+                const estEnAttente = statut === 'EN ATTENTE';
+                const dejaAppele = Boolean(commandesAppelees[cmd.id]);
+                
+                let styleNumero = '';
+                if (estEnAttente) {
+                  if (!dejaAppele) {
+                    styleNumero = 'text-rose-600 font-black animate-clignote-rouge';
+                  } else {
+                    styleNumero = 'text-blue-600 font-black animate-clignote-bleu';
+                  }
+                } else {
+                  styleNumero = 'text-slate-700 font-bold';
+                }
+
                 return (
                   <div
                     key={cmd.id}
@@ -1949,16 +1979,25 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                           <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                             <a
                               href={`tel:${cmd.numero_client}`}
-                              className="font-mono font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1 transition shadow-2xs"
-                              title={`Appeler ${cmd.numero_client}`}
+                              onClick={() => {
+                                // Marquer cette commande comme appelée pour basculer le clignotement en bleu
+                                setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
+                              }}
+                              className={`font-mono px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition shadow-sm text-xs font-black ${styleNumero} ${
+                                estEnAttente 
+                                  ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
+                                  : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                              }`}
+                              title={`Appeler le client ${cmd.numero_client}`}
                             >
-                              <span>📞</span> {cmd.numero_client}
+                              <span className="text-sm">📞</span> 
+                              <span className="text-xs sm:text-sm tracking-wide">{cmd.numero_client}</span>
                             </a>
                             <a
                               href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-1 rounded-md text-[10px] font-black transition flex items-center justify-center shadow-2xs"
+                              className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-1.5 rounded-lg text-xs font-black transition flex items-center justify-center shadow-2xs"
                               title={`Message WhatsApp ${cmd.numero_client}`}
                             >
                               💬
@@ -2015,17 +2054,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       )}
 
       {modalFiltrePartenaireOuverte && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
               <h4 className="font-black text-slate-900 uppercase text-xs">PARTENAIRE</h4>
               <button type="button" onClick={() => setModalFiltrePartenaireOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
             <input type="text" value={rechercheFiltrePartenaireInput} onChange={(e) => setRechercheFiltrePartenaireInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
-            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">Tous</div>
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
               {filtrePartenairesFiltres.map(p => (
-                <div key={p.id} onClick={() => { setFiltrePartenaire(p.id); setModalFiltrePartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{p.nom_fournisseur || p.nom}</div>
+                <div key={p.id} onClick={() => { setFiltrePartenaire(p.id); setModalFiltrePartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{p.nom_fournisseur || p.nom}</div>
               ))}
             </div>
           </div>
@@ -2033,17 +2072,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       )}
 
       {modalFiltreLivreurOuverte && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
               <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR</h4>
               <button type="button" onClick={() => setModalFiltreLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
             <input type="text" value={rechercheFiltreLivreurInput} onChange={(e) => setRechercheFiltreLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
-            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-              <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">Tous</div>
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
               {filtreLivreursFiltres.map((nom, idx) => (
-                <div key={idx} onClick={() => { setFiltreLivreur(nom); setModalFiltreLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{nom}</div>
+                <div key={idx} onClick={() => { setFiltreLivreur(nom); setModalFiltreLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{nom}</div>
               ))}
             </div>
           </div>
@@ -2051,17 +2090,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       )}
 
       {modalRapportLivreurOuverte && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
               <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR (RAPPORT)</h4>
               <button type="button" onClick={() => setModalRapportLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
             <input type="text" value={rechercheRapportLivreurInput} onChange={(e) => setRechercheRapportLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
-            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-              <div onClick={() => { setRapportLivreur(''); setModalRapportLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">-- Tous --</div>
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              <div onClick={() => { setRapportLivreur(''); setModalRapportLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Tous --</div>
               {rapportLivreursFiltres.map((nom, idx) => (
-                <div key={idx} onClick={() => { setRapportLivreur(nom); setModalRapportLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{nom}</div>
+                <div key={idx} onClick={() => { setRapportLivreur(nom); setModalRapportLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{nom}</div>
               ))}
             </div>
           </div>
@@ -2069,17 +2108,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       )}
 
       {modalRapportPartenaireOuverte && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
               <h4 className="font-black text-slate-900 uppercase text-xs">PARTENAIRE (RAPPORT)</h4>
               <button type="button" onClick={() => setModalRapportPartenaireOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
             <input type="text" value={rechercheRapportPartenaireInput} onChange={(e) => setRechercheRapportPartenaireInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
-            <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-              <div onClick={() => { setRapportPartenaire(''); setModalRapportPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs">-- Tous --</div>
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              <div onClick={() => { setRapportPartenaire(''); setModalRapportPartenaireOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Tous --</div>
               {rapportPartenairesFiltres.map(p => (
-                <div key={p.id} onClick={() => { setRapportPartenaire(p.id); setModalRapportPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase">{p.nom_fournisseur || p.nom}</div>
+                <div key={p.id} onClick={() => { setRapportPartenaire(p.id); setModalRapportPartenaireOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{p.nom_fournisseur || p.nom}</div>
               ))}
             </div>
           </div>
