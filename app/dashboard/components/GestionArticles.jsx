@@ -355,7 +355,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       if (typeMvt === 'INVENTAIRE') {
         stockInitial = qte;
       } else if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
-        // Les transferts internes au même dépôt ne modifient pas le stock global du dépôt
         return;
       } else if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
         totalEntrees += qte;
@@ -412,7 +411,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // Fonction de calcul pour le Rapport de Stock
   const calculerLigneRapportStock = (articleId, depotId, dateDebut, dateFin) => {
     const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
     
@@ -426,7 +424,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const typeMvt = m.type;
 
       if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
-        return; // Les transferts internes au même dépôt n'impactent pas le rapport global du dépôt
+        return;
       }
 
       if (dateDebut && dateMvt < dateDebut) {
@@ -620,16 +618,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // Filtrage intelligent : Si dépôt/emplacement = 'TOUS', on affiche TOUS les articles. 
-  // Si un dépôt ou un emplacement spécifique est sélectionné, on restreint aux articles ayant un mouvement/stock effectif.
   const articlesFiltres = articles.filter((art) => {
     const artId = art.id_article || art.id;
-    
-    // 1. Filtrage par famille (toujours actif)
     const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
     if (!matchFamille) return false;
 
-    // 2. Filtrage conditionnel par dépôt ou emplacement
     if (emplacementFiltre !== 'TOUS') {
       const stockEmp = calculerStockPourEmplacement(artId, emplacementFiltre, depotFiltre);
       if (stockEmp <= 0) return false;
@@ -1174,7 +1167,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         const stockVal = depotFiltre !== 'TOUS' 
                           ? calculerStockPourUnDepot(artId, depotFiltre)
                           : calculerStockParFiltre(artId);
-                        const estEpuise = stockVal <= 0;
 
                         return (
                           <tr 
@@ -1471,16 +1463,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </button>
             </div>
 
-            <div id="section-impression-rapport_stock" className="border border-slate-200 rounded-xl bg-white shadow-2xs">
-              <table className="w-full text-left text-[10px] border-collapse">
+            <div id="section-impression-rapport_stock" className="border border-slate-200 rounded-xl bg-white shadow-2xs overflow-x-auto">
+              <table className="w-full text-left text-[9.5px] border-collapse table-fixed">
                 <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[8px] font-black">
-                    <th className="py-2 px-1">Désignation</th>
-                    <th className="py-2 px-1 text-center whitespace-nowrap">Stock I.</th>
-                    <th className="py-2 px-1 text-center whitespace-nowrap">Entrée</th>
-                    <th className="py-2 px-1 text-center whitespace-nowrap">Total</th>
-                    <th className="py-2 px-1 text-center whitespace-nowrap">Sortie</th>
-                    <th className="py-2 px-1 text-center whitespace-nowrap">Stock Réel</th>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[7.5px] font-black">
+                    <th className="py-2 px-0.5 w-[38%]">Désignation</th>
+                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">S. Init</th>
+                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">Entrée</th>
+                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">Total</th>
+                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">Sortie</th>
+                    <th className="py-2 px-0.5 w-[14%] text-center whitespace-nowrap">S. Réel</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1513,27 +1505,27 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                       return (
                         <tr key={artId} className="hover:bg-slate-50 transition">
-                          <td className="py-2 px-1 font-black uppercase text-slate-900 text-[9.5px] max-w-[90px] truncate">
+                          <td className="py-2 px-0.5 font-black uppercase text-slate-900 text-[9px] truncate">
                             {art.Designation || art.designation}
                           </td>
-                          <td className="py-2 px-1 text-center font-mono font-bold text-slate-700 whitespace-nowrap">
+                          <td className="py-2 px-0.5 text-center font-mono font-bold text-slate-700 whitespace-nowrap">
                             {rapport.stockInitial}
                           </td>
-                          <td className="py-2 px-1 text-center font-mono font-bold text-emerald-700 whitespace-nowrap">
-                            <span className="bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200 inline-block">
+                          <td className="py-2 px-0.5 text-center font-mono font-bold text-emerald-700 whitespace-nowrap">
+                            <span className="bg-emerald-50 px-0.5 py-0.5 rounded border border-emerald-200 inline-block">
                               +{rapport.totalEntrees}
                             </span>
                           </td>
-                          <td className="py-2 px-1 text-center font-mono font-extrabold text-blue-800 whitespace-nowrap">
+                          <td className="py-2 px-0.5 text-center font-mono font-extrabold text-blue-800 whitespace-nowrap">
                             {rapport.totalDisponible}
                           </td>
-                          <td className="py-2 px-1 text-center font-mono font-bold text-rose-700 whitespace-nowrap">
-                            <span className="bg-rose-50 px-1 py-0.5 rounded border border-rose-200 inline-block">
+                          <td className="py-2 px-0.5 text-center font-mono font-bold text-rose-700 whitespace-nowrap">
+                            <span className="bg-rose-50 px-0.5 py-0.5 rounded border border-rose-200 inline-block">
                               -{rapport.totalSorties}
                             </span>
                           </td>
-                          <td className="py-2 px-1 text-center font-mono font-black text-slate-900 whitespace-nowrap">
-                            <span className={`px-1.5 py-0.5 rounded text-[9.5px] ${rapport.stockReel > 0 ? 'bg-orange-100 text-orange-900 border border-orange-200' : 'bg-slate-100 text-slate-500'}`}>
+                          <td className="py-2 px-0.5 text-center font-mono font-black text-slate-900 whitespace-nowrap">
+                            <span className={`px-1 py-0.5 rounded text-[9px] ${rapport.stockReel > 0 ? 'bg-orange-100 text-orange-900 border border-orange-200' : 'bg-slate-100 text-slate-500'}`}>
                               {rapport.stockReel}
                             </span>
                           </td>
