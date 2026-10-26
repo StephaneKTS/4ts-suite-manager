@@ -21,17 +21,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [vueActive, setVueActive] = useState('LISTE');
   const [commandeEnEdition, setCommandeEnEdition] = useState(null);
 
-  const [numeroCommande, setNumeroCommande] = useState('');
+  const [numeroCommande, setNumeroCommande] = useState('1');
   const [dateCommande, setDateCommande] = useState(new Date().toISOString().split('T')[0]);
   const [idPartenaire, setIdPartenaire] = useState('');
   const [depotId, setDepotId] = useState('AUCUN_DEPOT');
   const [montantSaisi, setMontantSaisi] = useState('');
   
-  const inputNumeroCmdRef = useRef(null);
   const inputMontantRef = useRef(null);
 
   const [pointADepart, setPointADepart] = useState('');
   const [adresseLivraison, setAdresseLivraison] = useState('');
+  const [numeroClient, setNumeroClient] = useState('');
   const [natureColis, setNatureColis] = useState('');
   const [zoneGrilleSelectionnee, setZoneGrilleSelectionnee] = useState('');
   const [fraisLivraisonSaisi, setFraisLivraisonSaisi] = useState('');
@@ -166,11 +166,38 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setApprovisionnements(resApp.data || []);
       setVentesHistoriques(resVentes.data || []);
 
+      calculerNumeroAutomatique(resCmd.data || [], idPartenaire, dateCommande);
+
     } catch (err) {
       console.error('Erreur chargement données livraison :', err.message);
     } finally {
       setChargement(false);
     }
+  };
+
+  const calculerNumeroAutomatique = (listeCmds, partId, dateCible) => {
+    if (!partId) {
+      setNumeroCommande('1');
+      return;
+    }
+    const cmdsJourPart = listeCmds.filter(c => 
+      String(c.id_partenaire) === String(partId) && 
+      c.date_commande === dateCible &&
+      (!commandeEnEdition || c.id !== commandeEnEdition.id)
+    );
+
+    let maxNum = 0;
+    cmdsJourPart.forEach(c => {
+      if (c.numero_commande) {
+        const netNum = c.numero_commande.replace('CMD-', '');
+        const parsed = parseInt(netNum, 10);
+        if (!isNaN(parsed) && parsed > maxNum) {
+          maxNum = parsed;
+        }
+      }
+    });
+
+    setNumeroCommande(String(maxNum + 1));
   };
 
   useEffect(() => {
@@ -180,6 +207,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const handleChangementPartenaire = (partenaireId) => {
     setIdPartenaire(partenaireId);
     if (!commandeEnEdition) setLignesSaisies([]);
+
+    calculerNumeroAutomatique(commandes, partenaireId, dateCommande);
 
     if (!partenaireId) {
       setDepotId('AUCUN_DEPOT');
@@ -194,10 +223,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       
       setPartenaireSansStockage(Boolean(sansStock));
 
-      if (sansStock) {
-        if (partObj.adresse) {
-          setPointADepart(partObj.adresse);
-        }
+      if (sansStock && partObj.adresse) {
+        setPointADepart(partObj.adresse);
       }
 
       if (partObj.id_depot) {
@@ -221,13 +248,11 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setDepotId('AUCUN_DEPOT');
       setPartenaireSansStockage(false);
     }
+  };
 
-    setTimeout(() => {
-      if (inputNumeroCmdRef.current) {
-        inputNumeroCmdRef.current.focus();
-        inputNumeroCmdRef.current.select();
-      }
-    }, 50);
+  const handleChangementDate = (nouvelleDate) => {
+    setDateCommande(nouvelleDate);
+    calculerNumeroAutomatique(commandes, idPartenaire, nouvelleDate);
   };
 
   const handleChangementAdresse = (valeur) => {
@@ -492,12 +517,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
   const ouvrirCommandePourModification = async (cmd) => {
     setCommandeEnEdition(cmd);
-    setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '');
+    setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1');
     setDateCommande(cmd.date_commande || new Date().toISOString().split('T')[0]);
     setIdPartenaire(cmd.id_partenaire || '');
     setMontantSaisi(cmd.montant_commande !== undefined && cmd.montant_commande !== null ? String(cmd.montant_commande) : '0');
     setPointADepart(cmd.point_a || '');
     setAdresseLivraison(cmd.adresse_livraison || '');
+    setNumeroClient(cmd.numero_client || '');
     setNatureColis(cmd.nature_colis || '');
     setZoneGrilleSelectionnee(cmd.zone_effective_livraison || cmd.adresse_livraison || '');
     setFraisLivraisonSaisi(cmd.frais_livraison !== undefined && cmd.frais_livraison !== null ? String(cmd.frais_livraison) : '');
@@ -544,11 +570,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       if (error) throw error;
 
       alert('Commande supprimée avec succès.');
-      setNumeroCommande('');
+      setNumeroCommande('1');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
       setPartenaireSansStockage(false);
       setPointADepart('');
+      setNumeroClient('');
       setNatureColis('');
       setLignesSaisies([]);
       setMontantSaisi('');
@@ -641,6 +668,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         montant_commande: napGlobal,
         point_a: partenaireSansStockage ? pointADepart : null,
         adresse_livraison: adresseLivraison,
+        numero_client: numeroClient,
         nature_colis: partenaireSansStockage ? natureColis : null,
         zone_effective_livraison: zoneGrilleSelectionnee || adresseLivraison,
         frais_livraison: parseFloat(fraisLivraisonSaisi) || 0,
@@ -724,11 +752,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       }
 
       alert(commandeEnEdition ? 'Commande mise à jour avec succès !' : 'Commande enregistrée en attente avec succès !');
-      setNumeroCommande('');
+      setNumeroCommande('1');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
       setPartenaireSansStockage(false);
       setPointADepart('');
+      setNumeroClient('');
       setNatureColis('');
       setLignesSaisies([]);
       setMontantSaisi('');
@@ -969,10 +998,11 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             type="button"
             onClick={() => {
               setCommandeEnEdition(null);
-              setNumeroCommande('');
+              setNumeroCommande('1');
               setIdPartenaire('');
               setPartenaireSansStockage(false);
               setPointADepart('');
+              setNumeroClient('');
               setNatureColis('');
               setMontantSaisi('');
               setAdresseLivraison('');
@@ -1206,8 +1236,10 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
           
-          {/* BLOC 01 : De Date jusqu'à Statut commande */}
+          {/* BLOC 01 : Formulaire d'en-tête mis à jour */}
           <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-3">
+            
+            {/* LIGNE 1 : Date, Partenaire, N° CMD */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
@@ -1215,7 +1247,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   type="date"
                   required
                   value={dateCommande}
-                  onChange={(e) => setDateCommande(e.target.value)}
+                  onChange={(e) => handleChangementDate(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
                 />
@@ -1236,20 +1268,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
-                <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                  <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD (Auto) *</label>
+                <div className="flex items-center bg-slate-100 border border-slate-300 rounded overflow-hidden shadow-xs">
+                  <span className="bg-slate-200 px-2 py-1.5 text-[11px] font-black text-orange-600 border-r border-slate-300 shrink-0">
                     CMD-
                   </span>
                   <input
-                    ref={inputNumeroCmdRef}
                     type="text"
-                    required
+                    readOnly
                     value={numeroCommande}
-                    onChange={(e) => setNumeroCommande(e.target.value.toUpperCase())}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="01-03"
-                    className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 uppercase focus:outline-none"
+                    className="w-full p-1.5 font-mono text-[11px] font-black text-slate-900 bg-slate-100 focus:outline-none cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -1284,11 +1312,22 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
-                  Adresse *
-                </label>
+            {/* LIGNE 2 : Numéro Client, Adresse, Montant, Statut dans l'ordre demandé avec largeurs ajustées */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+              <div className="sm:col-span-3">
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° Client</label>
+                <input
+                  type="text"
+                  value={numeroClient}
+                  onChange={(e) => setNumeroClient(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="Ex: 6XXXXXXXX..."
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs font-mono"
+                />
+              </div>
+
+              <div className="sm:col-span-4">
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse *</label>
                 <input
                   type="text"
                   required
@@ -1308,7 +1347,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 </datalist>
               </div>
 
-              <div>
+              <div className="sm:col-span-3">
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
                 <input
                   ref={inputMontantRef}
@@ -1323,12 +1362,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 />
               </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut *</label>
+              <div className="sm:col-span-2">
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase text-right">Statut *</label>
                 <select
                   value={statutCommandeSaisi}
                   onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs text-right cursor-pointer"
                 >
                   <option value="EN ATTENTE">EN ATTENTE</option>
                   <option value="LIVRÉ">LIVRÉ</option>
@@ -1339,7 +1378,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             </div>
           </div>
 
-          {/* BLOC 02 : Zone réservée au superviseur */}
+          {/* ZONE SUPERVISEUR : Frais et Livreur sur la même ligne */}
           <div className="bg-blue-50/70 border-2 border-blue-200 p-3 rounded-xl shadow-md space-y-2.5">
             <div className="flex items-center justify-between border-b border-blue-200 pb-1.5">
               <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
@@ -1536,6 +1575,11 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                 <p className="font-bold text-slate-800">
                   🎯 Arrivée : <strong className="text-orange-600">{adresseLivraison || 'Non défini'}</strong>
                 </p>
+                {numeroClient && (
+                  <p className="font-bold text-slate-800">
+                    📞 Client : <strong className="text-blue-700 font-mono">{numeroClient}</strong>
+                  </p>
+                )}
                 {natureColis && (
                   <p className="font-bold text-slate-800">
                     📦 Colis : <strong className="text-blue-700">{natureColis}</strong>
@@ -1832,19 +1876,49 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                         </span>
                       </div>
                       
-                      <div className="text-right shrink-0">
-                        <span className="bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded border">
-                          📅 {formaterDateCourte(cmd.date_commande)}
-                        </span>
-                        <div className="font-black text-emerald-700 text-xs font-mono mt-0.5">
-                          {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F
+                      <div className="text-right shrink-0 flex items-center gap-2">
+                        {/* Boutons d'appel et WhatsApp activés dès que le numéro du client est présent */}
+                        {cmd.numero_client && (
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <a
+                              href={`tel:${cmd.numero_client}`}
+                              className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 p-1 rounded-md text-[10px] font-black transition flex items-center justify-center shadow-2xs"
+                              title={`Appeler ${cmd.numero_client}`}
+                            >
+                              📞
+                            </a>
+                            <a
+                              href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-1 rounded-md text-[10px] font-black transition flex items-center justify-center shadow-2xs"
+                              title={`Message WhatsApp ${cmd.numero_client}`}
+                            >
+                              💬
+                            </a>
+                          </div>
+                        )}
+                        <div>
+                          <span className="bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded border">
+                            📅 {formaterDateCourte(cmd.date_commande)}
+                          </span>
+                          <div className="font-black text-emerald-700 text-xs font-mono mt-0.5">
+                            {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F
+                          </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="border-t border-slate-100 pt-1.5 space-y-1.5 text-[10px]">
-                      <div className="font-extrabold text-blue-700 uppercase flex items-center gap-1">
-                        <span>🛵</span> {cmd.vendeur_livreur || 'Aucun livreur assigné'}
+                      <div className="flex justify-between items-center">
+                        <div className="font-extrabold text-blue-700 uppercase flex items-center gap-1">
+                          <span>🛵</span> {cmd.vendeur_livreur || 'Aucun livreur assigné'}
+                        </div>
+                        {cmd.numero_client && (
+                          <div className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            📞 {cmd.numero_client}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex justify-between items-center text-slate-800 font-bold">
