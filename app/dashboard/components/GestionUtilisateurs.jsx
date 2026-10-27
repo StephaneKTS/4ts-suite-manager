@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const LISTE_PAYS = [
@@ -33,6 +33,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [recherche, setRecherche] = useState('');
   const [afficherMotDePasse, setAfficherMotDePasse] = useState(false);
 
+  const fileInputRef = useRef(null);
+
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
 
@@ -40,7 +42,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
     { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
-    { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' }, // AJOUTÉ ICI
+    { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' },
     { id: 'familles_articles', nom: '🏷️ Familles & Catégories' },
     { id: 'mouvements_stock', nom: '🔄 Mouvements Stock' },
     { id: 'approvisionnements', nom: '📥 Approvisionnements' },
@@ -74,6 +76,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     id_role: '',
     id_caisse: '',
     id_emplacement: '',
+    photo: '',
     statut: 'ACTIF',
     acces_application: true,
     permissions: initialiserPermissionsDefaut(),
@@ -180,6 +183,17 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   const obtenirNumWhatsapp = (tel) => (tel ? tel.replace(/[^0-9]/g, '') : '');
 
+  const gererSelectionImage = (e) => {
+    const fichier = e.target.files[0];
+    if (fichier) {
+      const lecteur = new FileReader();
+      lecteur.onloadend = () => {
+        setNouveauUser((prev) => ({ ...prev, photo: lecteur.result }));
+      };
+      lecteur.readAsDataURL(fichier);
+    }
+  };
+
   const enregistrerUtilisateur = async (e) => {
     e.preventDefault();
 
@@ -238,6 +252,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
         id_caisse: estModeLivraison ? null : (nouveauUser.id_caisse || null),
+        photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
         permissions: nouveauUser.acces_application ? nouveauUser.permissions : null,
@@ -283,6 +298,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       id_role: user.id_role || '',
       id_caisse: user.id_caisse || '',
       id_emplacement: user.id_emplacement || '',
+      photo: user.photo || '',
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
       permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
@@ -302,6 +318,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       id_role: '',
       id_caisse: '',
       id_emplacement: '',
+      photo: '',
       statut: 'ACTIF',
       acces_application: true,
       permissions: initialiserPermissionsDefaut(),
@@ -385,7 +402,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             if (afficherForm) {
               annulerForm();
             } else {
-              setNouveauUser({ nom_complet: '', prenom: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '', id_emplacement: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
+              setNouveauUser({ nom_complet: '', prenom: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '', id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
               setUserEnEdition(null);
               setAfficherForm(true);
             }
@@ -431,6 +448,41 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 Accès à l'application (Consomme une licence / Connexion active)
               </span>
             </label>
+          </div>
+
+          {/* INPUT FICHIER CACHÉ POUR GALERIE OU APPAREIL PHOTO */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={gererSelectionImage} 
+            accept="image/*" 
+            className="hidden" 
+          />
+
+          {/* SECTION PHOTO DE PROFIL INTERACTIVE SANS ZONE DE TEXTE URL */}
+          <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div 
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              title="Cliquez pour choisir une photo ou prendre un cliché"
+              className="w-14 h-14 rounded-full bg-slate-200 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
+            >
+              {nouveauUser.photo ? (
+                <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-slate-600 text-lg font-black">📷</span>
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[9px] font-bold text-center p-0.5">
+                Modifier
+              </div>
+            </div>
+            <div className="flex-1">
+              <p className="font-black text-[10px] text-slate-800 uppercase">
+                Photo de profil du collaborateur
+              </p>
+              <p className="text-[9px] text-slate-500 font-semibold mt-0.5">
+                Cliquez sur l'icône de l'appareil photo pour ouvrir la galerie ou filmer directement depuis votre appareil.
+              </p>
+            </div>
           </div>
 
           {/* NOM ET PRÉNOM */}
@@ -630,6 +682,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                   <tr>
+                    <th className="p-2.5 w-10 text-center">Avatar</th>
                     <th onClick={() => gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:bg-slate-200">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
                     <th onClick={() => gererTri('role')} className="p-2.5 cursor-pointer hover:bg-slate-200">Rôle {rendreFlecheTri('role')}</th>
                     <th className="p-2.5 text-center">Type d'accès</th>
@@ -641,6 +694,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     const aAcces = u.acces_application ?? true;
                     return (
                       <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                        <td className="p-2.5 text-center">
+                          <div className="w-7 h-7 rounded-full bg-slate-200 border border-slate-300 mx-auto overflow-hidden flex items-center justify-center">
+                            {u.photo ? (
+                              <img src={u.photo} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
+                            ) : (
+                              <span className="text-[9px] font-bold text-slate-500">👤</span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-2.5 font-black uppercase text-slate-900">
                           {u.nom_complet} {u.prenom ? u.prenom : ''}
                         </td>
