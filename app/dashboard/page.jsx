@@ -95,8 +95,8 @@ function DashboardContent() {
             }
           }
 
-          if (!localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateurConnecte') === 'UTILISATEUR') {
-            const nomAdmin = entData.nom_entreprise || 'ADMINISTRATEUR';
+          if (!localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateurConnecte') === 'UTILISATEUR' || entrepriseIdUrl === '4TS-234321') {
+            const nomAdmin = entrepriseIdUrl === '4TS-234321' ? 'STEPHANE KTS' : (entData.nom_entreprise || 'ADMINISTRATEUR');
             setUtilisateurConnecte(nomAdmin.toUpperCase());
             localStorage.setItem('utilisateurConnecte', nomAdmin.toUpperCase());
           }
@@ -118,7 +118,6 @@ function DashboardContent() {
     }
   }, [entrepriseIdUrl, emailConnecte]);
 
-  // Récupération des permissions de l'utilisateur connecté depuis Supabase
   useEffect(() => {
     async function fetchPermissions() {
       if (!emailConnecte && !utilisateurConnecte) return;
@@ -142,7 +141,6 @@ function DashboardContent() {
 
   const estModeLivraison = moduleCourant === 'LIVRAISON';
 
-  // Vérification Super-Admin englobant votre e-mail officiel stephs7352@gmail.com
   const emailActuel = emailConnecte || infosEntreprise.email || '';
   const estSuperAdmin = 
     emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com' || 
@@ -151,10 +149,9 @@ function DashboardContent() {
     utilisateurConnecte.includes('STÉPHANE') || 
     utilisateurConnecte.includes('KENMOE');
 
-  // Fonction de vérification des droits pour un module donné
   const verifierPermission = (moduleId) => {
-    if (estSuperAdmin) return true; // Le super-admin a tous les droits
-    if (!permissionsUser) return true; // Par défaut si non configuré, accès libre
+    if (estSuperAdmin) return true;
+    if (!permissionsUser) return true;
     const permModule = permissionsUser[moduleId];
     if (!permModule) return true;
     return permModule.lecture === true;
@@ -168,7 +165,6 @@ function DashboardContent() {
     }
   };
 
-  // Fonction pour charger toutes les entreprises dans le Panneau Super-Admin
   const chargerToutesLesEntreprises = async () => {
     setLoadingAdmin(true);
     try {
@@ -571,7 +567,7 @@ function DashboardContent() {
                 </div>
               )}
 
-              {estSuperAdmin && (
+              {verifierPermission('roles_utilisateurs') && (
                 <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                   <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                   <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
@@ -585,12 +581,11 @@ function DashboardContent() {
                 </div>
               )}
 
-              {estSuperAdmin && (
-                <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
-                </div>
-              )}
+              {/* MODIFIÉ ICI : Ouvert à tous sur l'accueil (les restrictions se feront sur les actions internes) */}
+              <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
+              </div>
 
               {verifierPermission('ventes_historiques') && (
                 <div onClick={() => tenterAccesModule('plan_comptable', 'Plan Comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
@@ -657,7 +652,7 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Achats & Approvisionnement</span>
               </div>
 
-              {estSuperAdmin && (
+              {verifierPermission('roles_utilisateurs') && (
                 <div onClick={() => setModuleActif('roles')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                   <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                   <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion des Rôles</span>
@@ -669,12 +664,11 @@ function DashboardContent() {
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion Partenaire</span>
               </div>
 
-              {estSuperAdmin && (
-                <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
-                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
-                </div>
-              )}
+              {/* MODIFIÉ ICI : Ouvert à tous sur l'accueil (les restrictions se feront sur les actions internes) */}
+              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
+                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
+              </div>
 
               <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#1b263b] hover:bg-[#22324a] border border-blue-900/60 hover:border-blue-500 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-2xs">
                 <span className="text-2xl group-hover:scale-110 transition">📚</span>

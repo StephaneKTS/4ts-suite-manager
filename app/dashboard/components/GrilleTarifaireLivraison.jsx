@@ -8,11 +8,23 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteTarifs, setLimiteTarifs] = useState(20);
+
   const [afficherForm, setAfficherForm] = useState(false);
   const [tarifEnEdition, setTarifEnEdition] = useState(null);
 
   const [nomZone, setNomZone] = useState('');
   const [fraisZone, setFraisZone] = useState('');
+
+  // --- GESTION DES DROITS ET AUTORISATIONS ---
+  const [roleNom, setRoleNom] = useState('');
+  const [permissions, setPermissions] = useState({
+    lecture: true,
+    creation: true,
+    modification: true,
+    suppression: false,
+  });
 
   // États pour le tri et la recherche
   const [colonneTri, setColonneTri] = useState('nom_zone');
@@ -37,17 +49,69 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
     new Set([...quartiersReference, ...grilleTarifs.map(t => t.nom_zone)])
   ).sort();
 
-  const chargerTarifs = async () => {
+  // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
+  const chargerTarifsEtPermissions = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase
-        .from('grille_tarifaire_livraison')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+      // 1. Charger et analyser les permissions de l'employé connecté
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+        setRoleNom(nomRoleUser);
 
-      if (error) throw error;
-      setGrilleTarifs(data || []);
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          const permModule = userObj.permissions?.['grille_tarifaire'] || userObj.permissions?.['grille_tarifaire_livraison'] || userObj.permissions?.['tarifs'];
+          
+          if (permModule) {
+            setPermissions({
+              lecture: permModule.lecture ?? permModule.voir ?? true,
+              creation: permModule.creation ?? permModule.creer ?? true,
+              modification: permModule.modification ?? permModule.modifier ?? true,
+              suppression: permModule.suppression ?? false,
+            });
+          } else {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['grille_tarifaire'] || roleData?.permissions?.['grille_tarifaire_livraison'] || roleData?.permissions?.['tarifs'];
+            if (rolePerm) {
+              setPermissions({
+                lecture: rolePerm.lecture ?? rolePerm.voir ?? true,
+                creation: rolePerm.creation ?? rolePerm.creer ?? true,
+                modification: rolePerm.modification ?? rolePerm.modifier ?? true,
+                suppression: rolePerm.suppression ?? false,
+              });
+            }
+          }
+        }
+      }
+
+      let listeTarifs = [];
+      const { data: tarifsRpc, error: rpcError } = await supabase.rpc('recuperer_grille_tarifaire_livraison', {
+        p_entreprise_id: entrepriseId,
+        p_module: moduleActuel
+      });
+
+      if (rpcError) {
+        const { data, error } = await supabase
+          .from('grille_tarifaire_livraison')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel);
+
+        if (error) throw error;
+        listeTarifs = data || [];
+      } else {
+        listeTarifs = tarifsRpc || [];
+      }
+
+      setGrilleTarifs(listeTarifs);
     } catch (err) {
       console.error('Erreur chargement grille tarifaire :', err.message);
     } finally {
@@ -56,10 +120,11 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
   };
 
   useEffect(() => {
-    chargerTarifs();
+    chargerTarifsEtPermissions();
   }, [entrepriseId]);
 
   const gererTri = (colonne) => {
+    if (enTrainDeSauvegarder) return;
     if (colonneTri === colonne) {
       setOrdreCroissant(!ordreCroissant);
     } else {
@@ -87,7 +152,15 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
       }
     });
 
+  // Application de la pagination mobile par blocs de 20 éléments
+  const tarifsAffiches = tarifsFiltresEtTries.slice(0, limiteTarifs);
+
   const ouvrirFormAjout = () => {
+    if (enTrainDeSauvegarder) return;
+    if (!permissions.creation) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit d’ajouter des zones tarifaires.');
+      return;
+    }
     setTarifEnEdition(null);
     setNomZone('');
     setFraisZone('');
@@ -95,6 +168,11 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
   };
 
   const ouvrirFormEdition = (tarif) => {
+    if (enTrainDeSauvegarder) return;
+    if (!permissions.modification) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les zones tarifaires.');
+      return;
+    }
     setTarifEnEdition(tarif);
     setNomZone(tarif.nom_zone || '');
     setFraisZone(tarif.frais !== undefined && tarif.frais !== null ? String(tarif.frais) : '');
@@ -102,9 +180,16 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
   };
 
   const supprimerTarifActuel = async () => {
-    if (!tarifEnEdition) return;
+    if (enTrainDeSauvegarder || !tarifEnEdition) return;
+
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des zones tarifaires.');
+      return;
+    }
+
     if (!confirm(`Voulez-vous vraiment supprimer la zone "${tarifEnEdition.nom_zone}" ?`)) return;
 
+    setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase
         .from('grille_tarifaire_livraison')
@@ -116,15 +201,26 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
       alert('Zone supprimée avec succès.');
       setAfficherForm(false);
       setTarifEnEdition(null);
-      chargerTarifs();
+      await chargerTarifsEtPermissions();
     } catch (err) {
       alert('Erreur lors de la suppression : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const sauvegarderTarif = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+
+    if (tarifEnEdition && !permissions.modification) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les zones tarifaires.');
+      return;
+    }
+    if (!tarifEnEdition && !permissions.creation) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de créer des zones tarifaires.');
+      return;
+    }
 
     if (!nomZone.trim() || fraisZone === '') {
       alert('⚠️ Veuillez remplir le nom de la zone et le montant des frais.');
@@ -161,7 +257,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
       setTarifEnEdition(null);
       setNomZone('');
       setFraisZone('');
-      await chargerTarifs();
+      await chargerTarifsEtPermissions();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -169,39 +265,58 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
     }
   };
 
+  if (!permissions.lecture) {
+    return (
+      <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
+        ⛔ Vous n'avez pas l'autorisation d'afficher ce module.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 text-[11px] font-sans">
       
       {/* Barre supérieure */}
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🗺️</span> GRILLE TARIFAIRE DES LIVRAISONS
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+            <span>🗺️</span> GRILLE TARIFAIRE DES LIVRAISONS ({tarifsAffiches.length} / {tarifsFiltresEtTries.length})
+          </h3>
+          {roleNom && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleNom}
+            </span>
+          )}
+        </div>
 
-        <button
-          type="button"
-          onClick={ouvrirFormAjout}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-        >
-          + Ajouter une Zone
-        </button>
+        {permissions.creation && (
+          <button
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={ouvrirFormAjout}
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          >
+            + Ajouter une Zone
+          </button>
+        )}
       </div>
 
       {/* FORMULAIRE DE CRÉATION / MODIFICATION */}
-      {afficherForm && (
+      {afficherForm && (permissions.creation || permissions.modification) && (
         <div className="bg-slate-900 border-2 border-orange-500 p-3 rounded-2xl space-y-3 shadow-xl">
           <form onSubmit={sauvegarderTarif} className="bg-white p-3 rounded-xl shadow-inner space-y-2.5">
             <div className="flex justify-between items-center border-b pb-1.5">
               <h4 className="font-extrabold text-slate-900 uppercase text-xs">
                 {tarifEnEdition ? `Modifier la zone : ${tarifEnEdition.nom_zone}` : 'Nouvelle zone tarifaire'}
               </h4>
-              {tarifEnEdition && (
+              {tarifEnEdition && permissions.suppression && (
                 <button
                   type="button"
+                  disabled={enTrainDeSauvegarder}
                   onClick={supprimerTarifActuel}
-                  className="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-2.5 py-1 rounded-lg text-[10px] transition"
+                  className="bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 font-bold px-2.5 py-1 rounded-lg text-[10px] transition"
                 >
-                  🗑️ Supprimer cette zone
+                  {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer cette zone'}
                 </button>
               )}
             </div>
@@ -212,6 +327,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
                 <input
                   type="text"
                   required
+                  disabled={enTrainDeSauvegarder}
                   list="liste-quartiers-global"
                   value={nomZone}
                   onChange={(e) => setNomZone(e.target.value)}
@@ -231,6 +347,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
                   type="number"
                   step="0.01"
                   required
+                  disabled={enTrainDeSauvegarder}
                   value={fraisZone}
                   onChange={(e) => setFraisZone(e.target.value)}
                   onFocus={(e) => e.target.select()}
@@ -249,13 +366,15 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
               >
                 Annuler
               </button>
-              <button
-                type="submit"
-                disabled={enTrainDeSauvegarder}
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition shadow-md flex items-center gap-1"
-              >
-                {enTrainDeSauvegarder ? 'Enregistrement...' : (tarifEnEdition ? 'Mettre à jour' : 'Enregistrer la zone')}
-              </button>
+              {((tarifEnEdition && permissions.modification) || (!tarifEnEdition && permissions.creation)) && (
+                <button
+                  type="submit"
+                  disabled={enTrainDeSauvegarder}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition shadow-md flex items-center gap-1"
+                >
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (tarifEnEdition ? 'Mettre à jour' : 'Enregistrer la zone')}
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -269,6 +388,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
           <div className="w-full sm:w-auto flex-1 max-w-[300px]">
             <input
               type="text"
+              disabled={enTrainDeSauvegarder}
               value={rechercheInput}
               onChange={(e) => setRechercheInput(e.target.value)}
               placeholder="🔍 Rechercher une zone / quartier..."
@@ -279,47 +399,62 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
 
         {chargement ? (
           <div className="p-4 text-center text-slate-500 font-bold">Chargement des tarifs...</div>
-        ) : tarifsFiltresEtTries.length === 0 ? (
+        ) : tarifsAffiches.length === 0 ? (
           <div className="p-6 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
             Aucune zone tarifaire trouvée.
           </div>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[10px] font-black">
-                  <th 
-                    onClick={() => gererTri('nom_zone')}
-                    className="p-3 cursor-pointer hover:bg-slate-200 transition select-none"
-                  >
-                    📍 Zone / Quartier {colonneTri === 'nom_zone' ? (ordreCroissant ? '▲' : '▼') : ''}
-                  </th>
-                  <th 
-                    onClick={() => gererTri('frais')}
-                    className="p-3 cursor-pointer hover:bg-slate-200 transition select-none text-right"
-                  >
-                    💰 Frais de Livraison (CFA) {colonneTri === 'frais' ? (ordreCroissant ? '▲' : '▼') : ''}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {tarifsFiltresEtTries.map((tarif) => (
-                  <tr 
-                    key={tarif.id} 
-                    onClick={() => ouvrirFormEdition(tarif)}
-                    className="hover:bg-orange-50/60 cursor-pointer transition"
-                    title="Cliquez pour modifier ou supprimer cette zone"
-                  >
-                    <td className="p-3 font-extrabold uppercase text-slate-900">
-                      {tarif.nom_zone}
-                    </td>
-                    <td className="p-3 font-mono font-black text-emerald-700 text-right text-xs">
-                      {Number(tarif.frais || 0).toLocaleString('fr-FR')} F
-                    </td>
+          <div className="space-y-2">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[10px] font-black">
+                    <th 
+                      onClick={() => !enTrainDeSauvegarder && gererTri('nom_zone')}
+                      className="p-3 cursor-pointer hover:bg-slate-200 transition select-none"
+                    >
+                      📍 Zone / Quartier {colonneTri === 'nom_zone' ? (ordreCroissant ? '▲' : '▼') : ''}
+                    </th>
+                    <th 
+                      onClick={() => !enTrainDeSauvegarder && gererTri('frais')}
+                      className="p-3 cursor-pointer hover:bg-slate-200 transition select-none text-right"
+                    >
+                      💰 Frais de Livraison (CFA) {colonneTri === 'frais' ? (ordreCroissant ? '▲' : '▼') : ''}
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tarifsAffiches.map((tarif) => (
+                    <tr 
+                      key={tarif.id} 
+                      onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirFormEdition(tarif)}
+                      className="hover:bg-orange-50/60 cursor-pointer transition"
+                      title="Cliquez pour modifier ou supprimer cette zone"
+                    >
+                      <td className="p-3 font-extrabold uppercase text-slate-900">
+                        {tarif.nom_zone}
+                      </td>
+                      <td className="p-3 font-mono font-black text-emerald-700 text-right text-xs">
+                        {Number(tarif.frais || 0).toLocaleString('fr-FR')} F
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {limiteTarifs < tarifsFiltresEtTries.length && (
+              <div className="text-center pt-2 pb-2">
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={() => setLimiteTarifs(prev => prev + 20)}
+                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
+                >
+                  📥 Charger 20 zones de plus ({tarifsFiltresEtTries.length - limiteTarifs} restants)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

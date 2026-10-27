@@ -5,18 +5,24 @@ import { supabase } from '@/lib/supabase';
 
 export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [articles, setArticles] = useState([]);
-  const [mouvements, setMouvements] = useState([]);
-  const [approvisionnements, setApprovisionnements] = useState([]);
-  const [ventesHistoriques, setVentesHistoriques] = useState([]);
   const [depots, setDepots] = useState([]); 
   const [emplacements, setEmplacements] = useState([]);
   const [familles, setFamilles] = useState([]);
-  const [commandesLivraison, setCommandesLivraison] = useState([]);
+  const [mouvements, setMouvements] = useState([]);
+  const [approvisionnements, setApprovisionnements] = useState([]);
   const [entrepriseInfo, setInfosEntreprise] = useState(null);
 
-  // Gestion des permissions de l'utilisateur connecté
-  const [permissionsUser, setPermissionsUser] = useState(null);
-  const [estSuperAdmin, setEstSuperAdmin] = useState(false);
+  const [stocksArticlesCache, setStocksArticlesCache] = useState({});
+
+  const [limiteArticles, setLimiteArticles] = useState(20);
+
+  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
+  const [permissions, setPermissions] = useState({
+    peut_creer: true,
+    peut_modifier: true,
+    peut_supprimer: true,
+    peut_valider: true
+  });
 
   const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
@@ -35,27 +41,20 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return `${annee}-${mois}-${jour}`;
   };
 
-  const formaterDateFR = (dateStr) => {
-    if (!dateStr) return '-';
-    if (dateStr.includes('-') && dateStr.split('-')[0].length === 4) {
-      const [annee, mois, jour] = dateStr.split('-');
-      return `${jour}/${mois}/${annee}`;
-    }
-    return dateStr;
-  };
+  const [dateDebutRapport, setDateDebutRapport] = useState(obtenirDateDuJour());
+  const [dateFinRapport, setDateFinRapport] = useState(obtenirDateDuJour());
 
   const [dateDebutStat, setDateDebutStat] = useState(obtenirDateDuJour());
   const [dateFinStat, setDateFinStat] = useState(obtenirDateDuJour());
-
-  const [dateDebutRapport, setDateDebutRapport] = useState(obtenirDateDuJour());
-  const [dateFinRapport, setDateFinRapport] = useState(obtenirDateDuJour());
 
   const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
   const [rechercheModalArticle, setRechercheModalArticle] = useState('');
 
   const [chargement, setChargement] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+  
   const [afficherForm, setAfficherForm] = useState(false);
   const [articleEnEdition, setArticleEnEdition] = useState(null);
 
@@ -87,50 +86,39 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
-  // Chargement des permissions utilisateur au montage
-  useEffect(() => {
-    async function chargerPermissions() {
-      if (typeof window === 'undefined') return;
-      const emailLocal = localStorage.getItem('emailConnecte') || '';
-      const userLocal = localStorage.getItem('utilisateurConnecte') || '';
+  const toutesLesSuggestionsArticles = Array.from(
+    new Set(articles.map(art => (art.Designation || art.designation || '').trim().toUpperCase()))
+  ).sort();
 
-      const estAdmin = 
-        emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com' || 
-        emailLocal.toLowerCase().trim() === 'bureauisma26@gmail.com' || 
-        emailLocal.toLowerCase().trim() === 'stephanekts1312@gmail.com' ||
-        userLocal.includes('STÉPHANE') || 
-        userLocal.includes('KENMOE');
+  const chargerDroitsUtilisateur = async () => {
+    try {
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
 
-      setEstSuperAdmin(estAdmin);
-
-      if (!estAdmin && (emailLocal || userLocal)) {
-        try {
-          const { data } = await supabase
-            .from('utilisateurs')
-            .select('permissions')
-            .eq('id_entreprise', entrepriseId)
-            .or(`email.eq.${emailLocal.toLowerCase()},nom_complet.ilike.${userLocal}`)
-            .maybeSingle();
-
-          if (data && data.permissions) {
-            setPermissionsUser(data.permissions);
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          const permArticles = userObj.permissions?.['articles'] || userObj.permissions?.['stock'] || userObj.permissions?.['catalogue'];
+          
+          if (permArticles) {
+            setPermissions({
+              peut_creer: permArticles.creation ?? permArticles.peut_creer ?? true,
+              peut_modifier: permArticles.modification ?? permArticles.peut_modifier ?? true,
+              peut_supprimer: permArticles.suppression ?? permArticles.peut_supprimer ?? false,
+              peut_valider: permArticles.validation ?? permArticles.peut_valider ?? true
+            });
           }
-        } catch (err) {
-          console.error("Erreur permissions articles :", err);
         }
       }
+    } catch (err) {
+      console.error('Erreur chargement des droits :', err.message);
     }
-    chargerPermissions();
-  }, [entrepriseId]);
-
-  const verifierDroit = (action) => {
-    if (estSuperAdmin) return true;
-    if (!permissionsUser || !permissionsUser['articles_stock']) return true; 
-    return permissionsUser['articles_stock'][action] === true;
   };
 
   const chargerDonneesReference = async () => {
     try {
+      await chargerDroitsUtilisateur();
+
       const { data: dataEnt } = await supabase
         .from('entreprises')
         .select('*')
@@ -165,17 +153,20 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       setEmplacements(dataEmp || []);
 
-      const { data: dataMvts } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
-      setMouvements(dataMvts || []);
+      const { data: dataMouv } = await supabase
+        .from('mouvements_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setMouvements(dataMouv || []);
 
-      const { data: dataApp } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
-      setApprovisionnements(dataApp || []);
+      const { data: dataAppro } = await supabase
+        .from('approvisionnements')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      setApprovisionnements(dataAppro || []);
 
-      const { data: dataVentes } = await supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
-      setVentesHistoriques(dataVentes || []);
-
-      const { data: dataCmd } = await supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
-      setCommandesLivraison(dataCmd || []);
     } catch (err) {
       console.error('Erreur chargement références :', err.message);
     }
@@ -184,17 +175,28 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const chargerArticles = async () => {
     setChargement(true);
     try {
-      let { data, error } = await supabase
-        .from('articles_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .order('created_at', { ascending: false });
+      let liste = [];
+      const { data: articlesRpc, error: rpcError } = await supabase.rpc('recuperer_articles_stock', {
+        p_entreprise_id: entrepriseId,
+        p_module: moduleActuel
+      });
 
-      if (error) throw error;
+      if (rpcError) {
+        let { data, error } = await supabase
+          .from('articles_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        liste = data || [];
+      } else {
+        liste = articlesRpc || [];
+      }
       
-      let liste = data || [];
       setArticles(liste);
+      setStocksArticlesCache({});
       
       if (liste.length > 0) {
         if (!articleSelectionneStatId || !liste.some(a => String(a.id_article || a.id) === String(articleSelectionneStatId))) {
@@ -222,242 +224,33 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return false;
   };
 
-  const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
-    if (!depotCibleId || depotCibleId === 'TOUS') return true;
-    if (!valeurDepotFlux) return false;
-    if (String(valeurDepotFlux) === String(depotCibleId)) return true;
-    const depotObj = depots.find((d) => String(d.id) === String(depotCibleId));
-    if (depotObj && depotObj.nom_depot && String(valeurDepotFlux).trim().toUpperCase() === String(depotObj.nom_depot).trim().toUpperCase()) return true;
-    return false;
-  };
+  const recupererStockReelRPC = async (articleId, depotCible = 'TOUS', emplacementCible = null) => {
+    let dId = depotCible !== 'TOUS' ? depotCible : 'AUCUN_DEPOT';
+    let eId = emplacementCible !== 'TOUS' ? emplacementCible : null;
 
-  const correspondAuLivreur = (mvt, livreurCibleId) => {
-    if (!livreurCibleId || livreurCibleId === 'TOUS') return true;
-    const empCible = emplacements.find(e => String(e.id) === String(livreurCibleId));
-    if (!empCible) return false;
-
-    const empIdCible = String(empCible.id);
-    const nomEmpCible = (empCible.nom_emplacement || empCible.responsable_emplacement || '').trim().toUpperCase();
-    
-    const srcId = String(mvt.id_emplacement_source || '');
-    const destId = String(mvt.id_emplacement_destination || '');
-
-    if (srcId === empIdCible || destId === empIdCible) {
-      return true;
+    const cacheKey = `${articleId}_${dId}_${eId || 'none'}`;
+    if (stocksArticlesCache[cacheKey] !== undefined) {
+      return stocksArticlesCache[cacheKey];
     }
 
-    const remarque = (mvt.motif_remarque || '').toUpperCase();
-    if (nomEmpCible && remarque.includes(nomEmpCible)) {
-      return true;
-    }
-
-    return false;
-  };
-
-  const obtenirTousLesFluxArticle = (articleId, depotCibleId = 'TOUS', livreurCibleId = 'TOUS', avecFiltreDate = true) => {
-    let flux = [];
-    
-    mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
-      let depotSourceFlux = m.id_depot_source;
-      let depotDestFlux = m.id_depot_destination;
-
-      let typeMvt = (m.type_mouvement || '').toUpperCase();
-      let libelleRemarque = m.motif_remarque || '';
-
-      if (typeMvt === 'SORTIE' && (libelleRemarque.includes('LIVRAISON EFFECTIVE') || libelleRemarque.includes('CMD-') || libelleRemarque.includes('VENTE'))) {
-        const matchCmd = commandesLivraison.find(c => libelleRemarque.includes(c.numero_commande));
-        if (matchCmd) {
-          libelleRemarque = matchCmd.numero_commande;
-          typeMvt = 'LIV';
-          if (!depotSourceFlux && matchCmd.id_depot) depotSourceFlux = matchCmd.id_depot;
-        } else {
-          typeMvt = 'LIV';
-        }
-      } else if ((typeMvt === 'ENTREE' && libelleRemarque.includes('APPRO')) || typeMvt.includes('APPROVISIONNEMENT')) {
-        typeMvt = 'AP';
-      } else if (typeMvt === 'TRANSFERT') {
-        typeMvt = 'TR';
-      }
-
-      const matchDepotSource = correspondAuDepot(depotSourceFlux, depotCibleId);
-      const matchDepotDest = correspondAuDepot(depotDestFlux, depotCibleId);
-      const matchDepot = depotCibleId === 'TOUS' || matchDepotSource || matchDepotDest;
-
-      const matchLivreur = correspondAuLivreur(m, livreurCibleId);
-
-      if (matchDepot && matchLivreur) {
-        const dateMvtStr = m.created_at ? m.created_at.split('T')[0] : '';
-        if (avecFiltreDate) {
-          if (dateDebutStat && dateMvtStr && dateMvtStr < dateDebutStat) return;
-          if (dateFinStat && dateMvtStr && dateMvtStr > dateFinStat) return;
-        }
-
-        flux.push({ 
-          date: m.created_at || '', 
-          depot_source: depotSourceFlux, 
-          depot_destination: depotDestFlux,
-          emplacement_source: m.id_emplacement_source,
-          emplacement_destination: m.id_emplacement_destination,
-          quantite: parseInt(m.quantite || 0), 
-          type: typeMvt,
-          remarque: libelleRemarque,
-          referenceObjet: null
-        });
-      }
-    });
-
-    if (!livreurCibleId || livreurCibleId === 'TOUS') {
-      approvisionnements.forEach((app) => {
-        if (depotCibleId === 'TOUS' || correspondAuDepot(app.id_depot_destination, depotCibleId)) {
-          let articlesAppro = [];
-          if (app.details_articles) {
-            if (typeof app.details_articles === 'string') { try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} }
-            else if (Array.isArray(app.details_articles)) { articlesAppro = app.details_articles; }
-          }
-          articlesAppro.forEach((ligne) => {
-            if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
-              const dateAppStr = app.created_at ? app.created_at.split('T')[0] : '';
-              if (avecFiltreDate) {
-                if (dateDebutStat && dateAppStr && dateAppStr < dateDebutStat) return;
-                if (dateFinStat && dateAppStr && dateAppStr > dateFinStat) return;
-              }
-
-              flux.push({ 
-                date: app.created_at || '', 
-                depot_source: app.id_depot_destination, 
-                depot_destination: null, 
-                quantite: parseInt(ligne.quantite || 0), 
-                type: 'AP',
-                remarque: app.reference || `APP-${app.id || '01'}`,
-                referenceObjet: app 
-              });
-            }
-          });
-        }
+    try {
+      const { data, error } = await supabase.rpc('calculer_stock_reel', {
+        p_article_id: parseInt(articleId),
+        p_entreprise_id: entrepriseId,
+        p_depot_id: dId,
+        p_emplacement_id: eId
       });
+
+      if (error) throw error;
+      const stockVal = data !== null ? parseInt(data, 10) : 0;
+
+      setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockVal }));
+      return stockVal;
+    } catch (err) {
+      console.error('Erreur RPC stock article :', err.message);
+      const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
+      return artObj ? parseInt(artObj.Quantite_Stock || artObj.quantite_stock || 0, 10) : 0;
     }
-
-    flux.sort((a, b) => new Date(a.date) - new Date(b.date));
-    return flux;
-  };
-
-  const calculerStockPourUnDepot = (articleId, depotId) => {
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
-    
-    let stockInitial = 0;
-    let totalEntrees = 0;
-    let totalSorties = 0;
-
-    fluxArticle.forEach((m) => {
-      const qte = m.quantite;
-      const typeMvt = m.type;
-
-      if (typeMvt === 'INVENTAIRE') {
-        stockInitial = qte;
-      } else if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
-        return;
-      } else if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
-        totalEntrees += qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt.includes('AVARIES')) {
-        totalSorties += qte;
-      }
-    });
-
-    stockInitial = Math.max(0, stockInitial);
-    return Math.max(0, stockInitial + totalEntrees - totalSorties);
-  };
-
-  const calculerStockPourEmplacement = (articleId, emplacementId, depotId = 'TOUS') => {
-    let stockEmp = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, emplacementId, false);
-    
-    fluxArticle.forEach((m) => {
-      const qte = m.quantite;
-      const typeMvt = m.type;
-      const matchSource = String(m.emplacement_source) === String(emplacementId);
-      const matchDest = String(m.emplacement_destination) === String(emplacementId);
-
-      if (typeMvt === 'INVENTAIRE' && matchSource) {
-        stockEmp = qte;
-        return;
-      }
-      if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
-        if (matchDest && !matchSource) stockEmp += qte;
-        if (matchSource && !matchDest) stockEmp -= qte;
-        return;
-      }
-      if (matchDest && !matchSource) stockEmp += qte;
-      if (matchSource && !matchDest) stockEmp -= qte;
-    });
-
-    return Math.max(0, stockEmp);
-  };
-
-  const calculerStockParFiltre = (articleId) => {
-    if (emplacementFiltre !== 'TOUS') {
-      return calculerStockPourEmplacement(articleId, emplacementFiltre, depotFiltre);
-    } else if (depotFiltre !== 'TOUS') {
-      return calculerStockPourUnDepot(articleId, depotFiltre);
-    } else {
-      let totalGlobal = 0;
-      depots.forEach(dep => {
-        totalGlobal += calculerStockPourUnDepot(articleId, dep.id);
-      });
-      if (depots.length === 0) {
-        const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
-        totalGlobal = parseInt(artObj?.Quantite_Stock || 0);
-      }
-      return totalGlobal;
-    }
-  };
-
-  const calculerLigneRapportStock = (articleId, depotId, dateDebut, dateFin) => {
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId, 'TOUS', false);
-    
-    let stockInitial = 0;
-    let totalEntrees = 0;
-    let totalSorties = 0;
-
-    fluxArticle.forEach((m) => {
-      const dateMvt = m.date ? m.date.split('T')[0] : '';
-      const qte = m.quantite;
-      const typeMvt = m.type;
-
-      if (typeMvt === 'TR' || typeMvt === 'TRANSFERT') {
-        return;
-      }
-
-      if (dateDebut && dateMvt < dateDebut) {
-        if (typeMvt === 'INVENTAIRE') {
-          stockInitial = qte;
-        } else if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
-          stockInitial += qte;
-        } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt.includes('AVARIES')) {
-          stockInitial -= qte;
-        }
-      } else {
-        if (dateDebut && dateMvt < dateDebut) return;
-        if (dateFin && dateMvt > dateFin) return;
-
-        if (typeMvt === 'ENTREE' || typeMvt === 'AP' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT')) {
-          totalEntrees += qte;
-        } else if (typeMvt === 'SORTIE' || typeMvt === 'LIV' || typeMvt.includes('AVARIES')) {
-          totalSorties += qte;
-        }
-      }
-    });
-
-    stockInitial = Math.max(0, stockInitial);
-    const totalDisponible = stockInitial + totalEntrees;
-    const stockReel = Math.max(0, totalDisponible - totalSorties);
-
-    return {
-      stockInitial,
-      totalEntrees,
-      totalDisponible,
-      totalSorties,
-      stockReel
-    };
   };
 
   const gererUploadImage = async (e) => {
@@ -496,16 +289,24 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
+  const designationSaisie = (nouveauArticle.Designation || '').trim().replace(/\s+/g, ' ').toUpperCase();
+
   const enregistrerArticle = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
-    if (articleEnEdition && !verifierDroit('modification')) {
-      alert("⛔ Accès refusé : Vous n'avez pas les droits de modification sur les articles.");
+    if (articleEnEdition && !permissions.peut_modifier) {
+      alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.");
       return;
     }
-    if (!articleEnEdition && !verifierDroit('creation')) {
-      alert("⛔ Accès refusé : Vous n'avez pas les droits de création sur les articles.");
+    if (!articleEnEdition && !permissions.peut_creer) {
+      alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de création.");
+      return;
+    }
+
+    const designationClean = (nouveauArticle.Designation || '').trim().replace(/\s+/g, ' ').toUpperCase();
+    if (!designationClean) {
+      alert("⚠️ Veuillez renseigner la désignation de l'article.");
       return;
     }
 
@@ -514,7 +315,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const payloadArticle = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        Designation: (nouveauArticle.Designation || '').trim().toUpperCase(),
+        Designation: designationClean,
         Code_Barre: (nouveauArticle.Code_Barre || '').trim().toUpperCase(),
         Famille: nouveauArticle.Famille,
         Prix_Achat: parseFloat(nouveauArticle.Prix_Achat) || 0,
@@ -546,13 +347,22 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       await chargerArticles();
       await chargerDonneesReference();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      if (err.code === '23505' || (err.message && err.message.includes('idx_articles_unique_designation'))) {
+        alert("Un article existe déjà avec cette désignation.");
+      } else {
+        alert('Erreur : ' + err.message);
+      }
     } finally {
       setEnTrainDeSauvegarder(false);
     }
   };
 
   const ouvrirEdition = (article) => {
+    if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_modifier) {
+      alert("⛔ Accès refusé : Vous n’avez pas le droit de modifier les articles.");
+      return;
+    }
     setArticleEnEdition(article);
     setNouveauArticle({
       Code_Barre: article.Code_Barre || article.code_barre || '',
@@ -569,6 +379,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const annulerForm = () => {
+    if (enTrainDeSauvegarder) return;
     setArticleEnEdition(null);
     setNouveauArticle({
       Code_Barre: '',
@@ -585,24 +396,29 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const supprimerArticleDepuisFormulaire = async () => {
-    if (!articleEnEdition) return;
+    if (enTrainDeSauvegarder || !articleEnEdition) return;
 
-    if (!verifierDroit('suppression')) {
-      alert("⛔ Accès refusé : Vous n'avez pas les droits de suppression sur les articles.");
+    if (!permissions.peut_supprimer) {
+      alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.");
       return;
     }
 
     const artId = articleEnEdition.id_article || articleEnEdition.id;
-    const stockGlobalActuel = calculerStockParFiltre(artId);
-
-    if (stockGlobalActuel > 0) {
-      alert(`⛔ Impossible de supprimer ! L'article possède encore un stock de ${stockGlobalActuel} unité(s).`);
-      return;
-    }
-
-    if (!confirm(`Supprimer définitivement cet article ?`)) return;
-
+    setEnTrainDeSauvegarder(true);
     try {
+      const stockGlobalActuel = await recupererStockReelRPC(artId, depotFiltre, emplacementFiltre);
+
+      if (stockGlobalActuel > 0) {
+        alert(`⛔ Impossible de supprimer ! L'article possède encore un stock de ${stockGlobalActuel} unité(s).`);
+        setEnTrainDeSauvegarder(false);
+        return;
+      }
+
+      if (!confirm(`Supprimer définitivement cet article ?`)) {
+        setEnTrainDeSauvegarder(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('articles_stock')
         .delete()
@@ -615,27 +431,19 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       chargerArticles();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const articlesFiltres = articles.filter((art) => {
-    const artId = art.id_article || art.id;
     const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
     if (!matchFamille) return false;
-
-    if (emplacementFiltre !== 'TOUS') {
-      const stockEmp = calculerStockPourEmplacement(artId, emplacementFiltre, depotFiltre);
-      if (stockEmp <= 0) return false;
-    } else if (depotFiltre !== 'TOUS') {
-      const stockDep = calculerStockPourUnDepot(artId, depotFiltre);
-      const fluxDep = obtenirTousLesFluxArticle(artId, depotFiltre, 'TOUS', false);
-      if (stockDep <= 0 && fluxDep.length === 0) return false;
-    }
-
     return true;
   });
 
   const gererTri = (colonne) => {
+    if (enTrainDeSauvegarder) return;
     if (colonneTri === colonne) {
       setOrdreTri(ordreTri === 'asc' ? 'desc' : 'asc');
     } else {
@@ -644,20 +452,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  const articlesAffiches = [...articlesFiltres].sort((a, b) => {
+  const articlesTries = [...articlesFiltres].sort((a, b) => {
     let valA, valB;
-    const aId = a.id_article || a.id;
-    const bId = b.id_article || b.id;
 
     if (colonneTri === 'Designation') {
       valA = String(a.Designation || a.designation || '').toLowerCase();
       valB = String(b.Designation || b.designation || '').toLowerCase();
-    } else if (colonneTri === 'Stock') {
-      valA = calculerStockParFiltre(aId);
-      valB = calculerStockParFiltre(bId);
     } else if (colonneTri === 'Prix_Achat') {
       valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
-      valB = parseFloat(b.Prix_Achat || b.prix_vente || 0);
+      valB = parseFloat(a.Prix_Achat || a.prix_vente || 0);
     } else if (colonneTri === 'Prix_Vente') {
       valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
       valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
@@ -668,9 +471,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return 0;
   });
 
+  const articlesAffiches = articlesTries.slice(0, limiteArticles);
+
   const emplacementsDisponibles = depotFiltre === 'TOUS' 
     ? emplacements 
-    : emplacements.filter(emp => correspondAuDepot(emp.id_depot, depotFiltre));
+    : emplacements.filter(emp => String(emp.id_depot || '') === String(depotFiltre));
 
   const articlesModalFiltres = articles.filter(art => {
     const nom = (art.Designation || art.designation || '').toLowerCase();
@@ -680,6 +485,68 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const articleStatObjet = articles.find(a => String(a.id_article || a.id) === String(articleSelectionneStatId));
 
   const colSpanTotal = 2 + emplacements.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
+
+  const calculerLigneRapportStock = (articleId) => {
+    const dCible = depotRapportFiltre;
+    
+    let stockInitial = 0;
+    let entrees = 0;
+    let sorties = 0;
+
+    mouvements.forEach(m => {
+      if (String(m.id_article) !== String(articleId)) return;
+      const dateMvt = (m.created_at || '').split('T')[0];
+      const matchDepot = dCible === 'TOUS' || String(m.id_depot_source || m.id_depot_destination) === String(dCible);
+      if (!matchDepot) return;
+
+      const qte = parseInt(m.quantite || 0);
+      const typeMvt = (m.type_mouvement || '').toUpperCase();
+
+      if (dateMvt < dateDebutRapport) {
+        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') stockInitial += qte;
+        else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') stockInitial -= qte;
+        else if (typeMvt === 'TRANSFERT') {
+          if (String(m.id_depot_destination) === String(dCible)) stockInitial += qte;
+          if (String(m.id_depot_source) === String(dCible)) stockInitial -= qte;
+        } else if (typeMvt === 'INVENTAIRE') {
+          stockInitial = qte;
+        }
+      } else if (dateMvt >= dateDebutRapport && dateMvt <= dateFinRapport) {
+        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') entrees += qte;
+        else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') sorties += qte;
+        else if (typeMvt === 'TRANSFERT') {
+          if (String(m.id_depot_destination) === String(dCible)) entrees += qte;
+          if (String(m.id_depot_source) === String(dCible)) sorties += qte;
+        }
+      }
+    });
+
+    approvisionnements.forEach(app => {
+      const dateApp = (app.created_at || '').split('T')[0];
+      const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
+      if (!matchDepot) return;
+
+      let listArt = [];
+      if (typeof app.details_articles === 'string') {
+        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = app.details_articles;
+      }
+
+      listArt.forEach(item => {
+        if (String(item.id_article || item.article_id) !== String(articleId)) return;
+        const qte = parseInt(item.quantite || 0);
+        if (dateApp < dateDebutRapport) stockInitial += qte;
+        else if (dateApp >= dateDebutRapport && dateApp <= dateFinRapport) entrees += qte;
+      });
+    });
+
+    stockInitial = Math.max(0, stockInitial);
+    const stockTotal = stockInitial + entrees;
+    const stockReel = Math.max(0, stockTotal - sorties);
+
+    return { stockInitial, entrees, stockTotal, sorties, stockReel };
+  };
 
   const imprimerOngletActif = (titreDocument) => {
     const contenuActuel = document.getElementById(`section-impression-${modeVue}`);
@@ -703,25 +570,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           <span><strong>Emplacement :</strong> ${empObj ? empObj.nom_emplacement : 'Tous'}</span>
         </div>
       `;
-    } else if (modeVue === 'statistiques') {
-      const depObj = depots.find(d => String(d.id) === String(depotStatFiltre));
-      const empObj = emplacements.find(e => String(e.id) === String(livreurStatFiltre));
-      infosFiltresHtml = `
-        <div class="meta-info">
-          <span><strong>Période :</strong> du ${formaterDateFR(dateDebutStat)} au ${formaterDateFR(dateFinStat)}</span>
-          <span><strong>Partenaire / Dépôt :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
-          <span><strong>Livreur :</strong> ${empObj ? (empObj.nom_emplacement || empObj.responsable_emplacement) : 'Tous'}</span>
-          <span><strong>Article :</strong> ${articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-'}</span>
-        </div>
-      `;
-    } else if (modeVue === 'rapport_stock') {
-      const depObj = depots.find(d => String(d.id) === String(depotRapportFiltre));
-      infosFiltresHtml = `
-        <div class="meta-info">
-          <span><strong>Période :</strong> du ${formaterDateFR(dateDebutRapport)} au ${formaterDateFR(dateFinRapport)}</span>
-          <span><strong>Partenaire :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
-        </div>
-      `;
     }
 
     const fenetreImpression = window.open('', '_blank', 'width=950,height=700');
@@ -739,8 +587,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
             th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: left; }
             th { background-color: #f1f5f9; text-transform: uppercase; font-weight: 900; font-size: 10px; color: #334155; }
-            .text-center { text-align: center; }
-            .text-right { text-align: right; }
           </style>
         </head>
         <body>
@@ -749,16 +595,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               <h1 class="company-title">📦 ${nomEntreprise}</h1>
               <div class="doc-subtitle">${titreDocument}</div>
             </div>
-            <div class="print-date">
-              Édité le : ${dateImpression}
-            </div>
+            <div class="print-date">Édité le : ${dateImpression}</div>
           </div>
-
           ${infosFiltresHtml}
-
-          <div>
-            ${contenuActuel.innerHTML}
-          </div>
+          <div>${contenuActuel.innerHTML}</div>
         </body>
       </html>
     `);
@@ -773,15 +613,19 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2 font-sans text-xs">
       
-      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden text-ellipsis">
-          <span>📦</span> GESTION DES ARTICLES [{moduleActuel}]
-          {isGestionPerissablesActive() && <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200">Mode Périssables</span>}
-        </h3>
+      <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs gap-2">
+        <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+          <span className="text-sm shrink-0">📦</span>
+          <h3 className="font-extrabold text-slate-900 uppercase text-[11px] truncate">
+            GESTION DES ARTICLES ({articlesAffiches.length} / {articlesFiltres.length})
+          </h3>
+          {isGestionPerissablesActive() && <span className="text-[8px] bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200 shrink-0">Périssables</span>}
+        </div>
         
-        {(estSuperAdmin || verifierDroit('creation')) && (
+        {permissions.peut_creer && (
           <button
             type="button"
+            disabled={enTrainDeSauvegarder}
             onClick={() => {
               if (afficherForm) {
                 annulerForm();
@@ -791,9 +635,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 setAfficherForm(true);
               }
             }}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0"
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-2.5 py-1.5 rounded-lg transition shadow-2xs text-[10px] shrink-0"
           >
-            {afficherForm ? '✖' : 'Nouveau'}
+            {afficherForm ? '✖' : '+ Nouveau'}
           </button>
         )}
       </div>
@@ -801,42 +645,45 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       <div className="grid grid-cols-3 gap-1 w-full">
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => {
             setModeVue('catalogue');
             annulerForm();
           }}
-          className={`px-1 py-2 rounded-lg font-black text-[9.5px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
+          className={`px-1 py-2 rounded-lg font-black text-[10px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
             modeVue === 'catalogue' && !afficherForm 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          Stock ({articles.length})
+          Article ({articles.length})
         </button>
 
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => {
             setModeVue('statistiques');
             annulerForm();
           }}
-          className={`px-1 py-2 rounded-lg font-black text-[9.5px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
+          className={`px-1 py-2 rounded-lg font-black text-[10px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
             modeVue === 'statistiques' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          Stats Article
+          Stat
         </button>
 
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => {
-            setModeVue('rapport_stock');
+            setModeVue('rapport');
             annulerForm();
           }}
-          className={`px-1 py-2 rounded-lg font-black text-[9.5px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
-            modeVue === 'rapport_stock' 
+          className={`px-1 py-2 rounded-lg font-black text-[10px] transition text-center border shadow-2xs whitespace-nowrap overflow-hidden text-ellipsis ${
+            modeVue === 'rapport' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
@@ -847,11 +694,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       {modeVue === 'catalogue' && (
         <div className="space-y-2">
-          {afficherForm ? (
+          {afficherForm && permissions.peut_creer ? (
             <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
               
               <div className="flex justify-end pb-0">
-                <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
               </div>
 
               <div className="grid grid-cols-[4fr_7fr] gap-2">
@@ -859,6 +706,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">Famille *</label>
                   <select
                     required
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.Famille}
                     onChange={(e) => {
                       setNouveauArticle({ ...nouveauArticle, Famille: e.target.value });
@@ -885,12 +733,19 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     ref={designationInputRef}
                     type="text"
                     required
+                    disabled={enTrainDeSauvegarder}
+                    list="liste-suggestions-articles"
                     value={nouveauArticle.Designation}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value.toUpperCase() })}
                     placeholder="EX: JUS 250ML"
                     style={{ textTransform: 'uppercase' }}
                     className="w-full bg-white border border-slate-300 rounded-lg p-2 text-[10.5px] font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
                   />
+                  <datalist id="liste-suggestions-articles">
+                    {toutesLesSuggestionsArticles.map((nomArt, index) => (
+                      <option key={index} value={nomArt} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
@@ -900,6 +755,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <input
                     type="number"
                     required
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.Prix_Vente}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
@@ -911,6 +767,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">S.ALERTE</label>
                   <input
                     type="number"
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.Seuil_Alerte}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Seuil_Alerte: e.target.value })}
@@ -922,6 +779,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">CODE-BARRES</label>
                   <input
                     type="text"
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.Code_Barre}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value.toUpperCase() })}
                     placeholder="600123"
@@ -936,6 +794,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date Péremption</label>
                   <input
                     type="date"
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.date_peremption}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, date_peremption: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
@@ -966,11 +825,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                           capture="environment"
                           onChange={gererUploadImage}
                           className="hidden"
-                          disabled={uploadingPhoto}
+                          disabled={uploadingPhoto || enTrainDeSauvegarder}
                         />
                       </label>
                       <button
                         type="button"
+                        disabled={enTrainDeSauvegarder}
                         onClick={() => setNouveauArticle({ ...nouveauArticle, Photo: '' })}
                         className="text-red-600 hover:text-red-800 font-extrabold text-[10px] text-center underline"
                       >
@@ -982,6 +842,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <div className="flex gap-1.5 items-center flex-wrap">
                     <input
                       type="text"
+                      disabled={enTrainDeSauvegarder}
                       value={nouveauArticle.Photo}
                       onChange={(e) => setNouveauArticle({ ...nouveauArticle, Photo: e.target.value })}
                       placeholder="https://lien-image.com/photo.jpg"
@@ -999,7 +860,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         capture="environment"
                         onChange={gererUploadImage}
                         className="hidden"
-                        disabled={uploadingPhoto}
+                        disabled={uploadingPhoto || enTrainDeSauvegarder}
                       />
                     </label>
                   </div>
@@ -1011,6 +872,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <input
                     type="checkbox"
                     id="qrCheck"
+                    disabled={enTrainDeSauvegarder}
                     checked={nouveauArticle.Disponible_Menu_QR}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Disponible_Menu_QR: e.target.checked })}
                     className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
@@ -1022,20 +884,21 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="pt-2 flex justify-between items-center border-t border-slate-200">
-                {articleEnEdition && (estSuperAdmin || verifierDroit('suppression')) ? (
+                {articleEnEdition && permissions.peut_supprimer ? (
                   <button 
                     type="button" 
+                    disabled={enTrainDeSauvegarder}
                     onClick={supprimerArticleDepuisFormulaire} 
-                    className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded-lg text-xs shadow-xs"
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded-lg text-xs shadow-xs"
                   >
-                    🗑️ Supprimer
+                    {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
                   </button>
                 ) : <div />}
 
                 <div className="flex gap-1.5">
-                  <button type="button" onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
                   
-                  {(estSuperAdmin || (articleEnEdition ? verifierDroit('modification') : verifierDroit('creation'))) && (
+                  {((articleEnEdition && permissions.peut_modifier) || (!articleEnEdition && permissions.peut_creer)) && (
                     <button 
                       type="submit" 
                       disabled={enTrainDeSauvegarder}
@@ -1054,6 +917,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Famille</label>
                     <select
+                      disabled={enTrainDeSauvegarder}
                       value={familleFiltre}
                       onChange={(e) => setFamilleFiltre(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
@@ -1070,6 +934,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Dépôt</label>
                     <select
+                      disabled={enTrainDeSauvegarder}
                       value={depotFiltre}
                       onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
@@ -1086,6 +951,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Emplacement</label>
                     <select
+                      disabled={enTrainDeSauvegarder}
                       value={emplacementFiltre}
                       onChange={(e) => setEmplacementFiltre(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
@@ -1102,11 +968,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
-                <h4 className="font-black uppercase text-[9.5px]">📦 Stock des Articles</h4>
+                <h4 className="font-black uppercase text-[9.5px]">📦 Stock des Articles ({articlesAffiches.length} / {articlesFiltres.length})</h4>
                 <button
                   type="button"
+                  disabled={enTrainDeSauvegarder}
                   onClick={() => imprimerOngletActif('STOCK DES ARTICLES')}
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
+                  className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
                 >
                   <span>🖨️ Imprimer</span>
                 </button>
@@ -1117,17 +984,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
                       <th 
-                        onClick={() => gererTri('Designation')} 
+                        onClick={() => !enTrainDeSauvegarder && gererTri('Designation')} 
                         className="p-2.5 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                       >
                         Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
-                      <th 
-                        onClick={() => gererTri('Stock')} 
-                        className="p-2.5 text-center cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
-                      >
-                        STOCK {colonneTri === 'Stock' && (ordreTri === 'asc' ? '▲' : '▼')}
-                      </th>
+                      <th className="p-2.5 text-center whitespace-nowrap">STOCK</th>
 
                       {emplacements.map((emp) => (
                         <th key={emp.id} className="p-2.5 text-center text-blue-700 whitespace-nowrap">
@@ -1137,7 +999,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
                       {moduleActuel !== 'LIVRAISON' && (
                         <th 
-                          onClick={() => gererTri('Prix_Achat')} 
+                          onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Achat')} 
                           className="p-2.5 text-right cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                         >
                           P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
@@ -1145,7 +1007,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       )}
 
                       <th 
-                        onClick={() => gererTri('Prix_Vente')} 
+                        onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Vente')} 
                         className="p-2.5 text-right cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                       >
                         P.V {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
@@ -1164,51 +1026,38 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     ) : (
                       articlesAffiches.map((art) => {
                         const artId = art.id_article || art.id;
-                        const stockVal = depotFiltre !== 'TOUS' 
-                          ? calculerStockPourUnDepot(artId, depotFiltre)
-                          : calculerStockParFiltre(artId);
 
                         return (
-                          <tr 
-                            key={artId} 
-                            onClick={() => ouvrirEdition(art)}
-                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                          >
-                            <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
-                              {art.Designation || art.designation}
-                            </td>
-                            <td className="p-2.5 text-center whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                {stockVal}
-                              </span>
-                            </td>
-
-                            {emplacements.map((emp) => {
-                              const stockEmp = calculerStockPourEmplacement(artId, emp.id, depotFiltre);
-                              return (
-                                <td key={emp.id} className="p-2.5 text-center whitespace-nowrap">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
-                                    {stockEmp}
-                                  </span>
-                                </td>
-                              );
-                            })}
-
-                            {moduleActuel !== 'LIVRAISON' && (
-                              <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap">
-                                {art.Prix_Achat || art.prix_achat || 0}
-                              </td>
-                            )}
-                            <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap">
-                              {art.Prix_Vente || art.prix_vente || 0}
-                            </td>
-                          </tr>
+                          <ArticleLigneTableau 
+                            key={artId}
+                            art={art}
+                            depotFiltre={depotFiltre}
+                            emplacementFiltre={emplacementFiltre}
+                            emplacements={emplacements}
+                            moduleActuel={moduleActuel}
+                            recupererStockRPC={recupererStockReelRPC}
+                            ouvrirEdition={ouvrirEdition}
+                            enTrainDeSauvegarder={enTrainDeSauvegarder}
+                          />
                         );
                       })
                     )}
                   </tbody>
                 </table>
               </div>
+
+              {limiteArticles < articlesFiltres.length && (
+                <div className="text-center pt-2 pb-2">
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={() => setLimiteArticles(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
+                  >
+                    📥 Charger 20 articles de plus ({articlesFiltres.length - limiteArticles} restants)
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1216,16 +1065,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       {modeVue === 'statistiques' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-          
           <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date début</label>
                 <input
                   type="date"
+                  disabled={enTrainDeSauvegarder}
                   value={dateDebutStat}
                   onChange={(e) => setDateDebutStat(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
                 />
               </div>
 
@@ -1233,18 +1082,75 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date fin</label>
                 <input
                   type="date"
+                  disabled={enTrainDeSauvegarder}
                   value={dateFinStat}
                   onChange={(e) => setDateFinStat(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">Article</label>
+              <div
+                onClick={() => {
+                  if (enTrainDeSauvegarder) return;
+                  setRechercheModalArticle('');
+                  setAfficherModalSelectionArticle(true);
+                }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+              >
+                <span className="truncate uppercase">
+                  {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner --'}
+                </span>
+                <span className="text-[10px] text-slate-400">🔍</span>
+              </div>
+            </div>
+          </div>
+
+          {articleStatObjet ? (
+            <div className="p-4 text-center text-slate-600 font-bold bg-slate-50 rounded-xl border">
+              💡 Article sélectionné : <strong>{articleStatObjet.Designation || articleStatObjet.designation}</strong>
+            </div>
+          ) : (
+            <div className="p-6 text-center text-slate-500 font-bold">Veuillez sélectionner un article.</div>
+          )}
+        </div>
+      )}
+
+      {modeVue === 'rapport' && (
+        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+            <div className="grid grid-cols-3 gap-1.5">
+              <div>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5">Du</label>
+                <input
+                  type="date"
+                  disabled={enTrainDeSauvegarder}
+                  value={dateDebutRapport}
+                  onChange={(e) => setDateDebutRapport(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
                 />
               </div>
 
               <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Dépôt / Partenaire</label>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5">Au</label>
+                <input
+                  type="date"
+                  disabled={enTrainDeSauvegarder}
+                  value={dateFinRapport}
+                  onChange={(e) => setDateFinRapport(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5">Dépôt / Partenaire</label>
                 <select
-                  value={depotStatFiltre}
-                  onChange={(e) => setDepotStatFiltre(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  disabled={enTrainDeSauvegarder}
+                  value={depotRapportFiltre}
+                  onChange={(e) => setDepotRapportFiltre(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
                 >
                   <option value="TOUS">Tous les dépôts</option>
                   {depots.map((dep) => (
@@ -1255,289 +1161,57 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </select>
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">Livreur</label>
-                <select
-                  value={livreurStatFiltre}
-                  onChange={(e) => setLivreurStatFiltre(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
-                >
-                  <option value="TOUS">Tous</option>
-                  {emplacements.map((emp) => {
-                    const nomEmp = emp.nom_emplacement || emp.responsable_emplacement || '';
-                    if (!nomEmp) return null;
-                    return <option key={emp.id} value={emp.id}>{nomEmp.toUpperCase()}</option>;
-                  })}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">Article</label>
-                <div
-                  onClick={() => {
-                    setRechercheModalArticle('');
-                    setAfficherModalSelectionArticle(true);
-                  }}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
-                >
-                  <span className="truncate uppercase">
-                    {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner --'}
-                  </span>
-                  <span className="text-[10px] text-slate-400">🔍</span>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {articleStatObjet ? (() => {
-            const artId = String(articleStatObjet.id_article || articleStatObjet.id);
-            const fluxArt = obtenirTousLesFluxArticle(artId, depotStatFiltre, livreurStatFiltre);
-
-            let stockCourant = 0;
-            const fluxAvecStockProgressif = fluxArt.map((f) => {
-              const baseQte = f.quantite;
-              let qteDelta = 0;
-
-              if (f.type === 'INVENTAIRE') {
-                stockCourant = baseQte;
-                qteDelta = baseQte;
-              } else if (f.type === 'TR' || f.type === 'TRANSFERT') {
-                if (livreurStatFiltre !== 'TOUS') {
-                  const matchDest = String(f.emplacement_destination) === String(livreurStatFiltre);
-                  const matchSource = String(f.emplacement_source) === String(livreurStatFiltre);
-                  if (matchDest && !matchSource) {
-                    qteDelta = baseQte;
-                  } else if (matchSource && !matchDest) {
-                    qteDelta = -baseQte;
-                  } else {
-                    qteDelta = 0;
-                  }
-                } else {
-                  qteDelta = 0;
-                }
-                stockCourant += qteDelta;
-              } else if (f.type === 'LIV' || f.type.includes('SORTIE') || f.type.includes('AVARIES')) {
-                qteDelta = -baseQte;
-                stockCourant += qteDelta;
-              } else {
-                qteDelta = baseQte;
-                stockCourant += qteDelta;
-              }
-
-              return {
-                ...f,
-                qteDelta,
-                stockProgressif: Math.max(0, stockCourant)
-              };
-            });
-
-            return (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
-                    <h4 className="font-black uppercase text-[9.5px]">📈 Statistique Article : {articleStatObjet.Designation || articleStatObjet.designation}</h4>
-                    <button
-                      type="button"
-                      onClick={() => imprimerOngletActif(`STATISTIQUE ARTICLE - ${articleStatObjet.Designation || articleStatObjet.designation}`)}
-                      className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
-                    >
-                      <span>🖨️ Imprimer</span>
-                    </button>
-                  </div>
-
-                  <div id="section-impression-statistiques" className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
-                          <th className="p-2.5 w-[22%]">Date</th>
-                          <th className="p-2.5 w-[36%]">Mouvement</th>
-                          <th className="p-2.5 w-[22%] text-right">QTÉ</th>
-                          <th className="p-2.5 w-[20%] text-right">STOCK</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                        {fluxAvecStockProgressif.length === 0 ? (
-                          <tr>
-                            <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré pour cet article avec ces filtres.</td>
-                          </tr>
-                        ) : (
-                          fluxAvecStockProgressif.map((f, i) => {
-                            const estNegatif = f.qteDelta < 0;
-                            const libelleAffichage = f.type;
-
-                            let badgeStyle = 'bg-slate-100 text-slate-800 border-slate-300';
-                            if (f.type === 'AP') badgeStyle = 'bg-emerald-100 text-emerald-800 border-emerald-300';
-                            if (f.type === 'TR') badgeStyle = 'bg-blue-100 text-blue-800 border-blue-300';
-                            if (f.type === 'LIV') badgeStyle = 'bg-orange-100 text-orange-800 border-orange-300';
-
-                            return (
-                              <tr key={i} className="hover:bg-slate-50 transition">
-                                <td className="p-2.5 font-mono text-slate-600 font-bold whitespace-nowrap">
-                                  {f.date ? formaterDateFR(f.date.split('T')[0]) : '-'}
-                                </td>
-                                <td className="p-2.5 font-bold text-slate-900">
-                                  <span className={`px-2 py-0.5 rounded font-black text-[9.5px] border inline-block ${badgeStyle}`}>
-                                    {libelleAffichage}
-                                  </span>
-                                </td>
-                                <td className={`p-2.5 text-right font-black font-mono whitespace-nowrap ${estNegatif ? 'text-red-600' : (f.qteDelta > 0 ? 'text-emerald-700' : 'text-slate-500')}`}>
-                                  {estNegatif ? f.qteDelta : (f.qteDelta > 0 ? `+${f.qteDelta}` : f.qteDelta)}
-                                </td>
-                                <td className="p-2.5 text-right font-black font-mono text-slate-900 whitespace-nowrap">
-                                  {f.stockProgressif}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            );
-          })() : (
-            <div className="p-6 text-center text-slate-500 font-bold">Veuillez sélectionner un article.</div>
-          )}
-
-        </div>
-      )}
-
-      {modeVue === 'rapport_stock' && (
-        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
-          
-          <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-2">
-            <div className="grid grid-cols-3 gap-1.5 items-end">
-              <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date début</label>
-                <input
-                  type="date"
-                  value={dateDebutRapport}
-                  onChange={(e) => setDateDebutRapport(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date fin</label>
-                <input
-                  type="date"
-                  value={dateFinRapport}
-                  onChange={(e) => setDateFinRapport(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Partenaire</label>
-                <select
-                  value={depotRapportFiltre}
-                  onChange={(e) => setDepotRapportFiltre(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                >
-                  {depots.length === 0 ? (
-                    <option value="TOUS">Aucun dépôt</option>
-                  ) : (
-                    depots.map((dep) => (
-                      <option key={dep.id} value={dep.id}>
-                        {dep.nom_depot || dep.Nom_Depot}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            </div>
+          <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
+            <h4 className="font-black uppercase text-[9.5px]">📊 RAPPORT DE STOCK PAR ARTICLE</h4>
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => imprimerOngletActif('RAPPORT DE STOCK')}
+              className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs"
+            >
+              <span>🖨️ Imprimer</span>
+            </button>
           </div>
 
-          <div className="space-y-1">
-            <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
-              <h4 className="font-black uppercase text-[9.5px]">📋 RAPPORT DE STOCK</h4>
-              <button
-                type="button"
-                onClick={() => imprimerOngletActif('RAPPORT DE STOCK')}
-                className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs shrink-0"
-              >
-                <span>🖨️ Imprimer</span>
-              </button>
-            </div>
-
-            <div id="section-impression-rapport_stock" className="border border-slate-200 rounded-xl bg-white shadow-2xs overflow-x-auto">
-              <table className="w-full text-left text-[9.5px] border-collapse table-fixed">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[7.5px] font-black">
-                    <th className="py-2 px-0.5 w-[38%]">Désignation</th>
-                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">S. Init</th>
-                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">Entrée</th>
-                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">Total</th>
-                    <th className="py-2 px-0.5 w-[12%] text-center whitespace-nowrap">Sortie</th>
-                    <th className="py-2 px-0.5 w-[14%] text-center whitespace-nowrap">S. Réel</th>
+          <div id="section-impression-rapport" className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-xs">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
+                  <th className="p-2.5">Désignation</th>
+                  <th className="p-2.5 text-center">Stock Initial</th>
+                  <th className="p-2.5 text-center text-emerald-700">Entrées</th>
+                  <th className="p-2.5 text-center">Stock Total</th>
+                  <th className="p-2.5 text-center text-red-600">Sorties</th>
+                  <th className="p-2.5 text-center text-blue-700">Stock Réel</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                {articles.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré.</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {articles.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article disponible.</td>
-                    </tr>
-                  ) : depotRapportFiltre === 'TOUS' ? (
-                    <tr>
-                      <td colSpan="6" className="p-4 text-center text-orange-600 font-bold">Veuillez sélectionner un dépôt partenaire ci-dessus.</td>
-                    </tr>
-                  ) : (() => {
-                    const articlesFiltresPartenaire = articles.filter((art) => {
-                      const artId = art.id_article || art.id;
-                      const rapport = calculerLigneRapportStock(artId, depotRapportFiltre, dateDebutRapport, dateFinRapport);
-                      return rapport.stockInitial > 0 || rapport.totalEntrees > 0 || rapport.totalSorties > 0;
-                    });
+                ) : (
+                  articles.map((art) => {
+                    const artId = art.id_article || art.id;
+                    const rep = calculerLigneRapportStock(artId);
 
-                    if (articlesFiltresPartenaire.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article n'a encore transité par ce dépôt.</td>
-                        </tr>
-                      );
-                    }
-
-                    return articlesFiltresPartenaire.map((art) => {
-                      const artId = art.id_article || art.id;
-                      const rapport = calculerLigneRapportStock(artId, depotRapportFiltre, dateDebutRapport, dateFinRapport);
-
-                      return (
-                        <tr key={artId} className="hover:bg-slate-50 transition">
-                          <td className="py-2 px-0.5 font-black uppercase text-slate-900 text-[9px] truncate">
-                            {art.Designation || art.designation}
-                          </td>
-                          <td className="py-2 px-0.5 text-center font-mono font-bold text-slate-700 whitespace-nowrap">
-                            {rapport.stockInitial}
-                          </td>
-                          <td className="py-2 px-0.5 text-center font-mono font-bold text-emerald-700 whitespace-nowrap">
-                            <span className="bg-emerald-50 px-0.5 py-0.5 rounded border border-emerald-200 inline-block">
-                              +{rapport.totalEntrees}
-                            </span>
-                          </td>
-                          <td className="py-2 px-0.5 text-center font-mono font-extrabold text-blue-800 whitespace-nowrap">
-                            {rapport.totalDisponible}
-                          </td>
-                          <td className="py-2 px-0.5 text-center font-mono font-bold text-rose-700 whitespace-nowrap">
-                            <span className="bg-rose-50 px-0.5 py-0.5 rounded border border-rose-200 inline-block">
-                              -{rapport.totalSorties}
-                            </span>
-                          </td>
-                          <td className="py-2 px-0.5 text-center font-mono font-black text-slate-900 whitespace-nowrap">
-                            <span className={`px-1 py-0.5 rounded text-[9px] ${rapport.stockReel > 0 ? 'bg-orange-100 text-orange-900 border border-orange-200' : 'bg-slate-100 text-slate-500'}`}>
-                              {rapport.stockReel}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
+                    return (
+                      <tr key={artId} className="hover:bg-slate-50 transition">
+                        <td className="p-2.5 font-black uppercase text-slate-900">{art.Designation || art.designation}</td>
+                        <td className="p-2.5 text-center font-bold text-slate-700">{rep.stockInitial}</td>
+                        <td className="p-2.5 text-center font-black text-emerald-700">+{rep.entrees}</td>
+                        <td className="p-2.5 text-center font-bold text-slate-800">{rep.stockTotal}</td>
+                        <td className="p-2.5 text-center font-black text-red-600">-{rep.sorties}</td>
+                        <td className="p-2.5 text-center font-black text-blue-700 bg-blue-50/50">{rep.stockReel}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-
         </div>
       )}
 
@@ -1547,6 +1221,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
               <span className="font-black text-xs uppercase">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span>
               <button
+                disabled={enTrainDeSauvegarder}
                 onClick={() => setAfficherModalSelectionArticle(false)}
                 className="text-slate-300 hover:text-white font-black text-xs p-1"
               >
@@ -1558,6 +1233,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               <input
                 type="text"
                 autoFocus
+                disabled={enTrainDeSauvegarder}
                 value={rechercheModalArticle}
                 onChange={(e) => setRechercheModalArticle(e.target.value.toUpperCase())}
                 placeholder="Rechercher..."
@@ -1572,19 +1248,18 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   articlesModalFiltres.map((art) => {
                     const idA = String(art.id_article || art.id);
                     const nomArt = art.Designation || art.designation || '';
-                    const stockArt = depotStatFiltre === 'TOUS' ? calculerStockParFiltre(idA) : calculerStockPourUnDepot(idA, depotStatFiltre);
 
                     return (
                       <div
                         key={idA}
                         onClick={() => {
+                          if (enTrainDeSauvegarder) return;
                           setArticleSelectionneStatId(idA);
                           setAfficherModalSelectionArticle(false);
                         }}
                         className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
                       >
                         <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomArt}</span>
-                        <span className="font-bold text-emerald-700 font-mono text-xs shrink-0">Stock : {stockArt}</span>
                       </div>
                     );
                   })
@@ -1596,5 +1271,74 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       )}
 
     </div>
+  );
+}
+
+function ArticleLigneTableau({ art, depotFiltre, emplacementFiltre, emplacements, moduleActuel, recupererStockRPC, ouvrirEdition, enTrainDeSauvegarder }) {
+  const artId = art.id_article || art.id;
+  const [stockGlobal, setStockGlobal] = useState(null);
+  const [stocksEmplacements, setStocksEmplacements] = useState({});
+  const [chargement, setChargement] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function chargerStocksLigne() {
+      setChargement(true);
+      try {
+        const stockG = await recupererStockRPC(artId, depotFiltre, emplacementFiltre);
+        
+        const empMap = {};
+        for (const emp of emplacements) {
+          const sEmp = await recupererStockRPC(artId, depotFiltre, emp.id);
+          empMap[emp.id] = sEmp;
+        }
+
+        if (isMounted) {
+          setStockGlobal(stockG);
+          setStocksEmplacements(empMap);
+          setChargement(false);
+        }
+      } catch (err) {
+        if (isMounted) setChargement(false);
+      }
+    }
+    chargerStocksLigne();
+    return () => { isMounted = false; };
+  }, [artId, depotFiltre, emplacementFiltre, emplacements]);
+
+  return (
+    <tr 
+      onClick={() => !enTrainDeSauvegarder && ouvrirEdition(art)}
+      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+    >
+      <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
+        {art.Designation || art.designation}
+      </td>
+      <td className="p-2.5 text-center whitespace-nowrap">
+        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+          {chargement ? '...' : stockGlobal}
+        </span>
+      </td>
+
+      {emplacements.map((emp) => {
+        const stockEmp = stocksEmplacements[emp.id] || 0;
+        return (
+          <td key={emp.id} className="p-2.5 text-center whitespace-nowrap">
+            <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
+              {chargement ? '...' : stockEmp}
+            </span>
+          </td>
+        );
+      })}
+
+      {moduleActuel !== 'LIVRAISON' && (
+        <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap">
+          {art.Prix_Achat || art.prix_achat || 0}
+        </td>
+      )}
+      <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap">
+        {art.Prix_Vente || art.prix_vente || 0}
+      </td>
+    </tr>
   );
 }

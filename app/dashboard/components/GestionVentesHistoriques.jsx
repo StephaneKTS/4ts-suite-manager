@@ -18,6 +18,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [approvisionnements, setApprovisionnements] = useState([]);
   const [ventesHistoriques, setVentesHistoriques] = useState([]);
   const [chargement, setChargement] = useState(false);
+  
+  // --- GESTION DES DROITS ET AUTORISATIONS ---
+  const [roleNom, setRoleNom] = useState('');
+  const [permissions, setPermissions] = useState({
+    lecture: true,
+    creation: true,
+    modification: false,
+    suppression: false,
+  });
+
+  // --- RÈGLE 3 : DÉSACTIVATION TEMPORAIRE (ÉVITER LES DOUBLONS) ---
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   
   const [recherche, setRecherche] = useState('');
@@ -27,13 +38,30 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const [modeSaisie, setModeSaisie] = useState(true);
   const [ordreAlphabetique, setOrdreAlphabetique] = useState('ASC');
 
-  // Permissions de l'employé connecté
-  const [permissions, setPermissions] = useState({
-    lecture: true,
-    creation: true,
-    modification: false,
-    suppression: false,
-  });
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteVentes, setLimiteVentes] = useState(20);
+
+  // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
+  const obtenirPremierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = String(d.getMonth() + 1).padStart(2, '0');
+    return `${annee}-${mois}-01`;
+  };
+
+  const obtenirDernierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = d.getMonth() + 1;
+    const dernierJour = new Date(annee, mois, 0).getDate();
+    return `${annee}-${String(mois).padStart(2, '0')}-${String(dernierJour).padStart(2, '0')}`;
+  };
+
+  const premierJourMoisStr = obtenirPremierJourDuMois();
+  const dernierJourMoisStr = obtenirDernierJourDuMois();
+
+  const [filtreDateDebut, setFiltreDateDebut] = useState(premierJourMoisStr);
+  const [filtreDateFin, setFiltreDateFin] = useState(dernierJourMoisStr);
 
   const [caisseId, setCaisseId] = useState('');
   const [depotId, setDepotId] = useState('');
@@ -74,16 +102,19 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
 
+  // --- RÈGLE 2 : FONCTION RPC SUPABASE ---
   const chargerDonneesEtPermissions = async () => {
     setChargement(true);
     try {
+      // 1. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
         const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+        setRoleNom(nomRoleUser);
 
         if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-          const permHistorique = userObj.permissions?.['ventes_historiques'] || userObj.permissions?.['caisse'];
+          const permHistorique = userObj.permissions?.['ventes_historiques'] || userObj.permissions?.['caisse'] || userObj.permissions?.['ventes'];
           
           if (permHistorique) {
             setPermissions({
@@ -101,7 +132,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               .eq('nom_role', nomRoleUser)
               .maybeSingle();
 
-            const rolePerm = roleData?.permissions?.['ventes_historiques'] || roleData?.permissions?.['caisse'];
+            const rolePerm = roleData?.permissions?.['ventes_historiques'] || roleData?.permissions?.['caisse'] || roleData?.permissions?.['ventes'];
             if (rolePerm) {
               setPermissions({
                 lecture: rolePerm.lecture ?? true,
@@ -114,8 +145,26 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         }
       }
 
-      const [resVentes, resArticles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro] = await Promise.all([
-        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
+      // 2. Tentative de récupération des ventes via la fonction RPC dédiée avec fallback sécurisé
+      let ventesData = [];
+      const { data: ventesRpc, error: rpcError } = await supabase.rpc('recuperer_ventes_historiques', {
+        p_entreprise_id: entrepriseId,
+        p_module: moduleActuel
+      });
+
+      if (rpcError) {
+        const resVentes = await supabase
+          .from('ventes_historiques')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .order('created_at', { ascending: false });
+        ventesData = resVentes.data || [];
+      } else {
+        ventesData = ventesRpc || [];
+      }
+
+      const [resArticles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro] = await Promise.all([
         supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('categories_clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -125,8 +174,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
-      setVentes(resVentes.data || []);
-      setVentesHistoriques(resVentes.data || []);
+      setVentes(ventesData);
+      setVentesHistoriques(ventesData);
       setArticlesStock(resArticles.data || []);
       setClientsList(resClients.data || []);
       setCategoriesList(resCategories.data || []);
@@ -144,7 +193,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         setCodeCaisseActif(codeCaisseCourant);
       }
 
-      setNumeroTicket(genererNumeroTicket(codeCaisseCourant, (resVentes.data || []).length));
+      setNumeroTicket(genererNumeroTicket(codeCaisseCourant, ventesData.length));
 
       if ((resDepots.data || []).length > 0) {
         setDepotId(resDepots.data[0].id);
@@ -511,8 +560,23 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
     const query = recherche.toLowerCase();
     const matchQuery = numTicket.includes(query) || nomClientVente.includes(query);
     const matchPaiement = filtreModePaiement === 'TOUS' || (v.mode_paiement || '').toUpperCase() === filtreModePaiement.toUpperCase();
-    return matchQuery && matchPaiement;
+    
+    let matchDate = true;
+    if (v.created_at) {
+      const dateVente = v.created_at.split('T')[0];
+      if (filtreDateDebut && filtreDateFin) {
+        matchDate = dateVente >= filtreDateDebut && dateVente <= filtreDateFin;
+      } else if (filtreDateDebut) {
+        matchDate = dateVente >= filtreDateDebut;
+      } else if (filtreDateFin) {
+        matchDate = dateVente <= filtreDateFin;
+      }
+    }
+
+    return matchQuery && matchPaiement && matchDate;
   });
+
+  const ventesAffichees = ventesFiltrees.slice(0, limiteVentes);
 
   const clientsFiltres = clientsList.filter(c => (c.nom_client || '').toLowerCase().includes(rechercheClientInput.toLowerCase()));
 
@@ -531,25 +595,32 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
-      <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-        <button
-          disabled={enTrainDeSauvegarder}
-          onClick={() => setModeSaisie(true)}
-          className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
-            modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          🛒 Caisse
-        </button>
-        <button
-          disabled={enTrainDeSauvegarder}
-          onClick={() => setModeSaisie(false)}
-          className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
-            !modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          📋 Tickets ({ventes.length})
-        </button>
+      <div className="flex justify-between items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+        <div className="flex flex-1 gap-1">
+          <button
+            disabled={enTrainDeSauvegarder}
+            onClick={() => setModeSaisie(true)}
+            className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
+              modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            🛒 Caisse
+          </button>
+          <button
+            disabled={enTrainDeSauvegarder}
+            onClick={() => setModeSaisie(false)}
+            className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
+              !modeSaisie ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            📋 Tickets ({ventesAffichees.length} / {ventesFiltrees.length})
+          </button>
+        </div>
+        {roleNom && (
+          <span className="ml-2 text-[9px] bg-white text-slate-700 px-2 py-0.5 rounded font-bold border border-slate-200 shrink-0">
+            Rôle : {roleNom}
+          </span>
+        )}
       </div>
 
       {modeSaisie ? (
@@ -849,67 +920,127 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2 shadow-2xs">
-            <input
-              type="text"
-              disabled={enTrainDeSauvegarder}
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-              placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER TICKET OU LIVREUR..." : "RECHERCHER TICKET OU CLIENT..."}
-              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
-            />
-            <select
-              disabled={enTrainDeSauvegarder}
-              value={filtreModePaiement}
-              onChange={(e) => setFiltreModePaiement(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-900"
-            >
-              <option value="TOUS">Tous modes</option>
-              <option value="ESPECES">Espèces</option>
-              <option value="MOBILE_MONEY">Mobile Money</option>
-              <option value="CARTE">Carte</option>
-            </select>
+          
+          <div className="bg-white p-2 rounded-lg border border-slate-200 space-y-2 shadow-2xs">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-1">
+              <span className="font-extrabold text-slate-700 uppercase text-[9px]">🔍 FILTRER LES TICKETS</span>
+              {(filtreDateDebut !== premierJourMoisStr || filtreDateFin !== dernierJourMoisStr || filtreModePaiement !== 'TOUS' || recherche) && (
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={() => {
+                    setFiltreDateDebut(premierJourMoisStr);
+                    setFiltreDateFin(dernierJourMoisStr);
+                    setFiltreModePaiement('TOUS');
+                    setRecherche('');
+                  }}
+                  className="text-orange-600 hover:text-orange-700 font-bold text-[9px] underline"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Date Début</label>
+                <input
+                  type="date"
+                  disabled={enTrainDeSauvegarder}
+                  value={filtreDateDebut}
+                  onChange={(e) => setFiltreDateDebut(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Date Fin</label>
+                <input
+                  type="date"
+                  disabled={enTrainDeSauvegarder}
+                  value={filtreDateFin}
+                  onChange={(e) => setFiltreDateFin(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <input
+                type="text"
+                disabled={enTrainDeSauvegarder}
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value.toUpperCase())}
+                placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER TICKET OU LIVREUR..." : "RECHERCHER TICKET OU CLIENT..."}
+                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
+              />
+              <select
+                disabled={enTrainDeSauvegarder}
+                value={filtreModePaiement}
+                onChange={(e) => setFiltreModePaiement(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-900 shrink-0"
+              >
+                <option value="TOUS">Tous modes</option>
+                <option value="ESPECES">Espèces</option>
+                <option value="MOBILE_MONEY">Mobile Money</option>
+                <option value="CARTE">Carte</option>
+              </select>
+            </div>
           </div>
 
           {chargement ? (
             <div className="p-4 text-center text-slate-400 text-[10px]">Chargement...</div>
           ) : ventesFiltrees.length === 0 ? (
             <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-lg text-[10px]">
-              Aucun ticket enregistré.
+              Aucun ticket enregistré pour cette période.
             </div>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-2xs">
-              <table className="w-full text-left text-[10px]">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[8px] font-black select-none">
-                  <tr>
-                    <th className="p-2">Date</th>
-                    <th className="p-2">N° Ticket</th>
-                    <th className="p-2">{moduleActuel === 'LIVRAISON' ? 'Livreur' : 'Client'}</th>
-                    <th className="p-2 text-right">Montant</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[10px]">
-                  {ventesFiltrees.map((v) => {
-                    const nomClientVente = (v.nom_client || (moduleActuel === 'LIVRAISON' ? 'LIVREURS DIVERS' : 'CLIENTS DIVERS')).toUpperCase();
-                    return (
-                      <tr
-                        key={v.id}
-                        onClick={() => !enTrainDeSauvegarder && setTicketSelectionne(v)}
-                        className="hover:bg-slate-50/80 cursor-pointer transition"
-                      >
-                        <td className="p-2 text-slate-600 font-mono text-[9px] font-bold">
-                          {v.created_at ? new Date(v.created_at).toLocaleDateString('fr-FR') : '-'}
-                        </td>
-                        <td className="p-2 font-mono font-bold text-orange-600">{v.numero_ticket || '-'}</td>
-                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{nomClientVente}</td>
-                        <td className="p-2 text-right font-black text-emerald-700 font-mono">
-                          {Number(v.montant_regle || v.total_montant || 0).toLocaleString('fr-FR')} CFA
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-2">
+              <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-2xs">
+                <table className="w-full text-left text-[10px]">
+                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[8px] font-black select-none">
+                    <tr>
+                      <th className="p-2">Date</th>
+                      <th className="p-2">N° Ticket</th>
+                      <th className="p-2">{moduleActuel === 'LIVRAISON' ? 'Livreur' : 'Client'}</th>
+                      <th className="p-2 text-right">Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[10px]">
+                    {ventesAffichees.map((v) => {
+                      const nomClientVente = (v.nom_client || (moduleActuel === 'LIVRAISON' ? 'LIVREURS DIVERS' : 'CLIENTS DIVERS')).toUpperCase();
+                      return (
+                        <tr
+                          key={v.id}
+                          onClick={() => !enTrainDeSauvegarder && setTicketSelectionne(v)}
+                          className="hover:bg-slate-50/80 cursor-pointer transition"
+                        >
+                          <td className="p-2 text-slate-600 font-mono text-[9px] font-bold">
+                            {v.created_at ? new Date(v.created_at).toLocaleDateString('fr-FR') : '-'}
+                          </td>
+                          <td className="p-2 font-mono font-bold text-orange-600">{v.numero_ticket || '-'}</td>
+                          <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{nomClientVente}</td>
+                          <td className="p-2 text-right font-black text-emerald-700 font-mono">
+                            {Number(v.montant_regle || v.total_montant || 0).toLocaleString('fr-FR')} CFA
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {limiteVentes < ventesFiltrees.length && (
+                <div className="text-center pt-1 pb-2">
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={() => setLimiteVentes(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                  >
+                    📥 Charger 20 tickets de plus ({ventesFiltrees.length - limiteVentes} restants)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -936,8 +1067,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                       <p className="text-[9px] text-slate-600 font-mono font-bold">{t.panier.length} article(s) • Heure : {t.date}</p>
                     </div>
                     <button
+                      disabled={enTrainDeSauvegarder}
                       onClick={() => rappelerTicket(t)}
-                      className="bg-amber-600 hover:bg-amber-500 text-white font-bold px-2.5 py-1 rounded text-[9px] shadow-2xs"
+                      className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold px-2.5 py-1 rounded text-[9px] shadow-2xs"
                     >
                       Rappeler
                     </button>
@@ -960,6 +1092,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               <input
                 type="text"
                 autoFocus
+                disabled={enTrainDeSauvegarder}
                 value={rechercheClientInput}
                 onChange={(e) => setRechercheClientInput(e.target.value.toUpperCase())}
                 placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER UN LIVREUR..." : "RECHERCHER UN CLIENT..."}
@@ -972,7 +1105,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                   clientsFiltres.map((c) => (
                     <div
                       key={c.id}
-                      onClick={() => selectionnerClient(c)}
+                      onClick={() => !enTrainDeSauvegarder && selectionnerClient(c)}
                       className="p-2 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded flex justify-between items-center cursor-pointer transition"
                     >
                       <div>
@@ -1000,6 +1133,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
               <input
                 type="text"
                 autoFocus
+                disabled={enTrainDeSauvegarder}
                 value={rechercheArticleInput}
                 onChange={(e) => setSearchArticleInput(e.target.value.toUpperCase())}
                 placeholder="RECHERCHER UN ARTICLE..."
@@ -1019,7 +1153,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                     return (
                       <div
                         key={artId}
-                        onClick={() => !estEpuise && ajouterAuPanier(art)}
+                        onClick={() => !enTrainDeSauvegarder && !estEpuise && ajouterAuPanier(art)}
                         className={`p-2 border rounded flex justify-between items-center transition ${
                           estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 border-slate-200 cursor-pointer'
                         }`}
@@ -1119,14 +1253,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
                 <button
                   disabled={enTrainDeSauvegarder}
                   onClick={() => window.print()}
-                  className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] transition text-center"
+                  className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] transition text-center disabled:opacity-50"
                 >
                   🖨️ Imprimer
                 </button>
                 <button
                   disabled={enTrainDeSauvegarder}
                   onClick={() => setTicketSelectionne(null)}
-                  className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded text-[10px] transition text-center"
+                  className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded text-[10px] transition text-center disabled:opacity-50"
                 >
                   Fermer
                 </button>

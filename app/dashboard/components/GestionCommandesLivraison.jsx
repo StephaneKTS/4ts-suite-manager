@@ -12,11 +12,23 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [emplacements, setEmplacements] = useState([]);
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [grilleTarifaire, setGrilleTarifaire] = useState([]);
-  const [mouvements, setMouvements] = useState([]);
-  const [approvisionnements, setApprovisionnements] = useState([]);
-  const [ventesHistoriques, setVentesHistoriques] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
+
+  // --- GESTION DES DROITS ET AUTORISATIONS DES EMPLOYÉS ---
+  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
+  const [permissions, setPermissions] = useState({
+    peut_creer: true,
+    peut_modifier: true,
+    peut_supprimer: true,
+    peut_valider: true
+  });
+
+  // Cache local pour stocker les stocks calculés par RPC et éviter les appels redondants
+  const [stocksArticlesCache, setStocksArticlesCache] = useState({});
+
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteCommandes, setLimiteCommandes] = useState(20);
 
   const [commandesAppelees, setCommandesAppelees] = useState({});
 
@@ -55,6 +67,25 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
   const dateDuJourStr = new Date().toISOString().split('T')[0];
 
+  // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
+  const obtenirPremierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = String(d.getMonth() + 1).padStart(2, '0');
+    return `${annee}-${mois}-01`;
+  };
+
+  const obtenirDernierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = d.getMonth() + 1;
+    const dernierJour = new Date(annee, mois, 0).getDate();
+    return `${annee}-${String(mois).padStart(2, '0')}-${String(dernierJour).padStart(2, '0')}`;
+  };
+
+  const premierJourMoisStr = obtenirPremierJourDuMois();
+  const dernierJourMoisStr = obtenirDernierJourDuMois();
+
   const [filtrePartenaire, setFiltrePartenaire] = useState('');
   const [modalFiltrePartenaireOuverte, setModalFiltrePartenaireOuverte] = useState(false);
   const [rechercheFiltrePartenaireInput, setRechercheFiltrePartenaireInput] = useState('');
@@ -63,12 +94,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [modalFiltreLivreurOuverte, setModalFiltreLivreurOuverte] = useState(false);
   const [rechercheFiltreLivreurInput, setRechercheFiltreLivreurInput] = useState('');
 
-  const [filtreDateDebut, setFiltreDateDebut] = useState(dateDuJourStr);
-  const [filtreDateFin, setFiltreDateFin] = useState(dateDuJourStr);
+  const [filtreDateDebut, setFiltreDateDebut] = useState(premierJourMoisStr);
+  const [filtreDateFin, setFiltreDateFin] = useState(dernierJourMoisStr);
   const [filtreStatut, setFiltreStatut] = useState('');
 
-  const [rapportDateDebut, setRapportDateDebut] = useState(dateDuJourStr);
-  const [rapportDateFin, setRapportDateFin] = useState(dateDuJourStr);
+  const [rapportDateDebut, setRapportDateDebut] = useState(premierJourMoisStr);
+  const [rapportDateFin, setRapportDateFin] = useState(dernierJourMoisStr);
   
   const [rapportLivreur, setRapportLivreur] = useState('');
   const [modalRapportLivreurOuverte, setModalRapportLivreurOuverte] = useState(false);
@@ -129,10 +160,46 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     }
   };
 
+  const chargerDroitsUtilisateur = async () => {
+    try {
+      const emailConnecte = localStorage.getItem('utilisateur_email') || '';
+      if (!emailConnecte) return;
+
+      const { data: userRecord } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('email', emailConnecte)
+        .single();
+
+      if (userRecord && userRecord.id_role) {
+        const { data: roleRecord } = await supabase
+          .from('roles')
+          .select('*')
+          .eq('id', userRecord.id_role)
+          .single();
+
+        if (roleRecord) {
+          setRoleUtilisateur(roleRecord);
+          setPermissions({
+            peut_creer: roleRecord.peut_creer ?? true,
+            peut_modifier: roleRecord.peut_modifier ?? true,
+            peut_supprimer: roleRecord.peut_supprimer ?? true,
+            peut_valider: roleRecord.peut_valider ?? true
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Erreur chargement des droits :', err.message);
+    }
+  };
+
   const chargerDonnees = async () => {
     setChargement(true);
     try {
-      const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resTarif, resMvt, resApp, resVentes] = await Promise.all([
+      await chargerDroitsUtilisateur();
+
+      const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resTarif] = await Promise.all([
         supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('commandes_livraison_lignes').select('*'),
         supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -140,10 +207,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('emplacements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('utilisateurs').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('grille_tarifaire_livraison').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('ventes_historiques').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
+        supabase.from('grille_tarifaire_livraison').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
       const commandesData = resCmd.data || [];
@@ -166,9 +230,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setEmplacements(resEmp.data || []);
       setUtilisateurs(resUser.data || []);
       setGrilleTarifaire(resTarif.data || []);
-      setMouvements(resMvt.data || []);
-      setApprovisionnements(resApp.data || []);
-      setVentesHistoriques(resVentes.data || []);
+      setStocksArticlesCache({});
 
       calculerNumeroAutomatique(resCmd.data || [], idPartenaire, dateCommande);
 
@@ -208,9 +270,51 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     chargerDonnees();
   }, [entrepriseId]);
 
+  // --- RÈGLE 2 : FONCTION RPC SUPABASE ---
+  // Récupération dynamique du stock réel via la fonction RPC PostgreSQL `calculer_stock_reel`
+  const recupererStockReelRPC = async (articleId) => {
+    let emplacementCible = null;
+
+    if (livreurAssigne.trim() !== '') {
+      const empTrouve = emplacements.find(e => 
+        String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
+        ((e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
+        (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase())
+      );
+      if (empTrouve) {
+        emplacementCible = empTrouve.id;
+      }
+    }
+
+    const cacheKey = `${articleId}_${depotId}_${emplacementCible || 'none'}`;
+    if (stocksArticlesCache[cacheKey] !== undefined) {
+      return stocksArticlesCache[cacheKey];
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('calculer_stock_reel', {
+        p_article_id: parseInt(articleId),
+        p_entreprise_id: entrepriseId,
+        p_depot_id: depotId || 'AUCUN_DEPOT',
+        p_emplacement_id: emplacementCible
+      });
+
+      if (error) throw error;
+      const stockVal = data !== null ? parseInt(data, 10) : 0;
+
+      setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockVal }));
+      return stockVal;
+    } catch (err) {
+      console.error('Erreur RPC stock :', err.message);
+      const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
+      return artObj ? parseInt(artObj.Quantite_Stock || artObj.quantite_stock || 0, 10) : 0;
+    }
+  };
+
   const handleChangementPartenaire = (partenaireId) => {
     setIdPartenaire(partenaireId);
     if (!commandeEnEdition) setLignesSaisies([]);
+    setStocksArticlesCache({});
 
     calculerNumeroAutomatique(commandes, partenaireId, dateCommande);
 
@@ -277,140 +381,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     }
   };
 
-  const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
-    if (!valeurDepotFlux || !depotCibleId) return false;
-    if (String(valeurDepotFlux) === String(depotCibleId)) return true;
-    const depotObj = depots.find((d) => String(d.id) === String(depotCibleId));
-    if (depotObj && depotObj.nom_depot && String(valeurDepotFlux).trim().toUpperCase() === String(depotObj.nom_depot).trim().toUpperCase()) return true;
-    return false;
-  };
-
-  const obtenirTousLesFluxArticle = (articleId, depotCibleId = 'TOUS') => {
-    let flux = [];
-    
-    mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
-      if (depotCibleId === 'TOUS' || correspondAuDepot(m.id_depot_source, depotCibleId) || correspondAuDepot(m.id_depot_destination, depotCibleId)) {
-        flux.push({ 
-          date: m.created_at || '', 
-          depot_source: m.id_depot_source, 
-          depot_destination: m.id_depot_destination,
-          emplacement_source: m.id_emplacement_source,
-          emplacement_destination: m.id_emplacement_destination,
-          quantite: parseInt(m.quantite || 0), 
-          type: (m.type_mouvement || '').toUpperCase(),
-          remarque: m.motif_remarque || ''
-        });
-      }
-    });
-
-    approvisionnements.forEach((app) => {
-      if (depotCibleId === 'TOUS' || correspondAuDepot(app.id_depot_destination, depotCibleId)) {
-        let articlesAppro = [];
-        if (app.details_articles) {
-          if (typeof app.details_articles === 'string') { try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} }
-          else if (Array.isArray(app.details_articles)) { articlesAppro = app.details_articles; }
-        }
-        articlesAppro.forEach((ligne) => {
-          if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
-            flux.push({ 
-              date: app.created_at || '', 
-              depot_source: app.id_depot_destination, 
-              depot_destination: null, 
-              quantite: parseInt(ligne.quantite || 0), 
-              type: 'APPROVISIONNEMENT',
-              remarque: app.reference || `APP-${app.id || '01'}`
-            });
-          }
-        });
-      }
-    });
-
-    flux.sort((a, b) => new Date(a.date) - new Date(b.date));
-    return flux;
-  };
-
-  const calculerStockPourUnDepot = (articleId, depotId) => {
-    let stockDepot = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, depotId);
-    
-    fluxArticle.forEach((m) => {
-      const matchDepotSource = correspondAuDepot(m.depot_source, depotId);
-      const matchDepotDest = correspondAuDepot(m.depot_destination, depotId);
-      const qte = m.quantite; 
-      const typeMvt = m.type;
-
-      if (typeMvt === 'INVENTAIRE' && matchDepotSource) { 
-        stockDepot = qte; 
-        return; 
-      }
-      if (typeMvt === 'TRANSFERT') { 
-        return; 
-      }
-      if (typeMvt === 'ENTREE' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
-        if (matchDepotSource || matchDepotDest) stockDepot += qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt.includes('AVARIES')) {
-        if (matchDepotSource) stockDepot -= qte;
-      } else {
-        if (matchDepotSource || matchDepotDest) stockDepot += qte;
-      }
-    });
-
-    return Math.max(0, stockDepot);
-  };
-
-  const calculerStockPourEmplacement = (articleId, emplacementId) => {
-    let stockEmp = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId);
-    
-    fluxArticle.forEach((m) => {
-      const qte = m.quantite;
-      const typeMvt = m.type;
-      const matchSource = String(m.emplacement_source) === String(emplacementId);
-      const matchDest = String(m.emplacement_destination) === String(emplacementId);
-
-      if (typeMvt === 'INVENTAIRE' && matchSource) {
-        stockEmp = qte;
-        return;
-      }
-      if (typeMvt === 'TRANSFERT') {
-        if (matchDest) stockEmp += qte;
-        if (matchSource) stockEmp -= qte;
-        return;
-      }
-      if (matchDest) stockEmp += qte;
-      if (matchSource) stockEmp -= qte;
-    });
-
-    return Math.max(0, stockEmp);
-  };
-
-  const getStockReelArticle = (article) => {
-    const articleId = String(article.id_article || article.id);
-
-    if (livreurAssigne.trim() !== '') {
-      const empTrouve = emplacements.find(e => 
-        String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
-        ((e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
-        (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase())
-      );
-      if (empTrouve) {
-        return calculerStockPourEmplacement(articleId, empTrouve.id);
-      }
-    }
-
-    if (!depotId || depotId === 'AUCUN_DEPOT') {
-      let totalGlobal = 0;
-      depots.forEach(dep => {
-        totalGlobal += calculerStockPourUnDepot(articleId, dep.id);
-      });
-      if (depots.length === 0) {
-        totalGlobal = parseInt(article.Quantite_Stock || article.quantite_stock || 0);
-      }
-      return totalGlobal;
-    }
-    return calculerStockPourUnDepot(articleId, depotId);
-  };
-
   const listeLivreursUniques = () => {
     const setLivreurs = new Set();
     
@@ -461,7 +431,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '')
     : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '');
 
-  const ajouterArticleAuPanier = (artObj) => {
+  const ajouterArticleAuPanier = async (artObj) => {
     if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
       alert('⚠️ Veuillez saisir un numéro de client valide à exactement 9 chiffres.');
       if (inputNumeroClientRef.current) {
@@ -476,13 +446,14 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       return;
     }
 
-    const stockDisp = getStockReelArticle(artObj);
+    const idArt = artObj.id_article || artObj.id;
+    const stockDisp = await recupererStockReelRPC(idArt);
+
     if (stockDisp <= 0) {
       alert(`❌ Cet article est épuisé ou indisponible pour ce livreur.`);
       return;
     }
 
-    const idArt = artObj.id_article || artObj.id;
     const designation = (artObj.Designation || artObj.designation || artObj.nom || '').toUpperCase();
     const prixVente = Number(artObj.P_V || artObj.prix_vente || artObj.prix_unitaire || artObj.prix || 0);
 
@@ -511,14 +482,14 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     }
   };
 
-  const modifierQuantiteLigne = (index, delta) => {
+  const modifierQuantiteLigne = async (index, delta) => {
     const nouvellesLignes = [...lignesSaisies];
     const nouvelleQte = nouvellesLignes[index].quantite + delta;
     if (nouvelleQte <= 0) {
       setLignesSaisies(nouvellesLignes.filter((_, i) => i !== index));
     } else {
-      const artObj = articles.find(a => String(a.id_article || a.id) === String(nouvellesLignes[index].id_article));
-      const stockDisp = artObj ? getStockReelArticle(artObj) : 0;
+      const artId = nouvellesLignes[index].id_article;
+      const stockDisp = await recupererStockReelRPC(artId);
       if (nouvelleQte > stockDisp) {
         alert(`❌ Quantité supérieure au stock disponible (${stockDisp}) !`);
         return;
@@ -579,6 +550,10 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
   const supprimerCommandeActuelle = async () => {
     if (!commandeEnEdition || sauvegardeEnCours) return;
+    if (!permissions.peut_supprimer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
+      return;
+    }
     if (!confirm(`Voulez-vous vraiment supprimer la commande ${commandeEnEdition.numero_commande} ?`)) return;
 
     setSauvegardeEnCours(true);
@@ -596,7 +571,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       setPointADepart('');
       setNumeroClient('');
       setNatureColis('');
-      setLignesSaisies('');
+      setLignesSaisies([]);
       setMontantSaisi('');
       setAdresseLivraison('');
       setZoneGrilleSelectionnee('');
@@ -617,6 +592,15 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     if (e) e.preventDefault();
     if (sauvegardeEnCours) return;
     
+    if (commandeEnEdition && !permissions.peut_modifier) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      return;
+    }
+    if (!commandeEnEdition && !permissions.peut_creer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      return;
+    }
+
     if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
       alert('⚠️ Le numéro du client est obligatoire et doit comporter exactement 9 caractères.');
       if (inputNumeroClientRef.current) {
@@ -675,7 +659,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         }
 
         for (const item of lignesSaisies) {
-          const stockEmp = calculerStockPourEmplacement(item.id_article, empIdTrouve);
+          const stockEmp = await recupererStockReelRPC(item.id_article);
           if (stockEmp < item.quantite) {
             alert(
               `🚫 ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nLe livreur [${livreurAssigne}] ne possède pas le stock suffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})\n\n💡 Veuillez d'abord approvisionner le stock chez ce livreur avant de pouvoir passer la commande au statut LIVRÉ.`
@@ -846,6 +830,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     const numB = extraireNumero(b.numero_commande);
     return numA - numB;
   });
+
+  // Application de la pagination mobile
+  const commandesAffichees = commandesFiltrees.slice(0, limiteCommandes);
 
   const commandesRapport = commandes.filter((cmd) => {
     if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
@@ -1024,9 +1011,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       `}</style>
 
       <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1.5 overflow-hidden">
-        <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
-          <span>📦</span> LIVRAISON
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
+            <span>📦</span> LIVRAISON
+          </h3>
+          {roleUtilisateur && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
+            </span>
+          )}
+        </div>
         
         <div className="flex items-center gap-1 shrink-0">
           <button
@@ -1041,33 +1035,35 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             📄 Liste
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCommandeEnEdition(null);
-              setNumeroCommande('1');
-              setIdPartenaire('');
-              setPartenaireSansStockage(false);
-              setPointADepart('');
-              setNumeroClient('');
-              setNatureColis('');
-              setMontantSaisi('');
-              setAdresseLivraison('');
-              setZoneGrilleSelectionnee('');
-              setFraisLivraisonSaisi('');
-              setLivreurAssigne('');
-              setStatutCommandeSaisi('EN ATTENTE');
-              setLignesSaisies([]);
-              setVueActive('CREATION');
-            }}
-            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
-              vueActive === 'CREATION' 
-                ? 'bg-orange-600 text-white border-orange-600' 
-                : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
-            }`}
-          >
-            + Créer
-          </button>
+          {permissions.peut_creer && (
+            <button
+              type="button"
+              onClick={() => {
+                setCommandeEnEdition(null);
+                setNumeroCommande('1');
+                setIdPartenaire('');
+                setPartenaireSansStockage(false);
+                setPointADepart('');
+                setNumeroClient('');
+                setNatureColis('');
+                setMontantSaisi('');
+                setAdresseLivraison('');
+                setZoneGrilleSelectionnee('');
+                setFraisLivraisonSaisi('');
+                setLivreurAssigne('');
+                setStatutCommandeSaisi('EN ATTENTE');
+                setLignesSaisies([]);
+                setVueActive('CREATION');
+              }}
+              className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
+                vueActive === 'CREATION' 
+                  ? 'bg-orange-600 text-white border-orange-600' 
+                  : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
+              }`}
+            >
+              + Créer
+            </button>
+          )}
 
           <button
             type="button"
@@ -1090,12 +1086,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               <span className="font-black text-blue-900 uppercase text-[10px] flex items-center gap-1">
                 📊 RAPPORT DE LIVRAISON : COMMANDES LIVRÉES
               </span>
-              {(rapportDateDebut !== dateDuJourStr || rapportDateFin !== dateDuJourStr || rapportLivreur || rapportPartenaire) && (
+              {(rapportDateDebut !== premierJourMoisStr || rapportDateFin !== dernierJourMoisStr || rapportLivreur || rapportPartenaire) && (
                 <button
                   type="button"
                   onClick={() => {
-                    setRapportDateDebut(dateDuJourStr);
-                    setRapportDateFin(dateDuJourStr);
+                    setRapportDateDebut(premierJourMoisStr);
+                    setRapportDateFin(dernierJourMoisStr);
                     setRapportLivreur('');
                     setRapportPartenaire('');
                   }}
@@ -1510,25 +1506,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
                     {articlesFiltres.map((art) => {
                       const idArt = art.id_article || art.id;
-                      const designation = art.Designation || art.designation || art.nom;
-                      const stockDisp = getStockReelArticle(art);
-                      const estEpuise = stockDisp <= 0;
+                      const cacheKey = `${idArt}_${depotId}_${livreurAssigne || 'none'}`;
+                      const stockDisp = stocksArticlesCache[cacheKey];
 
                       return (
-                        <div
-                          key={idArt}
-                          onClick={() => ajouterArticleAuPanier(art)}
-                          className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
-                            estEpuise 
-                              ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
-                              : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
-                          }`}
-                        >
-                          <h5 className={`font-black uppercase text-[10px] truncate ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
-                          <span className={`font-black text-[9px] mt-1 ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
-                            Stock : {stockDisp}
-                          </span>
-                        </div>
+                        <ArticleItemStockCard 
+                          key={idArt} 
+                          art={art} 
+                          stockDisp={stockDisp} 
+                          onSelect={() => ajouterArticleAuPanier(art)} 
+                          chargerStock={async () => await recupererStockReelRPC(idArt)}
+                        />
                       );
                     })}
                   </div>
@@ -1604,7 +1592,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                       Annuler
                     </button>
 
-                    {commandeEnEdition && (
+                    {commandeEnEdition && permissions.peut_supprimer && (
                       <button
                         type="button"
                         disabled={sauvegardeEnCours}
@@ -1616,14 +1604,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      disabled={sauvegardeEnCours}
-                      onClick={sauvegarderCommande}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-1 rounded-md text-[9px] transition text-center shadow-xs"
-                    >
-                      {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
-                    </button>
+                    {((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
+                      <button
+                        type="button"
+                        disabled={sauvegardeEnCours}
+                        onClick={sauvegarderCommande}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-1 rounded-md text-[9px] transition text-center shadow-xs"
+                      >
+                        {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
+                      </button>
+                    )}
                   </div>
 
                 </div>
@@ -1674,7 +1664,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   Annuler
                 </button>
 
-                {commandeEnEdition && (
+                {commandeEnEdition && permissions.peut_supprimer && (
                   <button
                     type="button"
                     disabled={sauvegardeEnCours}
@@ -1686,14 +1676,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  disabled={sauvegardeEnCours}
-                  onClick={sauvegarderCommande}
-                  className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
-                >
-                  {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
-                </button>
+                {((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
+                  <button
+                    type="button"
+                    disabled={sauvegardeEnCours}
+                    onClick={sauvegarderCommande}
+                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
+                  >
+                    {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1792,15 +1784,17 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   ) : (
                     articlesFiltres.map((art) => {
                       const idArt = art.id_article || art.id;
-                      const designation = art.Designation || art.designation || art.nom;
-                      const stockDisp = getStockReelArticle(art);
-                      const estEpuise = stockDisp <= 0;
+                      const cacheKey = `${idArt}_${depotId}_${livreurAssigne || 'none'}`;
+                      const stockDisp = stocksArticlesCache[cacheKey];
 
                       return (
-                        <div key={idArt} onClick={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${estEpuise ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'}`}>
-                          <span className="font-black text-xs text-slate-900 uppercase truncate">{designation}</span>
-                          <span className="font-black text-[10px] mt-1 text-slate-700">Stock : <strong className={estEpuise ? 'text-rose-600' : 'text-emerald-700'}>{stockDisp}</strong></span>
-                        </div>
+                        <ArticleModalItemCard 
+                          key={idArt} 
+                          art={art} 
+                          stockDisp={stockDisp} 
+                          onSelect={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} 
+                          chargerStock={async () => await recupererStockReelRPC(idArt)}
+                        />
                       );
                     })
                   )}
@@ -1819,14 +1813,14 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
               <span className="font-black text-slate-900 uppercase text-[10px] flex items-center gap-1">
                 🔍 FILTRER LES COMMANDES
               </span>
-              {(filtrePartenaire || filtreLivreur || filtreDateDebut !== dateDuJourStr || filtreDateFin !== dateDuJourStr || filtreStatut) && (
+              {(filtrePartenaire || filtreLivreur || filtreDateDebut !== premierJourMoisStr || filtreDateFin !== dernierJourMoisStr || filtreStatut) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFiltrePartenaire('');
                     setFiltreLivreur('');
-                    setFiltreDateDebut(dateDuJourStr);
-                    setFiltreDateFin(dateDuJourStr);
+                    setFiltreDateDebut(premierJourMoisStr);
+                    setFiltreDateFin(dernierJourMoisStr);
                     setFiltreStatut('');
                   }}
                   className="text-orange-600 hover:text-orange-700 font-bold text-[10px] underline"
@@ -1907,7 +1901,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
           </div>
 
           <div className="bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800 shadow-2xs flex justify-between items-center text-[10px] font-black">
-            <span>Commandes ({commandesFiltrees.length})</span>
+            <span>Commandes affichées ({commandesAffichees.length} / {commandesFiltrees.length})</span>
           </div>
 
           {chargement ? (
@@ -1918,7 +1912,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
             </div>
           ) : (
             <div className="space-y-2">
-              {commandesFiltrees.map((cmd) => {
+              {commandesAffichees.map((cmd) => {
                 const statut = cmd.statut_commande || 'EN ATTENTE';
                 let badgeColor = 'bg-amber-100 text-amber-800 border-amber-300';
                 if (statut === 'LIVRÉ') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
@@ -1927,7 +1921,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
 
                 const lignesCmd = lignesCommandesMap[cmd.id] || [];
 
-                // Gestion des couleurs et clignotements pour le statut EN ATTENTE
                 const estEnAttente = statut === 'EN ATTENTE';
                 const dejaAppele = Boolean(commandesAppelees[cmd.id]);
                 
@@ -1980,7 +1973,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                             <a
                               href={`tel:${cmd.numero_client}`}
                               onClick={() => {
-                                // Marquer cette commande comme appelée pour basculer le clignotement en bleu
                                 setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
                               }}
                               className={`font-mono px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition shadow-sm text-xs font-black ${styleNumero} ${
@@ -2048,6 +2040,18 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
                   </div>
                 );
               })}
+
+              {limiteCommandes < commandesFiltrees.length && (
+                <div className="text-center pt-2 pb-4">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteCommandes(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 commandes de plus ({commandesFiltrees.length - limiteCommandes} restantes)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -2125,6 +2129,85 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         </div>
       )}
 
+    </div>
+  );
+}
+
+// Composants auxiliaires pour charger et afficher le stock asynchrone proprement
+function ArticleItemStockCard({ art, stockDisp, onSelect, chargerStock }) {
+  const [stock, setStock] = useState(stockDisp);
+  const [chargementStock, setChargementStock] = useState(stockDisp === undefined);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (stockDisp === undefined) {
+      chargerStock().then((val) => {
+        if (isMounted) {
+          setStock(val);
+          setChargementStock(false);
+        }
+      });
+    } else {
+      setStock(stockDisp);
+      setChargementStock(false);
+    }
+    return () => { isMounted = false; };
+  }, [stockDisp]);
+
+  const designation = art.Designation || art.designation || art.nom;
+  const estEpuise = !chargementStock && stock <= 0;
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
+        estEpuise 
+          ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
+          : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
+      }`}
+    >
+      <h5 className={`font-black uppercase text-[10px] truncate ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
+      <span className={`font-black text-[9px] mt-1 ${estEpuise ? 'text-rose-600' : 'text-slate-900'}`}>
+        Stock : {chargementStock ? '...' : stock}
+      </span>
+    </div>
+  );
+}
+
+function ArticleModalItemCard({ art, stockDisp, onSelect, chargerStock }) {
+  const [stock, setStock] = useState(stockDisp);
+  const [chargementStock, setChargementStock] = useState(stockDisp === undefined);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (stockDisp === undefined) {
+      chargerStock().then((val) => {
+        if (isMounted) {
+          setStock(val);
+          setChargementStock(false);
+        }
+      });
+    } else {
+      setStock(stockDisp);
+      setChargementStock(false);
+    }
+    return () => { isMounted = false; };
+  }, [stockDisp]);
+
+  const designation = art.Designation || art.designation || art.nom;
+  const estEpuise = !chargementStock && stock <= 0;
+
+  return (
+    <div 
+      onClick={onSelect} 
+      className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
+        estEpuise ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'
+      }`}
+    >
+      <span className="font-black text-xs text-slate-900 uppercase truncate">{designation}</span>
+      <span className="font-black text-[10px] mt-1 text-slate-700">
+        Stock : <strong className={estEpuise ? 'text-rose-600' : 'text-emerald-700'}>{chargementStock ? '...' : stock}</strong>
+      </span>
     </div>
   );
 }

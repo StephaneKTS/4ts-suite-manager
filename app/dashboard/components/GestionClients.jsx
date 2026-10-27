@@ -27,8 +27,21 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   const [ventes, setVentes] = useState([]);
   const [articles, setArticles] = useState([]);
   const [chargement, setChargement] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   
   const [ongletActif, setOngletActif] = useState('repertoire');
+
+  // --- GESTION DES DROITS ET AUTORISATIONS DES EMPLOYÉS ---
+  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
+  const [permissions, setPermissions] = useState({
+    peut_creer: true,
+    peut_modifier: true,
+    peut_supprimer: true,
+    peut_valider: true
+  });
+
+  // Règle 1 : Pagination / Limite d'affichage pour fluidifier le mobile
+  const [limiteClients, setLimiteClients] = useState(20);
 
   const [triCol, setTriCol] = useState('nom_client');
   const [triOrdre, setTriOrdre] = useState('asc');
@@ -64,9 +77,45 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
+  const chargerDroitsUtilisateur = async () => {
+    try {
+      const emailConnecte = localStorage.getItem('utilisateur_email') || '';
+      if (!emailConnecte) return;
+
+      const { data: userRecord } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('email', emailConnecte)
+        .single();
+
+      if (userRecord && userRecord.id_role) {
+        const { data: roleRecord } = await supabase
+          .from('roles')
+          .select('*')
+          .eq('id', userRecord.id_role)
+          .single();
+
+        if (roleRecord) {
+          setRoleUtilisateur(roleRecord);
+          setPermissions({
+            peut_creer: roleRecord.peut_creer ?? true,
+            peut_modifier: roleRecord.peut_modifier ?? true,
+            peut_supprimer: roleRecord.peut_supprimer ?? true,
+            peut_valider: roleRecord.peut_valider ?? true
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Erreur chargement des droits :', err.message);
+    }
+  };
+
   const chargerDonnees = async () => {
     setChargement(true);
     try {
+      await chargerDroitsUtilisateur();
+
       const { data: dataCat } = await supabase
         .from('categories_clients')
         .select('*')
@@ -149,6 +198,16 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerClient = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
+    if (clientEnEdition && !permissions.peut_modifier) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      return;
+    }
+    if (!clientEnEdition && !permissions.peut_creer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      return;
+    }
     
     if (!nouveauClient.id_categorie) {
       alert('⚠️ Veuillez sélectionner une catégorie client.');
@@ -165,6 +224,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
 
+    setEnTrainDeSauvegarder(true);
     try {
       const payload = {
         id_entreprise: entrepriseId,
@@ -172,7 +232,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         nom_client: nouveauClient.nom_client.trim().toUpperCase(),
         pays: nouveauClient.pays,
         telephone: numeroComplet,
-        // EMAIL FORCÉ EN MINUSCULES
         email: (nouveauClient.email || '').trim().toLowerCase(),
         id_categorie: parseInt(nouveauClient.id_categorie),
       };
@@ -201,10 +260,13 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       chargerDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const ouvrirEdition = (client) => {
+    if (enTrainDeSauvegarder) return;
     setClientEnEdition(client);
     
     let telLocal = client.telephone || '';
@@ -217,7 +279,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       nom_client: client.nom_client || '',
       pays: client.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
-      email: (client.email || '').toLowerCase(), // Restitution en minuscules
+      email: (client.email || '').toLowerCase(),
       id_categorie: client.id_categorie || '',
       solde_credit: client.solde_credit || 0,
     });
@@ -225,6 +287,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   };
 
   const annulerForm = () => {
+    if (enTrainDeSauvegarder) return;
     setClientEnEdition(null);
     setNouveauClient({
       nom_client: '',
@@ -238,8 +301,13 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   };
 
   const supprimerClient = async () => {
-    if (!clientEnEdition) return;
+    if (enTrainDeSauvegarder || !clientEnEdition) return;
+    if (!permissions.peut_supprimer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
+      return;
+    }
 
+    setEnTrainDeSauvegarder(true);
     try {
       setChargement(true);
       const clientIdStr = String(clientEnEdition.id);
@@ -272,11 +340,13 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       if (totalOperations > 0) {
         alert(`❌ SUPPRESSION BLOQUÉE : Ce client ("${clientEnEdition.nom_client}") a déjà ${totalOperations} mouvement(s) ou vente(s) enregistré(s) à son compte. Pour des raisons comptables et de traçabilité, il est strictement impossible de le supprimer.`);
         setChargement(false);
+        setEnTrainDeSauvegarder(false);
         return;
       }
 
       if (!confirm(`Voulez-vous vraiment supprimer définitivement le client "${clientEnEdition.nom_client}" ?`)) {
         setChargement(false);
+        setEnTrainDeSauvegarder(false);
         return;
       }
 
@@ -290,6 +360,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       alert('Erreur : ' + err.message);
     } finally {
       setChargement(false);
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -362,6 +433,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       if (valA > valB) return triOrdre === 'asc' ? 1 : -1;
       return 0;
     });
+
+  // Application de la limite mobile
+  const clientsAffiches = clientsFiltres.slice(0, limiteClients);
 
   const obtenirHistoriqueClient = () => {
     if (!clientHistoriqueId) return { lignes: [], soldeGlobal: 0 };
@@ -452,6 +526,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   const enregistrerReglementClient = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
     if (!factureSelectionnee || !montantReglementSaisi) return;
     const montantAvance = parseFloat(montantReglementSaisi);
     if (isNaN(montantAvance) || montantAvance <= 0) {
@@ -459,6 +534,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    setEnTrainDeSauvegarder(true);
     try {
       const montantActuelRegle = Number(factureSelectionnee.montant_regle || factureSelectionnee.montant_paye || 0);
       const nouveauRegle = montantActuelRegle + montantAvance;
@@ -477,6 +553,8 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       chargerDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -484,9 +562,25 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
+      
+      {/* EN-TÊTE AVEC AFFICHAGE DU RÔLE */}
+      <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1.5 overflow-hidden">
+        <div className="flex items-center gap-2">
+          <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
+            <span>👥</span> GESTION DES CLIENTS [{moduleActuel}]
+          </h3>
+          {roleUtilisateur && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
+            </span>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => setOngletActif('repertoire')}
           className={`py-1.5 px-3 rounded-lg font-bold transition text-center ${
             ongletActif === 'repertoire' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
@@ -496,6 +590,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         </button>
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => setOngletActif('historique')}
           className={`py-1.5 px-3 rounded-lg font-bold transition text-center ${
             ongletActif === 'historique' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800 hover:bg-slate-50'
@@ -508,21 +603,26 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       {ongletActif === 'repertoire' && (
         <>
           <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <h3 className="font-extrabold text-slate-900 uppercase text-xs">👥 GESTION DES CLIENTS [{moduleActuel}]</h3>
-            <button
-              onClick={() => {
-                if (afficherForm) {
-                  annulerForm();
-                } else {
-                  setNouveauClient({ nom_client: '', pays: 'cmr', telephone: '', email: '', id_categorie: '', solde_credit: 0 });
-                  setClientEnEdition(null);
-                  setAfficherForm(true);
-                }
-              }}
-              className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs"
-            >
-              {afficherForm ? '✖' : 'Nouveau'}
-            </button>
+            <h3 className="font-extrabold text-slate-900 uppercase text-xs">👥 CLIENTS [{moduleActuel}]</h3>
+            {permissions.peut_creer && (
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => {
+                  if (enTrainDeSauvegarder) return;
+                  if (afficherForm) {
+                    annulerForm();
+                  } else {
+                    setNouveauClient({ nom_client: '', pays: 'cmr', telephone: '', email: '', id_categorie: '', solde_credit: 0 });
+                    setClientEnEdition(null);
+                    setAfficherForm(true);
+                  }
+                }}
+                className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs"
+              >
+                {afficherForm ? '✖' : 'Nouveau'}
+              </button>
+            )}
           </div>
 
           {afficherForm && (
@@ -533,6 +633,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 </h4>
                 <button
                   type="button"
+                  disabled={enTrainDeSauvegarder}
                   onClick={annulerForm}
                   className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5"
                 >
@@ -546,6 +647,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   <input
                     type="text"
                     required
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauClient.nom_client}
                     onChange={(e) => setNouveauClient({ ...nouveauClient, nom_client: e.target.value.toUpperCase() })}
                     placeholder="EX: JEAN PIERRE"
@@ -557,6 +659,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Catégorie *</label>
                   <select
                     required
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauClient.id_categorie}
                     onChange={(e) => setNouveauClient({ ...nouveauClient, id_categorie: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
@@ -587,6 +690,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 <div className="sm:col-span-1">
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays *</label>
                   <select
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauClient.pays}
                     onChange={(e) => setNouveauClient({ ...nouveauClient, pays: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs"
@@ -609,6 +713,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                     </span>
                     <input
                       type="text"
+                      disabled={enTrainDeSauvegarder}
                       maxLength={paysActuelObj.longueur}
                       value={nouveauClient.telephone}
                       onChange={gererSaisieTelephone}
@@ -622,6 +727,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
                   <input
                     type="email"
+                    disabled={enTrainDeSauvegarder}
                     value={nouveauClient.email}
                     onChange={(e) => setNouveauClient({ ...nouveauClient, email: e.target.value.toLowerCase() })}
                     placeholder="client@email.com"
@@ -648,9 +754,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                         className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold px-2.5 py-1 rounded text-[9.5px] flex items-center gap-1 transition"
                         title="WhatsApp"
                       >
-                        <svg className="w-3.5 h-3.5 inline fill-current text-emerald-600" viewBox="0 0 24 24">
-                          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
-                        </svg>
                         WhatsApp
                       </a>
                     </>
@@ -667,18 +770,21 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {clientEnEdition && (
+                  {clientEnEdition && permissions.peut_supprimer && (
                     <button
                       type="button"
+                      disabled={enTrainDeSauvegarder}
                       onClick={supprimerClient}
-                      className="bg-red-600 hover:bg-red-700 text-white font-bold px-2.5 py-1.5 rounded text-[10px]"
+                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2.5 py-1.5 rounded text-[10px]"
                     >
-                      🗑️ Supprimer
+                      {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
                     </button>
                   )}
-                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-2xs">
-                    {clientEnEdition ? 'Mettre à jour' : 'Enregistrer'}
-                  </button>
+                  {((clientEnEdition && permissions.peut_modifier) || (!clientEnEdition && permissions.peut_creer)) && (
+                    <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-2xs">
+                      {enTrainDeSauvegarder ? 'Enregistrement...' : (clientEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
@@ -689,6 +795,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
               <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
                 <input
                   type="text"
+                  disabled={enTrainDeSauvegarder}
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value.toUpperCase())}
                   placeholder={`RECHERCHER PAR NOM OU TÉLÉPHONE [${moduleActuel}]...`}
@@ -697,7 +804,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="flex justify-between items-center text-[10px] text-slate-600 px-1 font-bold">
-                <span>Répertoire : <strong>{clientsFiltres.length}</strong> client(s)</span>
+                <span>Répertoire : <strong>{clientsAffiches.length}</strong> / <strong>{clientsFiltres.length}</strong> client(s) affichés</span>
               </div>
 
               {chargement ? (
@@ -707,46 +814,61 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   Aucun client enregistré pour le module {moduleActuel}.
                 </div>
               ) : (
-                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-                  <table className="w-full text-left text-xs table-fixed">
-                    <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
-                      <tr>
-                        <th onClick={() => gererTri('nom_client')} className="p-2.5 w-[45%] cursor-pointer hover:bg-slate-200 transition">
-                          Nom / Prénom(s) {rendreFlecheTri('nom_client')}
-                        </th>
-                        <th onClick={() => gererTri('categorie')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200 transition">
-                          Catégorie {rendreFlecheTri('categorie')}
-                        </th>
-                        <th onClick={() => gererTri('solde_credit')} className="p-2.5 w-[15%] text-right cursor-pointer hover:bg-slate-200 transition">
-                          Solde Crédit {rendreFlecheTri('solde_credit')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                      {clientsFiltres.map((c) => {
-                        const catTrouvee = categories.find((cat) => String(cat.id) === String(c.id_categorie));
-                        const soldeCreditCalcule = calculerSoldeCreditClient(c);
-                        return (
-                          <tr 
-                            key={c.id} 
-                            onClick={() => ouvrirEdition(c)}
-                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                            title="Cliquer pour modifier"
-                          >
-                            <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">{c.nom_client}</td>
-                            <td className="p-2.5 truncate">
-                              <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
-                                {catTrouvee ? catTrouvee.nom_categorie : 'STANDARD'}
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-right font-black text-blue-700 truncate">
-                              {soldeCreditCalcule.toLocaleString('fr-FR')} F
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="space-y-2">
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                    <table className="w-full text-left text-xs table-fixed">
+                      <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
+                        <tr>
+                          <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_client')} className="p-2.5 w-[45%] cursor-pointer hover:bg-slate-200 transition">
+                            Nom / Prénom(s) {rendreFlecheTri('nom_client')}
+                          </th>
+                          <th onClick={() => !enTrainDeSauvegarder && gererTri('categorie')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200 transition">
+                            Catégorie {rendreFlecheTri('categorie')}
+                          </th>
+                          <th onClick={() => !enTrainDeSauvegarder && gererTri('solde_credit')} className="p-2.5 w-[15%] text-right cursor-pointer hover:bg-slate-200 transition">
+                            Solde Crédit {rendreFlecheTri('solde_credit')}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                        {clientsAffiches.map((c) => {
+                          const catTrouvee = categories.find((cat) => String(cat.id) === String(c.id_categorie));
+                          const soldeCreditCalcule = calculerSoldeCreditClient(c);
+                          return (
+                            <tr 
+                              key={c.id} 
+                              onClick={() => !enTrainDeSauvegarder && permissions.peut_modifier && ouvrirEdition(c)}
+                              className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                              title="Cliquer pour modifier"
+                            >
+                              <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">{c.nom_client}</td>
+                              <td className="p-2.5 truncate">
+                                <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
+                                  {catTrouvee ? catTrouvee.nom_categorie : 'STANDARD'}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-right font-black text-blue-700 truncate">
+                                {soldeCreditCalcule.toLocaleString('fr-FR')} F
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {limiteClients < clientsFiltres.length && (
+                    <div className="text-center pt-1 pb-2">
+                      <button
+                        type="button"
+                        disabled={enTrainDeSauvegarder}
+                        onClick={() => setLimiteClients(prev => prev + 20)}
+                        className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300"
+                      >
+                        📥 Charger 20 clients de plus ({clientsFiltres.length - limiteClients} restants)
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -764,6 +886,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
             <div>
               <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Client *</label>
               <select
+                disabled={enTrainDeSauvegarder}
                 value={clientHistoriqueId}
                 onChange={(e) => setClientHistoriqueId(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
@@ -778,6 +901,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
               <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Date Début :</label>
               <input
                 type="date"
+                disabled={enTrainDeSauvegarder}
                 value={dateDebut}
                 onChange={(e) => setDateDebut(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
@@ -788,6 +912,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
               <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Date Fin :</label>
               <input
                 type="date"
+                disabled={enTrainDeSauvegarder}
                 value={dateFin}
                 onChange={(e) => setDateFin(e.target.value)}
                 className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
@@ -806,16 +931,16 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
             <table className="w-full text-left text-xs table-fixed">
               <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                 <tr>
-                  <th onClick={() => gererTriHistorique('date')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
+                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('date')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
                     Date {rendreFlecheTriHistorique('date')}
                   </th>
-                  <th onClick={() => gererTriHistorique('numeroFacture')} className="p-2.5 w-[30%] cursor-pointer hover:bg-slate-200 transition font-mono">
+                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('numeroFacture')} className="p-2.5 w-[30%] cursor-pointer hover:bg-slate-200 transition font-mono">
                     N° Facture {rendreFlecheTriHistorique('numeroFacture')}
                   </th>
-                  <th onClick={() => gererTriHistorique('montant')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
+                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('montant')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
                     Montant {rendreFlecheTriHistorique('montant')}
                   </th>
-                  <th onClick={() => gererTriHistorique('statut')} className="p-2.5 w-[20%] text-center cursor-pointer hover:bg-slate-200 transition">
+                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('statut')} className="p-2.5 w-[20%] text-center cursor-pointer hover:bg-slate-200 transition">
                     Statut {rendreFlecheTriHistorique('statut')}
                   </th>
                 </tr>
@@ -829,7 +954,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   resultatHistorique.lignes.map((ligne, idx) => (
                     <tr 
                       key={idx} 
-                      onClick={() => setFactureSelectionnee(ligne.dataOrigine)}
+                      onClick={() => !enTrainDeSauvegarder && setFactureSelectionnee(ligne.dataOrigine)}
                       className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                       title="Cliquer pour ouvrir la facture"
                     >
@@ -871,6 +996,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
               </div>
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={() => setFactureSelectionnee(null)}
                 className="text-slate-300 hover:text-white font-black text-xs p-1"
               >
@@ -913,11 +1039,12 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                       <span className="text-red-700">Reste : {totauxFacture.resteAPayer.toLocaleString('fr-FR')} F</span>
                     </div>
 
-                    {totauxFacture.resteAPayer > 0 && (
+                    {totauxFacture.resteAPayer > 0 && permissions.peut_modifier && (
                       <form onSubmit={enregistrerReglementClient} className="flex gap-2 pt-1 border-t border-slate-100">
                         <input
                           type="number"
                           step="0.01"
+                          disabled={enTrainDeSauvegarder}
                           placeholder="Montant règlement / avance"
                           value={montantReglementSaisi}
                           onChange={(e) => setMontantReglementSaisi(e.target.value)}
@@ -926,9 +1053,10 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                         />
                         <button
                           type="submit"
-                          className="bg-emerald-600 hover:bg-emerald-750 text-white font-black px-3 py-1.5 rounded text-[10px] shrink-0 shadow-xs"
+                          disabled={enTrainDeSauvegarder}
+                          className="bg-emerald-600 hover:bg-emerald-750 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-[10px] shrink-0 shadow-xs"
                         >
-                          Valider Règlement
+                          {enTrainDeSauvegarder ? 'Patientez...' : 'Valider Règlement'}
                         </button>
                       </form>
                     )}
@@ -940,6 +1068,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
             <div className="p-3 bg-white border-t border-slate-200 flex justify-between items-center">
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={() => window.print()}
                 className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
               >
@@ -947,6 +1076,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
               </button>
               <button
                 type="button"
+                disabled={enTrainDeSauvegarder}
                 onClick={() => setFactureSelectionnee(null)}
                 className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
               >

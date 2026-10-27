@@ -13,6 +13,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
+  // --- GESTION DES DROITS ET AUTORISATIONS ---
+  const [roleNom, setRoleNom] = useState('');
+  const [permissions, setPermissions] = useState({
+    peut_creer: true,
+    peut_modifier: true,
+    peut_supprimer: false,
+    peut_valider: true
+  });
+
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteDocuments, setLimiteDocuments] = useState(20);
+
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
@@ -69,9 +81,49 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return `${prefix}-${String(numsUniques.length + 1).padStart(2, '0')}`;
   };
 
+  // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
   const chargerDonnees = async () => {
     setChargement(true);
     try {
+      // 1. Charger et analyser rigoureusement les permissions de l'employé connecté
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+        setRoleNom(nomRoleUser);
+
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          const permMouv = userObj.permissions?.['mouvements_stock'] || userObj.permissions?.['mouvements'] || userObj.permissions?.['stock'];
+          
+          if (permMouv) {
+            setPermissions({
+              peut_creer: permMouv.creation ?? permMouv.creer ?? true,
+              peut_modifier: permMouv.modification ?? permMouv.modifier ?? true,
+              peut_supprimer: permMouv.suppression ?? false,
+              peut_valider: permMouv.validation ?? permMouv.valider ?? true
+            });
+          } else {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['mouvements_stock'] || roleData?.permissions?.['mouvements'] || roleData?.permissions?.['stock'];
+            if (rolePerm) {
+              setPermissions({
+                peut_creer: rolePerm.creation ?? rolePerm.creer ?? true,
+                peut_modifier: rolePerm.modification ?? rolePerm.modifier ?? true,
+                peut_supprimer: rolePerm.suppression ?? false,
+                peut_valider: rolePerm.validation ?? rolePerm.valider ?? true
+              });
+            }
+          }
+        }
+      }
+
       const { data: dataDepots } = await supabase
         .from('depots_stock')
         .select('*')
@@ -108,13 +160,26 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       setFamilles(dataFamilles || []);
 
-      const { data: dataMouvements } = await supabase
-        .from('mouvements_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .order('created_at', { ascending: false });
-      const mouvementsList = dataMouvements || [];
+      let mouvementsList = [];
+      const { data: mouvementsRpc, error: rpcError } = await supabase.rpc('recuperer_mouvements_stock', {
+        p_entreprise_id: entrepriseId,
+        p_module: moduleActuel
+      });
+
+      if (rpcError) {
+        const { data: dataMouvements, error: errMouv } = await supabase
+          .from('mouvements_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .order('created_at', { ascending: false });
+
+        if (errMouv) throw errMouv;
+        mouvementsList = dataMouvements || [];
+      } else {
+        mouvementsList = mouvementsRpc || [];
+      }
+
       setMouvements(mouvementsList);
 
       const { data: dataAppro } = await supabase
@@ -265,6 +330,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const selectionnerArticleEtFocusQte = (art) => {
+    if (enTrainDeSauvegarder) return;
     if (!verifierEnTeteAvantSaisie()) return;
     setArticleSelectionneTemp(art);
     setModalArticleOuvert(false);
@@ -282,6 +348,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const ajouterArticleAuPanier = () => {
+    if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_creer && !mouvementEnEditionId) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.');
+      return;
+    }
     if (!verifierEnTeteAvantSaisie() || !articleSelectionneTemp) { if (!articleSelectionneTemp) alert('Sélectionnez un article.'); return; }
     const qte = parseInt(quantiteSaisie);
     if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { alert('Quantité invalide.'); return; }
@@ -338,6 +409,20 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   const validerDocumentMouvement = async () => {
     if (enTrainDeSauvegarder) return;
+
+    if (mouvementEnEditionId && !permissions.peut_modifier) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de modifier les mouvements.');
+      return;
+    }
+    if (!mouvementEnEditionId && !permissions.peut_creer) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.');
+      return;
+    }
+    if (!permissions.peut_valider) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de valider des documents.');
+      return;
+    }
+
     if (!verifierEnTeteAvantSaisie() || lignesPanier.length === 0) { if (lignesPanier.length === 0) alert('Ajoutez des articles.'); return; }
 
     setEnTrainDeSauvegarder(true);
@@ -385,6 +470,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const ouvrirDocumentDepuisListe = (numeroDocUnique) => {
+    if (enTrainDeSauvegarder) return;
+    if (mouvementEnEditionId && !permissions.peut_modifier) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de modifier les mouvements.');
+      return;
+    }
+
     const lignesAssociees = mouvements.filter(m => m.motif_remarque === numeroDocUnique);
     if (lignesAssociees.length === 0) return;
     const premier = lignesAssociees[0];
@@ -409,30 +500,31 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerDocumentComplet = async (numeroDocUnique) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_supprimer) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des mouvements.');
+      return;
+    }
     if (!confirm(`Supprimer le document ${numeroDocUnique} ?`)) return;
+
+    setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', numeroDocUnique);
       if (error) throw error;
       alert('Supprimé.');
-      chargerDonnees();
-    } catch (err) { alert('Erreur : ' + err.message); }
+      await chargerDonnees();
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
   };
 
   const formaterNumeroDocAffichage = (motifBrut) => {
     if (!motifBrut) return 'SANS-REF';
-    
-    // Si c'est une commande (ex: LIVRAISON EFFECTIVE CMD-1 (MARIUS MARKET) -> CMD-1)
     const matchCmd = motifBrut.match(/(CMD-\d+)/i);
-    if (matchCmd) {
-      return matchCmd[1];
-    }
-
-    // Si c'est un mouvement du type TR-01, ME-01, MS-01, etc.
+    if (matchCmd) return matchCmd[1];
     const matchType = motifBrut.match(/([A-Z]+-\d+)/i);
-    if (matchType) {
-      return matchType[1];
-    }
-
+    if (matchType) return matchType[1];
     return motifBrut;
   };
 
@@ -448,6 +540,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   }, {}));
 
   const gererTri = (colonne) => {
+    if (enTrainDeSauvegarder) return;
     if (colonneTri === colonne) setOrdreTri(ordreTri === 'asc' ? 'desc' : 'asc');
     else { setColonneTri(colonne); setOrdreTri('asc'); }
   };
@@ -461,20 +554,61 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return 0;
   });
 
+  const documentsAffiches = documentsTries.slice(0, limiteDocuments);
   const enTeteVerrouille = lignesPanier.length > 0 || enTrainDeSauvegarder;
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
+      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <span className="font-extrabold uppercase text-slate-900">MOUVEMENTS DE STOCK</span>
+          {roleNom && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleNom}
+            </span>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setModeAffichage('SAISIE'); setMouvementEnEditionId(null); setLignesPanier([]); setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements) })); }} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisie mouvement'}</button>
-        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModeAffichage('LISTE_DOCS')} className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}>📋 Liste mouvement ({documentsGroupes.length})</button>
+        <button 
+          type="button" 
+          disabled={enTrainDeSauvegarder} 
+          onClick={() => { 
+            if (enTrainDeSauvegarder) return;
+            setModeAffichage('SAISIE'); 
+            setMouvementEnEditionId(null); 
+            setLignesPanier([]); 
+            setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements) })); 
+          }} 
+          className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
+        >
+          ✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisie mouvement'}
+        </button>
+        <button 
+          type="button" 
+          disabled={enTrainDeSauvegarder} 
+          onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
+          className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
+        >
+          📋 Liste mouvement ({documentsGroupes.length})
+        </button>
       </div>
 
       {modeAffichage === 'SAISIE' && (
         <>
           <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
             <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
-            <select disabled={enTeteVerrouille} value={typeOperation} onChange={(e) => { const nt = e.target.value; setTypeOperation(nt); if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements) })); }} className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]">
+            <select 
+              disabled={enTeteVerrouille} 
+              value={typeOperation} 
+              onChange={(e) => { 
+                const nt = e.target.value; 
+                setTypeOperation(nt); 
+                if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements) })); 
+              }} 
+              className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]"
+            >
               <option value="TRANSFERT">🔀 Transfert (TR)</option>
               <option value="ENTREE">📥 Entrée (ME)</option>
               <option value="SORTIE">📤 Sortie (MS)</option>
@@ -484,52 +618,62 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className={`bg-white border-2 border-orange-500/50 p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
-            <div className="flex justify-between items-center pb-1 border-b"><span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}</span><span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span></div>
+            <div className="flex justify-between items-center pb-1 border-b">
+              <span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}</span>
+              <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span>
+            </div>
             
             <div className="space-y-1.5 text-[9.5px]">
-              {/* LIGNE 1 : Date, Référence, Opérateur */}
               <div className="grid grid-cols-3 gap-1.5">
-                <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" /></div>
-                <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. (Optionnel)</label><input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" /></div>
-                <div><label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Opérateur</label><input type="text" disabled value={enTeteDoc.operateur} className="w-full bg-slate-100 text-slate-800 border rounded p-1 font-bold truncate" /></div>
+                <div>
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label>
+                  <input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
+                </div>
+                <div>
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. (Optionnel)</label>
+                  <input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
+                </div>
+                <div>
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Opérateur</label>
+                  <input type="text" disabled value={enTeteDoc.operateur} className="w-full bg-slate-100 text-slate-800 border rounded p-1 font-bold truncate" />
+                </div>
               </div>
 
-              {/* LIGNE 2 : Affichage dynamique selon le type de mouvement */}
               {typeOperation === 'TRANSFERT' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
-                  <div className="space-y-1">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Origine (Dépôt & Emplacement) *</label>
-                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-orange-600">
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  <div className="space-y-1 bg-orange-50/40 p-1.5 rounded-lg border border-orange-200">
+                    <label className="block font-black text-[8px] text-orange-800 uppercase">🏢 Origine (Source)</label>
+                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-700 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
-                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
-                      <option value="">-- Aucun (Prise directe Dépôt) --</option>
+                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
+                      <option value="">-- Emplacement --</option>
                       {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Destination (Dépôt & Emplacement) *</label>
-                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-blue-600">
-                      <option value="">-- Dépôt Destination --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
+                  <div className="space-y-1 bg-blue-50/40 p-1.5 rounded-lg border border-blue-200">
+                    <label className="block font-black text-[8px] text-blue-800 uppercase">🎯 Destination</label>
+                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-blue-700 text-[9px]">
+                      <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
-                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
-                      <option value="">-- Emplacement / Livreur Dest. --</option>
+                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
+                      <option value="">-- Emplacement --</option>
                       {emplacementsDestinationFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                     </select>
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
-                  <div>
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Dépôt *</label>
-                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-orange-600">
+                  <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">🏢 Dépôt</label>
+                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-600 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Emplacement</label>
-                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold text-slate-700">
+                  <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 Emplacement</label>
+                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
                       <option value="">-- Aucun --</option>
                       {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                     </select>
@@ -541,16 +685,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
           <div className="bg-white border p-2 rounded-xl shadow-2xs space-y-1.5">
             <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles [{moduleActuel}]</span>
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
-              <div className="sm:col-span-8">
+            
+            <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
+              <div className="col-span-8">
                 <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
-                <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between">
-                  <span>{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
-                  <span className="text-orange-600">🔍</span>
+                <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
+                  <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
+                  <span className="text-orange-600 shrink-0 ml-1">🔍</span>
                 </button>
               </div>
               
-              <div className="sm:col-span-3">
+              <div className="col-span-3">
                 <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
                 <input 
                   ref={inputQuantiteRef} 
@@ -565,8 +710,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                 />
               </div>
 
-              <div className="sm:col-span-1">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleAuPanier} className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-bold p-1 rounded text-center text-[9px] shadow-2xs" title="Valider l'article (ou Entrée)">
+              <div className="col-span-1">
+                <button type="button" disabled={enTrainDeSauvegarder || (!permissions.peut_creer && !mouvementEnEditionId)} onClick={ajouterArticleAuPanier} className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" title="Valider l'article (ou Entrée)">
                   OK
                 </button>
               </div>
@@ -575,8 +720,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
             {modalArticleOuvert && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
                 <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2 max-h-[80vh] flex flex-col">
-                  <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-500 font-bold">✕</button></div>
-                  <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." className="w-full bg-slate-50 border rounded-xl px-2.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400" autoFocus />
+                  <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalArticleOuvert(false)} className="text-slate-500 font-bold">✕</button></div>
+                  <input type="text" disabled={enTrainDeSauvegarder} value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." className="w-full bg-slate-50 border rounded-xl px-2.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400" autoFocus />
                   <div className="overflow-y-auto space-y-1 flex-1 max-h-60">
                     {articlesPopupFiltres.length === 0 ? (
                       <p className="text-center text-slate-400 py-4 text-[10px] font-bold">Aucun article trouvé.</p>
@@ -584,7 +729,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                       articlesPopupFiltres.map((art) => {
                         const artId = art.id_article || art.id;
                         return (
-                          <div key={artId} onClick={() => selectionnerArticleEtFocusQte(art)} className="p-2 rounded-xl border bg-slate-50 hover:bg-orange-50 cursor-pointer flex justify-between items-center">
+                          <div key={artId} onClick={() => !enTrainDeSauvegarder && selectionnerArticleEtFocusQte(art)} className="p-2 rounded-xl border bg-slate-50 hover:bg-orange-50 cursor-pointer flex justify-between items-center">
                             <span className="font-extrabold uppercase text-[10px] text-slate-900">{art.Designation || art.designation}</span>
                             <span className="text-[9.5px] font-bold text-emerald-600">Stock: {calculerStockPourDepotActuel(artId)}</span>
                           </div>
@@ -604,11 +749,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
                   </thead>
                   <tbody className="divide-y text-[9px]">
                     {lignesPanier.map((ligne, index) => (
-                      <tr key={index} onClick={() => modifierLignePanier(ligne)} className="hover:bg-orange-50/70 cursor-pointer transition">
+                      <tr key={index} onClick={() => !enTrainDeSauvegarder && modifierLignePanier(ligne)} className="hover:bg-orange-50/70 cursor-pointer transition">
                         <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
                         <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
                         <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]" title="Supprimer">🗑️</button>
+                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
                         </td>
                       </tr>
                     ))}
@@ -618,15 +763,21 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
             )}
 
             <div className="pt-1.5 flex items-center justify-between gap-1 flex-wrap">
-              {mouvementEnEditionId ? (<button type="button" disabled={enTrainDeSauvegarder} onClick={() => supprimerDocumentComplet(enTeteDoc.numeroDoc)} className="bg-red-600 text-white font-bold px-2 py-1 rounded text-[9px]">🗑️ Supprimer</button>) : <div />}
+              {mouvementEnEditionId ? (
+                permissions.peut_supprimer ? (
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => supprimerDocumentComplet(enTeteDoc.numeroDoc)} className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2 py-1 rounded text-[9px]">🗑️ Supprimer</button>
+                ) : <div />
+              ) : <div />}
               
               <div className="flex items-center gap-1 flex-wrap">
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2 py-1 rounded text-[9px]">🖨️ Imprimer</button>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-[9px]">📤 Partager</button>
-                <button type="button" onClick={validerDocumentMouvement} disabled={lignesPanier.length === 0 || enTrainDeSauvegarder} className={`font-bold px-2.5 py-1 rounded text-[9px] ${lignesPanier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
-                  {enTrainDeSauvegarder ? 'Validation...' : '✅ Valider'}
-                </button>
+                {((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
+                  <button type="button" onClick={validerDocumentMouvement} disabled={lignesPanier.length === 0 || enTrainDeSauvegarder} className={`font-bold px-2.5 py-1 rounded text-[9px] ${lignesPanier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                    {enTrainDeSauvegarder ? 'Validation...' : '✅ Valider'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -634,29 +785,29 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       )}
 
       {modeAffichage === 'LISTE_DOCS' && (
-        <div className="bg-white border rounded-xl overflow-hidden shadow-2xs">
+        <div className="bg-white border rounded-xl overflow-hidden shadow-2xs space-y-2">
           <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]">
-            <span className="font-extrabold uppercase text-slate-800">Documents Enregistrés [{moduleActuel}]</span>
+            <span className="font-extrabold uppercase text-slate-800">Documents Enregistrés [{moduleActuel}] ({documentsAffiches.length} / {documentsTries.length})</span>
             <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[9.5px]">
               <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
                 <tr>
-                  <th onClick={() => gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
-                  <th onClick={() => gererTri('type')} className="p-1.5 cursor-pointer">Type</th>
-                  <th onClick={() => gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° Doc</th>
-                  <th onClick={() => gererTri('operateur')} className="p-1.5 cursor-pointer">Opérateur</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('type')} className="p-1.5 cursor-pointer">Type</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° Doc</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('operateur')} className="p-1.5 cursor-pointer">Opérateur</th>
                 </tr>
               </thead>
               <tbody className="divide-y text-[9.5px]">
-                {documentsTries.length === 0 ? (
+                {documentsAffiches.length === 0 ? (
                   <tr>
                     <td colSpan="4" className="p-4 text-center text-slate-400 font-bold">Aucun document pour le module {moduleActuel}.</td>
                   </tr>
                 ) : (
-                  documentsTries.map((doc, idx) => (
-                    <tr key={idx} onClick={() => ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
+                  documentsAffiches.map((doc, idx) => (
+                    <tr key={idx} onClick={() => !enTrainDeSauvegarder && permissions.peut_modifier && ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
                       <td className="p-1.5 font-bold whitespace-nowrap"><span className="px-1 py-0.5 bg-slate-100 text-slate-800 rounded text-[8.5px]">{doc.type}</span></td>
                       <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numeroDoc}</td>
@@ -667,15 +818,28 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
               </tbody>
             </table>
           </div>
+
+          {limiteDocuments < documentsTries.length && (
+            <div className="text-center pt-2 pb-3 px-2">
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setLimiteDocuments(prev => prev + 20)}
+                className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+              >
+                📥 Charger 20 documents de plus ({documentsTries.length - limiteDocuments} restants)
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {modalPartageOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2">
-            <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">Partager</span><button type="button" onClick={() => setModalPartageOuverte(false)} className="text-slate-500 font-bold">✕</button></div>
-            <div className="space-y-1 text-[9.5px]"><label className="block font-bold text-slate-700">Format :</label><div className="grid grid-cols-3 gap-1">{['PDF', 'PNG', 'JPG'].map(fmt => (<button key={fmt} type="button" onClick={() => setFormatPartage(fmt)} className={`py-1 rounded font-bold border ${formatPartage === fmt ? 'bg-orange-600 text-white' : 'bg-slate-50 text-slate-800'}`}>{fmt}</button>))}</div></div>
-            <div className="space-y-1 pt-1 text-[9.5px]"><label className="block font-bold text-slate-700">Canal :</label><div className="space-y-1"><button type="button" onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-emerald-50 text-emerald-900 font-bold p-1.5 rounded-xl text-left">💚 WhatsApp</button><button type="button" onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-blue-50 text-blue-900 font-bold p-1.5 rounded-xl text-left">📧 Mail</button></div></div>
+            <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">Partager</span><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(false)} className="text-slate-500 font-bold">✕</button></div>
+            <div className="space-y-1 text-[9.5px]"><label className="block font-bold text-slate-700">Format :</label><div className="grid grid-cols-3 gap-1">{['PDF', 'PNG', 'JPG'].map(fmt => (<button key={fmt} type="button" disabled={enTrainDeSauvegarder} onClick={() => setFormatPartage(fmt)} className={`py-1 rounded font-bold border ${formatPartage === fmt ? 'bg-orange-600 text-white' : 'bg-slate-50 text-slate-800'}`}>{fmt}</button>))}</div></div>
+            <div className="space-y-1 pt-1 text-[9.5px]"><label className="block font-bold text-slate-700">Canal :</label><div className="space-y-1"><button type="button" disabled={enTrainDeSauvegarder} onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-emerald-50 text-emerald-900 font-bold p-1.5 rounded-xl text-left">💚 WhatsApp</button><button type="button" disabled={enTrainDeSauvegarder} onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-blue-50 text-blue-900 font-bold p-1.5 rounded-xl text-left">📧 Mail</button></div></div>
           </div>
         </div>
       )}

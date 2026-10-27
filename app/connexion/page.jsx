@@ -12,14 +12,12 @@ export default function ConnexionEntreprise() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // 1. Nettoyage total de la session et verrouillage du bouton "Retour" du navigateur
   useEffect(() => {
     localStorage.removeItem('utilisateurConnecte');
     localStorage.removeItem('emailConnecte');
     localStorage.removeItem('entrepriseId');
     localStorage.removeItem('utilisateur_connecte');
 
-    // Empêche le retour en arrière dans l'historique
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
@@ -44,59 +42,90 @@ export default function ConnexionEntreprise() {
       let nomUtilisateurConnecte = '';
       let authenticated = false;
 
-      // 1. Recherche prioritaire dans la table 'entreprises' (Administrateur / Gérant)
-      const { data: entList } = await supabase
-        .from('entreprises')
+      // 1. RECHERCHE DANS LES UTILISATEURS (Employés par e-mail, nom ou téléphone)
+      const { data: userList, error: errUser } = await supabase
+        .from('utilisateurs')
         .select('*');
 
-      if (entList) {
-        const entrepriseTrouvee = entList.find(ent => 
-          (ent.id_entreprise && ent.id_entreprise.toUpperCase() === cleanIdentifiant.toUpperCase()) || 
-          (ent.email && ent.email.toLowerCase() === cleanIdentifiant.toLowerCase()) ||
-          (ent.telephone && ent.telephone.replace(/[^0-9]/g, '') === cleanIdentifiant.replace(/[^0-9]/g, ''))
-        );
+      if (errUser) {
+        console.error("Erreur lecture table utilisateurs :", errUser);
+      }
 
-        if (entrepriseTrouvee) {
-          const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
-          // Si un mot de passe est défini en base, on le vérifie. S'il n'y en a pas, on valide l'accès admin.
-          if (!mdpBase || mdpBase === cleanPin) {
-            entrepriseIdCible = entrepriseTrouvee.id_entreprise;
-            nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-            authenticated = true;
+      if (userList) {
+        const utilisateurTrouve = userList.find(u => {
+          const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
+          const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
+
+          // Nettoyage intelligent du téléphone (retrait de '+' et suppression de l'indicatif 237 si présent)
+          let telBase = u.telephone ? String(u.telephone).replace(/[^0-9]/g, '') : '';
+          if (telBase.startsWith('237')) telBase = telBase.substring(3);
+
+          let telSaisi = cleanIdentifiant.replace(/[^0-9]/g, '');
+          if (telSaisi.startsWith('237')) telSaisi = telSaisi.substring(3);
+
+          const matchTel = telBase && telSaisi && telBase === telSaisi;
+
+          return matchEmail || matchTel || matchNom;
+        });
+
+        if (utilisateurTrouve) {
+          if (utilisateurTrouve.acces_application === false) {
+            throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion à l'application.");
           }
+
+          const mdpUser = String(utilisateurTrouve.mot_de_passe || '').trim();
+          if (mdpUser && mdpUser !== cleanPin) {
+            throw new Error("Mot de passe ou code PIN incorrect.");
+          }
+
+          entrepriseIdCible = utilisateurTrouve.id_entreprise;
+          nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
+          authenticated = true;
         }
       }
 
-      // 2. Recherche dans la table 'utilisateurs' (Employés / Personnel créés par l'entreprise)
+      // 2. RECHERCHE DANS LES ENTREPRISES (Administrateur / Gérant)
       if (!authenticated) {
-        const { data: userList } = await supabase
-          .from('utilisateurs')
+        const { data: entList, error: errEnt } = await supabase
+          .from('entreprises')
           .select('*');
 
-        if (userList) {
-          const utilisateurTrouve = userList.find(u => {
-            const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
-            const matchTel = u.telephone && u.telephone.replace(/[^0-9]/g, '') === cleanIdentifiant.replace(/[^0-9]/g, '');
-            const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
-            return matchEmail || matchTel || matchNom;
+        if (errEnt) {
+          console.error("Erreur lecture table entreprises :", errEnt);
+        }
+
+        if (entList) {
+          const entrepriseTrouvee = entList.find(ent => {
+            const matchId = ent.id_entreprise && ent.id_entreprise.toUpperCase() === cleanIdentifiant.toUpperCase();
+            const matchEmail = ent.email && ent.email.toLowerCase() === cleanIdentifiant.toLowerCase();
+            
+            let telEnt = ent.telephone ? String(ent.telephone).replace(/[^0-9]/g, '') : '';
+            if (telEnt.startsWith('237')) telEnt = telEnt.substring(3);
+
+            let telSaisi = cleanIdentifiant.replace(/[^0-9]/g, '');
+            if (telSaisi.startsWith('237')) telSaisi = telSaisi.substring(3);
+
+            const matchTel = telEnt && telSaisi && telEnt === telSaisi;
+
+            return matchId || matchEmail || matchTel;
           });
 
-          if (utilisateurTrouve) {
-            // Vérification stricte si l'accès application est autorisé pour cet employé
-            if (utilisateurTrouve.acces_application === false) {
-              throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion à l'application.");
-            }
-
-            // Vérification du mot de passe / code PIN de l'employé
-            const mdpUser = String(utilisateurTrouve.mot_de_passe || '').trim();
-            if (mdpUser && mdpUser !== cleanPin) {
+          if (entrepriseTrouvee) {
+            const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
+            
+            if (!mdpBase || mdpBase === cleanPin) {
+              entrepriseIdCible = entrepriseTrouvee.id_entreprise;
+              
+              if (entrepriseIdCible === '4TS-234321') {
+                nomUtilisateurConnecte = 'STEPHANE KTS';
+              } else {
+                nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
+              }
+              
+              authenticated = true;
+            } else {
               throw new Error("Mot de passe ou code PIN incorrect.");
             }
-
-            entrepriseIdCible = utilisateurTrouve.id_entreprise;
-            // Récupération exacte du nom et prénom du collaborateur (résout le problème de l'affichage "UTILISATEUR")
-            nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
-            authenticated = true;
           }
         }
       }
@@ -105,16 +134,14 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant, e-mail ou numéro de téléphone introuvable dans le système. Accès non autorisé.");
       }
 
-      // Sauvegarde des informations de session après authentification réussie
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
 
-      // Redirection définitive avec remplacement d'historique (bloque le retour arrière vers le login)
       window.location.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
 
     } catch (err) {
-      console.error('Erreur connexion :', err);
+      console.error('Erreur attrapée :', err);
       setErrorMsg(err.message || "Erreur lors de la connexion.");
     } finally {
       setLoading(false);
@@ -143,7 +170,7 @@ export default function ConnexionEntreprise() {
           </div>
         )}
 
-        <form onSubmit={handleConnexion} className="space-y-4">
+        <form onSubmit={handleConnexion} className="space-y-4" autoComplete="off">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-blue-300 mb-1.5">
               E-mail, Téléphone ou ID Entreprise <span className="text-orange-500">*</span>
@@ -151,12 +178,13 @@ export default function ConnexionEntreprise() {
             <input
               type="text"
               required
+              autoComplete="off"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck="false"
               value={identifiant}
               onChange={(e) => setIdentifiant(e.target.value)}
-              placeholder="ex: 699000000 ou email@domaine.com"
+              placeholder="ex: 673289431 ou email@domaine.com"
               className="w-full bg-[#0d1b2a] border border-blue-900 rounded-xl px-3.5 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>
@@ -169,6 +197,7 @@ export default function ConnexionEntreprise() {
               <input
                 type={showPin ? "text" : "password"}
                 required
+                autoComplete="new-password"
                 autoCapitalize="none"
                 autoCorrect="off"
                 value={pinCode}

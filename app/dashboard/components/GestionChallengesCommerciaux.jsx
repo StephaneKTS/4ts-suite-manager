@@ -12,6 +12,21 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
   const [challengeEnEdition, setChallengeEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
 
+  // --- GESTION DES DROITS ET AUTORISATIONS ---
+  const [roleNom, setRoleNom] = useState('');
+  const [permissions, setPermissions] = useState({
+    lecture: true,
+    creation: true,
+    modification: true,
+    suppression: false,
+  });
+
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteChallenges, setLimiteChallenges] = useState(20);
+
+  // --- RÈGLE 3 : DÉSACTIVATION TEMPORAIRE (ÉVITER LES DOUBLONS) ---
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+
   // État pour afficher la liste des employés d'un statut cliqué
   const [statutSelectionnePourAffichage, setStatutSelectionnePourAffichage] = useState(null);
 
@@ -47,17 +62,69 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
   const [volumeCourses, setVolumeCourses] = useState(10);
   const [fraisMoyen, setFraisMoyen] = useState(1500);
 
+  // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
   const chargerChallenges = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase
-        .from('challenges_commerciaux')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .order('created_at', { ascending: false });
+      // 1. Charger et analyser les permissions de l'employé connecté
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+        setRoleNom(nomRoleUser);
 
-      if (error) throw error;
-      setChallenges(data || []);
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          const permChallenges = userObj.permissions?.['challenges_commerciaux'] || userObj.permissions?.['challenges'] || userObj.permissions?.['commercial'];
+          
+          if (permChallenges) {
+            setPermissions({
+              lecture: permChallenges.lecture ?? true,
+              creation: permChallenges.creation ?? true,
+              modification: permChallenges.modification ?? true,
+              suppression: permChallenges.suppression ?? false,
+            });
+          } else {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['challenges_commerciaux'] || roleData?.permissions?.['challenges'] || roleData?.permissions?.['commercial'];
+            if (rolePerm) {
+              setPermissions({
+                lecture: rolePerm.lecture ?? true,
+                creation: rolePerm.creation ?? true,
+                modification: rolePerm.modification ?? true,
+                suppression: rolePerm.suppression ?? false,
+              });
+            }
+          }
+        }
+      }
+
+      let liste = [];
+      const { data: challengesRpc, error: rpcError } = await supabase.rpc('recuperer_challenges_commerciaux', {
+        p_entreprise_id: entrepriseId,
+        p_module: moduleActuel
+      });
+
+      if (rpcError) {
+        const { data, error } = await supabase
+          .from('challenges_commerciaux')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        liste = data || [];
+      } else {
+        liste = challengesRpc || [];
+      }
+
+      setChallenges(liste);
 
       // Charger la liste des employés
       const { data: empData } = await supabase
@@ -87,7 +154,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
 
   useEffect(() => { 
     chargerChallenges(); 
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   // Calcul du nombre de jours selon le choix de simulation
   const obtenirNombreJoursFacteur = () => {
@@ -113,6 +180,18 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
 
   const enregistrerChallenge = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
+    if (challengeEnEdition && !permissions.modification) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de modifier les challenges.');
+      return;
+    }
+    if (!challengeEnEdition && !permissions.creation) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de créer des challenges.');
+      return;
+    }
+
+    setEnTrainDeSauvegarder(true);
     try {
       const payloadChallenge = {
         id_entreprise: entrepriseId,
@@ -128,18 +207,25 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
       };
 
       if (challengeEnEdition) {
-        await supabase.from('challenges_commerciaux').update(payloadChallenge).eq('id', challengeEnEdition.id);
+        const { error } = await supabase.from('challenges_commerciaux').update(payloadChallenge).eq('id', challengeEnEdition.id);
+        if (error) throw error;
         alert('Challenge commercial mis à jour avec succès !');
       } else {
-        await supabase.from('challenges_commerciaux').insert([payloadChallenge]);
+        const { error } = await supabase.from('challenges_commerciaux').insert([payloadChallenge]);
+        if (error) throw error;
         alert('Challenge commercial créé avec succès !');
       }
       annulerForm();
-      chargerChallenges();
-    } catch (err) { alert('Erreur : ' + err.message); }
+      await chargerChallenges();
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
   };
 
   const ouvrirEdition = (item) => {
+    if (enTrainDeSauvegarder) return;
     setChallengeEnEdition(item);
     let employesParsed = [];
     let statutsParsed = moduleActuel === 'LIVRAISON' ? ['LIVREUR'] : ['COMMERCIAL'];
@@ -162,6 +248,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
   };
 
   const annulerForm = () => {
+    if (enTrainDeSauvegarder) return;
     setChallengeEnEdition(null);
     setStatutSelectionnePourAffichage(null);
     setNouveauChallenge({ 
@@ -178,21 +265,32 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
   };
 
   const supprimerChallenge = async () => {
-    if (!challengeEnEdition) return;
+    if (enTrainDeSauvegarder || !challengeEnEdition) return;
+
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des challenges.');
+      return;
+    }
 
     if (!confirm(`Voulez-vous vraiment supprimer définitivement le challenge "${challengeEnEdition.nom_challenge}" ?`)) return;
 
+    setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('challenges_commerciaux').delete().eq('id', challengeEnEdition.id);
       if (error) throw error;
 
       alert('Challenge supprimé avec succès.');
       annulerForm();
-      chargerChallenges();
-    } catch (err) { alert('Erreur : ' + err.message); }
+      await chargerChallenges();
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
   };
 
   const gererTri = (colonne) => {
+    if (enTrainDeSauvegarder) return;
     if (triCol === colonne) setTriOrdre(triOrdre === 'asc' ? 'desc' : 'asc');
     else { setTriCol(colonne); setTriOrdre('asc'); }
   };
@@ -210,7 +308,8 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
     return 0;
   });
 
-  // Employés filtrés pour le statut cliqué
+  const challengesAffiches = challengesFiltres.slice(0, limiteChallenges);
+
   const employesDuStatutClique = statutSelectionnePourAffichage 
     ? employesList.filter(emp => {
         const fonctionEmp = (emp.fonction || emp.statut || emp.role || '').trim().toUpperCase();
@@ -222,18 +321,31 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
     <div className="space-y-2.5 text-[11px] font-sans">
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-800 uppercase text-xs">
-          🏆 CHALLENGES COMMERCIAUX [{moduleActuel}]
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-extrabold text-slate-800 uppercase text-xs">
+            🏆 CHALLENGES COMMERCIAUX [{moduleActuel}] ({challengesAffiches.length} / {challengesFiltres.length})
+          </h3>
+          {roleNom && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleNom}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {permissions.creation && (
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { if (!enTrainDeSauvegarder) { setChallengeEnEdition(null); setAfficherForm(true); } }}
+              className="px-3 py-1.5 rounded-lg font-bold text-[11px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white"
+            >
+              ＋ Nouveau Challenge
+            </button>
+          )}
           <button
-            onClick={() => { setChallengeEnEdition(null); setAfficherForm(true); }}
-            className="px-3 py-1.5 rounded-lg font-bold text-[11px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 text-white"
-          >
-            ＋ Nouveau Challenge
-          </button>
-          <button
-            onClick={() => annulerForm()}
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
             className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition border shadow-2xs ${
               !afficherForm 
                 ? 'bg-slate-900 text-white border-slate-900' 
@@ -251,28 +363,26 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
             <h4 className="font-bold text-orange-600 uppercase text-[10px]">
               {challengeEnEdition ? '✏️ Édition du Challenge' : '➕ Nouveau Challenge Commercial'}
             </h4>
-            <button type="button" onClick={annulerForm} className="text-slate-400 font-bold text-xs">✖</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 font-bold text-xs">✖</button>
           </div>
 
           <div className="space-y-2">
-            {/* Ligne 1 : Nom du Challenge */}
             <div>
               <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Nom du Challenge *</label>
-              <input type="text" required value={nouveauChallenge.nom_challenge} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, nom_challenge: e.target.value.toUpperCase() })} placeholder="EX: CHALLENGE PERFORMANCE Q1" className="w-full bg-white border rounded p-1.5 font-extrabold uppercase text-xs text-slate-800" />
+              <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauChallenge.nom_challenge} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, nom_challenge: e.target.value.toUpperCase() })} placeholder="EX: CHALLENGE PERFORMANCE Q1" className="w-full bg-white border rounded p-1.5 font-extrabold uppercase text-xs text-slate-800" />
             </div>
 
-            {/* Ligne 2 : Type Commission, Valeur et Application */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
               <div>
                 <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Type Commission *</label>
-                <select value={nouveauChallenge.type_commission} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, type_commission: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800">
+                <select value={nouveauChallenge.type_commission} disabled={enTrainDeSauvegarder} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, type_commission: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800">
                   <option value="POURCENTAGE">Pourcentage (%)</option>
                   <option value="MONTANT">Montant fixe (F)</option>
                 </select>
               </div>
               <div>
                 <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Valeur *</label>
-                <input type="number" step="0.01" required value={nouveauChallenge.valeur_commission} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, valeur_commission: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800" />
+                <input type="number" step="0.01" required disabled={enTrainDeSauvegarder} value={nouveauChallenge.valeur_commission} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, valeur_commission: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800" />
               </div>
               <div>
                 <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Application</label>
@@ -282,33 +392,32 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
               </div>
             </div>
 
-            {/* TABLEAU DE SIMULATION DYNAMIQUE AVEC CHOIX DE PÉRIODE */}
             <div className="bg-amber-50/80 border border-amber-300 rounded-lg p-2.5 space-y-2">
               <div className="flex justify-between items-center text-[10px] font-extrabold text-amber-900 uppercase">
                 <span>📊 Tableau de Simulation Dynamique</span>
                 <div className="flex items-center gap-1 bg-white border border-amber-300 rounded p-0.5">
-                  <button type="button" onClick={() => setPeriodeSimulation('JOUR')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'JOUR' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Jour</button>
-                  <button type="button" onClick={() => setPeriodeSimulation('SEMAINE')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'SEMAINE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Semaine (7j)</button>
-                  <button type="button" onClick={() => setPeriodeSimulation('MOIS')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'MOIS' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Mois (26j)</button>
-                  <button type="button" onClick={() => setPeriodeSimulation('PERSONNALISE')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'PERSONNALISE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Perso</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('JOUR')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'JOUR' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Jour</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('SEMAINE')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'SEMAINE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Semaine (7j)</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('MOIS')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'MOIS' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Mois (26j)</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('PERSONNALISE')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'PERSONNALISE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Perso</button>
                 </div>
               </div>
 
               {periodeSimulation === 'PERSONNALISE' && (
                 <div className="flex items-center gap-2 text-[10px]">
                   <span className="font-bold text-slate-700">Nombre de jours :</span>
-                  <input type="number" value={nbJoursPerso} onFocus={(e) => e.target.select()} onChange={(e) => setNbJoursPerso(e.target.value)} className="w-20 bg-white border border-amber-200 rounded p-1 font-bold text-slate-800" />
+                  <input type="number" disabled={enTrainDeSauvegarder} value={nbJoursPerso} onFocus={(e) => e.target.select()} onChange={(e) => setNbJoursPerso(e.target.value)} className="w-20 bg-white border border-amber-200 rounded p-1 font-bold text-slate-800" />
                 </div>
               )}
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center text-[10px]">
                 <div>
                   <label className="block text-[8px] text-slate-600 font-bold">Frais Moyen (F / course)</label>
-                  <input type="number" value={fraisMoyen} onFocus={(e) => e.target.select()} onChange={(e) => setFraisMoyen(e.target.value)} className="w-full bg-white border border-amber-200 rounded p-1 font-bold text-slate-800" />
+                  <input type="number" disabled={enTrainDeSauvegarder} value={fraisMoyen} onFocus={(e) => e.target.select()} onChange={(e) => setFraisMoyen(e.target.value)} className="w-full bg-white border border-amber-200 rounded p-1 font-bold text-slate-800" />
                 </div>
                 <div>
                   <label className="block text-[8px] text-slate-600 font-bold">Volume ({periodeSimulation === 'JOUR' ? 'Par Jour' : 'Total Période'})</label>
-                  <input type="number" value={volumeCourses} onFocus={(e) => e.target.select()} onChange={(e) => setVolumeCourses(e.target.value)} className="w-full bg-white border border-amber-200 rounded p-1 font-bold text-slate-800" />
+                  <input type="number" disabled={enTrainDeSauvegarder} value={volumeCourses} onFocus={(e) => e.target.select()} onChange={(e) => setVolumeCourses(e.target.value)} className="w-full bg-white border border-amber-200 rounded p-1 font-bold text-slate-800" />
                 </div>
                 <div>
                   <label className="block text-[8px] text-slate-600 font-bold">Total Frais (Période)</label>
@@ -325,19 +434,17 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
               </div>
             </div>
 
-            {/* Ligne 3 : Date de début et Date de fin */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Date de Début *</label>
-                <input type="date" required value={nouveauChallenge.date_debut} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, date_debut: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800" />
+                <input type="date" required disabled={enTrainDeSauvegarder} value={nouveauChallenge.date_debut} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, date_debut: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800" />
               </div>
               <div>
                 <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Date de Fin *</label>
-                <input type="date" required value={nouveauChallenge.date_fin} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, date_fin: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800" />
+                <input type="date" required disabled={enTrainDeSauvegarder} value={nouveauChallenge.date_fin} onFocus={(e) => e.target.select()} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, date_fin: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800" />
               </div>
             </div>
 
-            {/* Ligne 4 : Statuts / Rôles concernés et Employés */}
             <div className="space-y-2 pt-1 border-t border-slate-100">
               <div>
                 <label className="block font-semibold mb-1 text-[9px] text-slate-500 uppercase">
@@ -350,6 +457,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
                       <div key={statut} className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200">
                         <input 
                           type="checkbox" 
+                          disabled={enTrainDeSauvegarder}
                           checked={nouveauChallenge.statuts_concernes.includes(statut)}
                           onChange={(e) => {
                             const checked = e.target.checked;
@@ -373,12 +481,11 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
                 </div>
               </div>
 
-              {/* TABLEAU NUMÉROTÉ DES EMPLOYÉS DU STATUT CLIQUÉ */}
               {statutSelectionnePourAffichage && (
                 <div className="bg-blue-50/80 border border-blue-200 rounded-lg p-2.5 space-y-1.5 animate-fadeIn">
                   <div className="flex justify-between items-center text-[10px] font-black text-blue-900 uppercase">
                     <span>👥 Employés ayant le rôle : {statutSelectionnePourAffichage} ({employesDuStatutClique.length})</span>
-                    <button type="button" onClick={() => setStatutSelectionnePourAffichage(null)} className="text-slate-500 hover:text-rose-600 font-bold">✕ Fermer</button>
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setStatutSelectionnePourAffichage(null)} className="text-slate-500 hover:text-rose-600 font-bold">✕ Fermer</button>
                   </div>
                   {employesDuStatutClique.length === 0 ? (
                     <p className="text-[10px] text-slate-500 italic">Aucun employé enregistré avec le rôle "{statutSelectionnePourAffichage}".</p>
@@ -421,6 +528,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
                           <span className="font-bold text-slate-800 uppercase">{emp.nom || emp.nom_employe || 'Employé'} ({emp.fonction || emp.statut || 'N/A'})</span>
                           <input 
                             type="checkbox" 
+                            disabled={enTrainDeSauvegarder}
                             checked={isChecked}
                             onChange={(e) => {
                               if (e.target.checked) {
@@ -440,52 +548,76 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
           </div>
 
           <div className="pt-1.5 border-t flex justify-between items-center">
-            {challengeEnEdition ? (<button type="button" onClick={supprimerChallenge} className="bg-red-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">Supprimer</button>) : <div />}
-            <button type="submit" className="bg-emerald-600 text-white font-bold px-3 py-1 rounded text-[10px]">{challengeEnEdition ? 'Mettre à jour' : 'Enregistrer'}</button>
+            {challengeEnEdition && permissions.suppression ? (
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerChallenge} className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2.5 py-1 rounded text-[10px]">
+                {enTrainDeSauvegarder ? 'Patientez...' : 'Supprimer'}
+              </button>
+            ) : <div />}
+
+            {((challengeEnEdition && permissions.modification) || (!challengeEnEdition && permissions.creation)) && (
+              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px]">
+                {enTrainDeSauvegarder ? 'Enregistrement...' : (challengeEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+              </button>
+            )}
           </div>
         </form>
       ) : (
         <>
           <div className="bg-slate-50 p-1.5 rounded-xl border">
-            <input type="text" value={recherche} onFocus={(e) => e.target.select()} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER UN CHALLENGE..." className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-extrabold uppercase placeholder:text-slate-400" />
+            <input type="text" disabled={enTrainDeSauvegarder} value={recherche} onFocus={(e) => e.target.select()} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER UN CHALLENGE..." className="w-full bg-white border rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-900 font-extrabold uppercase placeholder:text-slate-400" />
           </div>
 
           {chargement ? (
             <div className="p-4 text-center text-slate-400">Chargement...</div>
-          ) : challengesFiltres.length === 0 ? (
+          ) : challengesAffiches.length === 0 ? (
             <div className="p-4 text-center text-slate-400 bg-white border rounded-xl">
               Aucun challenge commercial enregistré.
             </div>
           ) : (
-            <div className="overflow-x-auto border rounded-xl bg-white shadow-2xs">
-              <table className="w-full text-left text-xs table-fixed">
-                <thead className="bg-slate-50 text-slate-700 border-b uppercase text-[9px] font-extrabold select-none">
-                  <tr>
-                    <th onClick={() => gererTri('nom_challenge')} className="p-2 w-[30%] cursor-pointer">
-                      <div className="flex items-center gap-1 whitespace-nowrap"><span>Challenge</span> {rendreFlecheTri('nom_challenge')}</div>
-                    </th>
-                    <th className="p-2 w-[25%]">Période</th>
-                    <th className="p-2 w-[20%]">Commission</th>
-                    <th className="p-2 w-[25%] text-right">Évaluation Résultats</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y text-[10.5px]">
-                  {challengesFiltres.map((item) => (
-                    <tr key={item.id} onClick={() => ouvrirEdition(item)} className="hover:bg-orange-50/70 cursor-pointer">
-                      <td className="p-2 font-extrabold uppercase text-slate-900 truncate">🏆 {item.nom_challenge}</td>
-                      <td className="p-2 font-mono text-[9.5px] text-slate-600 font-bold">{item.date_debut || '-'} au {item.date_fin || '-'}</td>
-                      <td className="p-2 font-bold text-emerald-600">
-                        {item.valeur_commission} {item.type_commission === 'POURCENTAGE' ? '%' : 'F CFA'}
-                      </td>
-                      <td className="p-2 text-right">
-                        <span className="bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-black text-[9px] border border-sky-200">
-                          Évaluer 📊
-                        </span>
-                      </td>
+            <div className="space-y-2">
+              <div className="overflow-x-auto border rounded-xl bg-white shadow-2xs">
+                <table className="w-full text-left text-xs table-fixed">
+                  <thead className="bg-slate-50 text-slate-700 border-b uppercase text-[9px] font-extrabold select-none">
+                    <tr>
+                      <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_challenge')} className="p-2 w-[30%] cursor-pointer">
+                        <div className="flex items-center gap-1 whitespace-nowrap"><span>Challenge</span> {rendreFlecheTri('nom_challenge')}</div>
+                      </th>
+                      <th className="p-2 w-[25%]">Période</th>
+                      <th className="p-2 w-[20%]">Commission</th>
+                      <th className="p-2 w-[25%] text-right">Évaluation Résultats</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y text-[10.5px]">
+                    {challengesAffiches.map((item) => (
+                      <tr key={item.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(item)} className="hover:bg-orange-50/70 cursor-pointer">
+                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">🏆 {item.nom_challenge}</td>
+                        <td className="p-2 font-mono text-[9.5px] text-slate-600 font-bold">{item.date_debut || '-'} au {item.date_fin || '-'}</td>
+                        <td className="p-2 font-bold text-emerald-600">
+                          {item.valeur_commission} {item.type_commission === 'POURCENTAGE' ? '%' : 'F CFA'}
+                        </td>
+                        <td className="p-2 text-right">
+                          <span className="bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-black text-[9px] border border-sky-200">
+                            Évaluer 📊
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {limiteChallenges < challengesFiltres.length && (
+                <div className="text-center pt-2 pb-2">
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={() => setLimiteChallenges(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
+                  >
+                    📥 Charger 20 challenges de plus ({challengesFiltres.length - limiteChallenges} restants)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>

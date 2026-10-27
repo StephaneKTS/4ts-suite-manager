@@ -8,9 +8,34 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const [sousOngletGrandLivreJournal, setSousOngletGrandLivreJournal] = useState('grand_livre');
   const [sousOngletControle, setSousOngletControle] = useState('nouveau_controle');
 
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteHistorique, setLimiteHistorique] = useState(20);
+  const [limiteGrandLivre, setLimiteGrandLivre] = useState(20);
+  const [limiteJournal, setLimiteJournal] = useState(20);
+  const [limiteEtatsCaisse, setLimiteEtatsCaisse] = useState(20);
+
+  // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
+  const obtenirPremierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = String(d.getMonth() + 1).padStart(2, '0');
+    return `${annee}-${mois}-01`;
+  };
+
+  const obtenirDernierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = d.getMonth() + 1;
+    const dernierJour = new Date(annee, mois, 0).getDate();
+    return `${annee}-${String(mois).padStart(2, '0')}-${String(dernierJour).padStart(2, '0')}`;
+  };
+
+  const premierJourMoisStr = obtenirPremierJourDuMois();
+  const dernierJourMoisStr = obtenirDernierJourDuMois();
+
   // --- ÉTATS JOURNAL / RAPPORT DE CAISSE ---
-  const [dateDebutJournal, setDateDebutJournal] = useState(new Date().toISOString().split('T')[0]);
-  const [dateFinJournal, setDateFinJournal] = useState(new Date().toISOString().split('T')[0]);
+  const [dateDebutJournal, setDateDebutJournal] = useState(premierJourMoisStr);
+  const [dateFinJournal, setDateFinJournal] = useState(dernierJourMoisStr);
   const [caisseSelectionneeJournal, setCaisseSelectionneeJournal] = useState('');
 
   // --- ÉTATS DE TRI DU JOURNAL ---
@@ -32,9 +57,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const [etatsCaisseList, setEtatsCaisseList] = useState([]);
   const [chargement, setChargement] = useState(false);
 
-  // --- ÉTATS DE FILTRAGE DES ÉTATS DE CAISSE (PRÉREMPLIS AVEC LA DATE DU JOUR) ---
-  const [filtreDateDebut, setFiltreDateDebut] = useState(new Date().toISOString().split('T')[0]);
-  const [filtreDateFin, setFiltreDateFin] = useState(new Date().toISOString().split('T')[0]);
+  // --- ÉTATS DE FILTRAGE DES ÉTATS DE CAISSE (PRÉREMPLIS AVEC LE MOIS EN COURS) ---
+  const [filtreDateDebut, setFiltreDateDebut] = useState(premierJourMoisStr);
+  const [filtreDateFin, setFiltreDateFin] = useState(dernierJourMoisStr);
   const [filtreCaisseId, setFiltreCaisseId] = useState('');
   const [filtreCaissierId, setFiltreCaissierId] = useState('');
 
@@ -68,8 +93,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
   const [utilisateurMotif, setUtilisateurMotif] = useState('');
 
   // --- GRAND LIVRE : FILTRES AVANCÉS ---
-  const [dateDebutLivre, setDateDebutLivre] = useState(new Date().toISOString().split('T')[0]);
-  const [dateFinLivre, setDateFinLivre] = useState(new Date().toISOString().split('T')[0]);
+  const [dateDebutLivre, setDateDebutLivre] = useState(premierJourMoisStr);
+  const [dateFinLivre, setDateFinLivre] = useState(dernierJourMoisStr);
   const [compteLivreId, setCompteLivreId] = useState('');
   const [tiersLivreFiltre, setTiersLivreFiltre] = useState('');
 
@@ -353,6 +378,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     return 0;
   });
 
+  // Application de la pagination mobile
+  const mouvementsJournalAffiches = mouvementsJournalTries.slice(0, limiteJournal);
+
   const totalEntreesJournal = mouvementsJournalTries
     .filter(m => m.type_mouvement === 'ENTREE')
     .reduce((acc, m) => acc + Number(m.montant || 0), 0);
@@ -372,6 +400,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     if (dateFinJournal && dateMvt > dateFinJournal) return false;
     return true;
   });
+
+  const mouvementsManuelsAffiches = mouvementsManuelsFiltres.slice(0, limiteHistorique);
 
   const reportAntérieur = mouvementsCaisseSelectionnee
     .filter(m => {
@@ -469,6 +499,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     if (valA > valB) return ordreTriGrandLivre === 'asc' ? 1 : -1;
     return 0;
   });
+
+  const resultatGrandLivreAffiches = resultatGrandLivreTries.slice(0, limiteGrandLivre);
 
   const totalEntreesGrandLivre = resultatGrandLivreTries
     .filter(m => m.type_mouvement === 'ENTREE')
@@ -668,6 +700,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
     return 0;
   });
 
+  const etatsCaisseAffiches = etatsCaisseTries.slice(0, limiteEtatsCaisse);
+
   const totalAttendu = etatsCaisseTries.reduce((acc, curr) => acc + (Number(curr.montant_attendu) || 0), 0);
   const totalEcart = etatsCaisseTries.reduce((acc, curr) => acc + (Number(curr.ecart) || 0), 0);
   const totalVerse = etatsCaisseTries.reduce((acc, curr) => acc + (Number(curr.montant_verse) || 0), 0);
@@ -804,7 +838,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
 
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block text-[9px] text-slate-700 font-black mb-0.5">Motif / Utilisateur</label>
+                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Motif / Utilisateur</label>
                     <select
                       value={utilisateurMotif}
                       onChange={(e) => setUtilisateurMotif(e.target.value)}
@@ -824,7 +858,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   </div>
 
                   <div>
-                    <label className="block text-[9px] text-slate-700 font-black mb-0.5">N° pièce</label>
+                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">N° pièce</label>
                     <input
                       type="text"
                       placeholder="OPTIONNEL"
@@ -836,7 +870,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                 </div>
 
                 <div>
-                  <label className="block text-[9px] text-slate-700 font-black mb-0.5">Montant *</label>
+                  <label className="block font-black text-slate-700 text-[9px] mb-0.5">Montant *</label>
                   <input
                     type="number"
                     required
@@ -888,7 +922,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
           ) : (
             <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
               <div className="flex flex-col gap-1.5 border-b border-slate-100 pb-2">
-                <h5 className="font-extrabold text-slate-900 text-[11px] uppercase">Historique</h5>
+                <h5 className="font-extrabold text-slate-900 text-[11px] uppercase">Historique ({mouvementsManuelsAffiches.length} / {mouvementsManuelsFiltres.length})</h5>
                 
                 <div className="flex items-center gap-1 w-full">
                   <label className="font-bold text-slate-700 text-[9px] whitespace-nowrap">Caisse :</label>
@@ -960,12 +994,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                       </tr>
                     )}
 
-                    {mouvementsManuelsFiltres.length === 0 && reportAntérieur === 0 ? (
+                    {mouvementsManuelsAffiches.length === 0 && reportAntérieur === 0 ? (
                       <tr>
                         <td colSpan="5" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucune opération.</td>
                       </tr>
                     ) : (
-                      mouvementsManuelsFiltres.map((m, indexMvt) => {
+                      mouvementsManuelsAffiches.map((m, indexMvt) => {
                         const compteAssocie = comptes.find(c => String(c.id) === String(m.id_compte));
                         const estEntree = m.type_mouvement === 'ENTREE';
                         
@@ -997,6 +1031,18 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   </tbody>
                 </table>
               </div>
+
+              {limiteHistorique < mouvementsManuelsFiltres.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteHistorique(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 opérations de plus ({mouvementsManuelsFiltres.length - limiteHistorique} restantes)
+                  </button>
+                </div>
+              )}
 
               <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 flex justify-between items-center text-[10px]">
                 <span className="font-black text-slate-700 uppercase">Solde :</span>
@@ -1036,7 +1082,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
             <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
                 <div>
-                  <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] uppercase">📖 GRAND LIVRE</h4>
+                  <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] uppercase">📖 GRAND LIVRE ({resultatGrandLivreAffiches.length} / {resultatGrandLivreTries.length})</h4>
                 </div>
                 <button
                   onClick={() => window.print()}
@@ -1129,12 +1175,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {resultatGrandLivreTries.length === 0 ? (
+                    {resultatGrandLivreAffiches.length === 0 ? (
                       <tr>
                         <td colSpan="5" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucun mouvement trouvé pour cette sélection.</td>
                       </tr>
                     ) : (
-                      resultatGrandLivreTries.map((m, idx) => {
+                      resultatGrandLivreAffiches.map((m, idx) => {
                         const estEntree = m.type_mouvement === 'ENTREE';
                         const compteAssocie = comptes.find(c => String(c.id) === String(m.id_compte));
                         return (
@@ -1177,11 +1223,23 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   )}
                 </table>
               </div>
+
+              {limiteGrandLivre < resultatGrandLivreTries.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteGrandLivre(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 lignes de plus ({resultatGrandLivreTries.length - limiteGrandLivre} restantes)
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
-                <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] uppercase whitespace-nowrap">📋 JOURNAL DE CAISSE</h4>
+                <h4 className="font-extrabold text-slate-900 text-[10px] sm:text-[11px] uppercase whitespace-nowrap">📋 JOURNAL DE CAISSE ({mouvementsJournalAffiches.length} / {mouvementsJournalTries.length})</h4>
                 <button
                   onClick={() => window.print()}
                   className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2 py-1 rounded-xl transition shadow-2xs text-[9px] whitespace-nowrap shrink-0"
@@ -1250,12 +1308,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
-                    {mouvementsJournalTries.length === 0 ? (
+                    {mouvementsJournalAffiches.length === 0 ? (
                       <tr>
                         <td colSpan="7" className="p-3 text-center text-slate-500 font-bold">Aucun mouvement.</td>
                       </tr>
                     ) : (
-                      mouvementsJournalTries.map((m, idx) => {
+                      mouvementsJournalAffiches.map((m, idx) => {
                         const caisseObj = caisses.find(c => String(c.id) === String(m.id_caisse));
                         const compteObj = comptes.find(c => String(c.id) === String(m.id_compte));
                         const estEntree = m.type_mouvement === 'ENTREE';
@@ -1308,6 +1366,18 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   )}
                 </table>
               </div>
+
+              {limiteJournal < mouvementsJournalTries.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteJournal(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 lignes de plus ({mouvementsJournalTries.length - limiteJournal} restantes)
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1494,11 +1564,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="font-extrabold text-slate-800 text-[9px] uppercase">🔍 Filtres</span>
-                  {(filtreDateDebut || filtreDateFin || filtreCaisseId || filtreCaissierId) && (
+                  {(filtreDateDebut !== premierJourMoisStr || filtreDateFin !== dernierJourMoisStr || filtreCaisseId || filtreCaissierId) && (
                     <button
                       onClick={() => {
-                        setFiltreDateDebut('');
-                        setFiltreDateFin('');
+                        setFiltreDateDebut(premierJourMoisStr);
+                        setFiltreDateFin(dernierJourMoisStr);
                         setFiltreCaisseId('');
                         setFiltreCaissierId('');
                       }}
@@ -1568,7 +1638,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
               </div>
 
               <div className="flex justify-between items-center">
-                <h5 className="font-extrabold text-slate-900 text-[10px] uppercase">Liste ({etatsCaisseTries.length})</h5>
+                <h5 className="font-extrabold text-slate-900 text-[10px] uppercase">Liste ({etatsCaisseAffiches.length} / {etatsCaisseTries.length})</h5>
               </div>
               
               <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs max-h-[340px]">
@@ -1600,12 +1670,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {etatsCaisseTries.length === 0 ? (
+                    {etatsCaisseAffiches.length === 0 ? (
                       <tr>
                         <td colSpan="8" className="p-3 text-center text-slate-500 font-bold">Aucun état.</td>
                       </tr>
                     ) : (
-                      etatsCaisseTries.map((etat, indexEtat) => {
+                      etatsCaisseAffiches.map((etat, indexEtat) => {
                         const estVerse = etat.statut_versement === 'VERSE';
                         const nomCaissierAffichage = moduleActuel === 'LIVRAISON' ? (etat.caissier || '-') : obtenirNomCaissier(etat.caissier);
                         
@@ -1672,6 +1742,18 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-TEST', vueIni
                   )}
                 </table>
               </div>
+
+              {limiteEtatsCaisse < etatsCaisseTries.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteEtatsCaisse(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 états de plus ({etatsCaisseTries.length - limiteEtatsCaisse} restants)
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

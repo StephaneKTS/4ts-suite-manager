@@ -36,11 +36,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
 
-  // Liste complète de tous les modules et tables de l'application
   const modulesApp = [
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
     { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
+    { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' }, // AJOUTÉ ICI
     { id: 'familles_articles', nom: '🏷️ Familles & Catégories' },
     { id: 'mouvements_stock', nom: '🔄 Mouvements Stock' },
     { id: 'approvisionnements', nom: '📥 Approvisionnements' },
@@ -89,7 +89,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
   const estModeLivraison = moduleActuel === 'LIVRAISON';
 
-  // Vérifier si le rôle sélectionné correspond à un livreur
   const roleActuelObj = roles.find((r) => String(r.id) === String(nouveauUser.id_role));
   const estRoleLivreur = roleActuelObj && roleActuelObj.nom_role.toUpperCase().includes('LIVREUR');
 
@@ -184,11 +183,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const enregistrerUtilisateur = async (e) => {
     e.preventDefault();
 
-    if (estModeLivraison && estRoleLivreur && !nouveauUser.id_emplacement) {
-      alert('⚠️ Ce collaborateur a un rôle de Livreur. Veuillez obligatoirement lui attribuer un emplacement / livreur.');
-      return;
-    }
-
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
 
@@ -209,6 +203,31 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
 
     try {
+      let emplacementIdFinal = nouveauUser.id_emplacement;
+      const nomNomCollab = (nouveauUser.nom_complet || '').trim().toUpperCase();
+
+      if (estModeLivraison && estRoleLivreur) {
+        if (!emplacementIdFinal) {
+          const payloadNouvelEmplacement = {
+            id_entreprise: entrepriseId,
+            module: moduleActuel,
+            nom_emplacement: nomNomCollab,
+            responsable_emplacement: nomNomCollab,
+          };
+
+          const { data: empCree, error: errEmp } = await supabase
+            .from('emplacements_stock')
+            .insert([payloadNouvelEmplacement])
+            .select()
+            .maybeSingle();
+
+          if (errEmp) throw errEmp;
+          if (empCree) {
+            emplacementIdFinal = empCree.id;
+          }
+        }
+      }
+
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -226,7 +245,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
       payload.prenom = (nouveauUser.prenom || '').trim().toUpperCase();
       if (estModeLivraison) {
-        payload.id_emplacement = nouveauUser.id_emplacement || null;
+        payload.id_emplacement = estRoleLivreur ? (emplacementIdFinal || null) : null;
       }
 
       if (userEnEdition) {
@@ -236,7 +255,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       } else {
         const { error } = await supabase.from('utilisateurs').insert([payload]);
         if (error) throw error;
-        alert('Collaborateur créé avec succès !');
+        alert('Collaborateur et son emplacement créés avec succès !');
       }
 
       annulerForm();
@@ -427,7 +446,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           {/* RÔLE / FONCTION & ATTRIBUTION EMPLACEMENT / CAISSE */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className={`grid ${estModeLivraison && estRoleLivreur ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
             <div>
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
               <select required value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs">
@@ -436,40 +455,36 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               </select>
             </div>
 
-            <div>
-              {estModeLivraison ? (
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
-                    Emplacement / Livreur {estRoleLivreur ? '*' : ''}
-                  </label>
-                  <select 
-                    required={estRoleLivreur}
-                    value={nouveauUser.id_emplacement} 
-                    onChange={(e) => setNouveauUser({ ...nouveauUser, id_emplacement: e.target.value })} 
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs truncate"
-                  >
-                    <option value="">-- Emplacement --</option>
-                    {emplacements.map((emp) => (
-                      <option key={emp.id} value={emp.id}>📍 {emp.nom_emplacement}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
-                  <select 
-                    value={nouveauUser.id_caisse} 
-                    onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} 
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate"
-                  >
-                    <option value="">-- Aucune caisse --</option>
-                    {caisses.map((c) => (
-                      <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
+            {estModeLivraison && estRoleLivreur && (
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
+                  Emplacement / Livreur
+                </label>
+                <input
+                  type="text"
+                  value={nouveauUser.id_emplacement ? (emplacements.find(emp => String(emp.id) === String(nouveauUser.id_emplacement))?.nom_emplacement || (nouveauUser.nom_complet || '').trim().toUpperCase()) : (nouveauUser.nom_complet || '').trim().toUpperCase()}
+                  onChange={(e) => setNouveauUser({ ...nouveauUser, id_emplacement: e.target.value.toUpperCase() })}
+                  placeholder="EX: NOM DU LIVREUR"
+                  className="w-full bg-white border border-orange-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs uppercase"
+                />
+              </div>
+            )}
+
+            {!estModeLivraison && (
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
+                <select 
+                  value={nouveauUser.id_caisse} 
+                  onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} 
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate"
+                >
+                  <option value="">-- Aucune caisse --</option>
+                  {caisses.map((c) => (
+                    <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {nouveauUser.acces_application && (

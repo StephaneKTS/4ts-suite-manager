@@ -9,6 +9,9 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
+  // Règle 1 : Pagination / Limite d'affichage pour fluidifier le mobile
+  const [limiteCaisses, setLimiteCaisses] = useState(20);
+
   const [afficherForm, setAfficherForm] = useState(false);
   const [codeCaisse, setCodeCaisse] = useState('');
   const [nomCaisse, setNomCaisse] = useState('');
@@ -20,7 +23,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     peutVoir: true,
     peutCreer: true,
     peutModifier: true,
-    peutSupprimer: false, // Par défaut sécurisé à false si non défini
+    peutSupprimer: false,
   });
 
   const obtenirModuleActuel = () => {
@@ -45,7 +48,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
 
         if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-          // 1. Vérifier d'abord si les permissions sont stockées directement dans l'objet utilisateur (JSON)
           const permModule = userObj.permissions?.['caisses'] || userObj.permissions?.['caisse'];
           
           if (permModule) {
@@ -56,7 +58,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               peutSupprimer: permModule.suppression ?? false,
             });
           } else {
-            // 2. Sinon, interroger la table des rôles
             const { data: roleData } = await supabase
               .from('roles')
               .select('*')
@@ -224,6 +225,9 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
+  // Application de la pagination mobile
+  const caissesAffichees = caisses.slice(0, limiteCaisses);
+
   if (!permissions.peutVoir) {
     return (
       <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
@@ -237,7 +241,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
-          🏧 Caisses ({caisses.length})
+          🏧 Caisses ({caissesAffichees.length} / {caisses.length})
         </h2>
         <div className="flex items-center gap-1">
           {permissions.peutCreer && (
@@ -373,7 +377,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
           </div>
         </form>
       ) : (
-        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
           {loading ? (
             <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des caisses...</p>
           ) : caisses.length === 0 ? (
@@ -390,41 +394,55 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {caisses.map((c) => (
-                <div
-                  key={c.id}
-                  onClick={() => ouvrirEdition(c)}
-                  className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer transition flex flex-col justify-between shadow-2xs group"
-                >
-                  <div className="space-y-1">
-                    <div>
-                      <span className={`inline-block text-[8px] px-1.5 py-0.5 rounded font-black border ${
-                        c.nature === 'PRINCIPALE' || c.nature === 'CAISSE ENTREPRISE'
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                          : 'bg-blue-100 text-blue-800 border-blue-200'
-                      }`}>
-                        {c.nature}
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {caissesAffichees.map((c) => (
+                  <div
+                    key={c.id}
+                    onClick={() => ouvrirEdition(c)}
+                    className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer transition flex flex-col justify-between shadow-2xs group"
+                  >
+                    <div className="space-y-1">
+                      <div>
+                        <span className={`inline-block text-[8px] px-1.5 py-0.5 rounded font-black border ${
+                          c.nature === 'PRINCIPALE' || c.nature === 'CAISSE ENTREPRISE'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            : 'bg-blue-100 text-blue-800 border-blue-200'
+                        }`}>
+                          {c.nature}
+                        </span>
+                      </div>
+
+                      <span className="font-mono font-black text-orange-600 text-xs group-hover:underline block">
+                        {c.code_caisse}
                       </span>
+                      
+                      <p className="font-bold text-[10px] text-slate-900 leading-tight truncate">
+                        {c.nom_caisse}
+                      </p>
                     </div>
 
-                    <span className="font-mono font-black text-orange-600 text-xs group-hover:underline block">
-                      {c.code_caisse}
-                    </span>
-                    
-                    <p className="font-bold text-[10px] text-slate-900 leading-tight truncate">
-                      {c.nom_caisse}
-                    </p>
+                    <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-end">
+                      <span className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600">
+                        {permissions.peutModifier ? '✏️ Modifier' : '👁️ Consulter'}
+                      </span>
+                    </div>
                   </div>
+                ))}
+              </div>
 
-                  <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-end">
-                    <span className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600">
-                      {permissions.peutModifier ? '✏️ Modifier' : '👁️ Consulter'}
-                    </span>
-                  </div>
+              {limiteCaisses < caisses.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteCaisses(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 caisses de plus ({caisses.length - limiteCaisses} restantes)
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       )}

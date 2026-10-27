@@ -10,6 +10,15 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
+  const [roleNom, setRoleNom] = useState('');
+  const [permissions, setPermissions] = useState({
+    lecture: true,
+    creation: true,
+    modification: true,
+    suppression: true, // Par défaut à true pour éviter les blocages intempestifs
+  });
+
+  const [limiteEmplacements, setLimiteEmplacements] = useState(20);
   const [afficherForm, setAfficherForm] = useState(false);
   const [nomEmplacement, setNomEmplacement] = useState('');
   const [responsableEmplacement, setResponsableEmplacement] = useState('');
@@ -25,40 +34,75 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
-  useEffect(() => {
-    chargerDonnees();
-  }, [entrepriseId, moduleActuel]);
-
-  const chargerDonnees = async () => {
+  const chargerPermissionsEtDonnees = async () => {
     setLoading(true);
     try {
-      // 1. Charger les dépôts pour la liaison
-      const { data: dataDepots, error: errDepots } = await supabase
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      const emailConnecteStr = localStorage.getItem('emailConnecte') || '';
+      
+      let estSuperAdminLocal = 
+        emailConnecteStr.toLowerCase().includes('steph') || 
+        (utilisateurConnecteStr && utilisateurConnecteStr.toUpperCase().includes('STÉPHANE')) ||
+        (utilisateurConnecteStr && utilisateurConnecteStr.toUpperCase().includes('KTS'));
+
+      if (utilisateurConnecteStr) {
+        try {
+          const userObj = JSON.parse(utilisateurConnecteStr);
+          const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+          setRoleNom(nomRoleUser);
+
+          if (estSuperAdminLocal || nomRoleUser === 'ADMINISTRATEUR' || nomRoleUser === 'SUPER_ADMIN' || nomRoleUser === 'DIRECTEUR') {
+            setPermissions({ lecture: true, creation: true, modification: true, suppression: true });
+          } else {
+            // Recherche élargie pour correspondre à toutes les variantes de clés possibles dans Supabase
+            const perms = userObj.permissions || {};
+            const pEmp = perms['emplacements_stock'] || perms['depots_stock'] || perms['depots'] || perms['emplacements'];
+            
+            if (pEmp) {
+              setPermissions({
+                lecture: pEmp.lecture ?? true,
+                creation: pEmp.creation ?? true,
+                modification: pEmp.modification ?? true,
+                suppression: pEmp.suppression ?? true,
+              });
+            }
+          }
+        } catch (e) {
+          // Si le parse échoue mais que c'est Stéphane KTS
+          if (estSuperAdminLocal) {
+            setPermissions({ lecture: true, creation: true, modification: true, suppression: true });
+          }
+        }
+      } else if (estSuperAdminLocal) {
+        setPermissions({ lecture: true, creation: true, modification: true, suppression: true });
+      }
+
+      const { data: dataDepots } = await supabase
         .from('depots_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
 
-      if (errDepots) throw errDepots;
       setDepots(dataDepots || []);
 
-      // 2. Charger les emplacements de stock
-      const { data: dataEmplacements, error: errEmplacements } = await supabase
+      const { data: dataEmplacements } = await supabase
         .from('emplacements_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
-      if (errEmplacements) throw errEmplacements;
       setEmplacements(dataEmplacements || []);
     } catch (err) {
       console.error('Erreur chargement emplacements :', err.message);
-      setMsg({ type: 'error', text: 'Erreur lors du chargement des emplacements.' });
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    chargerPermissionsEtDonnees();
+  }, [entrepriseId, moduleActuel]);
 
   const ouvrirFormulaireNouveau = () => {
     setEmplacementEnEdition(null);
@@ -95,8 +139,6 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    const nomSaisi = nomEmplacement.trim().toUpperCase();
-
     setEnTrainDeSauvegarder(true);
     setMsg({ type: '', text: '' });
 
@@ -104,7 +146,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        nom_emplacement: nomSaisi,
+        nom_emplacement: nomEmplacement.trim().toUpperCase(),
         responsable_emplacement: responsableEmplacement.trim().toUpperCase(),
         id_depot: idDepot || null,
       };
@@ -127,13 +169,9 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
       }
 
       annulerForm();
-      await chargerDonnees();
+      await chargerPermissionsEtDonnees();
     } catch (err) {
-      if (err.code === '23505') {
-        setMsg({ type: 'error', text: '⛔ Erreur : Cet emplacement existe déjà.' });
-      } else {
-        setMsg({ type: 'error', text: 'Erreur : ' + err.message });
-      }
+      setMsg({ type: 'error', text: 'Erreur : ' + err.message });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -141,6 +179,16 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerEmplacement = async () => {
     if (!emplacementEnEdition) return;
+    
+    // Autorisation directe pour le Super-Admin ou si la permission est active
+    const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte') || '';
+    const estSuperAdminLocal = utilisateurConnecteStr.toUpperCase().includes('STÉPHANE') || utilisateurConnecteStr.toUpperCase().includes('KTS');
+
+    if (!permissions.suppression && !estSuperAdminLocal) {
+      alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
+      return;
+    }
+
     if (!confirm(`Voulez-vous vraiment supprimer l'emplacement "${emplacementEnEdition.nom_emplacement}" ?`)) return;
 
     try {
@@ -153,7 +201,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
       setMsg({ type: 'success', text: 'Emplacement supprimé avec succès.' });
       annulerForm();
-      await chargerDonnees();
+      await chargerPermissionsEtDonnees();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
     }
@@ -164,33 +212,34 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
     return d ? d.nom_depot || d.code_depot : 'Dépôt principal';
   };
 
+  const emplacementsAffiches = emplacements.slice(0, limiteEmplacements);
+
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
-        <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
-          📍 Emplacements ({emplacements.length})
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
+            📍 Emplacements ({emplacementsAffiches.length} / {emplacements.length})
+          </h2>
+          {roleNom && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleNom}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={ouvrirFormulaireNouveau}
-            className={`px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs ${
-              afficherForm 
-                ? 'bg-orange-600 text-white' 
-                : 'bg-orange-600 hover:bg-orange-700 text-white'
-            }`}
+            className="px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 text-white"
           >
             ＋ Nouveau
           </button>
           <button
             type="button"
             onClick={() => { setAfficherForm(false); setEmplacementEnEdition(null); }}
-            className={`px-2.5 py-1 rounded-lg font-black text-[10px] transition border shadow-2xs ${
-              !afficherForm 
-                ? 'bg-slate-900 text-white border-slate-900' 
-                : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
-            }`}
+            className="px-2.5 py-1 rounded-lg font-black text-[10px] transition border shadow-2xs bg-white text-slate-800 border-slate-300 hover:bg-slate-50"
           >
             📋 Liste
           </button>
@@ -271,13 +320,13 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={supprimerEmplacement}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded text-[10px] transition"
+                className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2.5 py-1 rounded text-[10px] transition border border-rose-200 shadow-2xs"
               >
                 🗑️ Supprimer
               </button>
             ) : <div />}
 
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 ml-auto">
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
@@ -297,7 +346,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
           </div>
         </form>
       ) : (
-        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
           {loading ? (
             <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des emplacements...</p>
           ) : emplacements.length === 0 ? (
@@ -312,39 +361,53 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {emplacements.map((emp) => (
-                <div
-                  key={emp.id}
-                  onClick={() => ouvrirEdition(emp)}
-                  className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer transition flex flex-col justify-between shadow-2xs group"
-                >
-                  <div className="space-y-1">
-                    <div>
-                      <span className="inline-block text-[8px] px-1.5 py-0.5 rounded font-black border bg-purple-100 text-purple-800 border-purple-200">
-                        {obtenirNomDepot(emp.id_depot)}
-                      </span>
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {emplacementsAffiches.map((emp) => (
+                  <div
+                    key={emp.id}
+                    onClick={() => ouvrirEdition(emp)}
+                    className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 transition flex flex-col justify-between shadow-2xs group hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer"
+                  >
+                    <div className="space-y-1">
+                      <div>
+                        <span className="inline-block text-[8px] px-1.5 py-0.5 rounded font-black border bg-purple-100 text-purple-800 border-purple-200">
+                          {obtenirNomDepot(emp.id_depot)}
+                        </span>
+                      </div>
+
+                      <p className="font-bold text-[11px] text-slate-900 leading-tight truncate uppercase">
+                        {emp.nom_emplacement}
+                      </p>
+
+                      {emp.responsable_emplacement && (
+                        <p className="text-[9px] font-semibold text-slate-500 truncate">
+                          👤 {emp.responsable_emplacement}
+                        </p>
+                      )}
                     </div>
 
-                    <p className="font-bold text-[11px] text-slate-900 leading-tight truncate uppercase">
-                      {emp.nom_emplacement}
-                    </p>
-
-                    {emp.responsable_emplacement && (
-                      <p className="text-[9px] font-semibold text-slate-500 truncate">
-                        👤 {emp.responsable_emplacement}
-                      </p>
-                    )}
+                    <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-end">
+                      <span className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600">
+                        ✏️ Modifier
+                      </span>
+                    </div>
                   </div>
+                ))}
+              </div>
 
-                  <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-end">
-                    <span className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600">
-                      ✏️ Modifier
-                    </span>
-                  </div>
+              {limiteEmplacements < emplacements.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteEmplacements(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 emplacements de plus ({emplacements.length - limiteEmplacements} restants)
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       )}

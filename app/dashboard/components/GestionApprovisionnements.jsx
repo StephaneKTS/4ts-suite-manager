@@ -13,10 +13,44 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
+  // --- GESTION DES DROITS ET AUTORISATIONS DES EMPLOYÉS ---
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState(null);
+  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
+  const [permissions, setPermissions] = useState({
+    peut_creer: true,
+    peut_modifier: true,
+    peut_supprimer: true,
+    peut_valider: true
+  });
+
   const [ongletActif, setOngletActif] = useState('APPRO');
   const [vueActive, setVueActive] = useState('liste');
   const [approEnEditionId, setApproEnEditionId] = useState(null);
   const [docEnEditionObjet, setDocEnEditionObjet] = useState(null);
+
+  // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
+  const obtenirPremierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = String(d.getMonth() + 1).padStart(2, '0');
+    return `${annee}-${mois}-01`;
+  };
+
+  const obtenirDernierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = d.getMonth() + 1;
+    const dernierJour = new Date(annee, mois, 0).getDate();
+    return `${annee}-${String(mois).padStart(2, '0')}-${String(dernierJour).padStart(2, '0')}`;
+  };
+
+  const [dateDebutFiltre, setDateDebutFiltre] = useState(obtenirPremierJourDuMois());
+  const [dateFinFiltre, setDateFinFiltre] = useState(obtenirDernierJourDuMois());
+
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteAppro, setLimiteAppro] = useState(20);
+  const [limiteCommandes, setLimiteCommandes] = useState(20);
+  const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
 
   const [numeroDoc, setNumeroDoc] = useState('');
   const [referenceFournisseur, setReferenceFournisseur] = useState('');
@@ -59,9 +93,48 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     return `${prefix}${seq}`;
   };
 
+  const chargerDroitsUtilisateur = async () => {
+    try {
+      const emailConnecte = localStorage.getItem('utilisateur_email') || '';
+      if (!emailConnecte) return;
+
+      const { data: userRecord } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('email', emailConnecte)
+        .single();
+
+      if (userRecord) {
+        setUtilisateurConnecte(userRecord);
+        if (userRecord.id_role) {
+          const { data: roleRecord } = await supabase
+            .from('roles')
+            .select('*')
+            .eq('id', userRecord.id_role)
+            .single();
+
+          if (roleRecord) {
+            setRoleUtilisateur(roleRecord);
+            setPermissions({
+              peut_creer: roleRecord.peut_creer ?? true,
+              peut_modifier: roleRecord.peut_modifier ?? true,
+              peut_supprimer: roleRecord.peut_supprimer ?? true,
+              peut_valider: roleRecord.peut_valider ?? true
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Erreur chargement des droits :', err.message);
+    }
+  };
+
   const chargerDonnees = async () => {
     setChargement(true);
     try {
+      await chargerDroitsUtilisateur();
+
       const { data: dataDepots } = await supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const listDepots = dataDepots || [];
       setDepots(listDepots);
@@ -75,10 +148,24 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       const { data: dataMouvements } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setMouvements(dataMouvements || []);
 
-      const { data: dataAppro } = await supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false });
+      const { data: dataAppro } = await supabase
+        .from('approvisionnements')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .gte('created_at', `${dateDebutFiltre}T00:00:00`)
+        .lte('created_at', `${dateFinFiltre}T23:59:59`)
+        .order('created_at', { ascending: false });
       setApprovisionnements(dataAppro || []);
 
-      const { data: dataBC } = await supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false });
+      const { data: dataBC } = await supabase
+        .from('bons_commande_fournisseurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .gte('created_at', `${dateDebutFiltre}T00:00:00`)
+        .lte('created_at', `${dateFinFiltre}T23:59:59`)
+        .order('created_at', { ascending: false });
       setBonsCommandes(dataBC || []);
 
       if (!approEnEditionId && !numeroDoc) {
@@ -93,7 +180,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   useEffect(() => {
     chargerDonnees();
-  }, [entrepriseId, moduleActuel]);
+  }, [entrepriseId, moduleActuel, dateDebutFiltre, dateFinFiltre]);
 
   const estStatutSansStockage = (statut) => {
     if (!statut) return false;
@@ -210,6 +297,8 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       };
     });
 
+  const articlesFiltresModalAffiches = articlesFiltresModal.slice(0, limiteArticlesModal);
+
   const montantTotalGlobal = lignesValidees.reduce((sum, item) => sum + (Number(item.quantite || 0) * Number(item.prix_achat || 0)), 0);
   const soldeRestant = statutPaiement === 'SOLDE' ? 0 : statutPaiement === 'CREDIT' ? montantTotalGlobal : Math.max(0, montantTotalGlobal - (parseFloat(montantPaye) || 0));
 
@@ -223,6 +312,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const preparerNouveauDoc = (type) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_creer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      return;
+    }
     if (type === 'APPRO') {
       setNumeroDoc(genererNumeroDoc('APPRO', approvisionnements));
     } else {
@@ -282,6 +375,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const enregistrerFacture = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+    if (approEnEditionId && !permissions.peut_modifier) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      return;
+    }
+    if (!approEnEditionId && !permissions.peut_creer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      return;
+    }
     if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
       if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
       return; 
@@ -339,6 +440,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const enregistrerCommande = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+    if (approEnEditionId && !permissions.peut_modifier) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      return;
+    }
+    if (!approEnEditionId && !permissions.peut_creer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      return;
+    }
     if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
       if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
       return; 
@@ -394,6 +503,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const transformerEnFacture = async (doc) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_valider) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de validation/transformation.');
+      return;
+    }
     if (!doc) return;
     if (!confirm('Voulez-vous transformer ce bon de commande en approvisionnement (ce qui va incrémenter le stock) ?')) return;
 
@@ -420,12 +533,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         }))
       };
 
-      const { error: errInsert } = await supabase.from('approvisionnements').insert([payloadFacture]);
-      if (errInsert) throw errInsert;
+      const { data, error: rpcError } = await supabase.rpc('transformer_commande_en_appro', {
+        p_entreprise_id: entrepriseId,
+        p_module: moduleActuel,
+        p_commande_id: doc.id,
+        p_nouveau_num_bon: nouveauNumAppro,
+        p_payload_facture: payloadFacture
+      });
 
-      if (doc.id) {
-        const { error: errDel } = await supabase.from('bons_commande_fournisseurs').delete().eq('id', doc.id);
-        if (errDel) throw errDel;
+      if (rpcError) {
+        const { error: errInsert } = await supabase.from('approvisionnements').insert([payloadFacture]);
+        if (errInsert) throw errInsert;
+
+        if (doc.id) {
+          const { error: errDel } = await supabase.from('bons_commande_fournisseurs').delete().eq('id', doc.id);
+          if (errDel) throw errDel;
+        }
       }
 
       alert(`Succès ! Le bon a été transformé en approvisionnement : ${nouveauNumAppro}`);
@@ -464,6 +587,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const supprimerDoc = async (id, type) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_supprimer) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
+      return;
+    }
     if (!confirm('Supprimer ce document ?')) return;
     try {
       const table = type === 'APPRO' ? 'approvisionnements' : 'bons_commande_fournisseurs';
@@ -498,6 +625,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const documentsHistorique = trierListe(approvisionnements);
   const commandesHistorique = trierListe(bonsCommandes);
+
+  const documentsHistoriqueAffiches = documentsHistorique.slice(0, limiteAppro);
+  const commandesHistoriqueAffiches = commandesHistorique.slice(0, limiteCommandes);
   
   const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder;
   const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
@@ -506,18 +636,27 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     <div className="space-y-2.5 font-sans text-xs">
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>📦</span> APPROVISIONNEMENTS
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+            <span>📦</span> APPROVISIONNEMENTS
+          </h3>
+          {roleUtilisateur && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
+            </span>
+          )}
+        </div>
         {vueActive === 'liste' ? (
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => setVueActive('choix_creation')}
-            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-          >
-            Nouveau
-          </button>
+          permissions.peut_creer && (
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => setVueActive('choix_creation')}
+              className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+            >
+              Nouveau
+            </button>
+          )
         ) : (
           <button
             type="button"
@@ -531,83 +670,152 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       </div>
 
       {vueActive === 'liste' && (
-        <div className="flex justify-between items-center gap-1.5">
-          <button 
-            type="button" 
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { setOngletActif('APPRO'); setVueActive('liste'); }} 
-            className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'APPRO' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
-          >
-            📥 Appro ({documentsHistorique.length})
-          </button>
-          <button 
-            type="button" 
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
-            className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
-          >
-            📋 Commandes ({commandesHistorique.length})
-          </button>
+        <div className="space-y-2">
+          {/* FILTRE DE PÉRIODE SUR LE MOIS EN COURS */}
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+            <div className="flex justify-between items-center text-[9px] font-black uppercase text-slate-600">
+              <span>📅 Période (Mois en cours)</span>
+              {(dateDebutFiltre !== obtenirPremierJourDuMois() || dateFinFiltre !== obtenirDernierJourDuMois()) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateDebutFiltre(obtenirPremierJourDuMois());
+                    setDateFinFiltre(obtenirDernierJourDuMois());
+                  }}
+                  className="text-orange-600 hover:underline font-bold"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <div>
+                <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Du</label>
+                <input
+                  type="date"
+                  value={dateDebutFiltre}
+                  onChange={(e) => setDateDebutFiltre(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Au</label>
+                <input
+                  type="date"
+                  value={dateFinFiltre}
+                  onChange={(e) => setDateFinFiltre(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center gap-1.5">
+            <button 
+              type="button" 
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { setOngletActif('APPRO'); setVueActive('liste'); }} 
+              className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'APPRO' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
+            >
+              📥 Appro ({documentsHistoriqueAffiches.length} / {documentsHistorique.length})
+            </button>
+            <button 
+              type="button" 
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
+              className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
+            >
+              📋 Commandes ({commandesHistoriqueAffiches.length} / {commandesHistorique.length})
+            </button>
+          </div>
         </div>
       )}
 
       {vueActive === 'liste' && (
         <div className="space-y-2.5">
           {ongletActif === 'APPRO' && (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
-                    <th onClick={() => gererTri('date')} className="p-2 w-[18%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
-                    <th onClick={() => gererTri('numero')} className="p-2 w-[22%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° APPRO {rendreFlecheTri('numero')}</th>
-                    <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
-                    {!estModeLivraison && <th onClick={() => gererTri('statut')} className="p-2 w-[18%] text-right cursor-pointer hover:bg-slate-200 whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[10px]">
-                  {documentsHistorique.length === 0 ? (<tr><td colSpan={estModeLivraison ? 3 : 4} className="p-4 text-center text-slate-500 font-bold">Aucun approvisionnement enregistré.</td></tr>) : (
-                    documentsHistorique.map((doc) => (
-                      <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                        <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
-                        <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numero_bon}</td>
-                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'PARTENAIRE'}</td>
-                        {!estModeLivraison && (
-                          <td className="p-2 text-right whitespace-nowrap">
-                            <span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>
-                              {doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}
-                            </span>
-                          </td>
-                        )}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="space-y-2">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
+                      <th onClick={() => gererTri('date')} className="p-2 w-[18%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                      <th onClick={() => gererTri('numero')} className="p-2 w-[22%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° APPRO {rendreFlecheTri('numero')}</th>
+                      <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
+                      {!estModeLivraison && <th onClick={() => gererTri('statut')} className="p-2 w-[18%] text-right cursor-pointer hover:bg-slate-200 whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[10px]">
+                    {documentsHistoriqueAffiches.length === 0 ? (<tr><td colSpan={estModeLivraison ? 3 : 4} className="p-4 text-center text-slate-500 font-bold">Aucun approvisionnement enregistré.</td></tr>) : (
+                      documentsHistoriqueAffiches.map((doc) => (
+                        <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                          <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
+                          <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numero_bon}</td>
+                          <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'PARTENAIRE'}</td>
+                          {!estModeLivraison && (
+                            <td className="p-2 text-right whitespace-nowrap">
+                              <span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>
+                                {doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}
+                              </span>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {limiteAppro < documentsHistorique.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteAppro(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 appros de plus ({documentsHistorique.length - limiteAppro} restants)
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           {ongletActif === 'COMMANDE' && (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
-                    <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
-                    <th onClick={() => gererTri('numero')} className="p-2 w-[35%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
-                    <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[10px]">
-                  {commandesHistorique.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande enregistré.</td></tr>) : (
-                    commandesHistorique.map((cmd) => (
-                      <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                        <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
-                        <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{cmd.numero_commande}</td>
-                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'PARTENAIRE'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="space-y-2">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
+                      <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                      <th onClick={() => gererTri('numero')} className="p-2 w-[35%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
+                      <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[10px]">
+                    {commandesHistoriqueAffiches.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande enregistré.</td></tr>) : (
+                      commandesHistoriqueAffiches.map((cmd) => (
+                        <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                          <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
+                          <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{cmd.numero_commande}</td>
+                          <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'PARTENAIRE'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {limiteCommandes < commandesHistorique.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteCommandes(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                  >
+                    📥 Charger 20 commandes de plus ({commandesHistorique.length - limiteCommandes} restantes)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -620,11 +828,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
           </div>
           <div className="grid grid-cols-2 gap-2 pt-1">
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+            <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
               <span className="text-2xl">📋</span>
               <span className="font-black text-[11px] text-slate-900">Bon de Commande</span>
             </button>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => preparerNouveauDoc('APPRO')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+            <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('APPRO')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
               <span className="text-2xl">📥</span>
               <span className="font-black text-[11px] text-emerald-900">Approvisionnement</span>
             </button>
@@ -755,13 +963,20 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             </div>
           )}
           <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-            {approEnEditionId ? (<button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>) : (!estModeLivraison ? (<div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>) : <div/>)}
+            {approEnEditionId ? (
+              permissions.peut_supprimer ? (
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
+              ) : <div/>
+            ) : (!estModeLivraison ? (<div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>) : <div/>)}
+            
             <div className="flex items-center gap-1.5">
               <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
               <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
-              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
-                {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Valider')}
-              </button>
+              {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Valider')}
+                </button>
+              )}
             </div>
           </div>
         </form>
@@ -846,18 +1061,25 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
           <div className="flex justify-between items-center pt-2 border-t border-slate-200">
             {approEnEditionId ? (
               <div className="flex gap-1.5">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">🔄 Transformer en Appro</button>
+                {permissions.peut_supprimer && (
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
+                )}
+                {permissions.peut_valider && (
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">🔄 Transformer en Appro</button>
+                )}
               </div>
             ) : (!estModeLivraison ? (
               <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>
             ) : <div/>)}
+            
             <div className="flex items-center gap-1.5">
               <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
               <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
-              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
-                {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Enregistrer')}
-              </button>
+              {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Enregistrer')}
+                </button>
+              )}
             </div>
           </div>
         </form>
@@ -866,10 +1088,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       {modalArticleOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2.5 max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2"><span className="font-black text-xs uppercase text-slate-900">SÉLECTIONNER UN ARTICLE</span><button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button></div>
+            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+              <span className="font-black text-xs uppercase text-slate-900">SÉLECTIONNER UN ARTICLE ({articlesFiltresModalAffiches.length} / {articlesFiltresModal.length})</span>
+              <button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button>
+            </div>
             <input type="text" autoFocus placeholder="RECHERCHER..." value={rechercheArticle} onChange={(e) => setRechercheArticle(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
+            
             <div className="overflow-y-auto space-y-1.5 flex-1 max-h-60">
-              {articlesFiltresModal.map((art) => {
+              {articlesFiltresModalAffiches.map((art) => {
                 const estGrise = art.estGrise;
                 return (
                   <div key={art.idArticleFormate} onClick={() => { if (estGrise) return; setArticleCourant({ id_article: art.idArticleFormate, designation: (art.Designation || 'ARTICLE').toUpperCase(), quantite: '1', prix_achat: art.prixAchatDefaut || '0' }); setModalArticleOuverte(false); setRechercheArticle(''); setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50); }} className={`p-2.5 border rounded-xl flex justify-between items-center transition ${estGrise ? 'bg-slate-100 opacity-50 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 cursor-pointer border-slate-200'}`}>
@@ -879,6 +1105,18 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
                 );
               })}
             </div>
+
+            {limiteArticlesModal < articlesFiltresModal.length && (
+              <div className="text-center pt-1 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setLimiteArticlesModal(prev => prev + 20)}
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                >
+                  📥 Charger 20 articles de plus ({articlesFiltresModal.length - limiteArticlesModal} restants)
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

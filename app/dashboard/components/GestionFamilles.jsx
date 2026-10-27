@@ -10,6 +10,18 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [modeAffichage, setModeAffichage] = useState('LISTE'); // 'LISTE' ou 'SAISIE'
   const [familleSelectionnee, setFamilleSelectionnee] = useState(null);
   
+  // --- GESTION DES DROITS ET AUTORISATIONS ---
+  const [roleNom, setRoleNom] = useState('');
+  const [permissions, setPermissions] = useState({
+    lecture: true,
+    creation: true,
+    modification: true,
+    suppression: false,
+  });
+
+  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  const [limiteFamilles, setLimiteFamilles] = useState(20);
+
   const [nouveauFamille, setNouveauFamille] = useState({
     nom_famille: '',
   });
@@ -23,9 +35,49 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
-  const chargerFamilles = async () => {
+  const chargerPermissionsEtFamilles = async () => {
     setChargement(true);
     try {
+      // 1. Charger et analyser les permissions de l'employé connecté
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+        setRoleNom(nomRoleUser);
+
+        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+          const pFamille = userObj.permissions?.['familles_articles'] || userObj.permissions?.['articles'] || userObj.permissions?.['stock'];
+          
+          if (pFamille) {
+            setPermissions({
+              lecture: pFamille.lecture ?? true,
+              creation: pFamille.creation ?? true,
+              modification: pFamille.modification ?? true,
+              suppression: pFamille.suppression ?? false,
+            });
+          } else {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('nom_role', nomRoleUser)
+              .maybeSingle();
+
+            const rolePerm = roleData?.permissions?.['familles_articles'] || roleData?.permissions?.['articles'] || roleData?.permissions?.['stock'];
+            if (rolePerm) {
+              setPermissions({
+                lecture: rolePerm.lecture ?? true,
+                creation: rolePerm.creation ?? true,
+                modification: rolePerm.modification ?? true,
+                suppression: rolePerm.suppression ?? false,
+              });
+            }
+          }
+        }
+      }
+
+      // 2. Charger les familles d'articles
       let { data, error } = await supabase
         .from('familles_articles')
         .select('*')
@@ -56,12 +108,21 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   };
 
   useEffect(() => {
-    chargerFamilles();
+    chargerPermissionsEtFamilles();
   }, [entrepriseId, moduleActuel]);
 
   const enregistrerFamille = async (e) => {
     if (e) e.preventDefault();
     if (enTrainDeSauvegarder) return;
+
+    if (familleSelectionnee && !permissions.modification) {
+      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
+      return;
+    }
+    if (!familleSelectionnee && !permissions.creation) {
+      alert('⛔ Action non autorisée : Création interdite par votre profil.');
+      return;
+    }
 
     if (!nouveauFamille.nom_famille.trim()) {
       alert('⚠️ Veuillez renseigner le nom de la famille.');
@@ -91,7 +152,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         alert('Famille créée avec succès !');
       }
       reinitialiser();
-      chargerFamilles();
+      chargerPermissionsEtFamilles();
       setModeAffichage('LISTE');
     } catch (err) {
       alert('Erreur : ' + err.message);
@@ -108,34 +169,55 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
   const ouvrirFicheDetail = (famille) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.modification) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les familles.');
+      return;
+    }
     setFamilleSelectionnee(famille);
     setNouveauFamille({
       nom_famille: famille.nom_famille || '',
     });
   };
 
+  // --- RÈGLE 2 : FONCTION RPC SUPABASE ---
   const supprimerFamille = async () => {
     if (enTrainDeSauvegarder || !familleSelectionnee) return;
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
+      return;
+    }
 
     setEnTrainDeSauvegarder(true);
     try {
-      const { data: tousLesArticles, error: errArticles } = await supabase
-        .from('articles_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+      let articlesRattaches = [];
 
-      if (errArticles) throw errArticles;
-
-      const idFamilleStr = String(familleSelectionnee.id);
-      const nomFamilleStr = String(familleSelectionnee.nom_famille || '').trim().toUpperCase();
-
-      const articlesRattaches = (tousLesArticles || []).filter((art) => {
-        const valIdFamille = String(art.id_famille || art.famille_id || art.Famille || art.famille || '');
-        const valNomFamille = String(art.nom_famille || art.libelle_famille || '').trim().toUpperCase();
-
-        return valIdFamille === idFamilleStr || valIdFamille.toUpperCase() === nomFamilleStr || valNomFamille === nomFamilleStr;
+      const { data: articlesRattachesRpc, error: rpcError } = await supabase.rpc('verifier_articles_famille', {
+        p_entreprise_id: entrepriseId,
+        p_module: moduleActuel,
+        p_famille_id: familleSelectionnee.id
       });
+
+      if (rpcError) {
+        const { data: tousLesArticles, error: errArticles } = await supabase
+          .from('articles_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel);
+
+        if (errArticles) throw errArticles;
+
+        const idFamilleStr = String(familleSelectionnee.id);
+        const nomFamilleStr = String(familleSelectionnee.nom_famille || '').trim().toUpperCase();
+
+        articlesRattaches = (tousLesArticles || []).filter((art) => {
+          const valIdFamille = String(art.id_famille || art.famille_id || art.Famille || art.famille || '');
+          const valNomFamille = String(art.nom_famille || art.libelle_famille || '').trim().toUpperCase();
+
+          return valIdFamille === idFamilleStr || valIdFamille.toUpperCase() === nomFamilleStr || valNomFamille === nomFamilleStr;
+        });
+      } else {
+        articlesRattaches = articlesRattachesRpc || [];
+      }
 
       if (articlesRattaches.length > 0) {
         const exempleArticle = articlesRattaches[0].Designation || articlesRattaches[0].designation || 'ARTICLE';
@@ -154,7 +236,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
       alert('Famille supprimée avec succès.');
       reinitialiser();
-      chargerFamilles();
+      chargerPermissionsEtFamilles();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -162,29 +244,41 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
+  // Application de la pagination mobile
+  const famillesAffichees = familles.slice(0, limiteFamilles);
+
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-          <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES
-        </h3>
-        <button
-          type="button"
-          disabled={enTrainDeSauvegarder}
-          onClick={() => {
-            if (modeAffichage === 'SAISIE') {
-              reinitialiser();
-              setModeAffichage('LISTE');
-            } else {
-              reinitialiser();
-              setModeAffichage('SAISIE');
-            }
-          }}
-          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-        >
-          {modeAffichage === 'SAISIE' ? '✖' : 'Nouveau'}
-        </button>
+        <div className="flex items-center gap-2">
+          <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+            <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES ({famillesAffichees.length} / {familles.length})
+          </h3>
+          {roleNom && (
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              Rôle : {roleNom}
+            </span>
+          )}
+        </div>
+        {permissions.creation && (
+          <button
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={() => {
+              if (modeAffichage === 'SAISIE') {
+                reinitialiser();
+                setModeAffichage('LISTE');
+              } else {
+                reinitialiser();
+                setModeAffichage('SAISIE');
+              }
+            }}
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          >
+            {modeAffichage === 'SAISIE' ? '✖' : 'Nouveau'}
+          </button>
+        )}
       </div>
 
       <div className="flex justify-start items-center gap-1.5">
@@ -205,7 +299,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {modeAffichage === 'SAISIE' && (
+      {modeAffichage === 'SAISIE' && permissions.creation && (
         <form onSubmit={enregistrerFamille} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
           <div className="flex justify-between items-center pb-1 border-b border-slate-100">
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
@@ -255,39 +349,54 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       )}
 
       {modeAffichage === 'LISTE' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs table-fixed">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
-                  <th className="p-2.5 w-full">Famille</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                {chargement ? (
-                  <tr>
-                    <td className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
+        <div className="space-y-2">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs table-fixed">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
+                    <th className="p-2.5 w-full">Famille</th>
                   </tr>
-                ) : familles.length === 0 ? (
-                  <tr>
-                    <td className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
-                  </tr>
-                ) : (
-                  familles.map((fam) => (
-                    <tr
-                      key={fam.id}
-                      onClick={() => !enTrainDeSauvegarder && ouvrirFicheDetail(fam)}
-                      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                    >
-                      <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">
-                        🏷️ {fam.nom_famille}
-                      </td>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                  {chargement ? (
+                    <tr>
+                      <td className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : famillesAffichees.length === 0 ? (
+                    <tr>
+                      <td className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
+                    </tr>
+                  ) : (
+                    famillesAffichees.map((fam) => (
+                      <tr
+                        key={fam.id}
+                        onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirFicheDetail(fam)}
+                        className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
+                      >
+                        <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">
+                          🏷️ {fam.nom_famille}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {limiteFamilles < familles.length && (
+            <div className="text-center pt-1 pb-2">
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setLimiteFamilles(prev => prev + 20)}
+                className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+              >
+                📥 Charger 20 familles de plus ({familles.length - limiteFamilles} restantes)
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -306,7 +415,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 </label>
                 <input
                   type="text"
-                  disabled={enTrainDeSauvegarder}
+                  disabled={enTrainDeSauvegarder || !permissions.modification}
                   value={nouveauFamille.nom_famille}
                   onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
@@ -315,14 +424,16 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             </div>
 
             <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-between">
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={supprimerFamille}
-                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
-              >
-                {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
-              </button>
+              {permissions.suppression ? (
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={supprimerFamille}
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
+                >
+                  {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
+                </button>
+              ) : <div />}
               
               <div className="flex gap-1.5">
                 <button
@@ -333,14 +444,16 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 >
                   Fermer
                 </button>
-                <button
-                  type="button"
-                  disabled={enTrainDeSauvegarder}
-                  onClick={enregistrerFamille}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3.5 py-1.5 rounded text-[10px] shadow-xs"
-                >
-                  {enTrainDeSauvegarder ? 'Mise à jour...' : '✅ Mettre à jour'}
-                </button>
+                {permissions.modification && (
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={enregistrerFamille}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3.5 py-1.5 rounded text-[10px] shadow-xs"
+                  >
+                    {enTrainDeSauvegarder ? 'Mise à jour...' : '✅ Mettre à jour'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
