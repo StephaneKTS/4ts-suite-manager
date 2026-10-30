@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
   const [comptes, setComptes] = useState([]);
@@ -41,11 +42,20 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheComptes = `comptes_comptables_${entrepriseId}_${moduleActuel}`;
 
   const chargerPermissionsEtComptes = async () => {
-    setChargement(true);
+    // 1. Chargement instantané depuis le cache local (Zéro attente)
+    const comptesLocaux = localSync.recupererDonneesLocales(cleCacheComptes);
+    if (comptesLocaux && comptesLocaux.length > 0) {
+      setComptes(comptesLocaux);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
     try {
-      // 1. Charger et analyser les permissions de l'employé connecté
+      // 2. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
@@ -84,7 +94,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      // 2. Charger les comptes du plan comptable
+      // 3. Charger les comptes du plan comptable (filtrés strictement par entreprise et module)
       const { data, error } = await supabase
         .from('comptes_comptables')
         .select('*')
@@ -92,9 +102,16 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
 
       if (error) throw error;
-      setComptes(data || []);
+      const listComptes = data || [];
+      setComptes(listComptes);
+
+      // Mise à jour du cache local propre
+      localSync.sauvegarderDonneesLocales(cleCacheComptes, listComptes);
     } catch (err) {
       console.error('Erreur chargement plan comptable :', err.message);
+      if (!comptesLocaux || comptesLocaux.length === 0) {
+        setComptes([]);
+      }
     } finally {
       setChargement(false);
     }
@@ -102,6 +119,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerPermissionsEtComptes();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const genererCodeAutomatique = (type, intitule = '') => {
@@ -213,13 +231,24 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
           .update(payload)
           .eq('id', compteEnEdition.id);
         if (error) throw error;
+
+        setComptes(prev => prev.map(c => c.id === compteEnEdition.id ? { ...c, ...payload } : c));
+        alert('Compte mis à jour avec succès !');
       } else {
-        const { error } = await supabase.from('comptes_comptables').insert([payload]);
+        const { error, data } = await supabase.from('comptes_comptables').insert([payload]).select().single();
         if (error) throw error;
+
+        if (data) {
+          setComptes(prev => [data, ...prev.filter(c => c.id !== data.id)]);
+        }
+        alert('Compte créé avec succès !');
       }
 
+      // Suppression et nettoyage de l'ancien cache local
+      localStorage.removeItem(cleCacheComptes);
+
       annulerForm();
-      chargerPermissionsEtComptes();
+      await chargerPermissionsEtComptes();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -264,8 +293,13 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
     try {
       const { error } = await supabase.from('comptes_comptables').delete().eq('id', compteEnEdition.id);
       if (error) throw error;
+
+      setComptes(prev => prev.filter(c => c.id !== compteEnEdition.id));
+      localStorage.removeItem(cleCacheComptes);
+
+      alert('Compte supprimé avec succès.');
       annulerForm();
-      chargerPermissionsEtComptes();
+      await chargerPermissionsEtComptes();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -316,7 +350,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1">
-            <span>📚</span> PLAN COMPTABLE [{moduleActuel}] ({comptesAffiches.length} / {comptesFiltres.length})
+            <span>📚</span> PLAN COMPTABLE ({comptesAffiches.length} / {comptesFiltres.length})
           </h3>
           {roleNom && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">

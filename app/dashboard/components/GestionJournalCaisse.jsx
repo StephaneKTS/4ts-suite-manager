@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueInitiale = 'saisie_operations', utilisateurActif = 'THEODORE STEPHANE' }) {
   const [modeSaisie, setModeSaisie] = useState('nouveau');
@@ -101,6 +102,18 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const [compteLivreId, setCompteLivreId] = useState('');
   const [tiersLivreFiltre, setTiersLivreFiltre] = useState('');
 
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const cleCacheMouvements = `mouvements_caisse_${entrepriseId}_${moduleActuel}`;
+  const cleCacheEtatsCaisse = `etats_caisse_${entrepriseId}_${moduleActuel}`;
+  const cleCacheClotures = `clotures_caisses_${entrepriseId}_${moduleActuel}`;
+
   const genererCodePieceSequentiel = (dateStr, listeEtats, listeClotures) => {
     const dClean = (dateStr || new Date().toISOString().split('T')[0]).replace(/-/g, '');
     
@@ -125,22 +138,27 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return `CL-${dClean}-${prochainIndex}`;
   };
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-
   const chargerDonneesGlobales = async () => {
-    setChargement(true);
+    const mouvementsLocaux = localSync.recupererDonneesLocales(cleCacheMouvements);
+    const etatsLocaux = localSync.recupererDonneesLocales(cleCacheEtatsCaisse);
+    const cloturesLocales = localSync.recupererDonneesLocales(cleCacheClotures);
+
+    if (mouvementsLocaux && mouvementsLocaux.length > 0) {
+      setMouvements(mouvementsLocaux);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
+    if (etatsLocaux && etatsLocaux.length > 0) setEtatsCaisseList(etatsLocaux);
+    if (cloturesLocales && cloturesLocales.length > 0) setCloturesCaissesList(cloturesLocales);
+
     try {
       const { data: dataCaisses } = await supabase
         .from('caisses')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
 
       setCaisses(dataCaisses || []);
 
@@ -159,67 +177,83 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       const { data: dataComptes } = await supabase
         .from('comptes_comptables')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setComptes(dataComptes || []);
 
       const { data: dataRoles } = await supabase
         .from('roles')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setRoles(dataRoles || []);
 
       const { data: dataMvts } = await supabase
         .from('mouvements_caisse')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: true });
-      setMouvements(dataMvts || []);
+      const listMvts = dataMvts || [];
+      setMouvements(listMvts);
+      localSync.sauvegarderDonneesLocales(cleCacheMouvements, listMvts);
 
       const { data: dataVentes } = await supabase
         .from('ventes_historiques')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setVentes(dataVentes || []);
 
       const { data: dataAppros } = await supabase
         .from('approvisionnements')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setApprovisionnements(dataAppros || []);
 
       const { data: dataCmdLivr } = await supabase
         .from('commandes_livraison_en_tete')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setCommandesLivraison(dataCmdLivr || []);
 
       const { data: dataEmp } = await supabase
         .from('emplacements_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setEmplacementsStock(dataEmp || []);
 
       const { data: dataUsers } = await supabase
         .from('utilisateurs')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setUtilisateurs(dataUsers || []);
 
       const { data: dataEtats } = await supabase
         .from('etats_caisse')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
-      setEtatsCaisseList(dataEtats || []);
+      const listEtats = dataEtats || [];
+      setEtatsCaisseList(listEtats);
+      localSync.sauvegarderDonneesLocales(cleCacheEtatsCaisse, listEtats);
 
       const { data: dataCloturesCaisses } = await supabase
         .from('clotures_caisses')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
-      setCloturesCaissesList(dataCloturesCaisses || []);
+      const listClotures = dataCloturesCaisses || [];
+      setCloturesCaissesList(listClotures);
+      localSync.sauvegarderDonneesLocales(cleCacheClotures, listClotures);
 
-      const prochainNum = genererCodePieceSequentiel(dateControle, dataEtats || [], dataCloturesCaisses || []);
+      const prochainNum = genererCodePieceSequentiel(dateControle, listEtats, listClotures);
       setNumeroPieceCloture(prochainNum);
 
     } catch (err) {
@@ -231,6 +265,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   useEffect(() => {
     chargerDonneesGlobales();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   useEffect(() => {
@@ -292,7 +327,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       if (utilisateurMotif) {
         libelleFinal = utilisateurMotif.toUpperCase();
       } else {
-        libelleFinal = 'MOUVEMENT INTERNE';
+        libelleFinal = 'MOUV. INT.';
       }
 
       const payload = {
@@ -313,18 +348,26 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
           .update(payload)
           .eq('id', idOperationEnCoursModif);
         if (error) throw error;
+
+        setMouvements(prev => prev.map(m => m.id === idOperationEnCoursModif ? { ...m, ...payload } : m));
         alert('Opération modifiée avec succès !');
         setIdOperationEnCoursModif(null);
         setNumeroPieceEnCoursModif('');
       } else {
-        const { error } = await supabase.from('mouvements_caisse').insert([payload]);
+        const { error, data } = await supabase.from('mouvements_caisse').insert([payload]).select().single();
         if (error) throw error;
+
+        if (data) {
+          setMouvements(prev => [...prev, data]);
+        }
         alert(`Opération enregistrée avec succès par ${utilisateurActif}.`);
       }
 
+      localStorage.removeItem(cleCacheMouvements);
+
       setLigneUnique({ id_compte: '', montant: '', piece_physique: '', id_utilisateur_tiers: '' });
       setUtilisateurMotif('');
-      chargerDonneesGlobales();
+      await chargerDonneesGlobales();
       setModeSaisie('historique');
     } catch (err) {
       alert('Erreur : ' + err.message);
@@ -359,7 +402,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     const val = e.target.value;
     setLigneUnique({ ...ligneUnique, id_utilisateur_tiers: val });
     if (!val) {
-      setUtilisateurMotif('MOUVEMENT INTERNE');
+      setUtilisateurMotif('MOUV. INT.');
     }
   };
 
@@ -379,7 +422,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       piece_physique: mvt.piece_physique || '',
       id_utilisateur_tiers: ''
     });
-    setUtilisateurMotif(mvt.libelle && !['MOUVEMENT INTERNE', 'DEPENSE INTERNE', 'CHARGE INTERNE'].includes(mvt.libelle) ? mvt.libelle : '');
+    setUtilisateurMotif(mvt.libelle && !['MOUVEMENT INTERNE', 'MOUV. INT.', 'DEPENSE INTERNE', 'CHARGE INTERNE'].includes(mvt.libelle) ? mvt.libelle : '');
     setModeSaisie('nouveau');
   };
 
@@ -391,12 +434,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .delete()
         .eq('id', id);
       if (error) throw error;
+
+      setMouvements(prev => prev.filter(m => m.id !== id));
+      localStorage.removeItem(cleCacheMouvements);
+
       alert('Opération supprimée avec succès !');
       setIdOperationEnCoursModif(null);
       setNumeroPieceEnCoursModif('');
       setLigneUnique({ id_compte: '', montant: '', piece_physique: '', id_utilisateur_tiers: '' });
       setUtilisateurMotif('');
-      chargerDonneesGlobales();
+      await chargerDonneesGlobales();
       setModeSaisie('historique');
     } catch (err) {
       alert('Erreur lors de la suppression : ' + err.message);
@@ -414,7 +461,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const mapTiersCategories = new Map();
   utilisateurs.forEach(u => {
     const nom = (u.nom_complet || u.email || '').trim().toUpperCase();
-    if (nom) mapTiersCategories.set(nom, 'EMPLOYÉ / UTILISATEUR');
+    if (nom) mapTiersCategories.set(nom, 'EMPLOYÉ');
   });
   ventes.forEach(v => {
     const nom = (v.nom_client || '').trim().toUpperCase();
@@ -422,11 +469,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   });
   approvisionnements.forEach(a => {
     const nom = (a.nom_fournisseur || '').trim().toUpperCase();
-    if (nom && !mapTiersCategories.has(nom)) mapTiersCategories.set(nom, 'FOURNISSEUR');
+    if (nom && !mapTiersCategories.has(nom)) mapTiersCategories.set(nom, 'FOURN.');
   });
   commandesLivraison.forEach(c => {
     const nom = (c.vendeur_livreur || '').trim().toUpperCase();
-    if (nom && !mapTiersCategories.has(nom)) mapTiersCategories.set(nom, 'LIVREUR');
+    if (nom && !mapTiersCategories.has(nom)) mapTiersCategories.set(nom, 'LIVR.');
   });
 
   const listeTiersGlobale = Array.from(mapTiersCategories.entries()).map(([nom, cat]) => ({ nom, categorie: cat }));
@@ -467,7 +514,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     created_at: m.created_at,
     piece_physique: m.piece_physique || '-',
     id_compte: m.id_compte,
-    libelle: m.libelle || 'MOUVEMENT CAISSE',
+    libelle: m.libelle || 'MOUV. CAISSE',
     type_mouvement: m.type_mouvement,
     montant: Number(m.montant || 0)
   }));
@@ -477,7 +524,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     created_at: v.created_at,
     piece_physique: v.numero_ticket || `TICK-${v.id}`,
     id_compte: v.id_compte || null,
-    libelle: `VENTE TICKET #${v.numero_ticket || '-'} (${v.nom_client || 'CLIENTS DIVERS'})`,
+    libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
     type_mouvement: 'ENTREE',
     montant: Number(v.montant_regle ?? v.total_montant ?? 0)
   }));
@@ -487,7 +534,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     created_at: a.created_at || a.date_approvisionnement || new Date().toISOString(),
     piece_physique: a.reference || `APRO-${a.id}`,
     id_compte: a.id_compte || null,
-    libelle: `APPROVISIONNEMENT FOURNISSEUR (${a.nom_fournisseur || 'FOURNISSEUR'})`,
+    libelle: `APPRO. (${a.nom_fournisseur || 'FOURN.'})`,
     type_mouvement: 'SORTIE',
     montant: Number(a.montant_total || a.montant || 0)
   }));
@@ -553,7 +600,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const resultatNetGrandLivre = totalEntreesGrandLivre - totalSortiesGrandLivre;
 
-  // --- JOURNAL DE CAISSE CORRIGÉ ---
+  // --- JOURNAL DE CAISSE CORRIGÉ (Sans colonne Caisse et avec motifs ultra-abrégés) ---
   const caisseSelectionneeObj = caisses.find(c => String(c.id) === String(caisseSelectionneeJournal));
   const estCaissePrincipaleSelectionnee = caisseSelectionneeObj && ((caisseSelectionneeObj.nature || '').toUpperCase() === 'PRINCIPALE' || (caisseSelectionneeObj.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (caisseSelectionneeObj.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
 
@@ -567,12 +614,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const ventesTransformeesEnMouvements = ventes
     .filter(v => {
-      // Si une caisse spécifique est sélectionnée, on filtre strictement par cette caisse
       if (caisseSelectionneeJournal) {
         if (String(v.id_caisse) !== String(caisseSelectionneeJournal)) return false;
-      } else {
-        // Si aucune caisse n'est sélectionnée, on exclut les ventes des caisses secondaires si on veut éviter les doublons avec les versements de caisse principale, ou on les affiche si elles proviennent directement de la caisse.
-        // Ici, on affiche toutes les ventes si aucune caisse n'est sélectionnée.
       }
       const dateVente = v.created_at ? v.created_at.split('T')[0] : '';
       if (dateDebutJournal && dateVente < dateDebutJournal) return false;
@@ -586,7 +629,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       id_caisse: v.id_caisse,
       type_mouvement: 'ENTREE',
       montant: Number(v.montant_regle ?? v.total_montant ?? 0),
-      libelle: `VENTE TICKET #${v.numero_ticket || '-'} (${v.nom_client || 'CLIENTS DIVERS'})`,
+      libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
       id_compte: v.id_compte || null,
       piece_physique: v.numero_ticket || `TICK-${v.id}`,
       created_at: v.created_at
@@ -598,7 +641,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       if (dateDebutJournal && dateCl < dateDebutJournal) return false;
       if (dateFinJournal && dateCl > dateFinJournal) return false;
       if (caisseSelectionneeJournal) {
-        // Un versement de clôture va dans la caisse de destination (souvent la caisse principale)
         const idDest = cl.id_caisse_destination || caissesPrincipalesPourSaisie[0]?.id;
         if (String(idDest) !== String(caisseSelectionneeJournal)) return false;
       }
@@ -611,7 +653,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       id_caisse: cl.id_caisse_destination || caissesPrincipalesPourSaisie[0]?.id || null,
       type_mouvement: 'ENTREE',
       montant: Number((cl.montant_reel_verse ?? cl.montant_attendu ?? cl.montant_total_encaisse) || 0),
-      libelle: `VERSEMENT CLÔTURE CAISSE [${cl.code_cloture || 'CL'}] (${cl.caissier || 'CAISSIER'})`,
+      libelle: `VERS. CLÔT [${cl.code_cloture || 'CL'}]`,
       id_compte: null,
       piece_physique: cl.code_cloture || `CL-${cl.id}`,
       created_at: cl.created_at || `${cl.date_debut}T00:00:00`
@@ -635,7 +677,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       id_caisse: e.id_caisse || caissesPrincipalesPourSaisie[0]?.id || null,
       type_mouvement: 'ENTREE',
       montant: Number(e.montant_verse || 0),
-      libelle: `VERSEMENT CLÔTURE CAISSE [${e.code_piece || 'CL'}] (${obtenirNomCaissier(e.caissier)})`,
+      libelle: `VERS. CLÔT [${e.code_piece || 'CL'}]`,
       id_compte: null,
       piece_physique: e.code_piece || `CL-${e.id}`,
       created_at: e.created_at || `${e.date_debut}T00:00:00`
@@ -643,7 +685,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const tousLesVersementsClotures = [...versementsClotureTransformesFromClotures, ...versementsClotureTransformesFromEtats];
 
-  // Si une caisse spécifique autre que la principale est sélectionnée, on affiche ses ventes directes. Si c'est la caisse principale ou "Toutes", on combine avec les mouvements et versements.
   const mouvementsJournalTries = [
     ...mouvementsDeCaisseFiltres, 
     ...ventesTransformeesEnMouvements, 
@@ -656,11 +697,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     } else if (colonneTriJournal === 'piece') {
       valA = a.piece_physique || '';
       valB = b.piece_physique || '';
-    } else if (colonneTriJournal === 'caisse') {
-      const cA = caisses.find(c => String(c.id) === String(a.id_caisse));
-      valA = cA ? cA.nom_caisse : '';
-      const cB = caisses.find(c => String(c.id) === String(b.id_caisse));
-      valB = cB ? cB.nom_caisse : '';
     } else if (colonneTriJournal === 'compte') {
       const cA = comptes.find(c => String(c.id) === String(a.id_compte));
       valA = cA ? cA.intitule_compte : '';
@@ -718,7 +754,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return m.type_mouvement === 'ENTREE' ? acc + Number(m.montant) : acc - Number(m.montant);
   }, 0);
 
-  // --- MONTANT ATTENDU BASÉ STRICTEMENT SUR LE MONTANT RÉGLÉ (ENCAISSÉ) ---
   const montantAttenduCaisse = moduleActuel === 'LIVRAISON'
     ? (livreurControle
         ? commandesLivraison
@@ -792,11 +827,15 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       const { data, error } = await supabase.from('etats_caisse').insert([payloadEtat]).select().single();
       if (error) throw error;
 
-      alert(`✅ Clôture de caisse [${codePieceActuel}] validée avec succès ! Montant de ${montantV.toLocaleString('fr-FR')} CFA prêt à être versé dans la caisse principale.`);
       if (data) {
+        setEtatsCaisseList(prev => [data, ...prev]);
         setDernierEtatIdValidé(data.id);
       }
-      chargerDonneesGlobales();
+
+      localStorage.removeItem(cleCacheEtatsCaisse);
+
+      alert(`✅ Clôture de caisse [${codePieceActuel}] validée avec succès ! Montant de ${montantV.toLocaleString('fr-FR')} CFA prêt à être versé dans la caisse principale.`);
+      await chargerDonneesGlobales();
     } catch (err) {
       alert('Erreur lors de la validation : ' + err.message);
     }
@@ -826,7 +865,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         id_caisse: caisseDestinationVersement,
         type_mouvement: 'ENTREE',
         montant: Number(etat.montant_verse),
-        libelle: `VERSEMENT CLÔTURE CAISSE [${numClotureAssocie}] (${obtenirNomCaissier(etat.caissier)})`,
+        libelle: `VERS. CLÔT [${numClotureAssocie}]`,
         piece_physique: numClotureAssocie,
         created_at: new Date().toISOString()
       };
@@ -841,10 +880,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
       if (errUpdate) throw errUpdate;
 
-      alert(`🚀 Versement de la clôture [${numClotureAssocie}] effectué avec succès dans le journal de caisse !`);
+      localStorage.removeItem(cleCacheMouvements);
+      localStorage.removeItem(cleCacheEtatsCaisse);
+
+      alert(`🚀 Versement de la clôture [${numClotureAssocie}] effectué avec succès !`);
       setAfficherModaleVersement(false);
       setEtatEnCoursDeVersement(null);
-      chargerDonneesGlobales();
+      await chargerDonneesGlobales();
     } catch (err) {
       alert('Erreur : ' + err.message);
     }
@@ -1095,7 +1137,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                     <label className="block font-black text-slate-700 text-[9px] mb-0.5">Motif</label>
                     <input
                       type="text"
-                      placeholder={!ligneUnique.id_utilisateur_tiers ? "MOUVEMENT INTERNE" : "Motif de l'opération..."}
+                      placeholder={!ligneUnique.id_utilisateur_tiers ? "MOUV. INT." : "Motif..."}
                       value={utilisateurMotif}
                       onChange={(e) => setUtilisateurMotif(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 uppercase shadow-2xs"
@@ -1278,7 +1320,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       onClick={() => setAfficherModaleTiers(true)}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] cursor-pointer truncate shadow-2xs flex justify-between items-center"
                     >
-                      <span className="uppercase">{tiersLivreFiltre || '-- TOUS LES TIERS / CLIENTS / EMPLOYÉS --'}</span>
+                      <span className="uppercase">{tiersLivreFiltre || '-- TOUS --'}</span>
                       <span className="text-slate-400">🔍</span>
                     </div>
                   </div>
@@ -1309,7 +1351,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                           <tr key={m.id} className="hover:bg-slate-50">
                             <td className="p-1.5 text-slate-800 font-bold whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
                             <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{m.piece_physique}</td>
-                            <td className="p-1.5 font-bold text-slate-900 truncate uppercase">{compteAssocie ? compteAssocie.intitule_compte : 'COMPTE NON LIÉ'}</td>
+                            <td className="p-1.5 font-bold text-slate-900 truncate uppercase">{compteAssocie ? compteAssocie.intitule_compte : 'NON LIÉ'}</td>
                             <td className="p-1.5 font-black text-slate-900 uppercase truncate">{m.libelle}</td>
                             <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-700' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
@@ -1342,7 +1384,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             </div>
           )}
 
-          {/* CONTENU : JOURNAL DE CAISSE */}
+          {/* CONTENU : JOURNAL DE CAISSE (Sans colonne Caisse et avec motifs ultra-abrégés) */}
           {modeSaisie === 'journal_caisse' && (
             <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
               <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
@@ -1398,7 +1440,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                     <tr>
                       <th className="p-1.5">Date</th>
                       <th className="p-1.5 font-mono">N° Pièce</th>
-                      <th className="p-1.5">Caisse</th>
                       <th className="p-1.5">Compte</th>
                       <th className="p-1.5">Motif</th>
                       <th className="p-1.5 text-right">Entrée</th>
@@ -1408,11 +1449,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
                     {mouvementsJournalAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan="7" className="p-3 text-center text-slate-500 font-bold">Aucun mouvement de caisse.</td>
+                        <td colSpan="6" className="p-3 text-center text-slate-500 font-bold">Aucun mouvement de caisse.</td>
                       </tr>
                     ) : (
                       mouvementsJournalAffiches.map((m, idx) => {
-                        const caisseObj = caisses.find(c => String(c.id) === String(m.id_caisse));
                         const compteObj = comptes.find(c => String(c.id) === String(m.id_compte));
                         const estEntree = m.type_mouvement === 'ENTREE';
                         const montantNum = Number(m.montant) || 0;
@@ -1421,9 +1461,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                           <tr key={m.id} className="hover:bg-slate-50">
                             <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
                             <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{m.piece_physique || `PC-${idx + 1}`}</td>
-                            <td className="p-1.5 font-bold text-slate-900 truncate max-w-[80px]">{caisseObj ? caisseObj.nom_caisse : '-'}</td>
                             <td className="p-1.5 font-bold text-slate-900 truncate max-w-[80px] uppercase">{compteObj ? compteObj.intitule_compte : '-'}</td>
-                            <td className="p-1.5 font-black text-slate-900 uppercase truncate max-w-[120px]">{m.libelle}</td>
+                            <td className="p-1.5 font-black text-slate-900 uppercase truncate max-w-[140px]">{m.libelle}</td>
                             <td className="p-1.5 font-black text-emerald-700 text-right whitespace-nowrap">
                               {estEntree ? `${montantNum.toLocaleString('fr-FR')}` : '-'}
                             </td>
@@ -1438,12 +1477,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   {mouvementsJournalTries.length > 0 && (
                     <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
                       <tr>
-                        <td colSpan="5" className="p-2 uppercase text-[9px]">Totaux :</td>
+                        <td colSpan="4" className="p-2 uppercase text-[9px]">Totaux :</td>
                         <td className="p-2 text-right font-black text-emerald-800">{totalEntreesJournal.toLocaleString('fr-FR')}</td>
                         <td className="p-2 text-right font-black text-red-700">{totalSortiesJournal.toLocaleString('fr-FR')}</td>
                       </tr>
                       <tr className="bg-orange-50 border-t border-slate-200">
-                        <td colSpan="5" className="p-2 uppercase text-[9px] text-orange-900 font-black">Solde Net :</td>
+                        <td colSpan="4" className="p-2 uppercase text-[9px] text-orange-900 font-black">Solde Net :</td>
                         <td colSpan="2" className={`p-2 text-right font-black ${soldeJournal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                           {soldeJournal.toLocaleString('fr-FR')}
                         </td>
@@ -1752,7 +1791,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                                 </span>
                               </td>
                               <td className="p-1.5 text-center">
-                                <span className="text-[9px] text-emerald-700 font-bold">Automatique</span>
+                                <span className="text-[9px] text-emerald-700 font-bold">Auto</span>
                               </td>
                             </tr>
                           );
@@ -1773,7 +1812,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
           <div className="bg-slate-900 text-white w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl overflow-hidden p-4 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
               <h3 className="font-extrabold text-xs uppercase tracking-wider text-orange-400">
-                🏦 CHOISIR LA CAISSE DE VERSEMENT [{etatEnCoursDeVersement.code_piece || 'CL'}]
+                🏦 CHOISIR LA CAISSE [{etatEnCoursDeVersement.code_piece || 'CL'}]
               </h3>
               <button
                 onClick={() => setAfficherModaleVersement(false)}
@@ -1784,7 +1823,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             </div>
 
             <p className="text-[11px] text-slate-300">
-              Indiquez la caisse dans laquelle vous souhaitez verser la recette de clôture <span className="font-mono font-bold text-orange-400">[{etatEnCoursDeVersement.code_piece || 'CL'}]</span> d'un montant de <span className="font-bold text-emerald-400">{Number(etatEnCoursDeVersement.montant_verse).toLocaleString('fr-FR')} CFA</span>.
+              Indiquez la caisse de destination pour le versement de <span className="font-bold text-emerald-400">{Number(etatEnCoursDeVersement.montant_verse).toLocaleString('fr-FR')} CFA</span>.
             </p>
 
             <div>
@@ -1813,7 +1852,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                 onClick={executerVersementModale}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-5 py-2 rounded-xl text-[10px] shadow-2xs"
               >
-                Validation...
+                Confirmer
               </button>
             </div>
           </div>
@@ -1859,7 +1898,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                 }}
                 className="bg-white hover:bg-slate-50 text-slate-900 font-black p-3 rounded-xl border border-slate-300 cursor-pointer transition shadow-2xs uppercase text-[10px] flex justify-between items-center"
               >
-                <span>⭐ -- TOUS LES TIERS / CLIENTS / EMPLOYÉS --</span>
+                <span>⭐ -- TOUS --</span>
                 <span className="text-[9px] text-orange-600 font-black">TOUS</span>
               </div>
 

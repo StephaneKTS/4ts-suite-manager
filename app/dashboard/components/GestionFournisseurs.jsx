@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 const LISTE_PAYS = [
   { code: 'cmr', indicatif: '+237', longueur: 9 },
@@ -22,7 +23,26 @@ const LISTE_PAYS = [
 ];
 
 export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
-  const [partenaires, setPartenaires] = useState([]);
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const cleCacheFournisseurs = `fournisseurs_${entrepriseId}_${moduleActuel}`;
+  const estModeLivraison = moduleActuel === 'LIVRAISON';
+  const libelleEntite = estModeLivraison ? 'PARTENAIRES' : 'FOURNISSEURS';
+
+  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
+  const [partenaires, setPartenaires] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localSync.recupererDonneesLocales(cleCacheFournisseurs) || [];
+    }
+    return [];
+  });
+
   const [approvisionnements, setApprovisionnements] = useState([]);
   const [bonsCommandes, setBonsCommandes] = useState([]);
   const [articles, setArticles] = useState([]);
@@ -40,7 +60,14 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [triHistCol, setTriHistCol] = useState('date');
   const [triHistOrdre, setTriHistOrdre] = useState('asc');
 
-  const [partenaireHistoriqueId, setPartenaireHistoriqueId] = useState('');
+  const [partenaireHistoriqueId, setPartenaireHistoriqueId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localSync.recupererDonneesLocales(cleCacheFournisseurs);
+      return cached && cached.length > 0 ? cached[0].id : '';
+    }
+    return '';
+  });
+
   const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');
   const [factureSelectionnee, setFactureSelectionnee] = useState(null);
@@ -51,12 +78,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [recherche, setRecherche] = useState('');
 
   const [roleNom, setRoleNom] = useState('');
-  const [permissions, setPermissions] = useState({
-    peutVoir: true,
-    peutCreer: true,
-    peutModifier: true,
-    peutSuppression: true,
-  });
 
   const [nouveauPartenaire, setNouveauPartenaire] = useState({
     nom_fournisseur: '',
@@ -69,19 +90,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     id_depot: '',
   });
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-  const estModeLivraison = moduleActuel === 'LIVRAISON';
-  const libelleEntite = estModeLivraison ? 'PARTENAIRES' : 'FOURNISSEURS';
-
-  const chargerPermissionsEtDonnees = async () => {
-    setChargement(true);
+  const chargerPermissionsEtDonnees = async (silencieux = false) => {
+    if (!silencieux && partenaires.length === 0) setChargement(true);
     try {
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
@@ -115,6 +125,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       }
 
       setPartenaires(listPartenaires);
+      localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listPartenaires);
 
       if (listPartenaires.length > 0 && !partenaireHistoriqueId) {
         setPartenaireHistoriqueId(listPartenaires[0].id);
@@ -149,7 +160,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       setDepots(dataDepots || []);
 
     } catch (err) {
-      console.error('Erreur chargement données :', err.message);
+      console.error('Erreur chargement données (mode hors-ligne actif) :', err.message);
     } finally {
       setChargement(false);
     }
@@ -157,6 +168,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerPermissionsEtDonnees();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const calculerTotauxFacture = (app) => {
@@ -210,8 +222,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     try {
       let depotIdFinal = nouveauPartenaire.id_depot;
 
-      // La création automatique du dépôt n'a lieu QUE dans le module LIVRAISON.
-      // En module BOUTIQUE, la création du dépôt est strictement manuelle.
       if (estModeLivraison && nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE') {
         const { data: depotExistant } = await supabase
           .from('depots_stock')
@@ -239,8 +249,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             .select()
             .maybeSingle();
 
-          if (errDepot) throw errDepot;
-          if (depotCree) {
+          if (errDepot) {
+            localSync.ajouterFileAttente('INSERT', 'depots_stock', payloadNouveauDepot);
+          } else if (depotCree) {
             depotIdFinal = depotCree.id || depotCree.ID;
           }
         }
@@ -259,41 +270,43 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       };
 
       if (partenaireEnEdition) {
+        payload.id = partenaireEnEdition.id;
         let { error } = await supabase
           .from('fournisseurs')
           .update(payload)
           .eq('id', partenaireEnEdition.id);
 
-        if (error && error.message.includes('statut_stockage')) {
-          delete payload.statut_stockage;
-          const resSecours = await supabase.from('fournisseurs').update(payload).eq('id', partenaireEnEdition.id);
-          if (resSecours.error) throw resSecours.error;
-        } else if (error) {
-          throw error;
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'fournisseurs', payload);
         }
+
+        // Mise à jour immédiate et locale pour affichage instantané
+        const listeMaj = partenaires.map(p => p.id === partenaireEnEdition.id ? { ...p, ...payload } : p);
+        setPartenaires(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
         alert('Mise à jour réussie !');
       } else {
-        let { error } = await supabase.from('fournisseurs').insert([
-          {
-            ...payload,
-            solde_dette: 0,
-          },
-        ]);
+        const idTemp = 'temp_' + Date.now();
+        const nouvelObjet = { ...payload, id: idTemp, solde_dette: 0, created_at: new Date().toISOString() };
+        
+        let { error } = await supabase.from('fournisseurs').insert([payload]);
 
-        if (error && error.message.includes('statut_stockage')) {
-          delete payload.statut_stockage;
-          const resSecours = await supabase.from('fournisseurs').insert([{ ...payload, solde_dette: 0 }]);
-          if (resSecours.error) throw resSecours.error;
-        } else if (error) {
-          throw error;
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'fournisseurs', payload);
         }
+
+        // Insertion immédiate et locale pour affichage instantané
+        const listeMaj = [nouvelObjet, ...partenaires];
+        setPartenaires(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
         alert('Enregistrement réussi !');
       }
 
+      localStorage.removeItem(cleCacheFournisseurs);
       annulerForm();
-      await chargerPermissionsEtDonnees();
+      await chargerPermissionsEtDonnees(true);
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -354,9 +367,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         supabase.from('bons_commande_fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
-      if (resAppro.error) throw resAppro.error;
-      if (resBC.error) throw resBC.error;
-
       const approDb = resAppro.data || [];
       const bcDb = resBC.data || [];
 
@@ -386,11 +396,18 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       }
 
       const { error } = await supabase.from('fournisseurs').delete().eq('id', partenaireEnEdition.id);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'fournisseurs', { id: partenaireEnEdition.id });
+      }
 
+      const listeMaj = partenaires.filter(p => p.id !== partenaireEnEdition.id);
+      setPartenaires(listeMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
+
+      localStorage.removeItem(cleCacheFournisseurs);
       alert('Suppression effectuée avec succès.');
       annulerForm();
-      await chargerPermissionsEtDonnees();
+      await chargerPermissionsEtDonnees(true);
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -578,11 +595,14 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         })
         .eq('id', factureSelectionnee.id);
 
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('UPDATE', 'approvisionnements', { id: factureSelectionnee.id, montant_regle: nouveauRegle });
+      }
+
       alert('Règlement enregistré avec succès !');
       setMontantReglementSaisi('');
       setFactureSelectionnee(null);
-      await chargerPermissionsEtDonnees();
+      await chargerPermissionsEtDonnees(true);
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -872,7 +892,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <span>Répertoire : <strong>{partenairesAffiches.length} / {partenairesFiltres.length}</strong> affiché(s)</span>
               </div>
 
-              {chargement ? (
+              {chargement && partenaires.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
               ) : partenairesAffiches.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">

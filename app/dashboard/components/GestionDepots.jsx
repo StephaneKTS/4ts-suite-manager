@@ -2,9 +2,35 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
-  const [depots, setDepots] = useState([]);
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
+  const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
+
+  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
+  const [depots, setDepots] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localSync.recupererDonneesLocales(cleCacheDepots) || [];
+    }
+    return [];
+  });
+
+  const [emplacementsParDepot, setEmplacementsParDepot] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localSync.recupererDonneesLocales(cleCacheEmplacements) || {};
+    }
+    return {};
+  });
+
   const [chargement, setChargement] = useState(false);
   const [afficherFormDepot, setAfficherFormDepot] = useState(false);
   const [depotEnEdition, setDepotEnEdition] = useState(null);
@@ -13,7 +39,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [depotOuvertId, setDepotOuvertId] = useState(null);
-  const [emplacementsParDepot, setEmplacementsParDepot] = useState({});
 
   const [roleNom, setRoleNom] = useState('');
   const [estAdmin, setEstAdmin] = useState(false);
@@ -37,17 +62,8 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     { id: '3', nom: 'RESPONSABLE MAGASIN A' },
   ];
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-
-  const chargerDepots = async () => {
-    setChargement(true);
+  const chargerDepots = async (silencieux = false) => {
+    if (!silencieux && depots.length === 0) setChargement(true);
     try {
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
@@ -75,7 +91,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         .order('created_at', { ascending: false });
 
       if (errDepots) throw errDepots;
-      setDepots(dataDepots || []);
+      const listeDepots = dataDepots || [];
+      setDepots(listeDepots);
+      localSync.sauvegarderDonneesLocales(cleCacheDepots, listeDepots);
 
       const { data: dataEmpls, error: errEmpls } = await supabase
         .from('emplacements_stock')
@@ -94,8 +112,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       });
 
       setEmplacementsParDepot(mapEmplacements);
+      localSync.sauvegarderDonneesLocales(cleCacheEmplacements, mapEmplacements);
     } catch (err) {
-      console.error('Erreur chargement :', err.message);
+      console.error('Erreur chargement (mode hors-ligne actif) :', err.message);
     } finally {
       setChargement(false);
     }
@@ -103,6 +122,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerDepots();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const enregistrerDepot = async (e) => {
@@ -130,24 +150,43 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
       if (depotEnEdition) {
         const depotIdCible = depotEnEdition.id || depotEnEdition.ID;
+        payload.id = depotIdCible;
         const { error } = await supabase
           .from('depots_stock')
           .update(payload)
           .eq('id', depotIdCible);
 
-        if (error) throw error;
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'depots_stock', payload);
+        }
+
+        const listeMaj = depots.map(d => (d.id || d.ID) === depotIdCible ? { ...d, ...payload } : d);
+        setDepots(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheDepots, listeMaj);
+
         alert('Dépôt mis à jour avec succès !');
       } else {
+        const idTemp = 'temp_' + Date.now();
+        const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
+        
         const { error } = await supabase
           .from('depots_stock')
           .insert([payload]);
 
-        if (error) throw error;
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'depots_stock', payload);
+        }
+
+        const listeMaj = [nouvelObjet, ...depots];
+        setDepots(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheDepots, listeMaj);
+
         alert('Dépôt enregistré avec succès !');
       }
 
+      localStorage.removeItem(cleCacheDepots);
       annulerFormDepot();
-      await chargerDepots();
+      await chargerDepots(true);
     } catch (err) {
       alert('Erreur lors de l’enregistrement : ' + err.message);
     } finally {
@@ -196,12 +235,19 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('depots_stock').delete().eq('id', depotIdCible);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'depots_stock', { id: depotIdCible });
+      }
       
+      const listeMaj = depots.filter(d => (d.id || d.ID) !== depotIdCible);
+      setDepots(listeMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheDepots, listeMaj);
+
+      localStorage.removeItem(cleCacheDepots);
       alert('Dépôt supprimé avec succès.');
       if (depotOuvertId === depotIdCible) setDepotOuvertId(null);
       annulerFormDepot();
-      await chargerDepots();
+      await chargerDepots(true);
     } catch (err) {
       alert('Erreur de suppression : ' + err.message);
     } finally {
@@ -236,13 +282,16 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         .from('emplacements_stock')
         .insert([payloadEmp]);
 
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('INSERT', 'emplacements_stock', payloadEmp);
+      }
 
       alert('Emplacement enregistré avec succès !');
 
       setNouveauNomEmplacement('');
       setResponsableEmplacement('');
-      await chargerDepots();
+      localStorage.removeItem(cleCacheEmplacements);
+      await chargerDepots(true);
     } catch (err) {
       alert('Erreur lors de l’ajout de l’emplacement : ' + err.message);
     } finally {
@@ -257,9 +306,13 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('emplacements_stock').delete().eq('id', empId);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'emplacements_stock', { id: empId });
+      }
+
+      localStorage.removeItem(cleCacheEmplacements);
       alert('Emplacement supprimé.');
-      await chargerDepots();
+      await chargerDepots(true);
     } catch (err) {
       alert('Erreur de suppression : ' + err.message);
     } finally {
@@ -408,7 +461,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           </div>
         </form>
       ) : (
-        chargement ? (
+        chargement && depots.length === 0 ? (
           <div className="p-4 text-center text-slate-500 font-bold text-xs">Chargement...</div>
         ) : depots.length === 0 ? (
           <div className="p-4 text-center text-slate-500 font-bold text-xs bg-white rounded-xl border border-slate-200">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const [roles, setRoles] = useState([]);
@@ -68,9 +69,18 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
 
   const chargerRolesEtPermissions = async () => {
-    setChargement(true);
+    // 1. Chargement instantané depuis le cache local (Zéro attente)
+    const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
+    if (rolesLocaux && rolesLocaux.length > 0) {
+      setRoles(rolesLocaux);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
     try {
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
@@ -79,7 +89,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         setRoleNomConnecte(nomRoleUser);
       }
 
-      // Chargement direct des rôles personnalisés de l'entreprise
+      // 2. Chargement Supabase filtré strictement par entreprise et module
       const { data, error } = await supabase
         .from('roles')
         .select('*')
@@ -88,9 +98,16 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRoles(data || []);
+      const listRoles = data || [];
+      setRoles(listRoles);
+
+      // Mise à jour du cache local propre
+      localSync.sauvegarderDonneesLocales(cleCacheRoles, listRoles);
     } catch (err) {
       console.error('Erreur chargement rôles :', err.message);
+      if (!rolesLocaux || rolesLocaux.length === 0) {
+        setRoles([]);
+      }
     } finally {
       setChargement(false);
     }
@@ -98,6 +115,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerRolesEtPermissions();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const togglePermissionRole = (moduleId, action) => {
@@ -152,6 +170,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           .eq('id', roleEnEdition.id);
 
         if (error) throw error;
+
+        setRoles(prev => prev.map(r => r.id === roleEnEdition.id ? { ...r, ...payload } : r));
         alert('Rôle et permissions mis à jour avec succès !');
       } else {
         const existeDeja = roles.some(r => (r.nom_role || '').trim().toUpperCase() === nomSaisi);
@@ -161,10 +181,18 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           return;
         }
 
-        const { error } = await supabase.from('roles').insert([payload]);
+        // Insertion sans ID temporaire pour éviter les erreurs de type bigint/UUID sur Supabase
+        const { error, data } = await supabase.from('roles').insert([payload]).select().single();
         if (error) throw error;
+
+        if (data) {
+          setRoles(prev => [data, ...prev.filter(r => r.id !== data.id)]);
+        }
         alert('Rôle créé avec succès !');
       }
+
+      // Suppression et nettoyage de l'ancien cache local
+      localStorage.removeItem(cleCacheRoles);
 
       annulerForm();
       await chargerRolesEtPermissions();
@@ -233,6 +261,9 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       const { error } = await supabase.from('roles').delete().eq('id', roleEnEdition.id);
       if (error) throw error;
 
+      setRoles(prev => prev.filter(r => r.id !== roleEnEdition.id));
+      localStorage.removeItem(cleCacheRoles);
+
       alert('Rôle supprimé avec succès.');
       annulerForm();
       await chargerRolesEtPermissions();
@@ -280,7 +311,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2 overflow-hidden">
           <h3 className="font-extrabold text-slate-900 uppercase text-xs truncate flex items-center gap-1.5">
-            <span>🛡️</span> RÔLES ({rolesAffiches.length} / {rolesFiltres.length})
+            <span>🛡️</span> RÔLES [{moduleActuel}] ({rolesAffiches.length} / {rolesFiltres.length})
           </h3>
           {roleNomConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200 shrink-0 hidden sm:inline">

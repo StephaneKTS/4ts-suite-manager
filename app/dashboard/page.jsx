@@ -353,7 +353,7 @@ function DashboardContent() {
           {(moduleActif || ongletNavigation !== 'accueil') ? (
             <button
               onClick={() => {
-                if (['journal', 'grand_livre', 'controle'].includes(moduleActif)) {
+                if (['journal', 'grand_livre', 'controle', 'plan_comptable'].includes(moduleActif)) {
                   setModuleActif(null);
                   setOngletNavigation('rapports');
                 } else {
@@ -363,7 +363,7 @@ function DashboardContent() {
               }}
               className="bg-sky-900/60 hover:bg-sky-800 text-cyan-200 font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-cyan-500/40 shadow-sm flex items-center gap-1"
             >
-              {['journal', 'grand_livre', 'controle'].includes(moduleActif) ? '← Retour Comptabilité' : '← Accueil'}
+              {['journal', 'grand_livre', 'controle', 'plan_comptable'].includes(moduleActif) ? '← Retour Comptabilité' : '← Accueil'}
             </button>
           ) : (
             <span className="text-[10px] bg-cyan-950 text-cyan-300 font-bold px-2.5 py-1 rounded-full border border-cyan-500/40 shadow-sm">
@@ -387,6 +387,16 @@ function DashboardContent() {
                   <div>
                     <h3 className="font-extrabold text-slate-100 text-xs">Saisie des Opérations</h3>
                     <p className="text-[10px] text-cyan-200/70 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
+                  </div>
+                </div>
+              )}
+
+              {verifierPermission('ventes_historiques') && (
+                <div onClick={() => tenterAccesModule('plan_comptable', 'Plan Comptable')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
+                  <span className="text-2xl group-hover:scale-110 transition">📚</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-100 text-xs">Plan Comptable</h3>
+                    <p className="text-[10px] text-cyan-200/70 mt-0.5">Gestion et consultation du plan comptable.</p>
                   </div>
                 </div>
               )}
@@ -509,13 +519,6 @@ function DashboardContent() {
                 <span className="text-2xl group-hover:scale-110 transition">🔑</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
               </div>
-
-              {verifierPermission('ventes_historiques') && (
-                <div onClick={() => tenterAccesModule('plan_comptable', 'Plan Comptable')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-2xl group-hover:scale-110 transition">📚</span>
-                  <span className="font-bold text-slate-200 text-[11px] leading-tight">Plan Comptable</span>
-                </div>
-              )}
             </div>
           </div>
         ) : !moduleActif && estModeLivraison ? (
@@ -590,11 +593,6 @@ function DashboardContent() {
               <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
                 <span className="text-2xl group-hover:scale-110 transition">🔑</span>
                 <span className="font-bold text-slate-200 text-[11px] leading-tight">Gestion du Personnel</span>
-              </div>
-
-              <div onClick={() => setModuleActif('plan_comptable')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-2.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-2xl group-hover:scale-110 transition">📚</span>
-                <span className="font-bold text-slate-200 text-[11px] leading-tight">Plan Comptable</span>
               </div>
             </div>
           </div>

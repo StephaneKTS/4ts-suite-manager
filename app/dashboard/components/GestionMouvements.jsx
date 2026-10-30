@@ -5,11 +5,61 @@ import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
 export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
-  const [mouvements, setMouvements] = useState([]);
-  const [approvisionnements, setApprovisionnements] = useState([]);
-  const [depots, setDepots] = useState([]);
-  const [emplacements, setEmplacements] = useState([]);
-  const [articles, setArticles] = useState([]);
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const cleCacheMouvements = `mouvements_stock_${entrepriseId}_${moduleActuel}`;
+  const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
+  const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
+  const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
+  const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
+
+  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
+  const [mouvements, setMouvements] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const data = localSync.recupererDonneesLocales(cleCacheMouvements);
+      return Array.isArray(data) ? data : [];
+    }
+    return [];
+  });
+
+  const [articles, setArticles] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const data = localSync.recupererDonneesLocales(cleCacheArticles);
+      return Array.isArray(data) ? data : [];
+    }
+    return [];
+  });
+
+  const [approvisionnements, setApprovisionnements] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const data = localSync.recupererDonneesLocales(cleCacheAppro);
+      return Array.isArray(data) ? data : [];
+    }
+    return [];
+  });
+
+  const [depots, setDepots] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const data = localSync.recupererDonneesLocales(cleCacheDepots);
+      return Array.isArray(data) ? data : [];
+    }
+    return [];
+  });
+
+  const [emplacements, setEmplacements] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const data = localSync.recupererDonneesLocales(cleCacheEmplacements);
+      return Array.isArray(data) ? data : [];
+    }
+    return [];
+  });
+
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
@@ -66,53 +116,37 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-
   const genererNumeroDocIndependant = (type, mouvementsList) => {
     const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
     const prefix = prefixes[type] || 'TR';
-    const numsUniques = [...new Set(mouvementsList.filter((m) => m.type_mouvement === type).map(m => m.motif_remarque))];
+    const listeSecure = Array.isArray(mouvementsList) ? mouvementsList : [];
+    const numsUniques = [...new Set(listeSecure.filter((m) => m.type_mouvement === type).map(m => m.motif_remarque))];
     return `${prefix}-${String(numsUniques.length + 1).padStart(2, '0')}`;
   };
 
-  const chargerDonnees = async () => {
-    setChargement(true);
-
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente)
-    const mouvementsLocaux = localSync.recupererDonneesLocales(`mouvements_stock_${entrepriseId}`);
-    const articlesLocaux = localSync.recupererDonneesLocales(`articles_${entrepriseId}`);
-    const approLocaux = localSync.recupererDonneesLocales(`approvisionnements_${entrepriseId}`);
-
-    if (mouvementsLocaux.length > 0) setMouvements(mouvementsLocaux);
-    if (articlesLocaux.length > 0) setArticles(articlesLocaux);
-    if (approLocaux.length > 0) setApprovisionnements(approLocaux);
-
+  const chargerDonnees = async (silencieux = false) => {
+    if (!silencieux && mouvements.length === 0) setChargement(true);
     try {
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
-        const userObj = JSON.parse(utilisateurConnecteStr);
-        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-        setRoleNom(nomRoleUser);
+        try {
+          const userObj = JSON.parse(utilisateurConnecteStr);
+          const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+          setRoleNom(nomRoleUser);
 
-        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-          const permMouv = userObj.permissions?.['mouvements_stock'] || userObj.permissions?.['mouvements'] || userObj.permissions?.['stock'];
-          
-          if (permMouv) {
-            setPermissions({
-              peut_creer: permMouv.creation ?? permMouv.creer ?? true,
-              peut_modifier: permMouv.modification ?? permMouv.modifier ?? true,
-              peut_supprimer: permMouv.suppression ?? false,
-              peut_valider: permMouv.validation ?? permMouv.valider ?? true
-            });
+          if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
+            const permMouv = userObj.permissions?.['mouvements_stock'] || userObj.permissions?.['mouvements'] || userObj.permissions?.['stock'];
+            
+            if (permMouv) {
+              setPermissions({
+                peut_creer: permMouv.creation ?? permMouv.creer ?? true,
+                peut_modifier: permMouv.modification ?? permMouv.modifier ?? true,
+                peut_supprimer: permMouv.suppression ?? false,
+                peut_valider: permMouv.validation ?? permMouv.valider ?? true
+              });
+            }
           }
-        }
+        } catch (e) {}
       }
 
       const { data: dataDepots } = await supabase
@@ -120,8 +154,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      const depotsList = dataDepots || [];
+      const depotsList = Array.isArray(dataDepots) ? dataDepots : [];
       setDepots(depotsList);
+      localSync.sauvegarderDonneesLocales(cleCacheDepots, depotsList);
+
       if (depotsList.length > 0 && !enTeteDoc.id_depot_source) {
         setEnTeteDoc((prev) => ({ 
           ...prev, 
@@ -135,16 +171,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setEmplacements(dataEmplacements || []);
+      const emplacementsList = Array.isArray(dataEmplacements) ? dataEmplacements : [];
+      setEmplacements(emplacementsList);
+      localSync.sauvegarderDonneesLocales(cleCacheEmplacements, emplacementsList);
 
       const { data: dataArticles } = await supabase
         .from('articles_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      if (dataArticles) {
+      if (Array.isArray(dataArticles)) {
         setArticles(dataArticles);
-        localSync.sauvegarderDonneesLocales(`articles_${entrepriseId}`, dataArticles);
+        localSync.sauvegarderDonneesLocales(cleCacheArticles, dataArticles);
       }
 
       const { data: dataFamilles } = await supabase
@@ -152,7 +190,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setFamilles(dataFamilles || []);
+      setFamilles(Array.isArray(dataFamilles) ? dataFamilles : []);
 
       let mouvementsList = [];
       const { data: mouvementsRpc, error: rpcError } = await supabase.rpc('recuperer_mouvements_stock', {
@@ -169,31 +207,29 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
           .order('created_at', { ascending: false });
 
         if (errMouv) throw errMouv;
-        mouvementsList = dataMouvements || [];
+        mouvementsList = Array.isArray(dataMouvements) ? dataMouvements : [];
       } else {
-        mouvementsList = mouvementsRpc || [];
+        mouvementsList = Array.isArray(mouvementsRpc) ? mouvementsRpc : [];
       }
 
-      if (mouvementsList) {
-        setMouvements(mouvementsList);
-        localSync.sauvegarderDonneesLocales(`mouvements_stock_${entrepriseId}`, mouvementsList);
-      }
+      setMouvements(mouvementsList);
+      localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsList);
 
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      if (dataAppro) {
+      if (Array.isArray(dataAppro)) {
         setApprovisionnements(dataAppro);
-        localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}`, dataAppro);
+        localSync.sauvegarderDonneesLocales(cleCacheAppro, dataAppro);
       }
 
       if (!mouvementEnEditionId) {
-        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvementsList.length > 0 ? mouvementsList : mouvementsLocaux) }));
+        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvementsList) }));
       }
     } catch (err) { 
-      console.error('Erreur :', err.message); 
+      console.error('Erreur (mode hors-ligne actif) :', err.message); 
     } finally { 
       setChargement(false); 
     }
@@ -204,8 +240,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, typeOperation, moduleActuel]);
 
-  const emplacementsSourceFiltres = emplacements;
-  const emplacementsDestinationFiltres = emplacements;
+  const emplacementsSourceFiltres = Array.isArray(emplacements) ? emplacements : [];
+  const emplacementsDestinationFiltres = Array.isArray(emplacements) ? emplacements : [];
 
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
     if (!valeurDepotFlux || !depotCibleId) return false;
@@ -432,9 +468,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     try {
       if (mouvementEnEditionId) {
         const { error: errDel } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
-        if (errDel) { alert('Erreur suppression : ' + errDel.message); setEnTrainDeSauvegarder(false); return; }
+        if (errDel) {
+          localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: enTeteDoc.numeroDoc });
+        }
       }
       
+      let nouveauxMouvementsAjoutes = [];
       for (const ligne of lignesPanier) {
         const payload = {
           id_entreprise: entrepriseId,
@@ -450,18 +489,27 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
           operateur: enTeteDoc.operateur,
         };
 
-        payload.id = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7);
+        const idTemp = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7);
+        const objetInsertion = { ...payload, id: idTemp, created_at: new Date().toISOString() };
+        nouveauxMouvementsAjoutes.push(objetInsertion);
+
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
         if (error) {
           localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
         }
       }
 
+      const mouvementsFiltres = mouvements.filter(m => m.motif_remarque !== enTeteDoc.numeroDoc);
+      const listeMaj = [...nouveauxMouvementsAjoutes, ...mouvementsFiltres];
+      setMouvements(listeMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+      localStorage.removeItem(cleCacheMouvements);
+
       alert(`Document validé avec succès dans le module ${moduleActuel} !`);
       setLignesPanier([]);
       setMouvementEnEditionId(null);
       setEnTeteDoc((prev) => ({ ...prev, referenceDoc: '' }));
-      await chargerDonnees();
+      await chargerDonnees(true);
       setModeAffichage('LISTE_DOCS');
     } catch (err) { 
       alert('Erreur : ' + err.message); 
@@ -510,9 +558,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', numeroDocUnique);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: numeroDocUnique });
+      }
+
+      const listeMaj = mouvements.filter(m => m.motif_remarque !== numeroDocUnique);
+      setMouvements(listeMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+      localStorage.removeItem(cleCacheMouvements);
+
       alert('Supprimé.');
-      await chargerDonnees();
+      await chargerDonnees(true);
     } catch (err) { 
       alert('Erreur : ' + err.message); 
     } finally {

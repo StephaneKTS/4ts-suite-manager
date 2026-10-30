@@ -4,7 +4,25 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) {
-  const [grilleTarifs, setGrilleTarifs] = useState([]);
+  const moduleActuel = 'LIVRAISON';
+  const cleCacheLocal = `4ts_cache_grille_tarifaire_${entrepriseId}_${moduleActuel}`;
+
+  // Initialisation immédiate depuis le cache local s'il existe pour un affichage instantané
+  const [grilleTarifs, setGrilleTarifs] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cacheBrut = localStorage.getItem(`4ts_cache_grille_tarifaire_${entrepriseId}_${moduleActuel}`);
+        if (cacheBrut) {
+          const cacheParse = JSON.parse(cacheBrut);
+          if (Array.isArray(cacheParse)) return cacheParse;
+        }
+      } catch (e) {
+        console.warn("Erreur lecture cache local initial :", e);
+      }
+    }
+    return [];
+  });
+
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
@@ -31,8 +49,6 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
   const [ordreCroissant, setOrdreCroissant] = useState(true);
   const [rechercheInput, setRechercheInput] = useState('');
 
-  const moduleActuel = 'LIVRAISON';
-
   // Liste élargie multi-villes (Yaoundé, Douala, Bafoussam, etc.) combinée aux zones de l'entreprise
   const quartiersReference = [
     // Yaoundé
@@ -49,9 +65,32 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
     new Set([...quartiersReference, ...grilleTarifs.map(t => t.nom_zone)])
   ).sort();
 
-  // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
+  // --- GESTION DU CACHE LOCAL (Suppression ancien cache & installation nouveau cache) ---
+  const mettreAJourCacheLocal = (nouvelleListe) => {
+    if (typeof window === 'undefined') return;
+    try {
+      // Nettoyage de tout ancien cache obsolète lié à cette entité/module si nécessaire
+      const clesASupprimer = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const cle = localStorage.key(i);
+        if (cle && cle.startsWith('4ts_cache_grille_tarifaire_') && cle !== cleCacheLocal) {
+          clesASupprimer.push(cle);
+        }
+      }
+      clesASupprimer.forEach(c => localStorage.removeItem(c));
+
+      // Installation du nouveau cache local strict
+      localStorage.setItem(cleCacheLocal, JSON.stringify(nouvelleListe));
+    } catch (err) {
+      console.warn("Erreur écriture cache local :", err);
+    }
+  };
+
+  // --- RÈGLE 2 : CHARGEMENT STRICT AVEC FILTRAGE ET RPC / FALLBACK ---
   const chargerTarifsEtPermissions = async () => {
-    setChargement(true);
+    // Si aucun cache n'était présent, on active l'indicateur de chargement
+    if (grilleTarifs.length === 0) setChargement(true);
+
     try {
       // 1. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
@@ -93,12 +132,15 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
       }
 
       let listeTarifs = [];
+      
+      // Appel RPC sécurisé avec filtrage strict par entreprise et module
       const { data: tarifsRpc, error: rpcError } = await supabase.rpc('recuperer_grille_tarifaire_livraison', {
         p_entreprise_id: entrepriseId,
         p_module: moduleActuel
       });
 
       if (rpcError) {
+        // Fallback direct sur la table avec filtrage strict par entreprise et module
         const { data, error } = await supabase
           .from('grille_tarifaire_livraison')
           .select('*')
@@ -111,7 +153,9 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
         listeTarifs = tarifsRpc || [];
       }
 
+      // Mise à jour de l'état et du cache local instantané
       setGrilleTarifs(listeTarifs);
+      mettreAJourCacheLocal(listeTarifs);
     } catch (err) {
       console.error('Erreur chargement grille tarifaire :', err.message);
     } finally {
@@ -191,12 +235,20 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
 
     setEnTrainDeSauvegarder(true);
     try {
+      // Suppression avec filtrage strict par id, entreprise et module
       const { error } = await supabase
         .from('grille_tarifaire_livraison')
         .delete()
-        .eq('id', tarifEnEdition.id);
+        .eq('id', tarifEnEdition.id)
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
 
       if (error) throw error;
+
+      // Mise à jour instantanée de l'interface (Optimistic UI)
+      const nouvelleListe = grilleTarifs.filter(t => t.id !== tarifEnEdition.id);
+      setGrilleTarifs(nouvelleListe);
+      mettreAJourCacheLocal(nouvelleListe);
 
       alert('Zone supprimée avec succès.');
       setAfficherForm(false);
@@ -236,22 +288,39 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
         frais: parseFloat(fraisZone) || 0
       };
 
+      let nouvelleListe = [...grilleTarifs];
+
       if (tarifEnEdition) {
         const { error } = await supabase
           .from('grille_tarifaire_livraison')
           .update(payload)
-          .eq('id', tarifEnEdition.id);
+          .eq('id', tarifEnEdition.id)
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel);
 
         if (error) throw error;
+
+        // Mise à jour instantanée locale
+        nouvelleListe = nouvelleListe.map(t => t.id === tarifEnEdition.id ? { ...t, ...payload } : t);
         alert('Zone mise à jour avec succès !');
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('grille_tarifaire_livraison')
-          .insert([payload]);
+          .insert([payload])
+          .select();
 
         if (error) throw error;
+
+        // Insertion instantanée locale du nouvel élément créé
+        if (data && data[0]) {
+          nouvelleListe = [data[0], ...nouvelleListe];
+        }
         alert('Nouvelle zone ajoutée avec succès !');
       }
+
+      // Application immédiate dans l'état et le cache local pour un rendu instantané
+      setGrilleTarifs(nouvelleListe);
+      mettreAJourCacheLocal(nouvelleListe);
 
       setAfficherForm(false);
       setTarifEnEdition(null);
@@ -397,7 +466,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
           </div>
         </div>
 
-        {chargement ? (
+        {chargement && grilleTarifs.length === 0 ? (
           <div className="p-4 text-center text-slate-500 font-bold">Chargement des tarifs...</div>
         ) : tarifsAffiches.length === 0 ? (
           <div className="p-6 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
@@ -426,7 +495,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
                 <tbody className="divide-y divide-slate-100">
                   {tarifsAffiches.map((tarif) => (
                     <tr 
-                      key={tarif.id} 
+                      key={tarif.id || tarif.nom_zone} 
                       onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirFormEdition(tarif)}
                       className="hover:bg-orange-50/60 cursor-pointer transition"
                       title="Cliquez pour modifier ou supprimer cette zone"

@@ -58,6 +58,9 @@ export default function MonProfil({ entrepriseId = '' }) {
     utilisateurConnecte.includes('STÉPHANE') || 
     utilisateurConnecte.includes('KENMOE');
 
+  // Détection si l'utilisateur connecté est rattaché à une entreprise ou s'il s'agit d'un utilisateur simple
+  const estCompteEntreprise = Boolean(entrepriseId) && entrepriseId !== 'UTILISATEUR';
+
   useEffect(() => {
     chargerInfosUtilisateurEtEntreprise();
   }, [entrepriseId]);
@@ -107,7 +110,6 @@ export default function MonProfil({ entrepriseId = '' }) {
 
       const idEffectif = entrepriseId || (typeof window !== 'undefined' ? (localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id')) : null) || '4TS-234321';
 
-      // Tentative de récupération sécurisée avec délai de sécurité (timeout)
       let entrepriseTrouvee = null;
 
       try {
@@ -135,7 +137,6 @@ export default function MonProfil({ entrepriseId = '' }) {
         setEntreprise(entrepriseTrouvee);
         if (entrepriseTrouvee.duree_abonnement_mois) setNombreMoisChoisi(entrepriseTrouvee.duree_abonnement_mois);
       } else {
-        // Mode secours par défaut pour ne jamais bloquer l'écran
         setEntreprise({
           id_entreprise: idEffectif,
           nom_entreprise: '4TS SUITE MANAGER',
@@ -453,56 +454,65 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
 
             <div className="space-y-1 overflow-hidden">
-              <span className="block text-[9px] uppercase font-bold text-blue-300">Entreprise rattachée : <strong className="text-orange-400">{entreprise.nom_entreprise || 'N/A'}</strong></span>
-              <span className="text-[9px] font-mono text-slate-400 block">ID : {entreprise.id_entreprise || 'N/A'}</span>
+              {estCompteEntreprise ? (
+                <>
+                  <span className="block text-[9px] uppercase font-bold text-blue-300">Entreprise rattachée : <strong className="text-orange-400">{entreprise.nom_entreprise || 'N/A'}</strong></span>
+                  <span className="text-[9px] font-mono text-slate-400 block">ID : {entreprise.id_entreprise || 'N/A'}</span>
+                </>
+              ) : (
+                <span className="block text-[9px] uppercase font-bold text-blue-300">Compte Utilisateur Standard</span>
+              )}
               <h4 className="font-extrabold text-white uppercase text-sm truncate">
                 {nomUtilisateurConnecte || 'Stéphane KTS'}
               </h4>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => setModeAction(modeAction === 'reabonnement' ? null : 'reabonnement')}
-              className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
-                modeAction === 'reabonnement' 
-                  ? 'bg-orange-700 text-white border-orange-400' 
-                  : 'bg-cyan-700 hover:bg-cyan-600 text-white border-cyan-500'
-              }`}
-            >
-              <span className="text-xs">🔄</span>
-              <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Se réabonner'}</span>
-            </button>
+          {/* Affichage des boutons de réabonnement et modules uniquement pour les comptes entreprises */}
+          {estCompteEntreprise && (
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setModeAction(modeAction === 'reabonnement' ? null : 'reabonnement')}
+                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
+                  modeAction === 'reabonnement' 
+                    ? 'bg-orange-700 text-white border-orange-400' 
+                    : 'bg-cyan-700 hover:bg-cyan-600 text-white border-cyan-500'
+                }`}
+              >
+                <span className="text-xs">🔄</span>
+                <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Se réabonner'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-              className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
-                modeAction === 'switcher_module' 
-                  ? 'bg-orange-700 text-white border-orange-400' 
-                  : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
-              }`}
-            >
-              <span className="text-xs">⚡</span>
-              <span className="text-center w-full">{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
+                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
+                  modeAction === 'switcher_module' 
+                    ? 'bg-orange-700 text-white border-orange-400' 
+                    : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
+                }`}
+              >
+                <span className="text-xs">⚡</span>
+                <span className="text-center w-full">{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setModeAction(modeAction === 'nouveau_module' ? null : 'nouveau_module')}
-              className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
-                modeAction === 'nouveau_module' 
-                  ? 'bg-orange-700 text-white border-orange-400' 
-                  : 'bg-emerald-700 hover:bg-emerald-600 text-white border-emerald-500'
-              }`}
-            >
-              <span className="text-xs">➕</span>
-              <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => setModeAction(modeAction === 'nouveau_module' ? null : 'nouveau_module')}
+                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
+                  modeAction === 'nouveau_module' 
+                    ? 'bg-orange-700 text-white border-orange-400' 
+                    : 'bg-emerald-700 hover:bg-emerald-600 text-white border-emerald-500'
+                }`}
+              >
+                <span className="text-xs">➕</span>
+                <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
+              </button>
+            </div>
+          )}
 
-          {modeAction === 'module_indisponible' && (
+          {estCompteEntreprise && modeAction === 'module_indisponible' && (
             <div className="bg-[#0d1b2a] border-2 border-amber-500/80 p-4 rounded-xl space-y-3 shadow-2xl animate-fadeIn text-center">
               <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-lg font-bold">
                 ⏳
@@ -525,7 +535,7 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {modeAction === 'switcher_module' && (
+          {estCompteEntreprise && modeAction === 'switcher_module' && (
             <div className="bg-[#0d1b2a] border-2 border-indigo-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
               <h4 className="font-black text-indigo-400 uppercase text-[10px] flex items-center justify-between">
                 <span>⚡ Gestion & Changement de Module</span>
@@ -592,7 +602,7 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {modeAction === 'reabonnement' && (
+          {estCompteEntreprise && modeAction === 'reabonnement' && (
             <div className="bg-[#0d1b2a] border-2 border-cyan-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
               <h4 className="font-black text-cyan-400 uppercase text-[10px]">
                 🔄 Réabonnement & Extension — Module : <span className="text-orange-400">{moduleActuel}</span>
@@ -654,7 +664,7 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {modeAction === 'nouveau_module' && (
+          {estCompteEntreprise && modeAction === 'nouveau_module' && (
             <div className="bg-[#0d1b2a] border-2 border-emerald-500/60 p-3 rounded-xl space-y-2.5 shadow-inner animate-fadeIn">
               <h4 className="font-black text-emerald-400 uppercase text-[10px]">
                 ➕ Souscrire à un nouveau module :
@@ -853,7 +863,7 @@ export default function MonProfil({ entrepriseId = '' }) {
         </div>
       </div>
 
-      {estSuperAdmin && (
+      {estSuperAdmin && estCompteEntreprise && (
         <div className="space-y-2 pt-1">
           <button
             type="button"

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [caisses, setCaisses] = useState([]);
@@ -34,13 +35,23 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheCaisses = `caisses_${entrepriseId}_${moduleActuel}`;
 
   useEffect(() => {
     chargerPermissionsEtCaisses();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const chargerPermissionsEtCaisses = async () => {
-    setLoading(true);
+    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL DU MODULE ACTIF
+    const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses);
+    if (caissesLocales && caissesLocales.length > 0) {
+      setCaisses(caissesLocales);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
@@ -57,48 +68,29 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               peutModifier: permModule.modification ?? permModule.modifier ?? false,
               peutSupprimer: permModule.suppression ?? permModule.supprimer ?? true,
             });
-          } else {
-            const { data: roleData } = await supabase
-              .from('roles')
-              .select('*')
-              .eq('id_entreprise', entrepriseId)
-              .eq('module', moduleActuel)
-              .eq('nom_role', nomRoleUser)
-              .maybeSingle();
-
-            const rolePerm = roleData?.permissions?.['caisses'] || roleData?.permissions?.['caisse'];
-
-            if (rolePerm) {
-              setPermissions({
-                peutVoir: rolePerm.lecture ?? rolePerm.voir ?? true,
-                peutCreer: rolePerm.creation ?? rolePerm.creer ?? true,
-                peutModifier: rolePerm.modification ?? rolePerm.modifier ?? false,
-                peutSupprimer: rolePerm.suppression ?? rolePerm.supprimer ?? true,
-              });
-            } else if (roleData) {
-              setPermissions({
-                peutVoir: roleData.peut_voir ?? roleData.voir ?? true,
-                peutCreer: roleData.peut_creer ?? roleData.creer ?? true,
-                peutModifier: roleData.peut_modifier ?? roleData.modifier ?? false,
-                peutSupprimer: roleData.peut_supprimer ?? roleData.supprimer ?? true,
-              });
-            }
           }
         }
       }
 
+      // 2. RÉCUPÉRATION SUPABASE ROBUSTE (Filtrage par entreprise et module)
       const { data, error } = await supabase
         .from('caisses')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
+        .or(`module.eq.${moduleActuel},module.eq.${moduleActuel.toLowerCase()},module.is.null`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCaisses(data || []);
+
+      if (data) {
+        setCaisses(data);
+        localSync.sauvegarderDonneesLocales(cleCacheCaisses, data);
+      }
     } catch (err) {
       console.error('Erreur chargement caisses :', err.message);
-      setMsg({ type: 'error', text: 'Erreur lors du chargement des caisses.' });
+      if (!caissesLocales || caissesLocales.length === 0) {
+        setMsg({ type: 'error', text: 'Erreur lors du chargement des caisses.' });
+      }
     } finally {
       setLoading(false);
     }
@@ -144,11 +136,11 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     if (enTrainDeSauvegarder) return;
 
     if (caisseEnEdition && !permissions.peutModifier) {
-      setMsg({ type: 'error', text: '⛔ Action non autorisée : Vous n’avez pas le droit de modifier les caisses.' });
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Modification interdite.' });
       return;
     }
     if (!caisseEnEdition && !permissions.peutCreer) {
-      setMsg({ type: 'error', text: '⛔ Action non autorisée : Vous n’avez pas le droit de créer des caisses.' });
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Création interdite.' });
       return;
     }
 
@@ -164,7 +156,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     setMsg({ type: '', text: '' });
 
     try {
-      const payload = {
+      let payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
         code_caisse: codeSaisi,
@@ -173,27 +165,40 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       };
 
       if (caisseEnEdition) {
+        payload.id = caisseEnEdition.id;
         const { error } = await supabase
           .from('caisses')
           .update(payload)
           .eq('id', caisseEnEdition.id);
 
         if (error) throw error;
+        
+        setCaisses(prev => prev.map(c => c.id === caisseEnEdition.id ? { ...c, ...payload } : c));
         setMsg({ type: 'success', text: '✅ Caisse mise à jour avec succès !' });
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('caisses')
-          .insert([payload]);
+          .insert([payload])
+          .select()
+          .single();
 
         if (error) throw error;
+
+        // MISE À JOUR INSTANTANÉ DE L'ÉTAT LOCAL DE LA TABLE
+        if (data) {
+          setCaisses(prev => [data, ...prev.filter(c => c.id !== data.id)]);
+        }
         setMsg({ type: 'success', text: '✅ Nouvelle caisse enregistrée avec succès !' });
       }
+
+      // NETTOYAGE DU CACHE LOCAL POUR FORCER LE RAFRAÎCHISSEMENT PROPRE
+      localStorage.removeItem(cleCacheCaisses);
 
       annulerForm();
       await chargerPermissionsEtCaisses();
     } catch (err) {
       if (err.code === '23505') {
-        setMsg({ type: 'error', text: '⛔ Erreur : Ce code caisse ou ce nom de caisse existe déjà.' });
+        setMsg({ type: 'error', text: '⛔ Erreur : Ce code caisse ou ce nom existe déjà.' });
       } else {
         setMsg({ type: 'error', text: 'Erreur : ' + err.message });
       }
@@ -205,7 +210,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const supprimerCaisse = async () => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.peutSupprimer) {
-      setMsg({ type: 'error', text: '⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des caisses.' });
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Suppression interdite.' });
       return;
     }
     if (!caisseEnEdition) return;
@@ -220,6 +225,9 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
       if (error) throw error;
 
+      setCaisses(prev => prev.filter(c => c.id !== caisseEnEdition.id));
+      localStorage.removeItem(cleCacheCaisses);
+      
       setMsg({ type: 'success', text: 'Caisse supprimée avec succès.' });
       annulerForm();
       await chargerPermissionsEtCaisses();
@@ -230,7 +238,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // Application de la pagination mobile
   const caissesAffichees = caisses.slice(0, limiteCaisses);
 
   if (!permissions.peutVoir) {
@@ -246,7 +253,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
-          🏧 Caisses ({caissesAffichees.length} / {caisses.length})
+          🏧 Caisses [{moduleActuel}] ({caissesAffichees.length} / {caisses.length})
         </h2>
         <div className="flex items-center gap-1">
           {permissions.peutCreer && (
@@ -288,7 +295,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerCaisse} className="bg-white p-3 rounded-xl border border-orange-500/50 shadow-sm space-y-2.5">
           <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
             <h3 className="font-extrabold text-slate-900 text-[11px] uppercase">
-              {caisseEnEdition ? '✏️ Modifier la Caisse' : '🏧 Nouvelle Caisse'}
+              {caisseEnEdition ? `✏️ Modifier la Caisse [${moduleActuel}]` : `🏧 Nouvelle Caisse [${moduleActuel}]`}
             </h3>
             <button
               type="button"
@@ -385,11 +392,11 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         </form>
       ) : (
         <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-          {loading ? (
+          {loading && caisses.length === 0 ? (
             <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des caisses...</p>
           ) : caisses.length === 0 ? (
             <div className="text-center py-6 space-y-2">
-              <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée.</p>
+              <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée pour le module {moduleActuel}.</p>
               {permissions.peutCreer && (
                 <button
                   type="button"

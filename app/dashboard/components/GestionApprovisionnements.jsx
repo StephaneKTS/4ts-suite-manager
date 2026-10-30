@@ -5,29 +5,20 @@ import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
 export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' }) {
-  const [approvisionnements, setApprovisionnements] = useState([]);
-  const [bonsCommandes, setBonsCommandes] = useState([]);
-  const [mouvements, setMouvements] = useState([]);
-  const [fournisseurs, setFournisseurs] = useState([]);
-  const [depots, setDepots] = useState([]);
-  const [articles, setArticles] = useState([]);
-  const [chargement, setChargement] = useState(false);
-  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
 
-  // --- GESTION DES DROITS ET AUTORISATIONS DES EMPLOYÉS ---
-  const [utilisateurConnecte, setUtilisateurConnecte] = useState(null);
-  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
-  const [permissions, setPermissions] = useState({
-    peut_creer: true,
-    peut_modifier: true,
-    peut_supprimer: true,
-    peut_valider: true
-  });
+  const moduleActuel = obtenirModuleActuel();
+  const estModeLivraison = moduleActuel === 'LIVRAISON';
 
-  const [ongletActif, setOngletActif] = useState('APPRO');
-  const [vueActive, setVueActive] = useState('liste');
-  const [approEnEditionId, setApproEnEditionId] = useState(null);
-  const [docEnEditionObjet, setDocEnEditionObjet] = useState(null);
+  const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
+  const cleCacheCommandes = `commandes_${entrepriseId}_${moduleActuel}`;
+  const cleCacheMouvements = `mouvements_stock_${entrepriseId}_${moduleActuel}`;
+  const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
 
   // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
   const obtenirPremierJourDuMois = () => {
@@ -47,6 +38,55 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const [dateDebutFiltre, setDateDebutFiltre] = useState(obtenirPremierJourDuMois());
   const [dateFinFiltre, setDateFinFiltre] = useState(obtenirDernierJourDuMois());
+
+  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
+  const [approvisionnements, setApprovisionnements] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localSync.recupererDonneesLocales(cleCacheAppro) || [];
+    }
+    return [];
+  });
+
+  const [bonsCommandes, setBonsCommandes] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localSync.recupererDonneesLocales(cleCacheCommandes) || [];
+    }
+    return [];
+  });
+
+  const [mouvements, setMouvements] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localSync.recupererDonneesLocales(cleCacheMouvements) || [];
+    }
+    return [];
+  });
+
+  const [articles, setArticles] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localSync.recupererDonneesLocales(cleCacheArticles) || [];
+    }
+    return [];
+  });
+
+  const [fournisseurs, setFournisseurs] = useState([]);
+  const [depots, setDepots] = useState([]);
+  const [chargement, setChargement] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+
+  // --- GESTION DES DROITS ET AUTORISATIONS DES EMPLOYÉS ---
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState(null);
+  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
+  const [permissions, setPermissions] = useState({
+    peut_creer: true,
+    peut_modifier: true,
+    peut_supprimer: true,
+    peut_valider: true
+  });
+
+  const [ongletActif, setOngletActif] = useState('APPRO');
+  const [vueActive, setVueActive] = useState('liste');
+  const [approEnEditionId, setApproEnEditionId] = useState(null);
+  const [docEnEditionObjet, setDocEnEditionObjet] = useState(null);
 
   // --- PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteAppro, setLimiteAppro] = useState(20);
@@ -76,16 +116,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const inputQuantiteRef = useRef(null);
   const selectArticleRef = useRef(null);
-
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-  const estModeLivraison = moduleActuel === 'LIVRAISON';
 
   const genererNumeroDoc = (type, listeDocs) => {
     const prefix = type === 'APPRO' ? 'APP-' : 'BC-';
@@ -131,24 +161,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
     }
   };
 
-  const chargerDonnees = async () => {
-    setChargement(true);
-
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente)
-    const approLocaux = localSync.recupererDonneesLocales(`approvisionnements_${entrepriseId}`);
-    const mouvementsLocaux = localSync.recupererDonneesLocales(`mouvements_stock_${entrepriseId}`);
-    const articlesLocaux = localSync.recupererDonneesLocales(`articles_${entrepriseId}`);
-
-    if (approLocaux.length > 0) setApprovisionnements(approLocaux);
-    if (mouvementsLocaux.length > 0) setMouvements(mouvementsLocaux);
-    if (articlesLocaux.length > 0) setArticles(articlesLocaux);
-
+  const chargerDonnees = async (silencieux = false) => {
+    if (!silencieux && approvisionnements.length === 0) setChargement(true);
     try {
       await chargerDroitsUtilisateur();
 
       const { data: dataDepots } = await supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
-      const listDepots = dataDepots || [];
-      setDepots(listDepots);
+      setDepots(dataDepots || []);
 
       const { data: dataFourn } = await supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setFournisseurs(dataFourn || []);
@@ -156,13 +175,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       const { data: dataArticles } = await supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       if (dataArticles) {
         setArticles(dataArticles);
-        localSync.sauvegarderDonneesLocales(`articles_${entrepriseId}`, dataArticles);
+        localSync.sauvegarderDonneesLocales(cleCacheArticles, dataArticles);
       }
 
       const { data: dataMouvements } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       if (dataMouvements) {
         setMouvements(dataMouvements);
-        localSync.sauvegarderDonneesLocales(`mouvements_stock_${entrepriseId}`, dataMouvements);
+        localSync.sauvegarderDonneesLocales(cleCacheMouvements, dataMouvements);
       }
 
       const { data: dataAppro } = await supabase
@@ -176,7 +195,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
       if (dataAppro) {
         setApprovisionnements(dataAppro);
-        localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}`, dataAppro);
+        localSync.sauvegarderDonneesLocales(cleCacheAppro, dataAppro);
       }
 
       const { data: dataBC } = await supabase
@@ -187,10 +206,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         .gte('created_at', `${dateDebutFiltre}T00:00:00`)
         .lte('created_at', `${dateFinFiltre}T23:59:59`)
         .order('created_at', { ascending: false });
-      setBonsCommandes(dataBC || []);
+      
+      if (dataBC) {
+        setBonsCommandes(dataBC);
+        localSync.sauvegarderDonneesLocales(cleCacheCommandes, dataBC);
+      }
 
       if (!approEnEditionId && !numeroDoc) {
-        setNumeroDoc(genererNumeroDoc('APPRO', dataAppro || approLocaux));
+        setNumeroDoc(genererNumeroDoc('APPRO', dataAppro || approvisionnements));
       }
     } catch (err) {
       console.error('Erreur chargement (mode hors-ligne actif) :', err.message);
@@ -431,22 +454,29 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         })),
       };
 
-      let error;
       if (approEnEditionId) { 
         payload.id = approEnEditionId;
-        const res = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId);
-        error = res.error;
+        const { error } = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId);
         if (error) localSync.ajouterFileAttente('UPDATE', 'approvisionnements', payload);
+
+        const listeMaj = approvisionnements.map(a => a.id === approEnEditionId ? { ...a, ...payload } : a);
+        setApprovisionnements(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
       } else { 
-        payload.id = 'temp_' + Date.now();
-        const res = await supabase.from('approvisionnements').insert([payload]); 
-        error = res.error;
+        const idTemp = 'temp_' + Date.now();
+        const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
+        const { error } = await supabase.from('approvisionnements').insert([payload]); 
         if (error) localSync.ajouterFileAttente('INSERT', 'approvisionnements', payload);
+
+        const listeMaj = [nouvelObjet, ...approvisionnements];
+        setApprovisionnements(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
       }
 
+      localStorage.removeItem(cleCacheAppro);
       alert(`Approvisionnement ${numeroDoc} enregistré avec succès !`);
       setVueActive('liste');
-      await chargerDonnees();
+      await chargerDonnees(true);
     } catch (err) { 
       alert('Erreur : ' + err.message); 
     } finally {
@@ -490,20 +520,29 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         })),
       };
 
-      let error;
       if (approEnEditionId) { 
         payload.id = approEnEditionId;
-        const res = await supabase.from('bons_commande_fournisseurs').update(payload).eq('id', approEnEditionId);
-        error = res.error;
+        const { error } = await supabase.from('bons_commande_fournisseurs').update(payload).eq('id', approEnEditionId);
+        if (error) localSync.ajouterFileAttente('UPDATE', 'bons_commande_fournisseurs', payload);
+
+        const listeMaj = bonsCommandes.map(c => c.id === approEnEditionId ? { ...c, ...payload } : c);
+        setBonsCommandes(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheCommandes, listeMaj);
       } else { 
-        payload.id = 'temp_' + Date.now();
-        const res = await supabase.from('bons_commande_fournisseurs').insert([payload]); 
-        error = res.error;
+        const idTemp = 'temp_' + Date.now();
+        const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
+        const { error } = await supabase.from('bons_commande_fournisseurs').insert([payload]); 
+        if (error) localSync.ajouterFileAttente('INSERT', 'bons_commande_fournisseurs', payload);
+
+        const listeMaj = [nouvelObjet, ...bonsCommandes];
+        setBonsCommandes(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheCommandes, listeMaj);
       }
 
+      localStorage.removeItem(cleCacheCommandes);
       alert(`Bon de commande ${numeroDoc} enregistré avec succès !`);
       setVueActive('liste');
-      await chargerDonnees();
+      await chargerDonnees(true);
     } catch (err) { 
       alert('Erreur : ' + err.message); 
     } finally {
@@ -543,7 +582,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         }))
       };
 
-      const { data, error: rpcError } = await supabase.rpc('transformer_commande_en_appro', {
+      const { error: rpcError } = await supabase.rpc('transformer_commande_en_appro', {
         p_entreprise_id: entrepriseId,
         p_module: moduleActuel,
         p_commande_id: doc.id,
@@ -553,18 +592,24 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
       if (rpcError) {
         const { error: errInsert } = await supabase.from('approvisionnements').insert([payloadFacture]);
-        if (errInsert) throw errInsert;
+        if (errInsert) {
+          localSync.ajouterFileAttente('INSERT', 'approvisionnements', payloadFacture);
+        }
 
         if (doc.id) {
           const { error: errDel } = await supabase.from('bons_commande_fournisseurs').delete().eq('id', doc.id);
-          if (errDel) throw errDel;
+          if (errDel) {
+            localSync.ajouterFileAttente('DELETE', 'bons_commande_fournisseurs', { id: doc.id });
+          }
         }
       }
 
+      localStorage.removeItem(cleCacheAppro);
+      localStorage.removeItem(cleCacheCommandes);
       alert(`Succès ! Le bon a été transformé en approvisionnement : ${nouveauNumAppro}`);
       setVueActive('liste');
       setOngletActif('APPRO');
-      await chargerDonnees();
+      await chargerDonnees(true);
     } catch (err) {
       alert('Erreur lors de la transformation : ' + err.message);
     } finally {
@@ -602,12 +647,34 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       return;
     }
     if (!confirm('Supprimer ce document ?')) return;
+    
+    setEnTrainDeSauvegarder(true);
     try {
       const table = type === 'APPRO' ? 'approvisionnements' : 'bons_commande_fournisseurs';
-      await supabase.from(table).delete().eq('id', id);
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', table, { id });
+      }
+
+      if (type === 'APPRO') {
+        const listeMaj = approvisionnements.filter(a => a.id !== id);
+        setApprovisionnements(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
+        localStorage.removeItem(cleCacheAppro);
+      } else {
+        const listeMaj = bonsCommandes.filter(c => c.id !== id);
+        setBonsCommandes(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheCommandes, listeMaj);
+        localStorage.removeItem(cleCacheCommandes);
+      }
+
       alert('Supprimé.');
-      await chargerDonnees();
-    } catch (err) { alert('Erreur : ' + err.message); }
+      await chargerDonnees(true);
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
   };
 
   const gererTri = (colonne) => {
@@ -1017,7 +1084,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             </div>
             <div>
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-              <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" />
+              <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs" />
             </div>
             <div>
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">

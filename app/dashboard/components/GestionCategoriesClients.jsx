@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) {
   const [categories, setCategories] = useState([]);
@@ -43,11 +44,20 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheCategories = `categories_clients_${entrepriseId}_${moduleActuel}`;
 
   const chargerPermissionsEtCategories = async () => {
-    setChargement(true);
+    // 1. Chargement instantané depuis le cache local (Zéro attente)
+    const categoriesLocales = localSync.recupererDonneesLocales(cleCacheCategories);
+    if (categoriesLocales && categoriesLocales.length > 0) {
+      setCategories(categoriesLocales);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
     try {
-      // 1. Charger et analyser les permissions de l'employé connecté
+      // 2. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
@@ -86,7 +96,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
         }
       }
 
-      // 2. Charger les catégories de clients
+      // 3. Charger les catégories de clients depuis Supabase (filtrées strictement par entreprise et module)
       const { data, error } = await supabase
         .from('categories_clients')
         .select('*')
@@ -95,16 +105,24 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCategories(data || []);
+      const listCategories = data || [];
+      setCategories(listCategories);
+
+      // Mise à jour du cache local propre
+      localSync.sauvegarderDonneesLocales(cleCacheCategories, listCategories);
     } catch (err) {
       console.error('Erreur :', err.message);
+      if (!categoriesLocales || categoriesLocales.length === 0) {
+        setCategories([]);
+      }
     } finally {
       setChargement(false);
     }
   };
 
   useEffect(() => { 
-    chargerPermissionsEtCategories(); 
+    chargerPermissionsEtCategories();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const enregistrerCategorie = async (e) => {
@@ -134,14 +152,27 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       };
 
       if (categorieEnEdition) {
-        await supabase.from('categories_clients').update(payload).eq('id', categorieEnEdition.id);
+        const { error } = await supabase.from('categories_clients').update(payload).eq('id', categorieEnEdition.id);
+        if (error) throw error;
+
+        setCategories(prev => prev.map(c => c.id === categorieEnEdition.id ? { ...c, ...payload } : c));
         alert('Mise à jour réussie !');
       } else {
-        await supabase.from('categories_clients').insert([payload]);
+        // Insertion sans ID temporaire pour éviter les erreurs de type bigint sur Supabase
+        const { error, data } = await supabase.from('categories_clients').insert([payload]).select().single();
+        if (error) throw error;
+
+        if (data) {
+          setCategories(prev => [data, ...prev.filter(c => c.id !== data.id)]);
+        }
         alert('Création réussie !');
       }
+
+      // Suppression et nettoyage de l'ancien cache local
+      localStorage.removeItem(cleCacheCategories);
+
       annulerForm();
-      chargerPermissionsEtCategories();
+      await chargerPermissionsEtCategories();
     } catch (err) { 
       alert('Erreur : ' + err.message); 
     } finally {
@@ -227,9 +258,12 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       const { error } = await supabase.from('categories_clients').delete().eq('id', categorieEnEdition.id);
       if (error) throw error;
 
+      setCategories(prev => prev.filter(c => c.id !== categorieEnEdition.id));
+      localStorage.removeItem(cleCacheCategories);
+
       alert('Catégorie supprimée avec succès.');
       annulerForm();
-      chargerPermissionsEtCategories();
+      await chargerPermissionsEtCategories();
     } catch (err) { 
       alert('Erreur : ' + err.message); 
     } finally {
@@ -262,7 +296,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
-          <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS ({categoriesAffichees.length} / {categoriesFiltrees.length})</h3>
+          <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS [{moduleActuel}] ({categoriesAffichees.length} / {categoriesFiltrees.length})</h3>
           {roleNom && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
               Rôle : {roleNom}

@@ -119,12 +119,67 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   const moduleActuel = obtenirModuleActuel();
 
+  // Clé de cache locale isolée par entreprise et par module
+  const cacheKey = `4ts_cache_ventes_historiques_${entrepriseId}_${moduleActuel}`;
+
   const genererNumeroTicket = (code, totalVentes) => {
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
 
+  // --- CHARGEMENT DU CACHE LOCAL INSTANTANÉ ---
+  const chargerCacheLocal = () => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const cacheBrut = localStorage.getItem(cacheKey);
+      if (cacheBrut) {
+        const dataCache = JSON.parse(cacheBrut);
+        if (dataCache && dataCache.entrepriseId === entrepriseId && dataCache.module === moduleActuel) {
+          setVentes(dataCache.ventes || []);
+          setVentesHistoriques(dataCache.ventes || []);
+          setArticlesStock(dataCache.articlesStock || []);
+          setClientsList(dataCache.clientsList || []);
+          setCategoriesList(dataCache.categoriesList || []);
+          setCaissesList(dataCache.caissesList || []);
+          setDepotsList(dataCache.depotsList || []);
+          setMouvements(dataCache.mouvements || []);
+          setApprovisionnements(dataCache.approvisionnements || []);
+          setUtilisateursList(dataCache.utilisateursList || []);
+          setCloturesList(dataCache.cloturesList || []);
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error('Erreur lecture cache local :', e);
+    }
+    return false;
+  };
+
+  // --- MISE À JOUR ET PURGE DE L'ANCIEN CACHE LOCAL ---
+  const sauvegarderCacheLocal = (donnees) => {
+    if (typeof window === 'undefined') return;
+    try {
+      // Nettoyage de l'ancien cache ou des clés obsolètes pour cette entité
+      localStorage.removeItem(cacheKey);
+      
+      const payloadCache = {
+        entrepriseId,
+        module: moduleActuel,
+        timestamp: Date.now(),
+        ...donnees
+      };
+      localStorage.setItem(cacheKey, JSON.stringify(payloadCache));
+    } catch (e) {
+      console.error('Erreur écriture cache local :', e);
+    }
+  };
+
   const chargerDonneesEtPermissions = async () => {
-    setChargement(true);
+    // Affichage instantané depuis le cache local si disponible
+    const cacheExiste = chargerCacheLocal();
+    if (!cacheExiste) {
+      setChargement(true);
+    }
+
     try {
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
@@ -180,56 +235,79 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         supabase.from('clotures_caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false })
       ]);
 
+      const dataArticles = resArticles.data || [];
+      const dataClients = resClients.data || [];
+      const dataCategories = resCategories.data || [];
+      const dataCaisses = resCaisses.data || [];
+      const dataDepots = resDepots.data || [];
+      const dataMouvements = resMouvements.data || [];
+      const dataAppro = resAppro.data || [];
+      const dataUsers = resUsers.data || [];
+      const dataClotures = resClotures.data || [];
+
+      // Mise à jour des états
       setVentes(ventesData);
       setVentesHistoriques(ventesData);
-      setArticlesStock(resArticles.data || []);
-      setClientsList(resClients.data || []);
-      setCategoriesList(resCategories.data || []);
-      
-      const listeCaisses = resCaisses.data || [];
-      setCaissesList(listeCaisses);
+      setArticlesStock(dataArticles);
+      setClientsList(dataClients);
+      setCategoriesList(dataCategories);
+      setCaissesList(dataCaisses);
 
-      const caissePrincipale = listeCaisses.find(c => 
+      const caissePrincipale = dataCaisses.find(c => 
         (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE') || 
         (c.code_caisse || '').toUpperCase().includes('CP') ||
         (c.nom_caisse || '').toUpperCase().includes('CP')
-      ) || listeCaisses[0];
+      ) || dataCaisses[0];
 
       if (caissePrincipale) {
         setCaisseDestinationVersementId(caissePrincipale.id);
       }
 
-      setDepotsList(resDepots.data || []);
-      setMouvements(resMouvements.data || []);
-      setApprovisionnements(resAppro.data || []);
-      setUtilisateursList(resUsers.data || []);
-      setCloturesList(resClotures.data || []);
+      setDepotsList(dataDepots);
+      setMouvements(dataMouvements);
+      setApprovisionnements(dataAppro);
+      setUtilisateursList(dataUsers);
+      setCloturesList(dataClotures);
 
       setDateJour(dateDuJourStr);
 
       let codeCaisseCourant = 'C01';
-      if (listeCaisses.length > 0) {
-        setCaisseId(listeCaisses[0].id);
-        codeCaisseCourant = listeCaisses[0].code_caisse || 'C01';
+      if (dataCaisses.length > 0) {
+        setCaisseId(dataCaisses[0].id);
+        codeCaisseCourant = dataCaisses[0].code_caisse || 'C01';
         setCodeCaisseActif(codeCaisseCourant);
       }
 
       setNumeroTicket(genererNumeroTicket(codeCaisseCourant, ventesData.length));
 
-      if ((resDepots.data || []).length > 0) {
-        setDepotId(resDepots.data[0].id);
+      if (dataDepots.length > 0) {
+        setDepotId(dataDepots[0].id);
       }
 
-      const clientDivers = (resClients.data || []).find(c => c.est_par_defaut || (c.nom_client || c.nom || '').toLowerCase().includes('divers'));
+      const clientDivers = dataClients.find(c => c.est_par_defaut || (c.nom_client || c.nom || '').toLowerCase().includes('divers'));
       if (clientDivers && !clientId) {
         setClientId(clientDivers.id);
         setClientSelectionneObj(clientDivers);
         setClientNomSelectionne((clientDivers.nom_client || clientDivers.nom || clientDivers.libelle || 'CLIENTS DIVERS').toUpperCase());
-      } else if ((resClients.data || []).length > 0 && !clientId) {
-        setClientId(resClients.data[0].id);
-        setClientSelectionneObj(resClients.data[0]);
-        setClientNomSelectionne((resClients.data[0].nom_client || resClients.data[0].nom || resClients.data[0].libelle || 'CLIENTS DIVERS').toUpperCase());
+      } else if (dataClients.length > 0 && !clientId) {
+        setClientId(dataClients[0].id);
+        setClientSelectionneObj(dataClients[0]);
+        setClientNomSelectionne((dataClients[0].nom_client || dataClients[0].nom || dataClients[0].libelle || 'CLIENTS DIVERS').toUpperCase());
       }
+
+      // Sauvegarde instantanée dans le nouveau cache local propre et isolé
+      sauvegarderCacheLocal({
+        ventes: ventesData,
+        articlesStock: dataArticles,
+        clientsList: dataClients,
+        categoriesList: dataCategories,
+        caissesList: dataCaisses,
+        depotsList: dataDepots,
+        mouvements: dataMouvements,
+        approvisionnements: dataAppro,
+        utilisateursList: dataUsers,
+        cloturesList: dataClotures
+      });
 
     } catch (err) {
       console.error('Erreur chargement :', err.message);

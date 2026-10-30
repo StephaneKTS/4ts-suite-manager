@@ -81,6 +81,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
 
   const toutesLesSuggestionsArticles = Array.from(
     new Set(articles.map(art => (art.Designation || art.designation || '').trim().toUpperCase()))
@@ -127,13 +128,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .from('familles_articles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('nom_famille', { ascending: true });
       setFamilles(dataFam || []);
 
       const { data: dataDep } = await supabase
         .from('depots_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
       if (listeDepots.length > 0) {
@@ -143,19 +146,22 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const { data: dataEmp } = await supabase
         .from('emplacements_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setEmplacements(dataEmp || []);
 
       const { data: dataMouv } = await supabase
         .from('mouvements_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setMouvements(dataMouv || []);
 
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
       setApprovisionnements(dataAppro || []);
 
     } catch (err) {
@@ -165,27 +171,28 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const chargerArticles = async () => {
     setChargement(true);
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente, idéal modem lent)
-    const articlesLocaux = localSync.recupererDonneesLocales(`articles_${entrepriseId}`);
-    if (articlesLocaux.length > 0) {
+    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL DU MODULE ACTIF
+    const articlesLocaux = localSync.recupererDonneesLocales(cleCacheArticles);
+    if (articlesLocaux && articlesLocaux.length > 0) {
       setArticles(articlesLocaux);
       setArticleSelectionneStatId(String(articlesLocaux[0].id_article || articlesLocaux[0].id));
       setChargement(false);
     }
 
     try {
+      // CORRECTION : Filtrage strict par module pour isoler les articles par module (Boutique, Livraison, etc.)
       let { data, error } = await supabase
         .from('articles_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       const liste = data || [];
       
       setArticles(liste);
-      // Mise à jour du cache local en arrière-plan
-      localSync.sauvegarderDonneesLocales(`articles_${entrepriseId}`, liste);
+      localSync.sauvegarderDonneesLocales(cleCacheArticles, liste);
       
       if (liste.length > 0) {
         if (!articleSelectionneStatId || !liste.some(a => String(a.id_article || a.id) === String(articleSelectionneStatId))) {
@@ -195,7 +202,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         setArticleSelectionneStatId('');
       }
     } catch (err) {
-      console.error('Erreur chargement articles (mode hors-ligne actif) :', err.message);
+      console.error('Erreur chargement articles :', err.message);
     } finally {
       setChargement(false);
     }
@@ -204,8 +211,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   useEffect(() => {
     chargerDonneesReference();
     chargerArticles();
-    // Tentative de synchronisation en arrière-plan si la connexion internet est revenue
-    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const isGestionPerissablesActive = () => {
@@ -509,31 +514,27 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       if (articleEnEdition) {
         const targetId = articleEnEdition.id_article || articleEnEdition.id;
-        payloadArticle.id = targetId;
-
         const { error } = await supabase
           .from('articles_stock')
           .update(payloadArticle)
           .eq(articleEnEdition.id_article ? 'id_article' : 'id', targetId)
           .eq('id_entreprise', entrepriseId);
 
-        if (error) {
-          localSync.ajouterFileAttente('UPDATE', 'articles_stock', payloadArticle);
-        }
+        if (error) throw error;
       } else {
         payloadArticle.Quantite_Stock = 0;
-        payloadArticle.id = 'temp_' + Date.now();
         const { error } = await supabase.from('articles_stock').insert([payloadArticle]);
-        if (error) {
-          localSync.ajouterFileAttente('INSERT', 'articles_stock', payloadArticle);
-        }
+        if (error) throw error;
       }
+
+      // NETTOYAGE DU CACHE LOCAL POUR FORCER LE RECHARGEMENT FRAIS DEPUIS SUPABASE
+      localStorage.removeItem(cleCacheArticles);
 
       alert(`Article enregistré avec succès !`);
       annulerForm();
       await chargerArticles();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('⚠️ Erreur lors de l’enregistrement dans la base de données : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -608,6 +609,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .eq('id_entreprise', entrepriseId);
 
       if (error) throw error;
+
+      localStorage.removeItem(cleCacheArticles);
       alert('Article supprimé.');
       annulerForm();
       chargerArticles();
@@ -642,7 +645,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       valB = String(b.Designation || b.designation || '').toLowerCase();
     } else if (colonneTri === 'Prix_Achat') {
       valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
-      valB = parseFloat(b.Prix_Achat || b.prix_vente || 0);
+      valB = parseFloat(a.Prix_Achat || a.prix_vente || 0);
     } else if (colonneTri === 'Prix_Vente') {
       valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
       valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
@@ -813,7 +816,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
           <span className="text-sm shrink-0">📦</span>
           <h3 className="font-extrabold text-slate-900 uppercase text-[11px] truncate">
-            GESTION DES ARTICLES ({articlesAffiches.length} / {articlesFiltres.length})
+            GESTION DES ARTICLES [{moduleActuel}] ({articlesAffiches.length} / {articlesFiltres.length})
           </h3>
           {isGestionPerissablesActive() && <span className="text-[8px] bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200 shrink-0">Périssables</span>}
         </div>
@@ -895,7 +898,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <span className="font-black text-[10px] text-orange-600 uppercase">
-                  {articleEnEdition ? 'Modifier un article' : 'Créer un article'}
+                  {articleEnEdition ? `Modifier un article [${moduleActuel}]` : `Créer un article [${moduleActuel}]`}
                 </span>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
               </div>
@@ -1198,7 +1201,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
-                <h4 className="font-black uppercase text-[9.5px]">📦 Stock des Articles ({articlesAffiches.length} / {articlesFiltres.length})</h4>
+                <h4 className="font-black uppercase text-[9.5px]">📦 Stock des Articles [{moduleActuel}] ({articlesAffiches.length} / {articlesFiltres.length})</h4>
                 <button
                   type="button"
                   disabled={enTrainDeSauvegarder}
@@ -1251,7 +1254,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       </tr>
                     ) : articlesAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré.</td>
+                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
                       </tr>
                     ) : (
                       articlesAffiches.map((art) => {
@@ -1497,7 +1500,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
-            <h4 className="font-black uppercase text-[9.5px]">📊 RAPPORT DE STOCK PAR ARTICLE</h4>
+            <h4 className="font-black uppercase text-[9.5px]">📊 RAPPORT DE STOCK PAR ARTICLE [{moduleActuel}]</h4>
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
@@ -1523,7 +1526,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               <tbody className="divide-y divide-slate-100 text-[10.5px]">
                 {articles.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré.</td>
+                    <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
                   </tr>
                 ) : (
                   articles.map((art) => {

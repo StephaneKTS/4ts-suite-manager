@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 const LISTE_PAYS = [
   { code: 'cmr', indicatif: '+237', longueur: 9 },
@@ -73,6 +74,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheClients = `clients_${entrepriseId}_${moduleActuel}`;
 
   const chargerDroitsUtilisateur = async () => {
     try {
@@ -84,14 +86,14 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('email', emailConnecte)
-        .single();
+        .maybeSingle();
 
       if (userRecord && userRecord.id_role) {
         const { data: roleRecord } = await supabase
           .from('roles')
           .select('*')
           .eq('id', userRecord.id_role)
-          .single();
+          .maybeSingle();
 
         if (roleRecord) {
           setRoleUtilisateur(roleRecord);
@@ -109,7 +111,15 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   };
 
   const chargerDonnees = async () => {
-    setChargement(true);
+    // 1. Chargement instantané depuis le cache local (Zéro attente)
+    const clientsLocaux = localSync.recupererDonneesLocales(cleCacheClients);
+    if (clientsLocaux && clientsLocaux.length > 0) {
+      setClients(clientsLocaux);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
     try {
       await chargerDroitsUtilisateur();
 
@@ -122,6 +132,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
       setCategories(dataCat || []);
 
+      // 2. Récupération Supabase filtrée strictement par entreprise et module
       const { data: dataCli, error: errCli } = await supabase
         .from('clients')
         .select('*')
@@ -132,6 +143,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       if (errCli) throw errCli;
       const listClients = dataCli || [];
       setClients(listClients);
+
+      // Mise à jour du cache local propre
+      localSync.sauvegarderDonneesLocales(cleCacheClients, listClients);
 
       if (listClients.length > 0 && !clientHistoriqueId) {
         setClientHistoriqueId(listClients[0].id);
@@ -153,6 +167,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
     } catch (err) {
       console.error('Erreur chargement clients :', err.message);
+      if (!clientsLocaux || clientsLocaux.length === 0) {
+        setClients([]);
+      }
     } finally {
       setChargement(false);
     }
@@ -160,6 +177,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerDonnees();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const calculerTotauxFactureClient = (vente) => {
@@ -174,7 +192,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     return { montantTotal, montantRegle, resteAPayer, statut };
   };
 
-  // Récupération automatique du solde de crédit (dette) depuis les ventes historiques
   const calculerSoldeCreditClient = (client) => {
     if (!client) return 0;
     const clientId = client.id;
@@ -224,7 +241,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
-      const payload = {
+      let payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
         nom_client: nouveauClient.nom_client.trim().toUpperCase(),
@@ -241,21 +258,31 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
           .eq('id', clientEnEdition.id);
 
         if (error) throw error;
+
+        setClients(prev => prev.map(c => c.id === clientEnEdition.id ? { ...c, ...payload } : c));
         alert('Client mis à jour avec succès !');
       } else {
-        const { error } = await supabase.from('clients').insert([
+        // CORRECTION CRITIQUE : Ne PAS envoyer de champ id commençant par temp_ pour éviter l'erreur bigint sur Supabase
+        const { error, data } = await supabase.from('clients').insert([
           {
             ...payload,
             solde_credit: 0,
           },
-        ]);
+        ]).select().single();
 
         if (error) throw error;
+
+        if (data) {
+          setClients(prev => [data, ...prev.filter(c => c.id !== data.id)]);
+        }
         alert('Client enregistré avec succès !');
       }
 
+      // Suppression et nettoyage de l'ancien cache local
+      localStorage.removeItem(cleCacheClients);
+
       annulerForm();
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -351,9 +378,12 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       const { error } = await supabase.from('clients').delete().eq('id', clientEnEdition.id);
       if (error) throw error;
 
+      setClients(prev => prev.filter(c => c.id !== clientEnEdition.id));
+      localStorage.removeItem(cleCacheClients);
+
       alert('Client supprimé avec succès.');
       annulerForm();
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -547,7 +577,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       alert('Règlement enregistré avec succès !');
       setMontantReglementSaisi('');
       setFactureSelectionnee(null);
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -563,7 +593,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1.5 overflow-hidden">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
-            <span>👥</span> GESTION DES CLIENTS
+            <span>👥</span> GESTION DES CLIENTS [{moduleActuel}]
           </h3>
           {roleUtilisateur && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">

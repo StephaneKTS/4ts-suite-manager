@@ -10,6 +10,11 @@ retirer les boutons dactions sur la page principale permettre en cliquant sur un
 dans le bouton dajout ecrire juste nouveau
 
 
+met a jour ce code pour installer le cache local en supprimant lancien cache local si ca existe 
+assurer le filtrage strict en fonction des modules et des entreprises 
+garantir un affiche instantané des elemsnts existants et aussi des nouveaux elements crées 
+
+
 la fiche du tiers n'a plus besoin dafficher la liste en bas, donc reduire la taille des polices et des cadres pour afficher ses infos comme ceci nom-categories-solde
 et regouper ses infos telephone-email-sur un pied de page en permettant un clique sur le numero qui declenche soit lappel soit lenvoie dun message sms ou whatsapp pareil pour email 
 
