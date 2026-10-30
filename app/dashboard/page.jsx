@@ -180,13 +180,8 @@ function DashboardContent() {
   const estModeLivraison = moduleCourant === 'LIVRAISON';
   const emailActuel = emailConnecte || infosEntreprise.email || 'stephs7352@gmail.com';
   
-  // Reconnaissance absolue et prioritaire du Super-Admin
-  const estSuperAdmin = 
-    emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com' || 
-    emailActuel.toLowerCase().trim() === 'bureauisma26@gmail.com' || 
-    emailActuel.toLowerCase().trim() === 'stephanekts1312@gmail.com' ||
-    utilisateurConnecte.includes('STÉPHANE') || 
-    utilisateurConnecte.includes('KENMOE');
+  // RESTRICTION STRICTE : Le bouton Super-Admin s'affiche uniquement pour stephs7352@gmail.com
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
   const estAdminEntreprise = 
     estSuperAdmin || 
