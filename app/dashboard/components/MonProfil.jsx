@@ -21,6 +21,8 @@ export default function MonProfil({ entrepriseId = '' }) {
   const [nomUtilisateurConnecte, setNomUtilisateurConnecte] = useState('');
   const [emailUtilisateurConnecte, setEmailUtilisateurConnecte] = useState('');
   const [telephoneUtilisateur, setTelephoneUtilisateur] = useState('');
+  const [roleUtilisateur, setRoleUtilisateur] = useState('');
+  const [avatarUtilisateur, setAvatarUtilisateur] = useState('');
 
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
   const [confirmerMotDePasse, setConfirmerMotDePasse] = useState('');
@@ -62,12 +64,20 @@ export default function MonProfil({ entrepriseId = '' }) {
 
   const estAdminEntreprise = 
     estSuperAdmin || 
+    roleUtilisateur.toUpperCase().includes('ADMIN') ||
     nomUtilisateurConnecte.toUpperCase().includes('ADMIN') || 
     (entreprise && nomUtilisateurConnecte.toUpperCase() === (entreprise.nom_entreprise || '').toUpperCase());
 
+  // Nettoyage et initialisation du cache local strict par entreprise & module
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const ancienneCleCacheGlobal = '4ts_cache_global_legacy';
+      if (localStorage.getItem(ancienneCleCacheGlobal)) {
+        localStorage.removeItem(ancienneCleCacheGlobal);
+      }
+    }
     chargerInfosUtilisateurEtEntreprise();
-  }, [entrepriseId]);
+  }, [entrepriseId, moduleActuel]);
 
   const chargerToutesLesEntreprises = async () => {
     setLoadingAdmin(true);
@@ -91,86 +101,114 @@ export default function MonProfil({ entrepriseId = '' }) {
 
   const chargerInfosUtilisateurEtEntreprise = async () => {
     setChargement(true);
+    const idEffectif = entrepriseId || (typeof window !== 'undefined' ? (localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id')) : null) || '4TS-234321';
+    
+    // Clé de cache local stricte isolée par entreprise et par module
+    const cleCacheLocal = `4ts_profil_cache_${idEffectif}_${moduleActuel}`;
+
     try {
+      // 1. Affichage instantané depuis le cache local s'il existe
       if (typeof window !== 'undefined') {
-        const userObjStr = localStorage.getItem('utilisateur_obj');
-        if (userObjStr) {
-          try {
-            const uObj = JSON.parse(userObjStr);
-            setNomUtilisateurConnecte(uObj.nom || uObj.nom_utilisateur || uObj.username || utilisateurConnecte || 'Stéphane KTS');
-            setEmailUtilisateurConnecte(uObj.email || emailConnecte || 'stephs7352@gmail.com');
-            setTelephoneUtilisateur(uObj.telephone || uObj.phone || '655597099');
-          } catch (e) {
-            setNomUtilisateurConnecte(utilisateurConnecte || 'Stéphane KTS');
-            setEmailUtilisateurConnecte(emailConnecte || 'stephs7352@gmail.com');
-            setTelephoneUtilisateur('655597099');
-          }
-        } else {
-          setNomUtilisateurConnecte(utilisateurConnecte || 'Stéphane KTS');
-          setEmailUtilisateurConnecte(emailConnecte || 'stephs7352@gmail.com');
-          setTelephoneUtilisateur('655597099');
+        const donneesCachees = localStorage.getItem(cleCacheLocal);
+        if (donneesCachees) {
+          const parsed = JSON.parse(donneesCachees);
+          setEntreprise(parsed.entreprise);
+          setNomUtilisateurConnecte(parsed.nomUtilisateurConnecte || '');
+          setEmailUtilisateurConnecte(parsed.emailUtilisateurConnecte || '');
+          setTelephoneUtilisateur(parsed.telephoneUtilisateur || '');
+          setRoleUtilisateur(parsed.roleUtilisateur || '');
+          setAvatarUtilisateur(parsed.avatarUtilisateur || '');
+          if (parsed.logoEntreprise) setLogoEntreprise(parsed.logoEntreprise);
+          setChargement(false);
         }
       }
 
-      const idEffectif = entrepriseId || (typeof window !== 'undefined' ? (localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id')) : null) || '4TS-234321';
-
+      // 2. Synchronisation en arrière-plan avec Supabase avec filtrage strict
       let entrepriseTrouvee = null;
+      const { data, error } = await supabase
+        .from('entreprises')
+        .select('*')
+        .eq('id_entreprise', idEffectif)
+        .maybeSingle();
 
-      try {
-        const { data, error } = await supabase
+      if (!error && data) {
+        entrepriseTrouvee = data;
+      } else {
+        const { data: dataFallback } = await supabase
           .from('entreprises')
           .select('*')
-          .eq('id_entreprise', idEffectif)
+          .eq('id', idEffectif)
           .maybeSingle();
-
-        if (!error && data) {
-          entrepriseTrouvee = data;
-        } else {
-          const { data: dataFallback } = await supabase
-            .from('entreprises')
-            .select('*')
-            .eq('id', idEffectif)
-            .maybeSingle();
-          if (dataFallback) entrepriseTrouvee = dataFallback;
-        }
-      } catch (reqErr) {
-        console.warn("Requête Supabase ignorée, utilisation du mode secours :", reqErr.message);
+        if (dataFallback) entrepriseTrouvee = dataFallback;
       }
 
       if (entrepriseTrouvee) {
         setEntreprise(entrepriseTrouvee);
         if (entrepriseTrouvee.duree_abonnement_mois) setNombreMoisChoisi(entrepriseTrouvee.duree_abonnement_mois);
-      } else {
-        setEntreprise({
-          id_entreprise: idEffectif,
-          nom_entreprise: '4TS SUITE MANAGER',
-          email: emailConnecte || 'contact@4ts.com',
-          telephone: '600000000',
-          limite_utilisateurs: 5,
-          duree_abonnement_mois: 1,
-          espaces_souscrits: ['BOUTIQUE', 'LIVRAISON']
+      }
+
+      // Récupération sécurisée et filtrée de l'utilisateur rattaché à l'entreprise
+      let utilisateurTrouve = null;
+      const { data: usersList } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', idEffectif);
+
+      if (usersList && usersList.length > 0) {
+        utilisateurTrouve = usersList.find(u => {
+          const nomCompletBase = `${u.nom_complet || u.nom || ''} ${u.prenom || ''}`.trim().toLowerCase();
+          const nomRecherche = utilisateurConnecte.toLowerCase();
+          const matchNom = nomCompletBase.includes(nomRecherche) || nomRecherche.includes(nomCompletBase);
+          const matchEmail = emailConnecte && u.email && u.email.toLowerCase() === emailConnecte.toLowerCase();
+          return matchNom || matchEmail;
         });
       }
 
-      if (typeof window !== 'undefined' && idEffectif) {
-        const logoLocal = localStorage.getItem(`logo_entreprise_${idEffectif}`);
-        if (logoLocal) setLogoEntreprise(logoLocal);
+      let nomFinal = utilisateurConnecte || 'Stéphane KTS';
+      let emailFinal = emailConnecte || '';
+      let telephoneFinal = '';
+      let roleFinal = 'Administrateur';
+      let avatarFinal = '';
+
+      if (utilisateurTrouve) {
+        nomFinal = `${utilisateurTrouve.nom || utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || nomFinal;
+        emailFinal = utilisateurTrouve.email || emailFinal;
+        telephoneFinal = utilisateurTrouve.telephone || utilisateurTrouve.phone || '';
+        roleFinal = utilisateurTrouve.role || utilisateurTrouve.type_collaborateur || roleFinal;
+        avatarFinal = utilisateurTrouve.avatar || utilisateurTrustAvatar(utilisateurTrouve.photo) || '';
       }
+
+      setNomUtilisateurConnecte(nomFinal);
+      setEmailUtilisateurConnecte(emailFinal);
+      setTelephoneUtilisateur(telephoneFinal);
+      setRoleUtilisateur(roleFinal);
+      if (avatarFinal) setAvatarUtilisateur(avatarFinal);
+
+      const logoLocal = (typeof window !== 'undefined') ? (localStorage.getItem(`logo_entreprise_${idEffectif}`) || avatarFinal) : '';
+      if (logoLocal) setLogoEntreprise(logoLocal);
+
+      // Mise à jour instantanée du nouveau cache local
+      if (typeof window !== 'undefined') {
+        const payloadCache = {
+          entreprise: entrepriseTrouvee || entreprise,
+          nomUtilisateurConnecte: nomFinal,
+          emailUtilisateurConnecte: emailFinal,
+          telephoneUtilisateur: telephoneFinal,
+          roleUtilisateur: roleFinal,
+          avatarUtilisateur: avatarFinal,
+          logoEntreprise: logoLocal
+        };
+        localStorage.setItem(cleCacheLocal, JSON.stringify(payloadCache));
+      }
+
     } catch (err) {
-      console.error('Erreur chargement profil :', err.message);
-      setEntreprise({
-        id_entreprise: '4TS-234321',
-        nom_entreprise: '4TS SUITE MANAGER',
-        email: emailConnecte || 'contact@4ts.com',
-        telephone: '600000000',
-        limite_utilisateurs: 5,
-        duree_abonnement_mois: 1,
-        espaces_souscrits: ['BOUTIQUE', 'LIVRAISON']
-      });
+      console.error('Erreur chargement profil strict :', err.message);
     } finally {
       setChargement(false);
     }
   };
+
+  const utilisateurTrustAvatar = (photo) => photo || '';
 
   const gererSelectionLogo = async (e) => {
     const file = e.target.files[0];
@@ -179,19 +217,33 @@ export default function MonProfil({ entrepriseId = '' }) {
     setUploadingLogo(true);
     try {
       const lecteur = new FileReader();
-      lecteur.onloadend = () => {
+      lecteur.onloadend = async () => {
         const resultatBase64 = lecteur.result;
         setLogoEntreprise(resultatBase64);
+        setAvatarUtilisateur(resultatBase64);
         const targetId = entreprise?.id_entreprise || '4TS-234321';
+        
         if (typeof window !== 'undefined') {
           localStorage.setItem(`logo_entreprise_${targetId}`, resultatBase64);
+          localStorage.setItem(`avatar_user_${nomUtilisateurConnecte}`, resultatBase64);
         }
+
+        try {
+          await supabase
+            .from('utilisateurs')
+            .update({ avatar: resultatBase64 })
+            .eq('id_entreprise', targetId)
+            .ilike('nom', `%${nomUtilisateurConnecte}%`);
+        } catch (updateErr) {
+          console.warn("Mise à jour avatar base de données ignorée :", updateErr);
+        }
+
         setUploadingLogo(false);
-        alert('✅ Logo mis à jour avec succès !');
+        alert('✅ Photo de profil mise à jour avec succès !');
       };
       lecteur.readAsDataURL(file);
     } catch (err) {
-      alert('Erreur lors du chargement du logo : ' + err.message);
+      alert('Erreur lors du chargement de l’image : ' + err.message);
       setUploadingLogo(false);
     }
   };
@@ -411,8 +463,8 @@ export default function MonProfil({ entrepriseId = '' }) {
     }
   };
 
-  if (chargement) {
-    return <div className="p-6 text-center text-cyan-400 text-xs font-bold animate-pulse">Chargement du profil...</div>;
+  if (chargement && !entreprise) {
+    return <div className="p-6 text-center text-cyan-400 text-xs font-bold animate-pulse">Chargement instantané du profil...</div>;
   }
 
   if (!entreprise) {
@@ -444,16 +496,16 @@ export default function MonProfil({ entrepriseId = '' }) {
             
             <div 
               onClick={() => fileInputLogoRef.current && fileInputLogoRef.current.click()}
-              title="Cliquer pour modifier votre avatar"
+              title="Cliquer pour modifier votre photo de profil"
               className="w-14 h-14 rounded-xl bg-slate-900 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer relative group shadow-md"
             >
-              {logoEntreprise ? (
-                <img src={logoEntreprise} alt="Avatar" className="w-full h-full object-cover" />
+              {(logoEntreprise || avatarUtilisateur) ? (
+                <img src={logoEntreprise || avatarUtilisateur} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <span className="text-orange-400 font-black text-base">👤</span>
               )}
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[9px] text-white font-bold text-center p-1">
-                {uploadingLogo ? 'Envoi...' : 'Modifier Avatar'}
+                {uploadingLogo ? 'Envoi...' : 'Modifier Photo'}
               </div>
             </div>
 
@@ -472,7 +524,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Affichage des boutons de réabonnement et modules uniquement pour l'entreprise (admin / propriétaire) */}
           {estAdminEntreprise && (
             <div className="grid grid-cols-3 gap-1.5">
               <button
@@ -730,7 +781,7 @@ export default function MonProfil({ entrepriseId = '' }) {
           <div className="grid grid-cols-3 gap-2 text-center bg-[#0d1b2a] p-2.5 rounded-xl border border-blue-900/40">
             <div>
               <span className="block text-[8.5px] uppercase font-bold text-blue-300">Rôle / Statut</span>
-              <span className="text-[10px] font-black text-emerald-400 uppercase">Administrateur</span>
+              <span className="text-[10px] font-black text-emerald-400 uppercase">{roleUtilisateur || 'Administrateur'}</span>
             </div>
             <div>
               <span className="block text-[8.5px] uppercase font-bold text-blue-300">Module actif</span>
@@ -764,7 +815,7 @@ export default function MonProfil({ entrepriseId = '' }) {
               <input
                 type="text"
                 disabled
-                value={telephoneUtilisateur}
+                value={telephoneUtilisateur || 'Non renseigné'}
                 className="w-full bg-slate-900/60 border border-blue-900/50 rounded-lg p-2 text-xs text-slate-300 cursor-not-allowed font-medium"
               />
             </div>
@@ -857,78 +908,6 @@ export default function MonProfil({ entrepriseId = '' }) {
         </form>
 
       </div>
-
-      <div className="bg-gradient-to-r from-[#0d1b2a] via-[#112240] to-[#0a192f] border border-cyan-500/40 rounded-2xl p-3 shadow-xl space-y-2 text-left">
-        <div className="flex items-center justify-center gap-2 text-center pb-1.5 border-b border-cyan-900/60">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-          <h4 className="font-black text-cyan-400 uppercase text-[10px] tracking-wider">
-            🚀 4TS SUITE MANAGER — ÉCOSYSTÈME PROFESSIONNEL INTÉGRÉ
-          </h4>
-        </div>
-      </div>
-
-      {estSuperAdmin && estCompteEntreprise && (
-        <div className="space-y-2 pt-1">
-          <button
-            type="button"
-            onClick={() => setPanneauAdminOuvert(!panneauAdminOuvert)}
-            className="w-full bg-gradient-to-r from-sky-700 via-cyan-600 to-teal-700 hover:from-sky-600 hover:to-teal-600 text-white font-black p-3 rounded-xl transition flex items-center justify-between shadow-lg text-xs uppercase tracking-wider border border-cyan-400/40"
-          >
-            <span className="flex items-center gap-2">
-              <span>🛡️</span> {panneauAdminOuvert ? 'Fermer le Panneau Super-Admin' : 'Ouvrir le Panneau Super-Admin Global'}
-            </span>
-            <span>{panneauAdminOuvert ? '▲' : '▼'}</span>
-          </button>
-
-          {panneauAdminOuvert && (
-            <div className="bg-[#0b1329] border-2 border-cyan-500/80 p-4 rounded-xl space-y-3 shadow-2xl animate-fadeIn">
-              <div className="flex justify-between items-center border-b border-cyan-900 pb-2">
-                <div>
-                  <h4 className="font-black text-cyan-400 uppercase text-xs">🛡️ Gestion Globale des Entreprises</h4>
-                  <p className="text-[9.5px] text-cyan-200/70">Licences et gestion des entreprises clientes.</p>
-                </div>
-                <button 
-                  onClick={chargerToutesLesEntreprises}
-                  className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] transition"
-                >
-                  🔄 Actualiser
-                </button>
-              </div>
-
-              {loadingAdmin ? (
-                <div className="text-center py-4 text-cyan-300 font-bold text-[10px]">Chargement...</div>
-              ) : (
-                <div className="space-y-2.5">
-                  <p className="font-bold text-slate-200 text-[10px]">Total entreprises : <span className="text-cyan-400">{listeEntreprisesGlobales.length}</span></p>
-                  
-                  <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
-                    {listeEntreprisesGlobales.map((ent) => (
-                      <div key={ent.id_entreprise || ent.id} className="bg-[#1b263b] border border-cyan-900/50 p-2.5 rounded-xl flex flex-col gap-2">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="font-black text-white uppercase text-[11px]">{ent.nom_entreprise}</span>
-                            <span className="ml-2 bg-cyan-950 text-cyan-400 font-mono text-[9px] px-1.5 py-0.5 rounded border border-cyan-800">{ent.id_entreprise}</span>
-                          </div>
-                          <span className="text-[9px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-bold">Licence : {ent.statut_licence || 'ACTIF'}</span>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-blue-950">
-                          <button
-                            onClick={() => { window.location.href = `/dashboard?entreprise=${ent.id_entreprise}`; }}
-                            className="bg-indigo-700 hover:bg-indigo-600 text-white font-bold px-2 py-1 rounded text-[9px] transition"
-                          >
-                            Accéder →
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
 
     </div>
   );
