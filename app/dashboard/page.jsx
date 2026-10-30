@@ -236,46 +236,46 @@ function DashboardContent() {
 
     if (moduleActif === 'super_admin_panel') {
       return (
-        <div className="space-y-4 p-4 text-xs">
+        <div className="space-y-4 p-3 text-xs">
           <div className="flex justify-between items-center border-b border-cyan-900 pb-2">
             <div>
-              <h3 className="font-black text-cyan-400 uppercase text-sm">🛡️ Espace Super-Admin</h3>
+              <h3 className="font-black text-cyan-400 uppercase text-xs">🛡️ Espace Super-Admin</h3>
               <p className="text-[10px] text-cyan-200/70">Gestion globale de toutes vos entreprises et plateformes 4TS.</p>
             </div>
             <button 
               onClick={chargerToutesLesEntreprises}
-              className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-3 py-1.5 rounded-xl text-[11px] transition shadow"
+              className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] transition shadow"
             >
               🔄 Actualiser
             </button>
           </div>
 
           {loadingAdmin ? (
-            <div className="text-center py-8 text-cyan-300 font-bold">Chargement des entreprises...</div>
+            <div className="text-center py-6 text-cyan-300 font-bold text-xs">Chargement des entreprises...</div>
           ) : (
-            <div className="space-y-3">
-              <p className="font-bold text-slate-200">Total entreprises enregistrées : <span className="text-cyan-400">{listeEntreprisesGlobales.length}</span></p>
+            <div className="space-y-2.5">
+              <p className="font-bold text-slate-200 text-xs">Total entreprises enregistrées : <span className="text-cyan-400">{listeEntreprisesGlobales.length}</span></p>
               
               <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
                 {listeEntreprisesGlobales.map((ent) => (
-                  <div key={ent.id_entreprise} className="bg-[#0b1329] border border-cyan-900/60 p-3 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <div className="space-y-1">
+                  <div key={ent.id_entreprise} className="bg-[#0b1329] border border-cyan-900/60 p-2.5 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-black text-white uppercase">{ent.nom_entreprise}</span>
-                        <span className="bg-cyan-950 text-cyan-400 font-mono text-[10px] px-2 py-0.5 rounded border border-cyan-800">{ent.id_entreprise}</span>
+                        <span className="font-black text-white uppercase text-xs">{ent.nom_entreprise}</span>
+                        <span className="bg-cyan-950 text-cyan-400 font-mono text-[9px] px-1.5 py-0.5 rounded border border-cyan-800">{ent.id_entreprise}</span>
                       </div>
-                      <p className="text-[10px] text-slate-400">📧 {ent.email || 'Aucun email'} | 📞 {ent.telephone || 'Aucun téléphone'}</p>
-                      <p className="text-[10px] text-cyan-300">Module actif : <span className="uppercase font-bold">{ent.module_actif || 'BOUTIQUE'}</span></p>
+                      <p className="text-[9px] text-slate-400">📧 {ent.email || 'Aucun email'} | 📞 {ent.telephone || 'Aucun téléphone'}</p>
+                      <p className="text-[9px] text-cyan-300">Module actif : <span className="uppercase font-bold">{ent.module_actif || 'BOUTIQUE'}</span></p>
                     </div>
 
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
                       <button
                         onClick={() => {
                           window.location.href = `/dashboard?entreprise=${ent.id_entreprise}`;
                         }}
-                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] transition shadow"
+                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] transition shadow"
                       >
-                        Accéder à l'espace →
+                        Accéder →
                       </button>
 
                       <button
@@ -293,9 +293,9 @@ function DashboardContent() {
                             }
                           }
                         }}
-                        className="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800 font-bold px-3 py-1.5 rounded-lg text-[11px] transition"
+                        className="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800 font-bold px-2 py-1 rounded-lg text-[10px] transition"
                       >
-                        🗑️ Supprimer
+                        🗑️
                       </button>
                     </div>
                   </div>
@@ -345,35 +345,35 @@ function DashboardContent() {
   }
 
   const contenuApp = (
-    <div className="min-h-screen bg-[#050b18] text-slate-100 flex flex-col font-sans relative overflow-y-auto w-full max-w-full">
+    <div className="min-h-screen bg-[#050b18] text-slate-100 flex flex-col font-sans relative overflow-y-auto w-full max-w-full text-xs">
       
-      <div className="sticky top-0 z-20 bg-gradient-to-r from-[#0a1931] via-[#0d2347] to-[#0a1931] border-b border-cyan-500/30 px-3 sm:px-6 py-3 text-white shadow-lg shadow-cyan-950/40 shrink-0 flex items-center justify-between w-full">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 flex items-center justify-center shrink-0 rounded-xl bg-cyan-950/60 border border-cyan-500/40 p-1 shadow-inner">
+      <div className="sticky top-0 z-20 bg-gradient-to-r from-[#0a1931] via-[#0d2347] to-[#0a1931] border-b border-cyan-500/30 px-3 py-2.5 text-white shadow-md shadow-cyan-950/40 shrink-0 flex items-center justify-between w-full">
+        <div className="flex items-center space-x-2.5">
+          <div className="w-8 h-8 flex items-center justify-center shrink-0 rounded-lg bg-cyan-950/60 border border-cyan-500/40 p-1 shadow-inner">
             <img 
               src={logoEntreprise || "/logo-4ts.png"} 
               alt="4TS" 
-              className="w-full h-full object-contain rounded-lg"
+              className="w-full h-full object-contain rounded"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
           </div>
           <div>
-            <h1 className="text-sm md:text-base font-black tracking-tight text-white uppercase leading-none drop-shadow">
+            <h1 className="text-xs sm:text-sm font-black tracking-tight text-white uppercase leading-none drop-shadow">
               4TS : {infosEntreprise.nom_entreprise}
             </h1>
-            <p className="text-[10px] md:text-xs text-cyan-300 font-mono mt-1 uppercase">
+            <p className="text-[9px] sm:text-[10px] text-cyan-300 font-mono mt-0.5 uppercase">
               {moduleCourant} | 👤 {utilisateurConnecte}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {estSuperAdmin && (
             <button
               onClick={() => setModuleActif(moduleActif === 'super_admin_panel' ? null : 'super_admin_panel')}
-              className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-3 py-1.5 rounded-xl text-[11px] md:text-xs transition shadow border border-amber-400/50 flex items-center gap-1"
+              className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] transition shadow border border-amber-400/50 flex items-center gap-1"
             >
-              <span>🛡️</span> {moduleActif === 'super_admin_panel' ? 'Fermer superAdmin' : 'superAdmin'}
+              <span>🛡️</span> {moduleActif === 'super_admin_panel' ? 'Fermer' : 'Super-Admin'}
             </button>
           )}
 
@@ -388,215 +388,215 @@ function DashboardContent() {
                   setOngletNavigation('accueil');
                 }
               }}
-              className="bg-sky-900/60 hover:bg-sky-800 text-cyan-200 font-bold px-3 py-1.5 rounded-xl text-[11px] md:text-xs transition border border-cyan-500/40 shadow-sm flex items-center gap-1"
+              className="bg-sky-900/60 hover:bg-sky-800 text-cyan-200 font-bold px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] transition border border-cyan-500/40 shadow-sm flex items-center gap-1"
             >
-              {['journal', 'grand_livre', 'controle', 'plan_comptable'].includes(moduleActif) ? '← Retour Comptabilité' : '← Accueil'}
+              {['journal', 'grand_livre', 'controle', 'plan_comptable'].includes(moduleActif) ? '← Comptabilité' : '← Accueil'}
             </button>
           ) : (
-            <span className="text-[10px] md:text-xs bg-cyan-950 text-cyan-300 font-bold px-2.5 py-1 rounded-full border border-cyan-500/40 shadow-sm">
+            <span className="text-[9px] sm:text-[10px] bg-cyan-950 text-cyan-300 font-bold px-2 py-0.5 rounded-full border border-cyan-500/40 shadow-sm">
               ● En ligne
             </span>
           )}
         </div>
       </div>
 
-      <div className="p-2 sm:p-4 md:p-6 space-y-4 flex-1 pb-24 w-full max-w-7xl mx-auto">
+      <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 pb-20 w-full max-w-7xl mx-auto">
         {ongletNavigation === 'rapports' && !moduleActif ? (
-          <div className="space-y-3 w-full">
-            <h2 className="text-xs md:text-sm font-black text-cyan-400/80 uppercase tracking-wider px-1">
+          <div className="space-y-2.5 w-full">
+            <h2 className="text-[10px] sm:text-xs font-black text-cyan-400/80 uppercase tracking-wider px-0.5">
               COMPTABILITÉ
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
               {verifierPermission('ventes_historiques') && (
-                <div onClick={() => tenterAccesModule('journal', 'Saisie des Opérations')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-4 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
-                  <span className="text-3xl group-hover:scale-110 transition">📝</span>
+                <div onClick={() => tenterAccesModule('journal', 'Saisie des Opérations')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
+                  <span className="text-2xl group-hover:scale-110 transition">📝</span>
                   <div>
-                    <h3 className="font-extrabold text-slate-100 text-sm md:text-base">Saisie des Opérations</h3>
-                    <p className="text-[11px] md:text-xs text-cyan-200/70 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
+                    <h3 className="font-extrabold text-slate-100 text-xs sm:text-sm">Saisie des Opérations</h3>
+                    <p className="text-[10px] text-cyan-200/70 mt-0.5">Entrées, dépenses multi-lignes et pièces auto.</p>
                   </div>
                 </div>
               )}
               {verifierPermission('ventes_historiques') && (
-                <div onClick={() => tenterAccesModule('plan_comptable', 'Plan Comptable')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-4 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
-                  <span className="text-3xl group-hover:scale-110 transition">📚</span>
+                <div onClick={() => tenterAccesModule('plan_comptable', 'Plan Comptable')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
+                  <span className="text-2xl group-hover:scale-110 transition">📚</span>
                   <div>
-                    <h3 className="font-extrabold text-slate-100 text-sm md:text-base">Plan Comptable</h3>
-                    <p className="text-[11px] md:text-xs text-cyan-200/70 mt-0.5">Gestion et consultation du plan comptable.</p>
+                    <h3 className="font-extrabold text-slate-100 text-xs sm:text-sm">Plan Comptable</h3>
+                    <p className="text-[10px] text-cyan-200/70 mt-0.5">Gestion et consultation du plan comptable.</p>
                   </div>
                 </div>
               )}
             </div>
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
-          <div className="space-y-4 w-full">
+          <div className="space-y-3 w-full">
             <MonProfil entrepriseId={entrepriseId} />
           </div>
         ) : moduleActif === 'souscription' || moduleActif === 'super_admin_panel' ? (
-          <div className="bg-[#0b1329] rounded-2xl shadow-lg p-4 sm:p-6 border border-cyan-900/60 text-slate-100 w-full">
+          <div className="bg-[#0b1329] rounded-xl shadow-lg p-3 sm:p-5 border border-cyan-900/60 text-slate-100 w-full">
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && !estModeLivraison ? (
-          <div className="space-y-3 w-full">
-            <h2 className="text-xs md:text-sm font-black text-cyan-400/80 uppercase tracking-wider px-1">
+          <div className="space-y-2.5 w-full">
+            <h2 className="text-[10px] sm:text-xs font-black text-cyan-400/80 uppercase tracking-wider px-0.5">
               ACCUEIL
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
               {verifierPermission('caisse') && (
-                <div onClick={() => tenterAccesModule('ventes', 'Caisse & Ventes')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 shadow-sm group">
-                  <span className="text-3xl group-hover:scale-110 transition">🛒</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Caisse & Ventes</span>
+                <div onClick={() => tenterAccesModule('ventes', 'Caisse & Ventes')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🛒</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Caisse & Ventes</span>
                 </div>
               )}
               {verifierPermission('caisses') && (
-                <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 shadow-sm group">
-                  <span className="text-3xl group-hover:scale-110 transition">🏧</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Création Caisse</span>
+                <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Création Caisse</span>
                 </div>
               )}
               {verifierPermission('depots_stock') && (
-                <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 shadow-sm group">
-                  <span className="text-3xl group-hover:scale-110 transition">📍</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Emplacements Stock</span>
+                <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">📍</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Emplacements Stock</span>
                 </div>
               )}
               {verifierPermission('articles_stock') && (
-                <div onClick={() => tenterAccesModule('articles', 'Articles & Stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">📦</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Stock Articles</span>
+                <div onClick={() => tenterAccesModule('articles', 'Articles & Stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Stock Articles</span>
                 </div>
               )}
               {verifierPermission('depots_stock') && (
-                <div onClick={() => tenterAccesModule('depots', 'Dépôts & Magasins')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">🏢</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Dépôts de stock</span>
+                <div onClick={() => tenterAccesModule('depots', 'Dépôts & Magasins')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
                 </div>
               )}
               {verifierPermission('familles_articles') && (
-                <div onClick={() => tenterAccesModule('familles', 'Familles & Catégories')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">🗂️</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Familles d'Articles</span>
+                <div onClick={() => tenterAccesModule('familles', 'Familles & Catégories')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
                 </div>
               )}
               {verifierPermission('categories_clients') && (
-                <div onClick={() => tenterAccesModule('categories', 'Catégories Clients')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">🏷️</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Catégories Clients</span>
+                <div onClick={() => tenterAccesModule('categories', 'Catégories Clients')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Catégories Clients</span>
                 </div>
               )}
               {verifierPermission('mouvements_stock') && (
-                <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">🔄</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Mouvement Stock</span>
+                <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
                 </div>
               )}
               {verifierPermission('approvisionnements') && (
-                <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">📥</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Achats & Approvisionnement</span>
+                <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
                 </div>
               )}
               {verifierPermission('clients') && (
-                <div onClick={() => tenterAccesModule('clients', 'Fichier Clients')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">👥</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion des Clients</span>
+                <div onClick={() => tenterAccesModule('clients', 'Fichier Clients')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">👥</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion des Clients</span>
                 </div>
               )}
               {verifierPermission('roles_utilisateurs') && (
-                <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">🛡️</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion des Rôles</span>
+                <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion des Rôles</span>
                 </div>
               )}
               {verifierPermission('fournisseurs') && (
-                <div onClick={() => tenterAccesModule('fournisseurs', 'Fournisseurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">🤝</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion des Fournisseurs</span>
+                <div onClick={() => tenterAccesModule('fournisseurs', 'Fournisseurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion des Fournisseurs</span>
                 </div>
               )}
-              <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion du Personnel</span>
+              <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
               </div>
             </div>
           </div>
         ) : !moduleActif && estModeLivraison ? (
-          <div className="space-y-3 w-full">
-            <h2 className="text-xs md:text-sm font-black text-cyan-400/80 uppercase tracking-wider px-1">
+          <div className="space-y-2.5 w-full">
+            <h2 className="text-[10px] sm:text-xs font-black text-cyan-400/80 uppercase tracking-wider px-0.5">
               ACCUEIL
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full">
-              <div onClick={() => setModuleActif('commandes_livraison')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 shadow-sm group">
-                <span className="text-3xl group-hover:scale-110 transition">📦</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion des commandes et livraisons</span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
+              <div onClick={() => setModuleActif('commandes_livraison')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Commandes & Livraisons</span>
               </div>
-              <div onClick={() => setModuleActif('articles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">📦</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Stock Articles</span>
+              <div onClick={() => setModuleActif('articles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Stock Articles</span>
               </div>
-              <div onClick={() => setModuleActif('grille_tarifaire')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🗺️</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Grille Tarifaire</span>
+              <div onClick={() => setModuleActif('grille_tarifaire')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Grille Tarifaire</span>
               </div>
-              <div onClick={() => setModuleActif('caisses')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🏧</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Création Caisse</span>
+              <div onClick={() => setModuleActif('caisses')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Création Caisse</span>
               </div>
-              <div onClick={() => setModuleActif('emplacements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">📍</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Emplacements Livreurs</span>
+              <div onClick={() => setModuleActif('emplacements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">📍</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Emplacements Livreurs</span>
               </div>
-              <div onClick={() => setModuleActif('depots')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🏢</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Dépôts de stock</span>
+              <div onClick={() => setModuleActif('depots')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
               </div>
-              <div onClick={() => setModuleActif('familles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🗂️</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Familles d'Articles</span>
+              <div onClick={() => setModuleActif('familles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
               </div>
-              <div onClick={() => setModuleActif('challenges_commerciaux')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🏆</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Challenges Commerciaux</span>
+              <div onClick={() => setModuleActif('challenges_commerciaux')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🏆</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Challenges Commerciaux</span>
               </div>
-              <div onClick={() => setModuleActif('mouvements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🔄</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Mouvement Stock</span>
+              <div onClick={() => setModuleActif('mouvements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
               </div>
-              <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">📥</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Achats & Approvisionnement</span>
+              <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
               </div>
               {verifierPermission('roles_utilisateurs') && (
-                <div onClick={() => setModuleActif('roles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                  <span className="text-3xl group-hover:scale-110 transition">🛡️</span>
-                  <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion des Rôles</span>
+                <div onClick={() => setModuleActif('roles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion des Rôles</span>
                 </div>
               )}
-              <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🤝</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion Partenaire</span>
+              <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion Partenaire</span>
               </div>
-              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group shadow-sm">
-                <span className="text-3xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-slate-200 text-xs md:text-sm leading-tight">Gestion du Personnel</span>
+              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
               </div>
             </div>
           </div>
         ) : (
-          <div className="bg-[#0b1329] rounded-2xl shadow-lg p-4 sm:p-6 border border-cyan-900/60 text-slate-100 w-full">
+          <div className="bg-[#0b1329] rounded-xl shadow-lg p-3 sm:p-5 border border-cyan-900/60 text-slate-100 w-full">
             {rendreModuleActif()}
           </div>
         )}
       </div>
 
-      <div className="bg-gradient-to-r from-[#0a1931] via-[#0d2347] to-[#0a1931] border-t border-cyan-500/30 py-3 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-2xl shrink-0 w-full">
+      <div className="bg-gradient-to-r from-[#0a1931] via-[#0d2347] to-[#0a1931] border-t border-cyan-500/30 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-2xl shrink-0 w-full">
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
           className={`flex flex-col items-center space-y-0.5 transition ${
             ongletNavigation === 'accueil' && !moduleActif ? 'text-cyan-400 font-extrabold scale-105' : 'text-cyan-200/60 hover:text-slate-100'
           }`}
         >
-          <span className="text-xl">🏠</span>
-          <span className="text-[10px] md:text-xs">Accueil</span>
+          <span className="text-lg">🏠</span>
+          <span className="text-[10px]">Accueil</span>
         </button>
 
         <button
@@ -605,8 +605,8 @@ function DashboardContent() {
             ongletNavigation === 'rapports' && !moduleActif ? 'text-cyan-400 font-extrabold scale-105' : 'text-cyan-200/60 hover:text-slate-100'
           }`}
         >
-          <span className="text-xl">📊</span>
-          <span className="text-[10px] md:text-xs">Comptabilité</span>
+          <span className="text-lg">📊</span>
+          <span className="text-[10px]">Comptabilité</span>
         </button>
 
         <button
@@ -615,8 +615,8 @@ function DashboardContent() {
             ongletNavigation === 'profil' && !moduleActif ? 'text-cyan-400 font-extrabold scale-105' : 'text-cyan-200/60 hover:text-slate-100'
           }`}
         >
-          <span className="text-xl">👤</span>
-          <span className="text-[10px] md:text-xs">Mon Profil</span>
+          <span className="text-lg">👤</span>
+          <span className="text-[10px]">Mon Profil</span>
         </button>
       </div>
 
