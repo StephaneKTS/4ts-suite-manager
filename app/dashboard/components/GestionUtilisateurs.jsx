@@ -113,7 +113,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const estRoleLivreurOuChauffeur = (roleActuelObj && (roleActuelObj.nom_role.toUpperCase().includes('LIVREUR') || roleActuelObj.nom_role.toUpperCase().includes('CHAUFFEUR'))) || nouveauUser.type_collaborateur === 'LIVREUR' || nouveauUser.type_collaborateur === 'CHAUFFEUR';
 
   const chargerDonnees = async () => {
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente)
     const utilisateursLocaux = localSync.recupererDonneesLocales(cleCacheUtilisateurs);
     const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
     const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses);
@@ -163,7 +162,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       if (dataEmplacements) setEmplacements(dataEmplacements);
 
-      // 2. RÉCUPÉRATION SUPABASE STRICTE PAR ENTREPRISE ET MODULE
       const { data: dataUsers, error } = await supabase
         .from('utilisateurs')
         .select('*')
@@ -175,7 +173,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       const listUsers = dataUsers || [];
       setUtilisateurs(listUsers);
 
-      // Mise à jour du cache local propre
       localSync.sauvegarderDonneesLocales(cleCacheUtilisateurs, listUsers);
     } catch (err) {
       console.error('Erreur chargement utilisateurs :', err.message);
@@ -244,12 +241,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
-    const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
+    if (nouveauUser.acces_application) {
+      const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
+      const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
 
-    if (chiffresPur.length > 0 && chiffresPur.length !== paysObj.longueur) {
-      alert(`⚠️ Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`);
-      return;
+      if (chiffresPur.length > 0 && chiffresPur.length !== paysObj.longueur) {
+        alert(`⚠️ Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`);
+        return;
+      }
     }
 
     setEtapeFormulaire(2);
@@ -270,26 +269,26 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
-    const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
-    const emailSaisi = (nouveauUser.email || '').trim().toLowerCase();
+    const numeroComplet = (nouveauUser.acces_application && chiffresPur) ? `${paysObj.indicatif}${chiffresPur}` : '';
+    const emailSaisi = nouveauUser.acces_application ? (nouveauUser.email || '').trim().toLowerCase() : '';
 
-    // --- FILTRAGE STRICT DE DUPLICATION SUR TOUT L'ÉCOSYSTÈME DE L'ENTREPRISE ET DU MODULE ---
-    const doublonEmail = utilisateurs.find(u => 
-      u.email && u.email.trim().toLowerCase() === emailSaisi && (!userEnEdition || u.id !== userEnEdition.id)
-    );
-    if (emailSaisi && doublonEmail) {
-      alert(`❌ Doublon détecté : L'adresse e-mail "${emailSaisi}" est déjà utilisée par un autre collaborateur (${doublonEmail.nom_complet}).`);
-      return;
-    }
+    if (nouveauUser.acces_application) {
+      const doublonEmail = utilisateurs.find(u => 
+        u.email && u.email.trim().toLowerCase() === emailSaisi && (!userEnEdition || u.id !== userEnEdition.id)
+      );
+      if (emailSaisi && doublonEmail) {
+        alert(`❌ Doublon détecté : L'adresse e-mail "${emailSaisi}" est déjà utilisée par un autre collaborateur (${doublonEmail.nom_complet}).`);
+        return;
+      }
 
-    const doublonTelephone = utilisateurs.find(u => 
-      u.telephone && u.telephone.trim() === numeroComplet && (!userEnEdition || u.id !== userEnEdition.id)
-    );
-    if (numeroComplet && doublonTelephone) {
-      alert(`❌ Doublon détecté : Le numéro de téléphone "${numeroComplet}" est déjà utilisé par un autre collaborateur (${doublonTelephone.nom_complet}).`);
-      return;
+      const doublonTelephone = utilisateurs.find(u => 
+        u.telephone && u.telephone.trim() === numeroComplet && (!userEnEdition || u.id !== userEnEdition.id)
+      );
+      if (numeroComplet && doublonTelephone) {
+        alert(`❌ Doublon détecté : Le numéro de téléphone "${numeroComplet}" est déjà utilisé par un autre collaborateur (${doublonTelephone.nom_complet}).`);
+        return;
+      }
     }
-    // --------------------------------------------------------------------------
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -332,7 +331,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         categorie_permis: estRoleLivreurOuChauffeur ? (nouveauUser.categorie_permis || '').trim().toUpperCase() : null,
         numero_permis: estRoleLivreurOuChauffeur ? (nouveauUser.numero_permis || '').trim().toUpperCase() : null,
         email: emailSaisi,
-        pays: nouveauUser.pays,
+        pays: nouveauUser.acces_application ? nouveauUser.pays : null,
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
@@ -351,7 +350,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         setUtilisateurs(prev => prev.map(u => u.id === userEnEdition.id ? { ...u, ...payload } : u));
         alert('Collaborateur mis à jour avec succès !');
       } else {
-        // Insertion sans ID temporaire pour éviter l'erreur de type bigint sur Supabase
         const { error, data } = await supabase.from('utilisateurs').insert([payload]).select().single();
         if (error) throw error;
 
@@ -361,7 +359,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         alert('Collaborateur enregistré avec succès !');
       }
 
-      // Suppression et nettoyage de l'ancien cache local
       localStorage.removeItem(cleCacheUtilisateurs);
 
       annulerForm();
@@ -717,34 +714,38 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
-                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                    {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                  <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
-                    <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
+              {/* Affichage conditionnel des zones téléphone et email uniquement si acces_application est true */}
+              {nouveauUser.acces_application && (
+                <>
+                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
+                    <div>
+                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
+                      <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                        {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
+                      <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                        <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
+                        <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
-                </div>
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                    <option value="ACTIF">🟢 Actif</option>
-                    <option value="INACTIF">🔴 Inactif</option>
-                  </select>
-                </div>
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
+                    <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+                <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                  <option value="ACTIF">🟢 Actif</option>
+                  <option value="INACTIF">🔴 Inactif</option>
+                </select>
               </div>
 
               <div className="pt-2 border-t border-slate-200 flex justify-end">
