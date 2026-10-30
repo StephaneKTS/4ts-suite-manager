@@ -174,33 +174,33 @@ export default function MonProfil({ entrepriseId = '' }) {
     e.preventDefault();
     if (enTrainDeSauvegarder || !entreprise) return;
 
-    if (modeModificationMdp && nouveauMotDePasse && nouveauMotDePasse !== confirmerMotDePasse) {
+    if (!modeModificationMdp || !nouveauMotDePasse.trim()) {
+      return; // Empêche l'action si aucune modification réelle n'a été saisie
+    }
+
+    if (nouveauMotDePasse !== confirmerMotDePasse) {
       alert('❌ Les deux mots de passe ne correspondent pas.');
       return;
     }
 
     setEnTrainDeSauvegarder(true);
     try {
-      const payload = {};
-
-      if (modeModificationMdp && nouveauMotDePasse && nouveauMotDePasse.trim() !== '') {
-        payload.mot_de_passe = nouveauMotDePasse.trim();
-        payload.code_pin_activation = nouveauMotDePasse.trim();
-      }
+      const payload = {
+        mot_de_passe: nouveauMotDePasse.trim(),
+        code_pin_activation: nouveauMotDePasse.trim()
+      };
 
       const targetId = entreprise.id_entreprise || entreprise.id;
       const champCle = entreprise.id_entreprise ? 'id_entreprise' : 'id';
 
-      if (Object.keys(payload).length > 0) {
-        const { error } = await supabase
-          .from('entreprises')
-          .update(payload)
-          .eq(champCle, targetId);
+      const { error } = await supabase
+        .from('entreprises')
+        .update(payload)
+        .eq(champCle, targetId);
 
-        if (error) throw error;
-      }
+      if (error) throw error;
 
-      alert('✅ Mot de passe et paramètres mis à jour avec succès !');
+      alert('✅ Mot de passe mis à jour avec succès !');
       setNouveauMotDePasse('');
       setConfirmerMotDePasse('');
       setModeModificationMdp(false);
@@ -302,7 +302,11 @@ export default function MonProfil({ entrepriseId = '' }) {
 
   const detailsCalculReabonnement = calculerMontantReabonnement();
 
+  const modificationReabonnementEffectuee = nombreUtilisateursChoisi > 1 || nombreMoisChoisi > (entreprise?.duree_abonnement_mois || 1);
+
   const souscrireSurMesure = async () => {
+    if (!modificationReabonnementEffectuee) return;
+
     const ancienTotalUtilisateurs = parseInt(entreprise?.limite_utilisateurs || 1);
     const nouveauTotalCumule = ancienTotalUtilisateurs + parseInt(nombreUtilisateursChoisi);
 
@@ -446,45 +450,45 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Ligne des trois boutons forcés sur la même ligne (Se réabonner, Changer module, Nouveau module) */}
+          {/* Ligne des trois boutons du haut avec tailles réduites et compactes */}
           <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
               onClick={() => setModeAction(modeAction === 'reabonnement' ? null : 'reabonnement')}
-              className={`w-full font-black py-2 px-1 rounded-xl shadow-md transition uppercase tracking-tighter text-[9.5px] flex items-center justify-center gap-0.5 border ${
+              className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
                 modeAction === 'reabonnement' 
                   ? 'bg-orange-700 text-white border-orange-400' 
                   : 'bg-cyan-700 hover:bg-cyan-600 text-white border-cyan-500'
               }`}
             >
-              <span>🔄</span>
-              <span className="truncate">{modeAction === 'reabonnement' ? 'Fermer' : 'Se réabonner'}</span>
+              <span className="text-xs">🔄</span>
+              <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Se réabonner'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-              className={`w-full font-black py-2 px-1 rounded-xl shadow-md transition uppercase tracking-tighter text-[9.5px] flex items-center justify-center gap-0.5 border ${
+              className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
                 modeAction === 'switcher_module' 
                   ? 'bg-orange-700 text-white border-orange-400' 
                   : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
               }`}
             >
-              <span>⚡</span>
-              <span className="truncate">{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
+              <span className="text-xs">⚡</span>
+              <span className="text-center w-full">{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setModeAction(modeAction === 'nouveau_module' ? null : 'nouveau_module')}
-              className={`w-full font-black py-2 px-1 rounded-xl shadow-md transition uppercase tracking-tighter text-[9.5px] flex items-center justify-center gap-0.5 border ${
+              className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
                 modeAction === 'nouveau_module' 
                   ? 'bg-orange-700 text-white border-orange-400' 
                   : 'bg-emerald-700 hover:bg-emerald-600 text-white border-emerald-500'
               }`}
             >
-              <span>➕</span>
-              <span className="truncate">{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
+              <span className="text-xs">➕</span>
+              <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
             </button>
           </div>
 
@@ -653,10 +657,15 @@ export default function MonProfil({ entrepriseId = '' }) {
 
               <button
                 type="button"
+                disabled={!modificationReabonnementEffectuee}
                 onClick={souscrireSurMesure}
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-lg text-[10px] uppercase shadow-md transition"
+                className={`w-full font-black py-2.5 rounded-lg text-[10px] uppercase shadow-md transition ${
+                  modificationReabonnementEffectuee 
+                    ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer' 
+                    : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-60'
+                }`}
               >
-                Valider le réabonnement 🚀
+                {modificationReabonnementEffectuee ? 'Valider le réabonnement 🚀' : 'Modifiez les valeurs pour valider 🔒'}
               </button>
             </div>
           )}
@@ -826,12 +835,16 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Boutons Mettre à jour et Se déconnecter forcés sur la même ligne */}
+          {/* Boutons Mettre à jour et Se déconnecter (Mettre à jour désactivé si aucune modif de mot de passe) */}
           <div className="grid grid-cols-2 gap-2 pt-2">
             <button
               type="submit"
-              disabled={enTrainDeSauvegarder || uploadingLogo}
-              className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase tracking-tighter text-[10px] flex items-center justify-center gap-1"
+              disabled={enTrainDeSauvegarder || uploadingLogo || !modeModificationMdp || !nouveauMotDePasse.trim()}
+              className={`w-full font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase tracking-tighter text-[10px] flex items-center justify-center gap-1 ${
+                modeModificationMdp && nouveauMotDePasse.trim() 
+                  ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer' 
+                  : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-60'
+              }`}
             >
               <span>💾</span>
               <span className="truncate">{enTrainDeSauvegarder ? 'Enreg...' : 'Mettre à jour'}</span>
