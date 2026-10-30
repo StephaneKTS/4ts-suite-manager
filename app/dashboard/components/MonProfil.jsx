@@ -111,7 +111,6 @@ export default function MonProfil({ entrepriseId = '' }) {
           setTelephone(dataFallback.telephone || '');
           if (dataFallback.duree_abonnement_mois) setNombreMoisChoisi(dataFallback.duree_abonnement_mois);
         } else {
-          // Valeur de secours pour éviter tout blocage d'écran blanc
           setEntreprise({
             id_entreprise: idEffectif,
             nom_entreprise: '4TS SUITE MANAGER',
@@ -447,45 +446,45 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Ligne des trois boutons d'action (Réabonnement, Changer de module, Nouveau module) */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Ligne des trois boutons forcés sur la même ligne (Se réabonner, Changer module, Nouveau module) */}
+          <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
               onClick={() => setModeAction(modeAction === 'reabonnement' ? null : 'reabonnement')}
-              className={`w-full font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase tracking-wider text-[10.5px] flex items-center justify-center gap-1 border ${
+              className={`w-full font-black py-2 px-1 rounded-xl shadow-md transition uppercase tracking-tighter text-[9.5px] flex items-center justify-center gap-0.5 border ${
                 modeAction === 'reabonnement' 
                   ? 'bg-orange-700 text-white border-orange-400' 
                   : 'bg-cyan-700 hover:bg-cyan-600 text-white border-cyan-500'
               }`}
             >
               <span>🔄</span>
-              <span>{modeAction === 'reabonnement' ? 'Fermer' : 'Se réabonner'}</span>
+              <span className="truncate">{modeAction === 'reabonnement' ? 'Fermer' : 'Se réabonner'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-              className={`w-full font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase tracking-wider text-[10.5px] flex items-center justify-center gap-1 border ${
+              className={`w-full font-black py-2 px-1 rounded-xl shadow-md transition uppercase tracking-tighter text-[9.5px] flex items-center justify-center gap-0.5 border ${
                 modeAction === 'switcher_module' 
                   ? 'bg-orange-700 text-white border-orange-400' 
                   : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
               }`}
             >
               <span>⚡</span>
-              <span>{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
+              <span className="truncate">{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => setModeAction(modeAction === 'nouveau_module' ? null : 'nouveau_module')}
-              className={`w-full font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase tracking-wider text-[10.5px] flex items-center justify-center gap-1 border ${
+              className={`w-full font-black py-2 px-1 rounded-xl shadow-md transition uppercase tracking-tighter text-[9.5px] flex items-center justify-center gap-0.5 border ${
                 modeAction === 'nouveau_module' 
                   ? 'bg-orange-700 text-white border-orange-400' 
                   : 'bg-emerald-700 hover:bg-emerald-600 text-white border-emerald-500'
               }`}
             >
               <span>➕</span>
-              <span>{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
+              <span className="truncate">{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
             </button>
           </div>
 
@@ -786,7 +785,7 @@ export default function MonProfil({ entrepriseId = '' }) {
                       : 'bg-cyan-700 text-white hover:bg-cyan-600'
                   }`}
                 >
-                  {modeModificationMdp ? 'Annuler la modification' : 'Modifier le mot de passe'}
+                  {modeModificationMdp ? 'Annuler' : 'Modifier'}
                 </button>
               </div>
               
@@ -827,24 +826,24 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Boutons sur la même ligne (Mettre à jour et Se déconnecter unique) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+          {/* Boutons Mettre à jour et Se déconnecter forcés sur la même ligne */}
+          <div className="grid grid-cols-2 gap-2 pt-2">
             <button
               type="submit"
               disabled={enTrainDeSauvegarder || uploadingLogo}
-              className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black py-2.5 px-3 rounded-xl shadow-md transition uppercase tracking-wider text-[11px] flex items-center justify-center gap-1"
+              className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase tracking-tighter text-[10px] flex items-center justify-center gap-1"
             >
               <span>💾</span>
-              <span>{enTrainDeSauvegarder ? 'Enregistrement...' : 'Mettre à jour'}</span>
+              <span className="truncate">{enTrainDeSauvegarder ? 'Enreg...' : 'Mettre à jour'}</span>
             </button>
 
             <button
               type="button"
               onClick={seDeconnecter}
-              className="w-full bg-rose-950/60 hover:bg-rose-900 text-rose-300 hover:text-white border border-rose-800 font-black py-2.5 px-3 rounded-xl shadow-md transition uppercase tracking-wider text-[11px] flex items-center justify-center gap-1"
+              className="w-full bg-rose-950/60 hover:bg-rose-900 text-rose-300 hover:text-white border border-rose-800 font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase tracking-tighter text-[10px] flex items-center justify-center gap-1"
             >
               <span>🚪</span>
-              <span>Se déconnecter</span>
+              <span className="truncate">Se déconnecter</span>
             </button>
           </div>
 
@@ -881,7 +880,7 @@ export default function MonProfil({ entrepriseId = '' }) {
 
       </div>
 
-      {/* PANNEAU SUPER-ADMIN GLOBAL PLACÉ DIRECTEMENT EN BAS DE LA BANNIÈRE */}
+      {/* PANNEAU SUPER-ADMIN GLOBAL UNIQUE (Réservé strictement au Super-Admin) */}
       {estSuperAdmin && (
         <div className="space-y-2 pt-1">
           <button
