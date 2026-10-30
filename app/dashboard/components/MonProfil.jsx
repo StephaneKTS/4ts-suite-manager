@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import EspaceSouscription from './EspaceSouscription'; // <-- Correction du chemin d'importation
 
 const LISTE_MODULES_PRINCIPAUX = ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'];
 
@@ -175,7 +176,7 @@ export default function MonProfil({ entrepriseId = '' }) {
     if (enTrainDeSauvegarder || !entreprise) return;
 
     if (!modeModificationMdp || !nouveauMotDePasse.trim()) {
-      return; // Empêche l'action si aucune modification réelle n'a été saisie
+      return; 
     }
 
     if (nouveauMotDePasse !== confirmerMotDePasse) {
@@ -404,7 +405,6 @@ export default function MonProfil({ entrepriseId = '' }) {
       
       <div className="bg-[#1b263b] border border-blue-900/60 rounded-2xl p-4 shadow-xl text-slate-100 space-y-4">
         
-        {/* Titre seul sur sa ligne sans aucun bouton */}
         <div className="border-b border-blue-900/60 pb-3 flex items-center space-x-2">
           <span className="text-base">🏢</span>
           <h3 className="font-black text-white uppercase text-xs tracking-wider">
@@ -414,7 +414,6 @@ export default function MonProfil({ entrepriseId = '' }) {
 
         <form onSubmit={MettreAJourProfil} className="space-y-3">
           
-          {/* Identité & Logo de l'entreprise */}
           <div className="bg-[#0d1b2a] p-3 rounded-xl border border-blue-900/40 flex items-center gap-4">
             <input 
               type="file" 
@@ -450,7 +449,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Ligne des trois boutons du haut avec tailles réduites et compactes */}
           <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
@@ -492,7 +490,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </button>
           </div>
 
-          {/* MESSAGE POUR MODULES NON ENCORE DISPONIBLES (Logistique / Tontine) */}
           {modeAction === 'module_indisponible' && (
             <div className="bg-[#0d1b2a] border-2 border-amber-500/80 p-4 rounded-xl space-y-3 shadow-2xl animate-fadeIn text-center">
               <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-lg font-bold">
@@ -521,7 +518,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {/* PANNEAU CONDITIONNEL : CHANGER / SWITCHER DE MODULE */}
           {modeAction === 'switcher_module' && (
             <div className="bg-[#0d1b2a] border-2 border-indigo-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
               <h4 className="font-black text-indigo-400 uppercase text-[10px] flex items-center justify-between">
@@ -590,7 +586,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {/* PANNEAU CONDITIONNEL : SE RÉABONNER */}
           {modeAction === 'reabonnement' && (
             <div className="bg-[#0d1b2a] border-2 border-cyan-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
               <h4 className="font-black text-cyan-400 uppercase text-[10px]">
@@ -670,7 +665,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {/* PANNEAU CONDITIONNEL : SOUSCRIRE À UN NOUVEAU MODULE */}
           {modeAction === 'nouveau_module' && (
             <div className="bg-[#0d1b2a] border-2 border-emerald-500/60 p-3 rounded-xl space-y-2.5 shadow-inner animate-fadeIn">
               <h4 className="font-black text-emerald-400 uppercase text-[10px]">
@@ -730,7 +724,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {/* Bloc Rôle / Statut / Module actif */}
           <div className="grid grid-cols-3 gap-2 text-center bg-[#0d1b2a] p-2.5 rounded-xl border border-blue-900/40">
             <div>
               <span className="block text-[8.5px] uppercase font-bold text-blue-300">Rôle / Statut</span>
@@ -748,7 +741,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Champs de configuration (Email, Téléphone, Mot de passe) */}
           <div className="space-y-2.5 bg-[#0d1b2a] p-3 rounded-xl border border-blue-900/40">
             <div>
               <label className="block text-[9px] uppercase font-bold text-blue-300 mb-1">
@@ -835,7 +827,6 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Boutons Mettre à jour et Se déconnecter (Mettre à jour désactivé si aucune modif de mot de passe) */}
           <div className="grid grid-cols-2 gap-2 pt-2">
             <button
               type="submit"
@@ -864,10 +855,8 @@ export default function MonProfil({ entrepriseId = '' }) {
 
       </div>
 
-      {/* BANNIÈRE FIXE ET ENTIÈREMENT VISIBLE */}
       <div className="bg-gradient-to-r from-[#0d1b2a] via-[#112240] to-[#0a192f] border border-cyan-500/40 rounded-2xl p-3 shadow-xl space-y-2 text-left">
         
-        {/* Titre centralisé */}
         <div className="flex items-center justify-center gap-2 text-center pb-1.5 border-b border-cyan-900/60">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
           <h4 className="font-black text-cyan-400 uppercase text-[10px] tracking-wider">
@@ -875,7 +864,6 @@ export default function MonProfil({ entrepriseId = '' }) {
           </h4>
         </div>
 
-        {/* Ligne 1 : Modules Disponibles */}
         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-300 pt-0.5">
           <span className="text-amber-400 font-black">✨ Modules Disponibles :</span>
           <span className="bg-[#1b263b] border border-blue-900 px-2 py-0.5 rounded text-cyan-300">🛒 Boutique (Gestion de stocks & ventes)</span>
@@ -883,7 +871,6 @@ export default function MonProfil({ entrepriseId = '' }) {
           <span className="bg-[#1b263b] border border-blue-900 px-2 py-0.5 rounded text-cyan-300">🚚 Livraison (Suivi logistique & courses)</span>
         </div>
 
-        {/* Ligne 2 : Modules Bientôt Disponibles */}
         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-300 pt-1 border-t border-cyan-900/30">
           <span className="text-blue-400 font-black">⏳ Bientôt Disponibles :</span>
           <span className="bg-[#1b263b]/60 border border-blue-950 px-2 py-0.5 rounded text-slate-400">📦 Logistique (Prochainement)</span>
@@ -893,7 +880,6 @@ export default function MonProfil({ entrepriseId = '' }) {
 
       </div>
 
-      {/* PANNEAU SUPER-ADMIN GLOBAL UNIQUE (Réservé strictement au Super-Admin) */}
       {estSuperAdmin && (
         <div className="space-y-2 pt-1">
           <button
@@ -940,7 +926,6 @@ export default function MonProfil({ entrepriseId = '' }) {
                           <span className="text-[9px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded font-bold">Licence : {ent.statut_licence || 'ACTIF'}</span>
                         </div>
 
-                        {/* Actions rapides Admin pour chaque entreprise */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-blue-950">
                           <button
                             onClick={async () => {

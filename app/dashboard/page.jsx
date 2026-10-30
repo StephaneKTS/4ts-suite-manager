@@ -399,18 +399,6 @@ function DashboardContent() {
             <div className="space-y-2.5 pt-2">
               {estSuperAdmin && (
                 <button
-                  onClick={() => setModuleActif('super_admin_panel')}
-                  className="w-full bg-gradient-to-r from-sky-700 via-cyan-600 to-teal-700 hover:from-sky-600 hover:to-teal-600 text-white font-black p-3 rounded-xl transition flex items-center justify-between shadow-lg text-xs uppercase tracking-wider border border-cyan-400/40"
-                >
-                  <span className="flex items-center gap-2">
-                    <span>🛡️</span> Espace Super-Admin
-                  </span>
-                  <span>→</span>
-                </button>
-              )}
-
-              {estSuperAdmin && (
-                <button
                   onClick={() => setModuleActif('souscription')}
                   className="w-full bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-bold p-3 rounded-xl transition flex items-center justify-between shadow-md text-xs"
                 >
