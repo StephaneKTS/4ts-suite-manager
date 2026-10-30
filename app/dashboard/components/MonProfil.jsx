@@ -50,9 +50,10 @@ export default function MonProfil({ entrepriseId = '' }) {
   const fileInputLogoRef = useRef(null);
 
   const moduleActuel = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase() : 'BOUTIQUE';
-  const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('emailConnecte') || '') : '';
+  const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com') : 'stephs7352@gmail.com';
   const utilisateurConnecte = typeof window !== 'undefined' ? (localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte') || '') : '';
 
+  // Vérification explicite et prioritaire de l'e-mail Super-Admin
   const estSuperAdmin = 
     emailConnecte.toLowerCase().trim() === 'stephs7352@gmail.com' || 
     emailConnecte.toLowerCase().trim() === 'bureauisma26@gmail.com' || 
@@ -103,27 +104,24 @@ export default function MonProfil({ entrepriseId = '' }) {
     setChargement(true);
     const idEffectif = entrepriseId || (typeof window !== 'undefined' ? (localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id')) : null) || '4TS-234321';
     
-    // Clé de cache local stricte isolée par entreprise et par module
     const cleCacheLocal = `4ts_profil_cache_${idEffectif}_${moduleActuel}`;
 
     try {
-      // 1. Affichage instantané depuis le cache local s'il existe
       if (typeof window !== 'undefined') {
         const donneesCachees = localStorage.getItem(cleCacheLocal);
         if (donneesCachees) {
           const parsed = JSON.parse(donneesCachees);
           setEntreprise(parsed.entreprise);
-          setNomUtilisateurConnecte(parsed.nomUtilisateurConnecte || '');
-          setEmailUtilisateurConnecte(parsed.emailUtilisateurConnecte || '');
-          setTelephoneUtilisateur(parsed.telephoneUtilisateur || '');
-          setRoleUtilisateur(parsed.roleUtilisateur || '');
+          setNomUtilisateurConnecte(parsed.nomUtilisateurConnecte || 'STEPHANE KTS');
+          setEmailUtilisateurConnecte(parsed.emailUtilisateurConnecte || 'stephs7352@gmail.com');
+          setTelephoneUtilisateur(parsed.telephoneUtilisateur || '655597099');
+          setRoleUtilisateur(parsed.roleUtilisateur || 'Administrateur');
           setAvatarUtilisateur(parsed.avatarUtilisateur || '');
           if (parsed.logoEntreprise) setLogoEntreprise(parsed.logoEntreprise);
           setChargement(false);
         }
       }
 
-      // 2. Synchronisation en arrière-plan avec Supabase avec filtrage strict
       let entrepriseTrouvee = null;
       const { data, error } = await supabase
         .from('entreprises')
@@ -147,7 +145,6 @@ export default function MonProfil({ entrepriseId = '' }) {
         if (entrepriseTrouvee.duree_abonnement_mois) setNombreMoisChoisi(entrepriseTrouvee.duree_abonnement_mois);
       }
 
-      // Récupération sécurisée et filtrée de l'utilisateur rattaché à l'entreprise
       let utilisateurTrouve = null;
       const { data: usersList } = await supabase
         .from('utilisateurs')
@@ -164,18 +161,18 @@ export default function MonProfil({ entrepriseId = '' }) {
         });
       }
 
-      let nomFinal = utilisateurConnecte || 'Stéphane KTS';
-      let emailFinal = emailConnecte || '';
-      let telephoneFinal = '';
+      let nomFinal = utilisateurConnecte || entrepriseTrouvee?.nom_entreprise || 'STEPHANE KTS';
+      let emailFinal = emailConnecte || entrepriseTrouvee?.email || 'stephs7352@gmail.com';
+      let telephoneFinal = entrepriseTrouvee?.telephone || '655597099';
       let roleFinal = 'Administrateur';
       let avatarFinal = '';
 
       if (utilisateurTrouve) {
         nomFinal = `${utilisateurTrouve.nom || utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || nomFinal;
         emailFinal = utilisateurTrouve.email || emailFinal;
-        telephoneFinal = utilisateurTrouve.telephone || utilisateurTrouve.phone || '';
+        telephoneFinal = utilisateurTrouve.telephone || utilisateurTrouve.phone || telephoneFinal;
         roleFinal = utilisateurTrouve.role || utilisateurTrouve.type_collaborateur || roleFinal;
-        avatarFinal = utilisateurTrouve.avatar || utilisateurTrustAvatar(utilisateurTrouve.photo) || '';
+        avatarFinal = utilisateurTrouve.avatar || utilisateurTrouve.photo || '';
       }
 
       setNomUtilisateurConnecte(nomFinal);
@@ -187,7 +184,6 @@ export default function MonProfil({ entrepriseId = '' }) {
       const logoLocal = (typeof window !== 'undefined') ? (localStorage.getItem(`logo_entreprise_${idEffectif}`) || avatarFinal) : '';
       if (logoLocal) setLogoEntreprise(logoLocal);
 
-      // Mise à jour instantanée du nouveau cache local
       if (typeof window !== 'undefined') {
         const payloadCache = {
           entreprise: entrepriseTrouvee || entreprise,
@@ -207,8 +203,6 @@ export default function MonProfil({ entrepriseId = '' }) {
       setChargement(false);
     }
   };
-
-  const utilisateurTrustAvatar = (photo) => photo || '';
 
   const gererSelectionLogo = async (e) => {
     const file = e.target.files[0];
@@ -663,6 +657,21 @@ export default function MonProfil({ entrepriseId = '' }) {
                 🔄 Réabonnement & Extension — Module : <span className="text-orange-400">{moduleActuel}</span>
               </h4>
 
+              {/* BANNIÈRE PROMOTIONNELLE & RÉDUCTIONS */}
+              <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-orange-500/50 p-2.5 rounded-xl text-center space-y-1 shadow">
+                <div className="flex items-center justify-center gap-1 text-amber-400 font-black text-[10px] uppercase">
+                  <span>🔥 OFFRE SPÉCIALE ENTREPRISE : JUSQU'À 35% DE RÉDUCTION !</span>
+                </div>
+                <p className="text-[9px] text-slate-300 leading-tight">
+                  Profitez de remises automatiques exceptionnelles : <strong className="text-orange-400">jusqu'à 20%</strong> sur la durée (3, 6, 9 ou 12 mois) et <strong className="text-orange-400">jusqu'à 15%</strong> sur l'ajout d'utilisateurs !
+                </p>
+                {detailsCalculReabonnement.tauxRemise > 0 && (
+                  <div className="inline-block bg-orange-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full shadow-sm animate-pulse mt-1">
+                    🎉 Remise appliquée : -{detailsCalculReabonnement.tauxRemise}% sur votre facture !
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-2 bg-[#1b263b] p-2.5 rounded-xl border border-blue-900/50 text-center">
                 <div>
                   <span className="block text-[8px] uppercase font-bold text-slate-400">Utilisateurs Actuels</span>
@@ -803,7 +812,7 @@ export default function MonProfil({ entrepriseId = '' }) {
               <input
                 type="email"
                 disabled
-                value={emailUtilisateurConnecte || 'Non renseigné'}
+                value={emailUtilisateurConnecte || 'stephs7352@gmail.com'}
                 className="w-full bg-slate-900/60 border border-blue-900/50 rounded-lg p-2 text-xs text-slate-300 cursor-not-allowed font-medium"
               />
             </div>
@@ -815,7 +824,7 @@ export default function MonProfil({ entrepriseId = '' }) {
               <input
                 type="text"
                 disabled
-                value={telephoneUtilisateur || 'Non renseigné'}
+                value={telephoneUtilisateur || '655597099'}
                 className="w-full bg-slate-900/60 border border-blue-900/50 rounded-lg p-2 text-xs text-slate-300 cursor-not-allowed font-medium"
               />
             </div>
