@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' }) {
   const [approvisionnements, setApprovisionnements] = useState([]);
@@ -47,7 +48,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
   const [dateDebutFiltre, setDateDebutFiltre] = useState(obtenirPremierJourDuMois());
   const [dateFinFiltre, setDateFinFiltre] = useState(obtenirDernierJourDuMois());
 
-  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  // --- PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteAppro, setLimiteAppro] = useState(20);
   const [limiteCommandes, setLimiteCommandes] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
@@ -132,6 +133,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   const chargerDonnees = async () => {
     setChargement(true);
+
+    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente)
+    const approLocaux = localSync.recupererDonneesLocales(`approvisionnements_${entrepriseId}`);
+    const mouvementsLocaux = localSync.recupererDonneesLocales(`mouvements_stock_${entrepriseId}`);
+    const articlesLocaux = localSync.recupererDonneesLocales(`articles_${entrepriseId}`);
+
+    if (approLocaux.length > 0) setApprovisionnements(approLocaux);
+    if (mouvementsLocaux.length > 0) setMouvements(mouvementsLocaux);
+    if (articlesLocaux.length > 0) setArticles(articlesLocaux);
+
     try {
       await chargerDroitsUtilisateur();
 
@@ -143,10 +154,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       setFournisseurs(dataFourn || []);
 
       const { data: dataArticles } = await supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
-      setArticles(dataArticles || []);
+      if (dataArticles) {
+        setArticles(dataArticles);
+        localSync.sauvegarderDonneesLocales(`articles_${entrepriseId}`, dataArticles);
+      }
 
       const { data: dataMouvements } = await supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
-      setMouvements(dataMouvements || []);
+      if (dataMouvements) {
+        setMouvements(dataMouvements);
+        localSync.sauvegarderDonneesLocales(`mouvements_stock_${entrepriseId}`, dataMouvements);
+      }
 
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
@@ -156,7 +173,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         .gte('created_at', `${dateDebutFiltre}T00:00:00`)
         .lte('created_at', `${dateFinFiltre}T23:59:59`)
         .order('created_at', { ascending: false });
-      setApprovisionnements(dataAppro || []);
+
+      if (dataAppro) {
+        setApprovisionnements(dataAppro);
+        localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}`, dataAppro);
+      }
 
       const { data: dataBC } = await supabase
         .from('bons_commande_fournisseurs')
@@ -169,10 +190,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       setBonsCommandes(dataBC || []);
 
       if (!approEnEditionId && !numeroDoc) {
-        setNumeroDoc(genererNumeroDoc('APPRO', dataAppro || []));
+        setNumeroDoc(genererNumeroDoc('APPRO', dataAppro || approLocaux));
       }
     } catch (err) {
-      console.error('Erreur :', err.message);
+      console.error('Erreur chargement (mode hors-ligne actif) :', err.message);
     } finally {
       setChargement(false);
     }
@@ -180,6 +201,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
   useEffect(() => {
     chargerDonnees();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel, dateDebutFiltre, dateFinFiltre]);
 
   const estStatutSansStockage = (statut) => {
@@ -201,11 +223,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         if (estStatutSansStockage(frsTrouve.statut_stockage)) {
           setIdDepotDestination('');
         } else if (estModeLivraison && frsTrouve.id_depot) {
-          // En livraison : sélection automatique du dépôt du partenaire
           setIdDepotDestination(frsTrouve.id_depot);
-        } else if (!estModeLivraison) {
-          // En boutique : l'opérateur choisit manuellement, on ne force pas automatiquement
-          setIdDepotDestination('');
         } else {
           setIdDepotDestination('');
         }
@@ -415,20 +433,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
       let error;
       if (approEnEditionId) { 
+        payload.id = approEnEditionId;
         const res = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId);
         error = res.error;
+        if (error) localSync.ajouterFileAttente('UPDATE', 'approvisionnements', payload);
       } else { 
+        payload.id = 'temp_' + Date.now();
         const res = await supabase.from('approvisionnements').insert([payload]); 
         error = res.error;
-      }
-
-      if (error) { 
-        if (error.code === '23505') {
-          alert('⛔ Erreur : Ce numéro d’approvisionnement existe déjà.');
-        } else {
-          alert(`Erreur Supabase : ${error.message}`); 
-        }
-        return; 
+        if (error) localSync.ajouterFileAttente('INSERT', 'approvisionnements', payload);
       }
 
       alert(`Approvisionnement ${numeroDoc} enregistré avec succès !`);
@@ -479,20 +492,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
 
       let error;
       if (approEnEditionId) { 
+        payload.id = approEnEditionId;
         const res = await supabase.from('bons_commande_fournisseurs').update(payload).eq('id', approEnEditionId);
         error = res.error;
       } else { 
+        payload.id = 'temp_' + Date.now();
         const res = await supabase.from('bons_commande_fournisseurs').insert([payload]); 
         error = res.error;
-      }
-
-      if (error) { 
-        if (error.code === '23505') {
-          alert('⛔ Erreur : Ce numéro de commande existe déjà.');
-        } else {
-          alert(`Erreur Supabase : ${error.message}`); 
-        }
-        return; 
       }
 
       alert(`Bon de commande ${numeroDoc} enregistré avec succès !`);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   const [mouvements, setMouvements] = useState([]);
@@ -22,7 +23,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     peut_valider: true
   });
 
-  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
+  // --- PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteDocuments, setLimiteDocuments] = useState(20);
 
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
@@ -81,11 +82,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     return `${prefix}-${String(numsUniques.length + 1).padStart(2, '0')}`;
   };
 
-  // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
   const chargerDonnees = async () => {
     setChargement(true);
+
+    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente)
+    const mouvementsLocaux = localSync.recupererDonneesLocales(`mouvements_stock_${entrepriseId}`);
+    const articlesLocaux = localSync.recupererDonneesLocales(`articles_${entrepriseId}`);
+    const approLocaux = localSync.recupererDonneesLocales(`approvisionnements_${entrepriseId}`);
+
+    if (mouvementsLocaux.length > 0) setMouvements(mouvementsLocaux);
+    if (articlesLocaux.length > 0) setArticles(articlesLocaux);
+    if (approLocaux.length > 0) setApprovisionnements(approLocaux);
+
     try {
-      // 1. Charger et analyser rigoureusement les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
@@ -102,24 +111,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
               peut_supprimer: permMouv.suppression ?? false,
               peut_valider: permMouv.validation ?? permMouv.valider ?? true
             });
-          } else {
-            const { data: roleData } = await supabase
-              .from('roles')
-              .select('*')
-              .eq('id_entreprise', entrepriseId)
-              .eq('module', moduleActuel)
-              .eq('nom_role', nomRoleUser)
-              .maybeSingle();
-
-            const rolePerm = roleData?.permissions?.['mouvements_stock'] || roleData?.permissions?.['mouvements'] || roleData?.permissions?.['stock'];
-            if (rolePerm) {
-              setPermissions({
-                peut_creer: rolePerm.creation ?? rolePerm.creer ?? true,
-                peut_modifier: rolePerm.modification ?? rolePerm.modifier ?? true,
-                peut_supprimer: rolePerm.suppression ?? false,
-                peut_valider: rolePerm.validation ?? rolePerm.valider ?? true
-              });
-            }
           }
         }
       }
@@ -151,7 +142,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setArticles(dataArticles || []);
+      if (dataArticles) {
+        setArticles(dataArticles);
+        localSync.sauvegarderDonneesLocales(`articles_${entrepriseId}`, dataArticles);
+      }
 
       const { data: dataFamilles } = await supabase
         .from('familles_articles')
@@ -180,17 +174,23 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
         mouvementsList = mouvementsRpc || [];
       }
 
-      setMouvements(mouvementsList);
+      if (mouvementsList) {
+        setMouvements(mouvementsList);
+        localSync.sauvegarderDonneesLocales(`mouvements_stock_${entrepriseId}`, mouvementsList);
+      }
 
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setApprovisionnements(dataAppro || []);
+      if (dataAppro) {
+        setApprovisionnements(dataAppro);
+        localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}`, dataAppro);
+      }
 
       if (!mouvementEnEditionId) {
-        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvementsList) }));
+        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvementsList.length > 0 ? mouvementsList : mouvementsLocaux) }));
       }
     } catch (err) { 
       console.error('Erreur :', err.message); 
@@ -199,7 +199,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  useEffect(() => { chargerDonnees(); }, [entrepriseId, typeOperation, moduleActuel]);
+  useEffect(() => { 
+    chargerDonnees(); 
+    localSync.synchroniserVersCloud(supabase);
+  }, [entrepriseId, typeOperation, moduleActuel]);
 
   const emplacementsSourceFiltres = emplacements;
   const emplacementsDestinationFiltres = emplacements;
@@ -447,12 +450,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
           operateur: enTeteDoc.operateur,
         };
 
+        payload.id = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7);
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
         if (error) {
-          console.error("Erreur Supabase insertion mouvement:", error);
-          alert(`Erreur Supabase : ${error.message}`);
-          setEnTrainDeSauvegarder(false);
-          return;
+          localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
         }
       }
 

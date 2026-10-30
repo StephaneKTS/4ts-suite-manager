@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 const LISTE_PAYS = [
   { code: 'cmr', indicatif: '+237', longueur: 9 },
@@ -109,35 +110,49 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const estRoleLivreurOuChauffeur = (roleActuelObj && (roleActuelObj.nom_role.toUpperCase().includes('LIVREUR') || roleActuelObj.nom_role.toUpperCase().includes('CHAUFFEUR'))) || nouveauUser.type_collaborateur === 'LIVREUR' || nouveauUser.type_collaborateur === 'CHAUFFEUR';
 
   const chargerDonnees = async () => {
-    setChargement(true);
+    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente, affichage immédiat)
+    const utilisateursLocaux = localSync.recupererDonneesLocales(`utilisateurs_${entrepriseId}`);
+    const rolesLocaux = localSync.recupererDonneesLocales(`roles_${entrepriseId}_${moduleActuel}`);
+    const caissesLocales = localSync.recupererDonneesLocales(`caisses_${entrepriseId}_${moduleActuel}`);
+
+    if (utilisateursLocaux && utilisateursLocaux.length > 0) setUtilisateurs(utilisateursLocaux);
+    if (rolesLocaux && rolesLocaux.length > 0) setRoles(rolesLocaux);
+    if (caissesLocales && caissesLocales.length > 0) setCaisses(caissesLocales);
+
     try {
       const { data: dataEnt } = await supabase
         .from('entreprises')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .single();
-      setEntrepriseInfo(dataEnt);
+        .maybeSingle();
+      if (dataEnt) setEntrepriseInfo(dataEnt);
 
       const { data: dataRoles } = await supabase
         .from('roles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setRoles(dataRoles || []);
+      if (dataRoles) {
+        setRoles(dataRoles);
+        localSync.sauvegarderDonneesLocales(`roles_${entrepriseId}_${moduleActuel}`, dataRoles);
+      }
 
       const { data: dataCaisses } = await supabase
         .from('caisses')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setCaisses(dataCaisses || []);
+      if (dataCaisses) {
+        setCaisses(dataCaisses);
+        localSync.sauvegarderDonneesLocales(`caisses_${entrepriseId}_${moduleActuel}`, dataCaisses);
+      }
 
       const { data: dataEmplacements } = await supabase
         .from('emplacements_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setEmplacements(dataEmplacements || []);
+      if (dataEmplacements) setEmplacements(dataEmplacements);
 
       const { data: dataUsers, error } = await supabase
         .from('utilisateurs')
@@ -145,10 +160,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .eq('id_entreprise', entrepriseId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setUtilisateurs(dataUsers || []);
+      if (!error && dataUsers) {
+        setUtilisateurs(dataUsers);
+        localSync.sauvegarderDonneesLocales(`utilisateurs_${entrepriseId}`, dataUsers);
+      }
     } catch (err) {
-      console.error('Erreur chargement utilisateurs :', err.message);
+      console.error('Erreur chargement utilisateurs (mode hors-ligne actif) :', err.message);
     } finally {
       setChargement(false);
     }
@@ -156,6 +173,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerDonnees();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const togglePermission = (moduleId, action) => {
@@ -269,6 +287,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             module: 'LIVRAISON',
             nom_emplacement: nomNomCollab,
             responsable_emplacement: nomNomCollab,
+            id: 'temp_' + Date.now()
           };
 
           const { data: empCree, error: errEmp } = await supabase
@@ -277,7 +296,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             .select()
             .maybeSingle();
 
-          if (!errEmp && empCree) {
+          if (errEmp) {
+            localSync.ajouterFileAttente('INSERT', 'emplacements_stock', payloadNouvelEmplacement);
+          } else if (empCree) {
             emplacementIdFinal = empCree.id;
           }
         }
@@ -312,9 +333,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
       const executerRequete = async (dataPayload) => {
         if (userEnEdition) {
-          return await supabase.from('utilisateurs').update(dataPayload).eq('id', userEnEdition.id);
+          dataPayload.id = userEnEdition.id;
+          const res = await supabase.from('utilisateurs').update(dataPayload).eq('id', userEnEdition.id);
+          if (res.error) localSync.ajouterFileAttente('UPDATE', 'utilisateurs', dataPayload);
+          return res;
         } else {
-          return await supabase.from('utilisateurs').insert([dataPayload]);
+          dataPayload.id = 'temp_' + Date.now();
+          const res = await supabase.from('utilisateurs').insert([dataPayload]);
+          if (res.error) localSync.ajouterFileAttente('INSERT', 'utilisateurs', dataPayload);
+          return res;
         }
       };
 
@@ -331,20 +358,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         delete payload.categorie_permis;
         delete payload.numero_permis;
         res = await executerRequete(payload);
-      }
-
-      if (res.error) {
-        const errMsg = res.error.message || '';
-        if (res.error.code === '23505' || errMsg.includes('unique') || errMsg.includes('duplicate')) {
-          if (errMsg.includes('email') || errMsg.includes('unique_email')) {
-            throw new Error(`Cette adresse e-mail (${emailSaisi}) est déjà enregistrée dans la base de données.`);
-          } else if (errMsg.includes('telephone') || errMsg.includes('tel')) {
-            throw new Error(`Ce numéro de téléphone (${numeroComplet}) est déjà enregistré dans la base de données.`);
-          } else {
-            throw new Error(`Conflit de duplication : Un collaborateur possède déjà cet e-mail ou ce numéro.`);
-          }
-        }
-        throw res.error;
       }
 
       alert('Collaborateur enregistré avec succès !');
@@ -414,7 +427,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('utilisateurs').delete().eq('id', userEnEdition.id);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'utilisateurs', { id: userEnEdition.id });
+      }
 
       alert('Collaborateur supprimé avec succès.');
       annulerForm();

@@ -1,11 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://vtdqodqhkdxanrelxtrq.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '@/lib/supabase';
 
 export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) {
   const [ventes, setVentes] = useState([]);
@@ -1790,7 +1786,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
             </div>
           </div>
 
-          {/* LISTE INTÉGRÉE DES CAISSES CLÔTURÉES (MODIFIÉE SELON VOS CONSIGNES) */}
+          {/* LISTE INTÉGRÉE DES CAISSES CLÔTURÉES */}
           <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1">
               <span className="font-extrabold text-slate-700 uppercase text-[9px]">

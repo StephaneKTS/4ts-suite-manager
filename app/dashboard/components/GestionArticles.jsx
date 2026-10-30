@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
 export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [articles, setArticles] = useState([]);
@@ -164,6 +165,14 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const chargerArticles = async () => {
     setChargement(true);
+    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente, idéal modem lent)
+    const articlesLocaux = localSync.recupererDonneesLocales(`articles_${entrepriseId}`);
+    if (articlesLocaux.length > 0) {
+      setArticles(articlesLocaux);
+      setArticleSelectionneStatId(String(articlesLocaux[0].id_article || articlesLocaux[0].id));
+      setChargement(false);
+    }
+
     try {
       let { data, error } = await supabase
         .from('articles_stock')
@@ -175,6 +184,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const liste = data || [];
       
       setArticles(liste);
+      // Mise à jour du cache local en arrière-plan
+      localSync.sauvegarderDonneesLocales(`articles_${entrepriseId}`, liste);
       
       if (liste.length > 0) {
         if (!articleSelectionneStatId || !liste.some(a => String(a.id_article || a.id) === String(articleSelectionneStatId))) {
@@ -184,7 +195,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         setArticleSelectionneStatId('');
       }
     } catch (err) {
-      console.error('Erreur chargement articles :', err.message);
+      console.error('Erreur chargement articles (mode hors-ligne actif) :', err.message);
     } finally {
       setChargement(false);
     }
@@ -193,6 +204,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   useEffect(() => {
     chargerDonneesReference();
     chargerArticles();
+    // Tentative de synchronisation en arrière-plan si la connexion internet est revenue
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   const isGestionPerissablesActive = () => {
@@ -496,24 +509,29 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       if (articleEnEdition) {
         const targetId = articleEnEdition.id_article || articleEnEdition.id;
+        payloadArticle.id = targetId;
+
         const { error } = await supabase
           .from('articles_stock')
           .update(payloadArticle)
           .eq(articleEnEdition.id_article ? 'id_article' : 'id', targetId)
           .eq('id_entreprise', entrepriseId);
 
-        if (error) throw error;
-        alert(`Article mis à jour avec succès dans le module ${moduleActuel} !`);
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'articles_stock', payloadArticle);
+        }
       } else {
         payloadArticle.Quantite_Stock = 0;
+        payloadArticle.id = 'temp_' + Date.now();
         const { error } = await supabase.from('articles_stock').insert([payloadArticle]);
-        if (error) throw error;
-        alert(`Article créé avec succès dans le module ${moduleActuel} !`);
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'articles_stock', payloadArticle);
+        }
       }
 
+      alert(`Article enregistré avec succès !`);
       annulerForm();
       await chargerArticles();
-      await chargerDonneesReference();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -1227,9 +1245,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {chargement ? (
+                    {chargement && articles.length === 0 ? (
                       <tr>
-                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
+                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Chargement instantané...</td>
                       </tr>
                     ) : articlesAffiches.length === 0 ? (
                       <tr>
