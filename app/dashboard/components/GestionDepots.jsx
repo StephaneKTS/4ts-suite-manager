@@ -55,12 +55,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           const userObj = JSON.parse(utilisateurConnecteStr);
           const r = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
           setRoleNom(r);
-          // Vérification des droits administrateur ou direction
           if (r.includes('ADMIN') || r.includes('DIRECTEUR') || r.includes('STÉPHANE') || r.includes('KENMOE')) {
             setEstAdmin(true);
           }
         } catch (e) {
-          // Si c'est stocké en simple string
           const r = utilisateurConnecteStr.trim().toUpperCase();
           setRoleNom(r);
           if (r.includes('ADMIN') || r.includes('STÉPHANE') || r.includes('KENMOE')) {
@@ -138,14 +136,14 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           .eq('id', depotIdCible);
 
         if (error) throw error;
-        alert(`Dépôt mis à jour avec succès dans le module ${moduleActuel} !`);
+        alert('Dépôt mis à jour avec succès !');
       } else {
         const { error } = await supabase
           .from('depots_stock')
           .insert([payload]);
 
         if (error) throw error;
-        alert(`Dépôt enregistré avec succès dans le module ${moduleActuel} !`);
+        alert('Dépôt enregistré avec succès !');
       }
 
       annulerFormDepot();
@@ -240,7 +238,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
       if (error) throw error;
 
-      alert(`Emplacement enregistré avec succès dans le module ${moduleActuel} !`);
+      alert('Emplacement enregistré avec succès !');
 
       setNouveauNomEmplacement('');
       setResponsableEmplacement('');
@@ -281,7 +279,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-            <span>🏢</span> GESTION DES DÉPÔTS [{moduleActuel}] ({depotsAffiches.length} / {depots.length})
+            <span>🏢</span> GESTION DES DÉPÔTS ({depotsAffiches.length} / {depots.length})
           </h3>
           {roleNom && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
@@ -290,7 +288,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           )}
         </div>
         
-        {/* Le bouton "Nouveau" s'affiche selon les règles d'habilitation */}
         <button
           type="button"
           disabled={enTrainDeSauvegarder}
@@ -321,7 +318,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste des Dépôts [{moduleActuel}] ({depots.length})
+          📋 Liste des Dépôts ({depots.length})
         </button>
       </div>
 
@@ -329,7 +326,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         <form onSubmit={enregistrerDepot} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
           <div className="flex justify-between items-center pb-1 border-b border-slate-100">
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
-              {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot || depotEnEdition.Nom_Depot}` : `Nouveau Dépôt / Magasin (${moduleActuel})`}
+              {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot || depotEnEdition.Nom_Depot}` : `Nouveau Dépôt / Magasin`}
             </span>
             <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✖</button>
           </div>
@@ -386,12 +383,11 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
               className="w-4 h-4 text-orange-600 rounded border-slate-300 cursor-pointer"
             />
             <label htmlFor="est_depot_par_defaut_chk" className="text-[10px] font-black text-slate-900 cursor-pointer">
-              ⭐ Définir comme Dépôt Principal unique pour ce module
+              ⭐ Définir comme Dépôt Principal unique
             </label>
           </div>
 
           <div className="pt-2 flex justify-between items-center border-t border-slate-200">
-            {/* BOUTON SUPPRIMER FORCÉ : Visible en édition */}
             {depotEnEdition ? (
               <button 
                 type="button" 
@@ -416,7 +412,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           <div className="p-4 text-center text-slate-500 font-bold text-xs">Chargement...</div>
         ) : depots.length === 0 ? (
           <div className="p-4 text-center text-slate-500 font-bold text-xs bg-white rounded-xl border border-slate-200">
-            Aucun dépôt enregistré pour le module {moduleActuel}.
+            Aucun dépôt enregistré.
           </div>
         ) : (
           <div className="space-y-2">

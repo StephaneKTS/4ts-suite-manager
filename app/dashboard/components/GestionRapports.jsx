@@ -135,25 +135,13 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
     chargerPermissionsEtRapports();
   }, [entrepriseId, moduleActuel, filtreDateDebut, filtreDateFin]);
 
-  // Sous-tables du bloc Saisie Comptable
+  // Sous-tables du bloc Saisie Comptable (Grand livre et Journal regroupés sous Saisie des Opérations)
   const tablesTresorerie = [
     {
       id: 'saisie_operations',
-      nom: '📝 Saisie des Opérations',
+      nom: '📝 Saisie des Opérations & Journal',
       icon: '✍️',
-      desc: 'Entrées, dépenses multi-lignes et pièces auto',
-    },
-    {
-      id: 'grand_livre',
-      nom: '📚 Grand Livre & Journal',
-      icon: '📖',
-      desc: 'Mouvements par période et par compte',
-    },
-    {
-      id: 'controle_cloture',
-      nom: '🔐 Contrôle & Clôture',
-      icon: '🛡️',
-      desc: 'Vérification caisse et versement central',
+      desc: 'Entrées, dépenses, grand livre et journal de caisse',
     },
   ];
 
@@ -236,7 +224,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
               </div>
             </button>
 
-            {/* Bloc 2 : Saisie Comptable (Ouvre le tiroir des 3 icônes) */}
+            {/* Bloc 2 : Saisie Comptable (Ouvre directement la saisie des opérations avec onglets Grand Livre & Journal intégrés) */}
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
@@ -245,7 +233,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
                   alert('⛔ Accès restreint : Votre profil ne dispose pas des droits de saisie comptable.');
                   return;
                 }
-                setTiroirTresorerieOuvert(true);
+                setVueActive('saisie_operations');
               }}
               className="bg-white hover:bg-slate-50 border border-slate-200 p-6 rounded-3xl flex flex-col items-center text-center gap-3 shadow-sm hover:shadow-md transition duration-200 disabled:opacity-50"
             >
@@ -253,7 +241,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
               <div>
                 <span className="font-extrabold text-sm text-slate-900 block">Saisie Comptable [{moduleActuel}]</span>
                 <span className="text-[11px] text-slate-600 font-bold mt-1 block leading-snug">
-                  Saisie des opérations, grand livre, journal de caisse et contrôle de clôture.
+                  Saisie des opérations, grand livre et journal de caisse unifiés.
                 </span>
               </div>
             </button>
@@ -299,8 +287,8 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {/* Affichage des modules de Saisie Comptable selon la sélection du tiroir */}
-      {['saisie_operations', 'grand_livre', 'controle_cloture'].includes(vueActive) && (
+      {/* Affichage des modules de Saisie Comptable (avec grand livre et journal intégrés par onglets) */}
+      {vueActive === 'saisie_operations' && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b border-slate-100 pb-3">
             <button
@@ -316,47 +304,6 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
             </span>
           </div>
           <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale={vueActive} />
-        </div>
-      )}
-
-      {/* TIROIR / BOTTOM SHEET POUR LES 3 ICONES DE SAISIE COMPTABLE */}
-      {tiroirTresorerieOuvert && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs p-0 sm:p-4">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">💵</span>
-                <h3 className="font-extrabold text-base text-slate-900">Saisie Comptable [{moduleActuel}]</h3>
-              </div>
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={() => setTiroirTresorerieOuvert(false)}
-                className="text-slate-500 hover:text-slate-700 font-black p-1 text-sm disabled:opacity-50"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {tablesTresorerie.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={enTrainDeSauvegarder}
-                  onClick={() => {
-                    setVueActive(t.id);
-                    setTiroirTresorerieOuvert(false);
-                  }}
-                  className="bg-slate-50 hover:bg-orange-50 hover:border-orange-200 border border-slate-200 p-4 rounded-2xl flex flex-col items-center text-center gap-2 transition disabled:opacity-50"
-                >
-                  <span className="text-3xl">{t.icon}</span>
-                  <span className="font-extrabold text-xs text-slate-900 leading-tight">{t.nom}</span>
-                  <span className="text-[10px] text-slate-600 font-semibold line-clamp-2">{t.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
     </div>

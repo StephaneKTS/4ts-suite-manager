@@ -16,7 +16,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     lecture: true,
     creation: true,
     modification: true,
-    suppression: false,
+    suppression: true,
   });
 
   // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
@@ -53,7 +53,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
               lecture: pFamille.lecture ?? true,
               creation: pFamille.creation ?? true,
               modification: pFamille.modification ?? true,
-              suppression: pFamille.suppression ?? false,
+              suppression: pFamille.suppression ?? true,
             });
           } else {
             const { data: roleData } = await supabase
@@ -70,7 +70,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 lecture: rolePerm.lecture ?? true,
                 creation: rolePerm.creation ?? true,
                 modification: rolePerm.modification ?? true,
-                suppression: rolePerm.suppression ?? false,
+                suppression: rolePerm.suppression ?? true,
               });
             }
           }
@@ -333,7 +333,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 reinitialiser();
                 setModeAffichage('LISTE');
               }}
-              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded text-[10px]"
+              className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-black px-3 py-1.5 rounded text-[10px]"
             >
               Annuler
             </button>
@@ -440,7 +440,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   type="button"
                   disabled={enTrainDeSauvegarder}
                   onClick={reinitialiser}
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
+                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
                 >
                   Fermer
                 </button>

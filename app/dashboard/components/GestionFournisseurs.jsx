@@ -210,25 +210,39 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     try {
       let depotIdFinal = nouveauPartenaire.id_depot;
 
-      if (nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE') {
-        const payloadNouveauDepot = {
-          id_entreprise: entrepriseId,
-          module: moduleActuel,
-          nom_depot: nomDepotAssocie,
-          adresse_localisation: (nouveauPartenaire.adresse || 'PRINCIPALE').toUpperCase(),
-          responsable_depot: nomPartenaireClean,
-          est_depot_par_defaut: false,
-        };
-
-        const { data: depotCree, error: errDepot } = await supabase
+      // La création automatique du dépôt n'a lieu QUE dans le module LIVRAISON.
+      // En module BOUTIQUE, la création du dépôt est strictement manuelle.
+      if (estModeLivraison && nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE') {
+        const { data: depotExistant } = await supabase
           .from('depots_stock')
-          .insert([payloadNouveauDepot])
-          .select()
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .ilike('nom_depot', nomDepotAssocie)
           .maybeSingle();
 
-        if (errDepot) throw errDepot;
-        if (depotCree) {
-          depotIdFinal = depotCree.id;
+        if (depotExistant) {
+          depotIdFinal = depotExistant.id || depotExistant.ID;
+        } else {
+          const payloadNouveauDepot = {
+            id_entreprise: entrepriseId,
+            module: moduleActuel,
+            nom_depot: nomDepotAssocie,
+            adresse_localisation: (nouveauPartenaire.adresse || 'PRINCIPALE').toUpperCase(),
+            responsable_depot: nomPartenaireClean,
+            est_depot_par_defaut: false,
+          };
+
+          const { data: depotCree, error: errDepot } = await supabase
+            .from('depots_stock')
+            .insert([payloadNouveauDepot])
+            .select()
+            .maybeSingle();
+
+          if (errDepot) throw errDepot;
+          if (depotCree) {
+            depotIdFinal = depotCree.id || depotCree.ID;
+          }
         }
       }
 
@@ -258,7 +272,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           throw error;
         }
 
-        alert(`Mise à jour réussie !`);
+        alert('Mise à jour réussie !');
       } else {
         let { error } = await supabase.from('fournisseurs').insert([
           {
@@ -275,7 +289,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           throw error;
         }
 
-        alert(`Enregistrement et création du dépôt associés réussis !`);
+        alert('Enregistrement réussi !');
       }
 
       annulerForm();
@@ -578,8 +592,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   const obtenirNomDepot = (depotId) => {
     if (!depotId) return 'Aucun';
-    const d = depots.find(item => String(item.id) === String(depotId));
-    return d ? d.nom_depot || d.code_depot : 'Non assigné';
+    const d = depots.find(item => String(item.id) === String(depotId) || String(item.ID) === String(depotId));
+    return d ? d.nom_depot || d.Nom_Depot || d.code_depot : 'Non assigné';
   };
 
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauPartenaire.pays) || LISTE_PAYS[0];
@@ -692,7 +706,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                         name="statut_stockage"
                         value="AVEC_STOCKAGE"
                         checked={nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE'}
-                        onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, statut_stockage: e.target.value, id_depot: nouveauPartenaire.nom_fournisseur })}
+                        onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, statut_stockage: e.target.value, id_depot: estModeLivraison ? nouveauPartenaire.nom_fournisseur : nouveauPartenaire.id_depot })}
                         disabled={enTrainDeSauvegarder}
                         className="accent-orange-600 w-4 h-4 cursor-pointer"
                       />
@@ -718,9 +732,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   </div>
                 </div>
 
-                {nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && (
+                {nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && estModeLivraison && (
                   <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">DÉPÔT ASSOCIÉ</label>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">DÉPÔT ASSOCIÉ (Créé automatiquement)</label>
                     <input
                       type="text"
                       disabled={enTrainDeSauvegarder}

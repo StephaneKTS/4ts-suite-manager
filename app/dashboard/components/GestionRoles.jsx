@@ -10,26 +10,54 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const [roleEnEdition, setRoleEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
 
-  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteRoles, setLimiteRoles] = useState(20);
-
-  // --- RÈGLE 3 : DÉSACTIVATION TEMPORAIRE (ÉVITER LES DOUBLONS) ---
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [triCol, setTriCol] = useState('nom_role');
   const [triOrdre, setTriOrdre] = useState('asc');
 
-  // --- GESTION DES DROITS ET AUTORISATIONS ---
   const [roleNomConnecte, setRoleNomConnecte] = useState('');
-  const [permissions, setPermissions] = useState({
+  
+  // Droits globaux de l'utilisateur connecté sur le module des rôles
+  const [permissionsUser, setPermissionsUser] = useState({
     lecture: true,
     creation: true,
     modification: true,
-    suppression: false,
+    suppression: true,
   });
+
+  const modulesApp = [
+    { id: 'caisse', nom: '🛒 Caisse & Vente' },
+    { id: 'articles_stock', nom: '📦 Articles & Stock' },
+    { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
+    { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' },
+    { id: 'familles_articles', nom: '🏷️ Familles & Catégories' },
+    { id: 'mouvements_stock', nom: '🔄 Mouvements Stock' },
+    { id: 'approvisionnements', nom: '📥 Approvisionnements' },
+    { id: 'clients', nom: '👥 Fichier Clients' },
+    { id: 'categories_clients', nom: '🏷️ Catégories Clients' },
+    { id: 'fournisseurs', nom: '🤝 Fournisseurs' },
+    { id: 'caisses', nom: '💵 Gestion Caisses' },
+    { id: 'ventes_historiques', nom: '📊 Historique Ventes & Rapports' },
+    { id: 'commandes_livraison', nom: '📦 Commandes & Livraisons' },
+    { id: 'grille_tarifaire', nom: '🗺️ Grille Tarifaire Livraison' },
+    { id: 'challenges_commerciaux', nom: '🏆 Challenges Commerciaux' },
+    { id: 'plan_comptable', nom: '📚 Plan Comptable & Journal' },
+    { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
+  ];
+
+  const initialiserPermissionsDefaut = () => {
+    const perms = {};
+    modulesApp.forEach((m) => {
+      perms[m.id] = { lecture: false, creation: false, modification: false, suppression: false };
+    });
+    return perms;
+  };
 
   const [nouveauRole, setNouveauRole] = useState({
     nom_role: '',
+    description: '',
+    permissions: initialiserPermissionsDefaut(),
   });
 
   const obtenirModuleActuel = () => {
@@ -41,124 +69,26 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
-  // Rôles par défaut prédéfinis par module
-  const rolesParModuleParDefaut = {
-    BOUTIQUE: [
-      'COMMERCIAUX',
-      'CAISSIER(E)',
-      'COMPTABLE',
-      'CHAUFFEUR',
-      'MAGASINIER',
-      'VENDEUR(SE)',
-      'PERSONNEL',
-      'DIRECTEUR'
-    ],
-    LIVRAISON: [
-      'LIVREUR',
-      'SUPERVISEUR',
-      'DIRECTEUR',
-      'CHAUFFEUR MOTO',
-      'CHAUFFEUR TAXI',
-      'CAISSIER(E)',
-      'COMMERCIAUX'
-    ]
-  };
-
-  const rolesDefinis = rolesParModuleParDefaut[moduleActuel] || [];
-
-  const verifierEtCreerRolesParDefaut = async () => {
-    try {
-      const { data: existingRoles, error } = await supabase
-        .from('roles')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-
-      if (error) throw error;
-
-      const existingNames = (existingRoles || []).map(r => (r.nom_role || '').trim().toUpperCase());
-      const missingRoles = rolesDefinis.filter(nom => !existingNames.includes(nom));
-
-      if (missingRoles.length > 0) {
-        const rowsToInsert = missingRoles.map(nom => ({
-          id_entreprise: entrepriseId,
-          module: moduleActuel,
-          nom_role: nom,
-        }));
-
-        await supabase.from('roles').insert(rowsToInsert);
-      }
-    } catch (err) {
-      console.error('Erreur initialisation rôles par défaut :', err.message);
-    }
-  };
-
-  // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
   const chargerRolesEtPermissions = async () => {
     setChargement(true);
     try {
-      // 1. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
         const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
         setRoleNomConnecte(nomRoleUser);
-
-        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-          const permModule = userObj.permissions?.['roles'] || userObj.permissions?.['gestion_roles'] || userObj.permissions?.['parametres'];
-          
-          if (permModule) {
-            setPermissions({
-              lecture: permModule.lecture ?? permModule.voir ?? true,
-              creation: permModule.creation ?? permModule.creer ?? true,
-              modification: permModule.modification ?? permModule.modifier ?? true,
-              suppression: permModule.suppression ?? false,
-            });
-          } else {
-            const { data: roleData } = await supabase
-              .from('roles')
-              .select('*')
-              .eq('id_entreprise', entrepriseId)
-              .eq('module', moduleActuel)
-              .eq('nom_role', nomRoleUser)
-              .maybeSingle();
-
-            const rolePerm = roleData?.permissions?.['roles'] || roleData?.permissions?.['gestion_roles'] || roleData?.permissions?.['parametres'];
-            if (rolePerm) {
-              setPermissions({
-                lecture: rolePerm.lecture ?? rolePerm.voir ?? true,
-                creation: rolePerm.creation ?? rolePerm.creer ?? true,
-                modification: rolePerm.modification ?? rolePerm.modifier ?? true,
-                suppression: rolePerm.suppression ?? false,
-              });
-            }
-          }
-        }
       }
 
-      await verifierEtCreerRolesParDefaut();
+      // Chargement direct des rôles personnalisés de l'entreprise
+      const { data, error } = await supabase
+        .from('roles')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .order('created_at', { ascending: false });
 
-      let listeRoles = [];
-      const { data: rolesRpc, error: rpcError } = await supabase.rpc('recuperer_roles', {
-        p_entreprise_id: entrepriseId,
-        p_module: moduleActuel
-      });
-
-      if (rpcError) {
-        const { data, error } = await supabase
-          .from('roles')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', moduleActuel)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        listeRoles = data || [];
-      } else {
-        listeRoles = rolesRpc || [];
-      }
-
-      setRoles(listeRoles);
+      if (error) throw error;
+      setRoles(data || []);
     } catch (err) {
       console.error('Erreur chargement rôles :', err.message);
     } finally {
@@ -170,25 +100,36 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     chargerRolesEtPermissions();
   }, [entrepriseId, moduleActuel]);
 
-  const estRoleSysteme = (nomRole) => {
-    return rolesDefinis.includes((nomRole || '').trim().toUpperCase());
+  const togglePermissionRole = (moduleId, action) => {
+    setNouveauRole((prev) => {
+      const permsModule = prev.permissions[moduleId] || { lecture: false, creation: false, modification: false, suppression: false };
+      const nouvelleValeur = !permsModule[action];
+      let majModule = { ...permsModule, [action]: nouvelleValeur };
+      if ((action === 'creation' || action === 'modification' || action === 'suppression') && nouvelleValeur) {
+        majModule.lecture = true;
+      }
+      return {
+        ...prev,
+        permissions: { ...prev.permissions, [moduleId]: majModule },
+      };
+    });
+  };
+
+  const accorderToutModuleRole = (moduleId, toutAccorder) => {
+    setNouveauRole((prev) => ({
+      ...prev,
+      permissions: {
+        ...prev.permissions,
+        [moduleId]: { lecture: toutAccorder, creation: toutAccorder, modification: toutAccorder, suppression: toutAccorder },
+      },
+    }));
   };
 
   const enregistrerRole = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
-    if (roleEnEdition && !permissions.modification) {
-      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les rôles.');
-      return;
-    }
-    if (!roleEnEdition && !permissions.creation) {
-      alert('⛔ Action non autorisée : Vous n’avez pas le droit de créer des rôles.');
-      return;
-    }
-
     const nomSaisi = nouveauRole.nom_role.trim().toUpperCase();
-
     if (!nomSaisi) {
       alert('⚠️ Veuillez renseigner le nom du rôle.');
       return;
@@ -196,37 +137,33 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
-      if (roleEnEdition) {
-        if (estRoleSysteme(roleEnEdition.nom_role)) {
-          alert(`❌ Impossible de modifier ce rôle système ("${roleEnEdition.nom_role}"). Seuls les rôles personnalisés peuvent être modifiés.`);
-          setEnTrainDeSauvegarder(false);
-          return;
-        }
+      const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+        nom_role: nomSaisi,
+        description: nouveauRole.description || '',
+        permissions: nouveauRole.permissions,
+      };
 
+      if (roleEnEdition) {
         const { error } = await supabase
           .from('roles')
-          .update({ nom_role: nomSaisi })
+          .update(payload)
           .eq('id', roleEnEdition.id);
 
         if (error) throw error;
-        alert(`Rôle mis à jour avec succès dans le module ${moduleActuel} !`);
+        alert('Rôle et permissions mis à jour avec succès !');
       } else {
         const existeDeja = roles.some(r => (r.nom_role || '').trim().toUpperCase() === nomSaisi);
         if (existeDeja) {
-          alert(`⚠️ Ce rôle existe déjà dans le module ${moduleActuel}.`);
+          alert('⚠️ Ce rôle existe déjà.');
           setEnTrainDeSauvegarder(false);
           return;
         }
 
-        const payload = {
-          id_entreprise: entrepriseId,
-          module: moduleActuel,
-          nom_role: nomSaisi,
-        };
-
         const { error } = await supabase.from('roles').insert([payload]);
         if (error) throw error;
-        alert(`Rôle créé avec succès dans le module ${moduleActuel} !`);
+        alert('Rôle créé avec succès !');
       }
 
       annulerForm();
@@ -243,6 +180,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     setRoleEnEdition(role);
     setNouveauRole({
       nom_role: role.nom_role || '',
+      description: role.description || '',
+      permissions: { ...initialiserPermissionsDefaut(), ...(role.permissions || {}) },
     });
     setAfficherForm(true);
   };
@@ -252,22 +191,14 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     setRoleEnEdition(null);
     setNouveauRole({
       nom_role: '',
+      description: '',
+      permissions: initialiserPermissionsDefaut(),
     });
     setAfficherForm(false);
   };
 
   const supprimerRole = async () => {
     if (enTrainDeSauvegarder || !roleEnEdition) return;
-
-    if (!permissions.suppression) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des rôles.');
-      return;
-    }
-
-    if (estRoleSysteme(roleEnEdition.nom_role)) {
-      alert(`❌ SUPPRESSION INTERDITE : "${roleEnEdition.nom_role}" est un rôle système prédéterminé de l'application. Il ne peut pas être supprimé.`);
-      return;
-    }
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -285,18 +216,16 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       const usersRattaches = (tousLesUsers || []).filter((u) => {
         const valIdRole = String(u.id_role || u.role_id || '');
         const valNomRole = String(u.nom_role || u.role || '').trim().toUpperCase();
-
         return valIdRole === idRoleStr || valNomRole === nomRoleStr;
       });
 
       if (usersRattaches.length > 0) {
-        const exempleUser = usersRattaches[0].nom_complet || 'COLLABORATEUR';
-        alert(`❌ SUPPRESSION BLOQUÉE : Ce rôle ("${roleEnEdition.nom_role}") est actuellement affecté à ${usersRattaches.length} utilisateur(s) (ex: "${exempleUser}"). Vous devez d'abord réaffecter ces utilisateurs à un autre rôle avant de pouvoir supprimer celui-ci.`);
+        alert(`❌ SUPPRESSION BLOQUÉE : Ce rôle ("${roleEnEdition.nom_role}") est affecté à ${usersRattaches.length} utilisateur(s).`);
         setEnTrainDeSauvegarder(false);
         return;
       }
 
-      if (!confirm(`Voulez-vous vraiment supprimer définitivement le rôle "${roleEnEdition.nom_role}" ?`)) {
+      if (!confirm(`Voulez-vous vraiment supprimer le rôle "${roleEnEdition.nom_role}" ?`)) {
         setEnTrainDeSauvegarder(false);
         return;
       }
@@ -338,56 +267,44 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     .sort((a, b) => {
       let valA = a.nom_role || '';
       let valB = b.nom_role || '';
-
       if (valA < valB) return triOrdre === 'asc' ? -1 : 1;
       if (valA > valB) return triOrdre === 'asc' ? 1 : -1;
       return 0;
     });
 
   const rolesAffiches = rolesFiltres.slice(0, limiteRoles);
-  const estSystemeEnEdition = roleEnEdition ? estRoleSysteme(roleEnEdition.nom_role) : false;
-
-  if (!permissions.lecture) {
-    return (
-      <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
-        ⛔ Vous n'avez pas l'autorisation d'afficher ce module.
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-2.5 text-[11px] font-sans">
+    <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden">
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-2">
-          <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-            <span>🛡️</span> GESTION DES RÔLES [{moduleActuel}] ({rolesAffiches.length} / {rolesFiltres.length})
+        <div className="flex items-center gap-2 overflow-hidden">
+          <h3 className="font-extrabold text-slate-900 uppercase text-xs truncate flex items-center gap-1.5">
+            <span>🛡️</span> RÔLES ({rolesAffiches.length} / {rolesFiltres.length})
           </h3>
           {roleNomConnecte && (
-            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200 shrink-0 hidden sm:inline">
               Rôle : {roleNomConnecte}
             </span>
           )}
         </div>
-        {permissions.creation && (
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => {
-              if (enTrainDeSauvegarder) return;
-              if (afficherForm) {
-                annulerForm();
-              } else {
-                setNouveauRole({ nom_role: '' });
-                setRoleEnEdition(null);
-                setAfficherForm(true);
-              }
-            }}
-            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-          >
-            {afficherForm ? '✖' : '＋ Nouveau Rôle'}
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={enTrainDeSauvegarder}
+          onClick={() => {
+            if (enTrainDeSauvegarder) return;
+            if (afficherForm) {
+              annulerForm();
+            } else {
+              setNouveauRole({ nom_role: '', description: '', permissions: initialiserPermissionsDefaut() });
+              setRoleEnEdition(null);
+              setAfficherForm(true);
+            }
+          }}
+          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0"
+        >
+          {afficherForm ? '✖' : '＋ Nouveau Rôle'}
+        </button>
       </div>
 
       <div className="flex justify-start items-center gap-1.5">
@@ -401,15 +318,15 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste [{moduleActuel}] ({roles.length})
+          📋 Liste ({roles.length})
         </button>
       </div>
 
-      {afficherForm && (permissions.creation || permissions.modification) && (
-        <form onSubmit={enregistrerRole} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
+      {afficherForm && (
+        <form onSubmit={enregistrerRole} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-3 shadow-md max-h-[75vh] overflow-y-auto w-full">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {roleEnEdition ? (estSystemeEnEdition ? `🔒 Fiche du Rôle Système (${moduleActuel})` : `✏️ Fiche du Rôle Personnalisé (${moduleActuel})`) : `➕ Nouveau Rôle Personnalisé (${moduleActuel})`}
+              {roleEnEdition ? '✏️ Modifier le Rôle & ses Permissions' : '➕ Nouveau Rôle & Permissions'}
             </h4>
             <button
               type="button"
@@ -421,36 +338,78 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             </button>
           </div>
 
-          {estSystemeEnEdition && (
-            <div className="bg-amber-50 border border-amber-300 text-amber-900 p-2 rounded-lg text-[10px] font-bold">
-              ⚠️ Ce rôle est un standard système de l'application. Vous pouvez le consulter mais son nom ne peut pas être modifié ni supprimé.
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-2">
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom du Rôle / Fonction *</label>
+          {/* Ligne unique pour le Nom du Rôle et la Description */}
+          <div className="flex flex-col sm:flex-row gap-2 w-full">
+            <div className="w-full sm:w-1/3">
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom du Rôle *</label>
               <input
                 type="text"
                 required
-                disabled={estSystemeEnEdition || enTrainDeSauvegarder}
+                disabled={enTrainDeSauvegarder}
                 value={nouveauRole.nom_role}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
-                placeholder="EX: SUPERVISEUR, COMMERCIAL..."
-                className={`w-full border rounded p-1.5 font-extrabold uppercase text-xs shadow-xs ${
-                  estSystemeEnEdition ? 'bg-slate-100 text-slate-500 border-slate-300 cursor-not-allowed' : 'bg-white text-slate-900 border-slate-300'
-                }`}
+                placeholder="EX: MANAGER..."
+                className="w-full border border-slate-300 rounded p-1.5 font-extrabold uppercase text-xs shadow-xs bg-white text-slate-900"
+              />
+            </div>
+            <div className="w-full sm:w-2/3">
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Description</label>
+              <input
+                type="text"
+                disabled={enTrainDeSauvegarder}
+                value={nouveauRole.description}
+                onChange={(e) => setNouveauRole({ ...nouveauRole, description: e.target.value })}
+                placeholder="Description détaillée des attributions de ce rôle..."
+                className="w-full border border-slate-300 rounded p-1.5 text-xs shadow-xs bg-white text-slate-900"
               />
             </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
-            {roleEnEdition && !estSystemeEnEdition && permissions.suppression ? (
+          <div className="space-y-2 pt-2 border-t border-slate-200">
+            <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Matrice des Droits par Module :</h5>
+            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs max-h-56">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black sticky top-0">
+                  <tr>
+                    <th className="p-2">Module</th>
+                    <th className="p-2 text-center">👁️ Lecture</th>
+                    <th className="p-2 text-center">➕ Création</th>
+                    <th className="p-2 text-center">✏️ Modif.</th>
+                    <th className="p-2 text-center">🗑️ Suppr.</th>
+                    <th className="p-2 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[10px]">
+                  {modulesApp.map((m) => {
+                    const p = nouveauRole.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
+                    const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
+                    return (
+                      <tr key={m.id} className="hover:bg-slate-50">
+                        <td className="p-2 font-black text-slate-950 truncate max-w-[120px]">{m.nom}</td>
+                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.lecture} onChange={() => togglePermissionRole(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.creation} onChange={() => togglePermissionRole(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.modification} onChange={() => togglePermissionRole(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.suppression} onChange={() => togglePermissionRole(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center">
+                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => accorderToutModuleRole(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+                            {estToutAccorde ? 'Aucun' : 'Tous'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-slate-200 flex justify-between items-center gap-2">
+            {roleEnEdition ? (
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={supprimerRole}
-                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
+                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs shrink-0"
               >
                 {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
               </button>
@@ -462,13 +421,11 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                 onClick={annulerForm}
                 className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
               >
-                {estSystemeEnEdition ? 'Fermer' : 'Annuler'}
+                Annuler
               </button>
-              {!estSystemeEnEdition && ((roleEnEdition && permissions.modification) || (!roleEnEdition && permissions.creation)) && (
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
-                  {enTrainDeSauvegarder ? 'Enregistrement...' : (roleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                </button>
-              )}
+              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
+                {enTrainDeSauvegarder ? 'Enregistrement...' : (roleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+              </button>
             </div>
           </div>
         </form>
@@ -482,7 +439,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               disabled={enTrainDeSauvegarder}
               value={recherche}
               onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-              placeholder={`RECHERCHER PAR NOM DE RÔLE [${moduleActuel}]...`}
+              placeholder="RECHERCHER UN RÔLE..."
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400"
             />
           </div>
@@ -495,38 +452,43 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : rolesAffiches.length === 0 ? (
             <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-              Aucun rôle enregistré pour le module {moduleActuel}.
+              Aucun rôle personnalisé enregistré. Cliquez sur "＋ Nouveau Rôle".
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-                <table className="w-full text-left text-xs table-fixed">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs w-full">
+                <table className="w-full text-left text-xs">
                   <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                     <tr>
-                      <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_role')} className="p-2.5 w-full cursor-pointer hover:bg-slate-200 transition">
-                        Intitulé du Rôle {rendreFlecheTri('nom_role')}
+                      <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_role')} className="p-2.5 cursor-pointer hover:bg-slate-200 transition w-1/3">
+                        Intitulé {rendreFlecheTri('nom_role')}
                       </th>
+                      <th className="p-2.5 w-1/2">Description</th>
+                      <th className="p-2.5 text-center w-1/6">Modules</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">
                     {rolesAffiches.map((r) => {
-                      const isSystem = estRoleSysteme(r.nom_role);
+                      const nbModulesActifs = Object.values(r.permissions || {}).filter(p => p.lecture).length;
                       return (
                         <tr
                           key={r.id}
-                          onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirEdition(r)}
+                          onClick={() => !enTrainDeSauvegarder && ouvrirEdition(r)}
                           className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                          title="Cliquer pour consulter / modifier"
+                          title="Cliquer pour modifier"
                         >
-                          <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate flex items-center justify-between">
-                            <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
+                          <td className="p-2.5 font-extrabold uppercase text-slate-900 w-1/3 truncate">
+                            <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full">
                               🛡️ {r.nom_role}
                             </span>
-                            {isSystem && (
-                              <span className="bg-blue-100 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded text-[8px] font-black">
-                                🔒 Système
-                              </span>
-                            )}
+                          </td>
+                          <td className="p-2.5 text-slate-600 font-medium w-1/2 truncate max-w-[150px] sm:max-w-xs">
+                            {r.description || 'Aucune description'}
+                          </td>
+                          <td className="p-2.5 text-center w-1/6">
+                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded font-black text-[9px]">
+                              {nbModulesActifs}
+                            </span>
                           </td>
                         </tr>
                       );
@@ -543,7 +505,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                     onClick={() => setLimiteRoles(prev => prev + 20)}
                     className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
                   >
-                    📥 Charger 20 rôles de plus ({rolesFiltres.length - limiteRoles} restants)
+                    📥 Charger plus ({rolesFiltres.length - limiteRoles} restants)
                   </button>
                 </div>
               )}

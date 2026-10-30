@@ -23,7 +23,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     peutVoir: true,
     peutCreer: true,
     peutModifier: true,
-    peutSupprimer: false,
+    peutSupprimer: true,
   });
 
   const obtenirModuleActuel = () => {
@@ -55,7 +55,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               peutVoir: permModule.lecture ?? permModule.voir ?? true,
               peutCreer: permModule.creation ?? permModule.creer ?? true,
               peutModifier: permModule.modification ?? permModule.modifier ?? false,
-              peutSupprimer: permModule.suppression ?? false,
+              peutSupprimer: permModule.suppression ?? permModule.supprimer ?? true,
             });
           } else {
             const { data: roleData } = await supabase
@@ -73,14 +73,14 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 peutVoir: rolePerm.lecture ?? rolePerm.voir ?? true,
                 peutCreer: rolePerm.creation ?? rolePerm.creer ?? true,
                 peutModifier: rolePerm.modification ?? rolePerm.modifier ?? false,
-                peutSupprimer: rolePerm.suppression ?? false,
+                peutSupprimer: rolePerm.suppression ?? rolePerm.supprimer ?? true,
               });
             } else if (roleData) {
               setPermissions({
                 peutVoir: roleData.peut_voir ?? roleData.voir ?? true,
                 peutCreer: roleData.peut_creer ?? roleData.creer ?? true,
                 peutModifier: roleData.peut_modifier ?? roleData.modifier ?? false,
-                peutSupprimer: roleData.peut_supprimer ?? roleData.supprimer ?? false,
+                peutSupprimer: roleData.peut_supprimer ?? roleData.supprimer ?? true,
               });
             }
           }
@@ -131,6 +131,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   };
 
   const annulerForm = () => {
+    if (enTrainDeSauvegarder) return;
     setCaisseEnEdition(null);
     setCodeCaisse('');
     setNomCaisse('');
@@ -202,6 +203,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   };
 
   const supprimerCaisse = async () => {
+    if (enTrainDeSauvegarder) return;
     if (!permissions.peutSupprimer) {
       setMsg({ type: 'error', text: '⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des caisses.' });
       return;
@@ -209,6 +211,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     if (!caisseEnEdition) return;
     if (!confirm(`Voulez-vous vraiment supprimer la caisse "${caisseEnEdition.nom_caisse}" ?`)) return;
 
+    setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase
         .from('caisses')
@@ -222,6 +225,8 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       await chargerPermissionsEtCaisses();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -247,15 +252,17 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
           {permissions.peutCreer && (
             <button
               type="button"
+              disabled={enTrainDeSauvegarder}
               onClick={ouvrirFormulaireNouveau}
-              className="px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 text-white"
+              className="px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white"
             >
               ＋ Nouveau
             </button>
           )}
           <button
             type="button"
-            onClick={() => { setAfficherForm(false); setCaisseEnEdition(null); }}
+            disabled={enTrainDeSauvegarder}
+            onClick={() => { if (!enTrainDeSauvegarder) { setAfficherForm(false); setCaisseEnEdition(null); } }}
             className={`px-2.5 py-1 rounded-lg font-black text-[10px] transition border shadow-2xs ${
               !afficherForm 
                 ? 'bg-slate-900 text-white border-slate-900' 
@@ -302,8 +309,8 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 onChange={(e) => setCodeCaisse(e.target.value.toUpperCase())}
                 placeholder="C01"
                 required
-                disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-mono font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                disabled={!!caisseEnEdition || enTrainDeSauvegarder}
+                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-mono font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -349,9 +356,9 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={supprimerCaisse}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded text-[10px] transition"
+                className="bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-bold px-3 py-1 rounded text-[10px] transition shadow-xs"
               >
-                🗑️ Supprimer
+                {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
               </button>
             ) : <div />}
 
@@ -360,7 +367,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={annulerForm}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded text-[10px] transition"
+                className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold px-2.5 py-1 rounded text-[10px] transition"
               >
                 Annuler
               </button>

@@ -200,8 +200,12 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       if (frsTrouve) {
         if (estStatutSansStockage(frsTrouve.statut_stockage)) {
           setIdDepotDestination('');
-        } else if (frsTrouve.id_depot) {
+        } else if (estModeLivraison && frsTrouve.id_depot) {
+          // En livraison : sélection automatique du dépôt du partenaire
           setIdDepotDestination(frsTrouve.id_depot);
+        } else if (!estModeLivraison) {
+          // En boutique : l'opérateur choisit manuellement, on ne force pas automatiquement
+          setIdDepotDestination('');
         } else {
           setIdDepotDestination('');
         }
@@ -867,13 +871,18 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             </div>
             <div>
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
-                {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : 'DÉPÔT * (AUTO)'}
+                {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
               </label>
               {estPartenaireSansStockage ? (
                 <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 font-extrabold text-xs text-amber-800 shadow-xs cursor-not-allowed" />
-              ) : (
+              ) : estModeLivraison ? (
                 <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed">
                   <option value="">-- Automatique --</option>
+                  {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
+                </select>
+              ) : (
+                <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
+                  <option value="">-- Choisir le dépôt --</option>
                   {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
                 </select>
               )}
@@ -1006,13 +1015,18 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
             </div>
             <div>
               <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
-                {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : 'DÉPÔT * (AUTO)'}
+                {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
               </label>
               {estPartenaireSansStockage ? (
                 <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 text-xs text-amber-800 font-extrabold shadow-xs cursor-not-allowed" />
-              ) : (
+              ) : estModeLivraison ? (
                 <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed">
                   <option value="">-- Automatique --</option>
+                  {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
+                </select>
+              ) : (
+                <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
+                  <option value="">-- Choisir le dépôt --</option>
                   {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
                 </select>
               )}

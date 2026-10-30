@@ -521,6 +521,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
 
   const formaterNumeroDocAffichage = (motifBrut) => {
     if (!motifBrut) return 'SANS-REF';
+    const matchTicket = motifBrut.match(/(C\d+-\d+)/i);
+    if (matchTicket) return matchTicket[1];
     const matchCmd = motifBrut.match(/(CMD-\d+)/i);
     if (matchCmd) return matchCmd[1];
     const matchType = motifBrut.match(/([A-Z]+-\d+)/i);

@@ -25,6 +25,7 @@ import GestionUtilisateurs from './components/GestionUtilisateurs';
 import EspaceSouscription from './components/EspaceSouscription';
 import GestionCommandesLivraison from './components/GestionCommandesLivraison';
 import GrilleTarifaireLivraison from './components/GrilleTarifaireLivraison';
+import MonProfil from './components/MonProfil';
 
 // Importation de votre module de livraison
 import ModuleLivraison from './livraison/page';
@@ -55,31 +56,9 @@ function DashboardContent() {
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('CHARGEMENT...');
   const [emailConnecte, setEmailConnecte] = useState('');
   const [permissionsUser, setPermissionsUser] = useState(null);
-  const [userIdCourant, setUserIdCourant] = useState(null);
   
-  // Informations détaillées de l'employé connecté
-  const [emailEmploye, setEmailEmploye] = useState('Chargement...');
-  const [telephoneEmploye, setTelephoneEmploye] = useState('Chargement...');
-  const [statutEmploye, setStatutEmploye] = useState('Chargement...');
-
-  // États pour les modifications dans le profil
-  const [editMdpEntreprise, setEditMdpEntreprise] = useState('');
-  const [showMdpEnt, setShowMdpEnt] = useState(false);
   const [logoEntreprise, setLogoEntreprise] = useState('');
 
-  // Gestion du mot de passe utilisateur & option modification par 2 champs
-  const [editMdpUser, setEditMdpUser] = useState('');
-  const [showMdpUser, setShowMdpUser] = useState(false);
-  const [enModeModifMdp, setEnModeModifMdp] = useState(false);
-  const [nouveauMdp, setNouveauMdp] = useState('');
-  const [confirmerMdp, setConfirmerMdp] = useState('');
-
-  const [photoUser, setPhotoUser] = useState('');
-
-  const fileInputLogoRef = useRef(null);
-  const fileInputUserRef = useRef(null);
-
-  // États pour le Panneau Super-Admin (Gestion globale des entreprises)
   const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
 
@@ -110,7 +89,6 @@ function DashboardContent() {
           setInfosEntreprise(entData);
           setEntrepriseId(entData.id_entreprise);
           setLogoEntreprise(entData.logo || '');
-          setEditMdpEntreprise(entData.mot_de_passe || entData.code_pin_activation || '');
 
           if (typeof window !== 'undefined') {
             localStorage.setItem('entrepriseId', entData.id_entreprise);
@@ -144,14 +122,10 @@ function DashboardContent() {
     async function fetchUserData() {
       if (!entrepriseId) return;
       try {
-        const { data: usersList, error } = await supabase
+        const { data: usersList } = await supabase
           .from('utilisateurs')
           .select('*')
           .eq('id_entreprise', entrepriseId);
-
-        if (error) {
-          console.error("Erreur lecture table utilisateurs :", error);
-        }
 
         let utilisateurTrouve = null;
 
@@ -166,20 +140,7 @@ function DashboardContent() {
         }
 
         if (utilisateurTrouve) {
-          setUserIdCourant(utilisateurTrouve.id);
           setPermissionsUser(utilisateurTrouve.permissions);
-          setPhotoUser(utilisateurTrouve.photo || '');
-          setEditMdpUser(utilisateurTrouve.mot_de_passe || '');
-          
-          setEmailEmploye(utilisateurTrouve.email || emailConnecte || 'Non renseigné');
-          setTelephoneEmploye(utilisateurTrouve.telephone || utilisateurTrouve.phone || 'Non renseigné');
-          
-          const roleReel = utilisateurTrouve.role || utilisateurTrouve.statut || utilisateurTrouve.fonction || utilisateurTrouve.profil;
-          setStatutEmploye(roleReel ? roleReel.toUpperCase() : 'EMPLOYÉ');
-        } else {
-          setEmailEmploye(emailConnecte || infosEntreprise.email || 'Non renseigné');
-          setTelephoneEmploye(infosEntreprise.telephone || 'Non renseigné');
-          setStatutEmploye(estSuperAdmin ? 'ADMINISTRATEUR / GÉRANT' : 'EMPLOYÉ');
         }
       } catch (err) {
         console.error("Erreur chargement utilisateur :", err);
@@ -187,86 +148,6 @@ function DashboardContent() {
     }
     fetchUserData();
   }, [emailConnecte, utilisateurConnecte, entrepriseId]);
-
-  const gererSelectionLogo = (e) => {
-    const fichier = e.target.files[0];
-    if (fichier) {
-      const lecteur = new FileReader();
-      lecteur.onloadend = () => {
-        setLogoEntreprise(lecteur.result);
-      };
-      lecteur.readAsDataURL(fichier);
-    }
-  };
-
-  const gererSelectionPhotoUser = (e) => {
-    const fichier = e.target.files[0];
-    if (fichier) {
-      const lecteur = new FileReader();
-      lecteur.onloadend = () => {
-        setPhotoUser(lecteur.result);
-      };
-      lecteur.readAsDataURL(fichier);
-    }
-  };
-
-  const sauvegarderProfilEntreprise = async () => {
-    try {
-      const { error } = await supabase
-        .from('entreprises')
-        .update({
-          mot_de_passe: editMdpEntreprise,
-          logo: logoEntreprise
-        })
-        .eq('id_entreprise', entrepriseId);
-
-      if (error) throw error;
-      alert("Informations de l'entreprise mises à jour avec succès ! 🚀");
-    } catch (err) {
-      alert("Erreur lors de la mise à jour de l'entreprise : " + err.message);
-    }
-  };
-
-  const sauvegarderProfilUtilisateur = async () => {
-    try {
-      if (!userIdCourant) {
-        alert("Aucun identifiant utilisateur trouvé pour cette session.");
-        return;
-      }
-
-      let mdpFinal = editMdpUser;
-      if (enModeModifMdp) {
-        if (!nouveauMdp) {
-          alert("Veuillez saisir le nouveau mot de passe.");
-          return;
-        }
-        if (nouveauMdp !== confirmerMdp) {
-          alert("Les deux mots de passe ne correspondent pas.");
-          return;
-        }
-        mdpFinal = nouveauMdp;
-      }
-
-      const { error } = await supabase
-        .from('utilisateurs')
-        .update({
-          mot_de_passe: mdpFinal,
-          photo: photoUser
-        })
-        .eq('id', userIdCourant);
-
-      if (error) throw error;
-
-      setEditMdpUser(mdpFinal);
-      setEnModeModifMdp(false);
-      setNouveauMdp('');
-      setConfirmerMdp('');
-
-      alert("Votre profil utilisateur a été mis à jour avec succès ! 🚀");
-    } catch (err) {
-      alert("Erreur lors de la mise à jour du profil : " + err.message);
-    }
-  };
 
   const estModeLivraison = moduleCourant === 'LIVRAISON';
 
@@ -446,7 +327,6 @@ function DashboardContent() {
   const contenuApp = (
     <div className="min-h-screen bg-[#050b18] text-slate-100 flex flex-col font-sans relative overflow-y-auto w-full max-w-full">
       
-      {/* EN-TÊTE AUX COULEURS BLEUES DU LOGO */}
       <div className="sticky top-0 z-20 bg-gradient-to-r from-[#0a1931] via-[#0d2347] to-[#0a1931] border-b border-cyan-500/30 px-2 sm:px-4 py-3 text-white shadow-lg shadow-cyan-950/40 shrink-0 flex items-center justify-between w-full">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 flex items-center justify-center shrink-0 rounded-xl bg-cyan-950/60 border border-cyan-500/40 p-1 shadow-inner">
@@ -483,7 +363,7 @@ function DashboardContent() {
               }}
               className="bg-sky-900/60 hover:bg-sky-800 text-cyan-200 font-bold px-3 py-1.5 rounded-xl text-[11px] transition border border-cyan-500/40 shadow-sm flex items-center gap-1"
             >
-              {['journal', 'grand_livre', 'controle'].includes(moduleActif) ? '← Retour Rapports' : '← Accueil'}
+              {['journal', 'grand_livre', 'controle'].includes(moduleActif) ? '← Retour Comptabilité' : '← Accueil'}
             </button>
           ) : (
             <span className="text-[10px] bg-cyan-950 text-cyan-300 font-bold px-2.5 py-1 rounded-full border border-cyan-500/40 shadow-sm">
@@ -493,12 +373,11 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* CONTENU DE LA PAGE */}
       <div className="p-1 sm:p-2.5 space-y-3 flex-1 pb-24 w-full">
         {ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-3 w-full">
             <h2 className="text-[11px] font-black text-cyan-400/80 uppercase tracking-wider px-1">
-              RAPPORTS
+              COMPTABILITÉ
             </h2>
 
             <div className="grid grid-cols-1 gap-2.5 w-full">
@@ -511,282 +390,13 @@ function DashboardContent() {
                   </div>
                 </div>
               )}
-
-              {verifierPermission('ventes_historiques') && (
-                <div onClick={() => tenterAccesModule('controle', 'Contrôle & Clôture')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
-                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
-                  <div>
-                    <h3 className="font-extrabold text-slate-100 text-xs">Contrôle & Clôture</h3>
-                    <p className="text-[10px] text-cyan-200/70 mt-0.5">Vérification caisse et versement central.</p>
-                  </div>
-                </div>
-              )}
-
-              {verifierPermission('ventes_historiques') && (
-                <div onClick={() => tenterAccesModule('grand_livre', 'Grand Livre & Journal')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3.5 rounded-2xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
-                  <span className="text-2xl group-hover:scale-110 transition">📖</span>
-                  <div>
-                    <h3 className="font-extrabold text-slate-100 text-xs">Grand Livre & Journal</h3>
-                    <p className="text-[10px] text-cyan-200/70 mt-0.5">Mouvements par période et par compte.</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
           <div className="space-y-4 w-full">
-            <h2 className="text-[11px] font-black text-cyan-400/80 uppercase tracking-wider px-1">
-              MON PROFIL & PARAMÈTRES
-            </h2>
+            <MonProfil entrepriseId={entrepriseId} />
 
-            {/* ESPACE 1 : ENTREPRISE (VISIBLE UNIQUEMENT PAR LE SUPER-ADMINISTRATEUR) */}
-            {estSuperAdmin && (
-              <div className="bg-[#0b1329] rounded-2xl p-4 shadow-lg border border-cyan-900/60 space-y-3 w-full">
-                <div className="flex items-center justify-between border-b border-cyan-900/50 pb-2">
-                  <h3 className="font-black text-cyan-400 uppercase text-xs flex items-center gap-1.5">
-                    <span>🏢</span> ESPACE ENTREPRISE
-                  </h3>
-                  <span className="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-800 shadow-inner">
-                    Lecture & Sécurité
-                  </span>
-                </div>
-
-                <input 
-                  type="file" 
-                  ref={fileInputLogoRef} 
-                  onChange={gererSelectionLogo} 
-                  accept="image/*" 
-                  className="hidden" 
-                />
-
-                <div className="flex items-center gap-3">
-                  <div 
-                    onClick={() => fileInputLogoRef.current && fileInputLogoRef.current.click()}
-                    title="Cliquer pour modifier le logo de l'entreprise"
-                    className="w-12 h-12 rounded-full bg-slate-900 border-2 border-cyan-500 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer relative group shadow-md"
-                  >
-                    {logoEntreprise ? (
-                      <img src={logoEntreprise} alt="Logo" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-cyan-400 font-black text-sm">🏢</span>
-                    )}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold text-center">
-                      Modifier
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="font-extrabold text-slate-100 text-sm uppercase">{infosEntreprise.nom_entreprise}</h4>
-                    <p className="text-[10px] text-cyan-300">ID : <span className="font-mono text-cyan-400 font-bold">{entrepriseId}</span></p>
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-xs pt-1">
-                  <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                    <span className="text-cyan-200/70 font-medium">Nom de l'entreprise :</span>
-                    <span className="font-bold text-slate-200 uppercase">{infosEntreprise.nom_entreprise}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                    <span className="text-cyan-200/70 font-medium">E-mail entreprise :</span>
-                    <span className="font-bold text-slate-200">{infosEntreprise.email || 'Non renseigné'}</span>
-                  </div>
-                  <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                    <span className="text-cyan-200/70 font-medium">Téléphone entreprise :</span>
-                    <span className="font-bold text-slate-200">{infosEntreprise.telephone || 'Non renseigné'}</span>
-                  </div>
-
-                  <div className="space-y-1 pt-1">
-                    <label className="block text-cyan-200/70 font-medium text-[11px]">Mot de passe / Code PIN Entreprise :</label>
-                    <div className="relative flex items-center">
-                      <input
-                        type={showMdpEnt ? "text" : "password"}
-                        value={editMdpEntreprise}
-                        onChange={(e) => setEditMdpEntreprise(e.target.value)}
-                        placeholder="Mot de passe entreprise"
-                        className="w-full bg-[#050b18] border border-cyan-900 rounded-xl px-3 pr-16 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono shadow-inner"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowMdpEnt(!showMdpEnt)}
-                        className="absolute right-2.5 text-cyan-300 hover:text-white text-[11px] font-bold"
-                      >
-                        {showMdpEnt ? '🙈 Masquer' : '👁️ Afficher'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex justify-end">
-                  <button
-                    onClick={sauvegarderProfilEntreprise}
-                    className="bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-md"
-                  >
-                    💾 Mettre à jour l'entreprise
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ESPACE 2 : UTILISATEUR (AVEC NOM, EMAIL, TÉLÉPHONE, RÔLE ET MOT DE PASSE) */}
-            <div className="bg-[#0b1329] rounded-2xl p-4 shadow-lg border border-cyan-900/60 space-y-3 w-full">
-              <div className="flex items-center justify-between border-b border-cyan-900/50 pb-2">
-                <h3 className="font-black text-cyan-400 uppercase text-xs flex items-center gap-1.5">
-                  <span>👤</span> ESPACE UTILISATEUR
-                </h3>
-                <span className="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-800 shadow-inner">
-                  {utilisateurConnecte}
-                </span>
-              </div>
-
-              {/* Input fichier caché pour la photo de l'utilisateur */}
-              <input 
-                type="file" 
-                ref={fileInputUserRef} 
-                onChange={gererSelectionPhotoUser} 
-                accept="image/*" 
-                className="hidden" 
-              />
-
-              <div className="flex items-center gap-3">
-                <div 
-                  onClick={() => fileInputUserRef.current && fileInputUserRef.current.click()}
-                  title="Cliquer pour changer votre photo de profil"
-                  className="w-12 h-12 rounded-full bg-cyan-950 border-2 border-cyan-500 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer relative group shadow-md"
-                >
-                  {photoUser ? (
-                    <img src={photoUser} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-cyan-300 font-black text-sm">
-                      {utilisateurConnecte ? utilisateurConnecte.charAt(0).toUpperCase() : 'U'}
-                    </span>
-                  )}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-[8px] text-white font-bold text-center">
-                    Modifier
-                  </div>
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-slate-100 text-sm uppercase">{utilisateurConnecte}</h4>
-                  <p className="text-[10px] text-cyan-400 font-bold">{emailEmploye}</p>
-                </div>
-              </div>
-
-              <div className="space-y-2 text-xs pt-1">
-                {/* NOM DE L'ENTREPRISE */}
-                <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                  <span className="text-cyan-200/70 font-medium">Entreprise :</span>
-                  <span className="font-bold text-slate-200 uppercase">{infosEntreprise.nom_entreprise}</span>
-                </div>
-
-                {/* ADRESSE E-MAIL DE L'EMPLOYÉ */}
-                <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                  <span className="text-cyan-200/70 font-medium">Adresse e-mail :</span>
-                  <span className="font-bold text-slate-200">{emailEmploye}</span>
-                </div>
-
-                {/* NUMÉRO DE TÉLÉPHONE DE L'EMPLOYÉ */}
-                <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                  <span className="text-cyan-200/70 font-medium">Numéro de téléphone :</span>
-                  <span className="font-bold text-slate-200 font-mono">{telephoneEmploye}</span>
-                </div>
-
-                {/* STATUT / RÔLE RÉEL (SUPERVISEUR, LIVREUR, ETC.) */}
-                <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                  <span className="text-cyan-200/70 font-medium">Statut / Rôle :</span>
-                  <span className="font-bold text-cyan-400 uppercase">{statutEmploye}</span>
-                </div>
-
-                <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                  <span className="text-cyan-200/70 font-medium">Module actif :</span>
-                  <span className="font-bold text-cyan-300 uppercase">{moduleCourant}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-cyan-900/30">
-                  <span className="text-cyan-200/70 font-medium">Statut de la session :</span>
-                  <span className="bg-cyan-950 text-emerald-400 font-bold px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1 border border-cyan-800">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Actif
-                  </span>
-                </div>
-
-                {/* MOT DE PASSE MASQUÉ & BOUTON MODIFIER */}
-                <div className="space-y-2 pt-2 border-t border-cyan-900/50">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-cyan-200/70 font-medium text-[11px]">Mon mot de passe personnel :</label>
-                    {!enModeModifMdp && (
-                      <button
-                        type="button"
-                        onClick={() => setEnModeModifMdp(true)}
-                        className="text-cyan-400 hover:text-cyan-300 font-bold text-[11px] underline"
-                      >
-                        🔑 Modifier le mot de passe
-                      </button>
-                    )}
-                  </div>
-
-                  {!enModeModifMdp ? (
-                    <div className="relative flex items-center">
-                      <input
-                        type={showMdpUser ? "text" : "password"}
-                        value={editMdpUser}
-                        readOnly
-                        className="w-full bg-[#050b18] border border-cyan-900 rounded-xl px-3 pr-20 py-2 text-xs text-slate-300 font-mono shadow-inner"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowMdpUser(!showMdpUser)}
-                        className="absolute right-2.5 text-cyan-300 hover:text-white text-[11px] font-bold"
-                      >
-                        {showMdpUser ? '🙈 Masquer' : '👁️ Afficher'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5 bg-[#050b18]/90 p-3 rounded-xl border border-cyan-500/40 shadow-inner">
-                      <div className="flex justify-between items-center">
-                        <span className="text-cyan-400 font-bold text-[11px]">Changement de mot de passe</span>
-                        <button
-                          type="button"
-                          onClick={() => { setEnModeModifMdp(false); setNouveauMdp(''); setConfirmerMdp(''); }}
-                          className="text-slate-400 hover:text-white text-[10px]"
-                        >
-                          ✕ Annuler
-                        </button>
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] text-cyan-200 mb-1">Nouveau mot de passe :</label>
-                        <input
-                          type="password"
-                          value={nouveauMdp}
-                          onChange={(e) => setNouveauMdp(e.target.value)}
-                          placeholder="Entrez le nouveau mot de passe"
-                          className="w-full bg-[#0b1329] border border-cyan-900 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono shadow-inner"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] text-cyan-200 mb-1">Confirmer le nouveau mot de passe :</label>
-                        <input
-                          type="password"
-                          value={confirmerMdp}
-                          onChange={(e) => setConfirmerMdp(e.target.value)}
-                          placeholder="Répétez le nouveau mot de passe"
-                          className="w-full bg-[#0b1329] border border-cyan-900 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono shadow-inner"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  onClick={sauvegarderProfilUtilisateur}
-                  className="bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-md"
-                >
-                  💾 Mettre à jour mon profil
-                </button>
-              </div>
-            </div>
-
-            {/* ACTIONS GLOBALES DE SESSION */}
-            <div className="pt-2 space-y-2.5">
+            <div className="space-y-2.5 pt-2">
               {estSuperAdmin && (
                 <button
                   onClick={() => setModuleActif('super_admin_panel')}
@@ -810,20 +420,6 @@ function DashboardContent() {
                   <span>→</span>
                 </button>
               )}
-
-              <button
-                onClick={() => {
-                  if (confirm('Voulez-vous vraiment vous déconnecter de l’application ?')) {
-                    if (typeof window !== 'undefined') {
-                      localStorage.clear();
-                      window.location.href = '/connexion';
-                    }
-                  }
-                }}
-                className="w-full bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-800 font-bold p-3 rounded-xl transition flex items-center justify-center gap-2 shadow-sm text-xs"
-              >
-                <span>🚪</span> Se déconnecter de la session
-              </button>
             </div>
           </div>
         ) : moduleActif === 'souscription' || moduleActif === 'super_admin_panel' ? (
@@ -1021,7 +617,6 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* BARRE DE NAVIGATION INFÉRIEURE BLEUE */}
       <div className="bg-gradient-to-r from-[#0a1931] via-[#0d2347] to-[#0a1931] border-t border-cyan-500/30 py-2.5 px-6 flex justify-around items-center fixed bottom-0 left-0 right-0 z-30 shadow-2xl shrink-0 w-full">
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
@@ -1040,7 +635,7 @@ function DashboardContent() {
           }`}
         >
           <span className="text-lg">📊</span>
-          <span className="text-[10px]">Rapports</span>
+          <span className="text-[10px]">Comptabilité</span>
         </button>
 
         <button
@@ -1073,7 +668,7 @@ function DashboardContent() {
 
 export default function DashboardPrincipal() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#050b18] text-white flex items-center justify-center">Chargement du dashboard...</div>}>
+    <Suspense fallback={<link rel="stylesheet" href="" />}>
       <DashboardContent />
     </Suspense>
   );

@@ -12,11 +12,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [approvisionnements, setApprovisionnements] = useState([]);
   const [entrepriseInfo, setInfosEntreprise] = useState(null);
 
-  const [stocksArticlesCache, setStocksArticlesCache] = useState({});
-
   const [limiteArticles, setLimiteArticles] = useState(20);
 
-  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
   const [permissions, setPermissions] = useState({
     peut_creer: true,
     peut_modifier: true,
@@ -27,8 +24,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
-  const [livreurStatFiltre, setLivreurStatFiltre] = useState('TOUS');
-
   const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
 
   const designationInputRef = useRef(null);
@@ -131,40 +126,35 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .from('familles_articles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
         .order('nom_famille', { ascending: true });
       setFamilles(dataFam || []);
 
       const { data: dataDep } = await supabase
         .from('depots_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+        .eq('id_entreprise', entrepriseId);
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
-      if (listeDepots.length > 0 && depotRapportFiltre === 'TOUS') {
-        setDepotRapportFiltre(String(listeDepots[0].id));
+      if (listeDepots.length > 0) {
+        if (depotRapportFiltre === 'TOUS') setDepotRapportFiltre(String(listeDepots[0].id));
       }
 
       const { data: dataEmp } = await supabase
         .from('emplacements_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+        .eq('id_entreprise', entrepriseId);
       setEmplacements(dataEmp || []);
 
       const { data: dataMouv } = await supabase
         .from('mouvements_stock')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+        .eq('id_entreprise', entrepriseId);
       setMouvements(dataMouv || []);
 
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+        .eq('id_entreprise', entrepriseId);
       setApprovisionnements(dataAppro || []);
 
     } catch (err) {
@@ -175,28 +165,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const chargerArticles = async () => {
     setChargement(true);
     try {
-      let liste = [];
-      const { data: articlesRpc, error: rpcError } = await supabase.rpc('recuperer_articles_stock', {
-        p_entreprise_id: entrepriseId,
-        p_module: moduleActuel
-      });
+      let { data, error } = await supabase
+        .from('articles_stock')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .order('created_at', { ascending: false });
 
-      if (rpcError) {
-        let { data, error } = await supabase
-          .from('articles_stock')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', moduleActuel)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        liste = data || [];
-      } else {
-        liste = articlesRpc || [];
-      }
+      if (error) throw error;
+      const liste = data || [];
       
       setArticles(liste);
-      setStocksArticlesCache({});
       
       if (liste.length > 0) {
         if (!articleSelectionneStatId || !liste.some(a => String(a.id_article || a.id) === String(articleSelectionneStatId))) {
@@ -224,33 +202,225 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return false;
   };
 
-  const recupererStockReelRPC = async (articleId, depotCible = 'TOUS', emplacementCible = null) => {
-    let dId = depotCible !== 'TOUS' ? depotCible : 'AUCUN_DEPOT';
-    let eId = emplacementCible !== 'TOUS' ? emplacementCible : null;
+  // CALCUL EXACT ET STRICT DU STOCK PAR DÉPÔT ET EMPLACEMENT (RAYON)
+  const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
+    if (emplacementCible !== 'TOUS') {
+      let stockEmp = 0;
+      mouvements.forEach(m => {
+        if (String(m.id_article) !== String(articleId)) return;
+        const qte = parseInt(m.quantite || 0);
+        const typeMvt = (m.type_mouvement || '').toUpperCase();
+        
+        const empSource = String(m.id_emplacement_source || '');
+        const empDest = String(m.id_emplacement_destination || '');
 
-    const cacheKey = `${articleId}_${dId}_${eId || 'none'}`;
-    if (stocksArticlesCache[cacheKey] !== undefined) {
-      return stocksArticlesCache[cacheKey];
+        const matchSource = empSource === String(emplacementCible);
+        const matchDest = empDest === String(emplacementCible);
+
+        if (typeMvt === 'INVENTAIRE' && matchSource) {
+          stockEmp = qte;
+          return;
+        }
+        if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          if (matchDest) stockEmp += qte;
+          if (matchSource) stockEmp -= qte;
+          return;
+        }
+        if (matchDest) stockEmp += qte;
+        if (matchSource) stockEmp -= qte;
+      });
+      return Math.max(0, stockEmp);
     }
 
-    try {
-      const { data, error } = await supabase.rpc('calculer_stock_reel', {
-        p_article_id: parseInt(articleId),
-        p_entreprise_id: entrepriseId,
-        p_depot_id: dId,
-        p_emplacement_id: eId
+    if (depotCible !== 'TOUS') {
+      let stockDepot = 0;
+      mouvements.forEach(m => {
+        if (String(m.id_article) !== String(articleId)) return;
+        const qte = parseInt(m.quantite || 0);
+        const typeMvt = (m.type_mouvement || '').toUpperCase();
+
+        const depSource = String(m.id_depot_source || '');
+        const depDest = String(m.id_depot_destination || '');
+
+        const matchSource = depSource === String(depotCible);
+        const matchDest = depDest === String(depotCible);
+
+        if (matchSource && matchDest) return;
+
+        if (typeMvt === 'INVENTAIRE' && matchSource) {
+          stockDepot = qte;
+          return;
+        }
+        if (matchDest) stockDepot += qte;
+        if (matchSource) stockDepot -= qte;
       });
 
-      if (error) throw error;
-      const stockVal = data !== null ? parseInt(data, 10) : 0;
+      approvisionnements.forEach(app => {
+        const depApp = String(app.id_depot_destination || app.id_depot || '');
+        if (depApp !== String(depotCible)) return;
 
-      setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockVal }));
-      return stockVal;
-    } catch (err) {
-      console.error('Erreur RPC stock article :', err.message);
-      const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
-      return artObj ? parseInt(artObj.Quantite_Stock || artObj.quantite_stock || 0, 10) : 0;
+        let listArt = [];
+        if (typeof app.details_articles === 'string') {
+          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+        } else if (Array.isArray(app.details_articles)) {
+          listArt = app.details_articles;
+        }
+        listArt.forEach(item => {
+          if (String(item.id_article || item.article_id) === String(articleId)) {
+            stockDepot += parseInt(item.quantite || 0);
+          }
+        });
+      });
+
+      return Math.max(0, stockDepot);
     }
+
+    let totalEntrees = 0;
+    let totalSorties = 0;
+
+    mouvements.forEach(m => {
+      if (String(m.id_article) !== String(articleId)) return;
+      const qte = parseInt(m.quantite || 0);
+      const typeMvt = (m.type_mouvement || '').toUpperCase();
+
+      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') totalEntrees += qte;
+      else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') totalSorties += qte;
+    });
+
+    approvisionnements.forEach(app => {
+      let listArt = [];
+      if (typeof app.details_articles === 'string') {
+        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = app.details_articles;
+      }
+      listArt.forEach(item => {
+        if (String(item.id_article || item.article_id) === String(articleId)) {
+          totalEntrees += parseInt(item.quantite || 0);
+        }
+      });
+    });
+
+    return Math.max(0, totalEntrees - totalSorties);
+  };
+
+  const formaterTypeMouvementAffichage = (mvt) => {
+    const typeMvt = (mvt.type_mouvement || '').toUpperCase();
+    const motif = (mvt.motif_remarque || '').toUpperCase();
+
+    const matchTicket = motif.match(/(C\d+-\d+)/i);
+    if (matchTicket) {
+      return matchTicket[1];
+    }
+
+    if (typeMvt === 'ENTREE') return 'ME';
+    if (typeMvt === 'SORTIE') return 'MS';
+    if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') return 'TR';
+    if (typeMvt === 'APPROVISIONNEMENT') return 'APP';
+
+    if (motif.includes('VENTE') || motif.includes('TICKET')) {
+      const parts = motif.split(' ');
+      for (const p of parts) {
+        if (/C\d+-\d+/i.test(p)) return p;
+      }
+    }
+
+    return typeMvt.substring(0, 3) || 'MVT';
+  };
+
+  const obtenirHistoriqueChronologiqueStat = (articleId) => {
+    if (!articleId) return { lignes: [], stockFinal: 0 };
+
+    let evenements = [];
+    const dCible = depotStatFiltre;
+
+    approvisionnements.forEach(app => {
+      const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
+      if (!matchDepot) return;
+
+      let listArt = [];
+      if (typeof app.details_articles === 'string') {
+        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = app.details_articles;
+      }
+
+      listArt.forEach(item => {
+        if (String(item.id_article || item.article_id) === String(articleId)) {
+          evenements.push({
+            date: app.created_at || '',
+            typeAbr: 'APP',
+            quantiteMouvementee: parseInt(item.quantite || 0),
+            impactStock: parseInt(item.quantite || 0)
+          });
+        }
+      });
+    });
+
+    mouvements.forEach(m => {
+      if (String(m.id_article) !== String(articleId)) return;
+      
+      const qte = parseInt(m.quantite || 0);
+      const typeMvt = (m.type_mouvement || '').toUpperCase();
+      const estSource = String(m.id_depot_source) === String(dCible);
+      const estDestination = String(m.id_depot_destination) === String(dCible);
+
+      if (dCible !== 'TOUS' && !estSource && !estDestination) return;
+
+      const typeAbr = formaterTypeMouvementAffichage(m);
+      let impact = 0;
+
+      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+        impact = qte;
+      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+        impact = -qte;
+      } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+        const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
+        if (memeDepot) {
+          impact = 0;
+        } else {
+          if (dCible === 'TOUS') {
+            impact = 0;
+          } else {
+            if (estSource) impact = -qte;
+            if (estDestination) impact = qte;
+          }
+        }
+      } else {
+        impact = qte;
+      }
+
+      evenements.push({
+        date: m.created_at || '',
+        typeAbr: typeAbr,
+        quantiteMouvementee: qte,
+        impactStock: impact
+      });
+    });
+
+    evenements.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let stockCourant = 0;
+    let lignesResultat = [];
+
+    evenements.forEach(ev => {
+      const dateEv = ev.date.split('T')[0];
+      const estAvantPeriode = dateDebutStat && dateEv < dateDebutStat;
+
+      if (estAvantPeriode) {
+        stockCourant += ev.impactStock;
+      } else if ((!dateDebutStat || dateEv >= dateDebutStat) && (!dateFinStat || dateEv <= dateFinStat)) {
+        stockCourant += ev.impactStock;
+        lignesResultat.push({
+          ...ev,
+          stockProgressif: Math.max(0, stockCourant)
+        });
+      } else {
+        stockCourant += ev.impactStock;
+      }
+    });
+
+    return { lignes: lignesResultat, stockFinal: Math.max(0, stockCourant) };
   };
 
   const gererUploadImage = async (e) => {
@@ -289,8 +459,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  const designationSaisie = (nouveauArticle.Designation || '').trim().replace(/\s+/g, ' ').toUpperCase();
-
   const enregistrerArticle = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
@@ -318,7 +486,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         Designation: designationClean,
         Code_Barre: (nouveauArticle.Code_Barre || '').trim().toUpperCase(),
         Famille: nouveauArticle.Famille,
-        Prix_Achat: parseFloat(nouveauArticle.Prix_Achat) || 0,
+        Prix_Achat: moduleActuel !== 'LIVRAISON' ? (parseFloat(nouveauArticle.Prix_Achat) || 0) : 0,
         Prix_Vente: parseFloat(nouveauArticle.Prix_Vente) || 0,
         Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte) || 5,
         Photo: nouveauArticle.Photo,
@@ -347,11 +515,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       await chargerArticles();
       await chargerDonneesReference();
     } catch (err) {
-      if (err.code === '23505' || (err.message && err.message.includes('idx_articles_unique_designation'))) {
-        alert("Un article existe déjà avec cette désignation.");
-      } else {
-        alert('Erreur : ' + err.message);
-      }
+      alert('Erreur : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -406,7 +570,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     const artId = articleEnEdition.id_article || articleEnEdition.id;
     setEnTrainDeSauvegarder(true);
     try {
-      const stockGlobalActuel = await recupererStockReelRPC(artId, depotFiltre, emplacementFiltre);
+      const stockGlobalActuel = calculerStockReelDirect(artId, depotFiltre, emplacementFiltre);
 
       if (stockGlobalActuel > 0) {
         alert(`⛔ Impossible de supprimer ! L'article possède encore un stock de ${stockGlobalActuel} unité(s).`);
@@ -460,7 +624,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       valB = String(b.Designation || b.designation || '').toLowerCase();
     } else if (colonneTri === 'Prix_Achat') {
       valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
-      valB = parseFloat(a.Prix_Achat || a.prix_vente || 0);
+      valB = parseFloat(b.Prix_Achat || b.prix_vente || 0);
     } else if (colonneTri === 'Prix_Vente') {
       valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
       valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
@@ -475,7 +639,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const emplacementsDisponibles = depotFiltre === 'TOUS' 
     ? emplacements 
-    : emplacements.filter(emp => String(emp.id_depot || '') === String(depotFiltre));
+    : emplacements.filter(emp => String(emp.id_depot || emp.depot_id || '') === String(depotFiltre));
+
+  const emplacementsTableau = depotFiltre === 'TOUS'
+    ? emplacements
+    : emplacements.filter(emp => String(emp.id_depot || emp.depot_id || '') === String(depotFiltre));
 
   const articlesModalFiltres = articles.filter(art => {
     const nom = (art.Designation || art.designation || '').toLowerCase();
@@ -484,7 +652,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const articleStatObjet = articles.find(a => String(a.id_article || a.id) === String(articleSelectionneStatId));
 
-  const colSpanTotal = 2 + emplacements.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
+  const colSpanTotal = 2 + emplacementsTableau.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
 
   const calculerLigneRapportStock = (articleId) => {
     const dCible = depotRapportFiltre;
@@ -496,27 +664,37 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
       const dateMvt = (m.created_at || '').split('T')[0];
-      const matchDepot = dCible === 'TOUS' || String(m.id_depot_source || m.id_depot_destination) === String(dCible);
-      if (!matchDepot) return;
-
       const qte = parseInt(m.quantite || 0);
       const typeMvt = (m.type_mouvement || '').toUpperCase();
 
+      const estSource = String(m.id_depot_source) === String(dCible);
+      const estDestination = String(m.id_depot_destination) === String(dCible);
+
+      if (dCible !== 'TOUS' && !estSource && !estDestination) return;
+
       if (dateMvt < dateDebutRapport) {
-        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') stockInitial += qte;
-        else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') stockInitial -= qte;
-        else if (typeMvt === 'TRANSFERT') {
-          if (String(m.id_depot_destination) === String(dCible)) stockInitial += qte;
-          if (String(m.id_depot_source) === String(dCible)) stockInitial -= qte;
-        } else if (typeMvt === 'INVENTAIRE') {
-          stockInitial = qte;
+        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          stockInitial += qte;
+        } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          if (dCible === 'TOUS' || estSource) stockInitial -= qte;
+        } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
+          if (!memeDepot && dCible !== 'TOUS') {
+            if (estSource) stockInitial -= qte;
+            if (estDestination) stockInitial += qte;
+          }
         }
       } else if (dateMvt >= dateDebutRapport && dateMvt <= dateFinRapport) {
-        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') entrees += qte;
-        else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') sorties += qte;
-        else if (typeMvt === 'TRANSFERT') {
-          if (String(m.id_depot_destination) === String(dCible)) entrees += qte;
-          if (String(m.id_depot_source) === String(dCible)) sorties += qte;
+        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          entrees += qte;
+        } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          if (dCible === 'TOUS' || estSource) sorties += qte;
+        } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
+          if (!memeDepot && dCible !== 'TOUS') {
+            if (estSource) sorties += qte;
+            if (estDestination) entrees += qte;
+          }
         }
       }
     });
@@ -697,7 +875,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           {afficherForm && permissions.peut_creer ? (
             <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
               
-              <div className="flex justify-end pb-0">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <span className="font-black text-[10px] text-orange-600 uppercase">
+                  {articleEnEdition ? 'Modifier un article' : 'Créer un article'}
+                </span>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1">✖</button>
               </div>
 
@@ -749,20 +930,51 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-1.5">
-                <div>
-                  <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">P.V *</label>
-                  <input
-                    type="number"
-                    required
-                    disabled={enTrainDeSauvegarder}
-                    value={nouveauArticle.Prix_Vente}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-emerald-700 shadow-xs"
-                  />
-                </div>
+              {moduleActuel !== 'LIVRAISON' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">PA</label>
+                    <input
+                      type="number"
+                      disabled={enTrainDeSauvegarder}
+                      value={nouveauArticle.Prix_Achat}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Achat: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-slate-800 shadow-xs"
+                    />
+                  </div>
 
+                  <div>
+                    <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">PV *</label>
+                    <input
+                      type="number"
+                      required
+                      disabled={enTrainDeSauvegarder}
+                      value={nouveauArticle.Prix_Vente}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-emerald-700 shadow-xs"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1">
+                  <div>
+                    <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">PV *</label>
+                    <input
+                      type="number"
+                      required
+                      disabled={enTrainDeSauvegarder}
+                      value={nouveauArticle.Prix_Vente}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-black text-emerald-700 shadow-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-black text-[8.5px] text-slate-700 uppercase mb-0.5 truncate">S.ALERTE</label>
                   <input
@@ -991,7 +1203,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       </th>
                       <th className="p-2.5 text-center whitespace-nowrap">STOCK</th>
 
-                      {emplacements.map((emp) => (
+                      {emplacementsTableau.map((emp) => (
                         <th key={emp.id} className="p-2.5 text-center text-blue-700 whitespace-nowrap">
                           📍 {emp.nom_emplacement || emp.code_emplacement}
                         </th>
@@ -1002,7 +1214,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                           onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Achat')} 
                           className="p-2.5 text-right cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                         >
-                          P.A {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
+                          PA {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                       )}
 
@@ -1010,7 +1222,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Vente')} 
                         className="p-2.5 text-right cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
                       >
-                        P.V {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
+                        PV {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
                       </th>
                     </tr>
                   </thead>
@@ -1021,24 +1233,49 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       </tr>
                     ) : articlesAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
+                        <td colSpan={colSpanTotal} className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré.</td>
                       </tr>
                     ) : (
                       articlesAffiches.map((art) => {
                         const artId = art.id_article || art.id;
+                        const stockCalculé = calculerStockReelDirect(artId, depotFiltre, emplacementFiltre);
+                        const prixAchatValeur = art.Prix_Achat || art.prix_achat || 0;
 
                         return (
-                          <ArticleLigneTableau 
+                          <tr 
                             key={artId}
-                            art={art}
-                            depotFiltre={depotFiltre}
-                            emplacementFiltre={emplacementFiltre}
-                            emplacements={emplacements}
-                            moduleActuel={moduleActuel}
-                            recupererStockRPC={recupererStockReelRPC}
-                            ouvrirEdition={ouvrirEdition}
-                            enTrainDeSauvegarder={enTrainDeSauvegarder}
-                          />
+                            onClick={() => !enTrainDeSauvegarder && ouvrirEdition(art)}
+                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                          >
+                            <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
+                              {art.Designation || art.designation}
+                            </td>
+                            <td className="p-2.5 text-center whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                {stockCalculé}
+                              </span>
+                            </td>
+
+                            {emplacementsTableau.map((emp) => {
+                              const stockEmp = calculerStockReelDirect(artId, depotFiltre, emp.id);
+                              return (
+                                <td key={emp.id} className="p-2.5 text-center whitespace-nowrap">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
+                                    {stockEmp}
+                                  </span>
+                                </td>
+                              );
+                            })}
+
+                            {moduleActuel !== 'LIVRAISON' && (
+                              <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap">
+                                {prixAchatValeur}
+                              </td>
+                            )}
+                            <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap">
+                              {art.Prix_Vente || art.prix_vente || 0}
+                            </td>
+                          </tr>
                         );
                       })
                     )}
@@ -1063,60 +1300,138 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {modeVue === 'statistiques' && (
-        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date début</label>
-                <input
-                  type="date"
-                  disabled={enTrainDeSauvegarder}
-                  value={dateDebutStat}
-                  onChange={(e) => setDateDebutStat(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
-                />
+      {modeVue === 'statistiques' && (() => {
+        const artObj = articleStatObjet;
+        const nomArticle = artObj ? (artObj.Designation || artObj.designation || '') : '';
+        const stats = artObj ? obtenirHistoriqueChronologiqueStat(artObj.id_article || artObj.id) : { lignes: [], stockFinal: 0 };
+
+        return (
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date début</label>
+                  <input
+                    type="date"
+                    disabled={enTrainDeSauvegarder}
+                    value={dateDebutStat}
+                    onChange={(e) => setDateDebutStat(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date fin</label>
+                  <input
+                    type="date"
+                    disabled={enTrainDeSauvegarder}
+                    value={dateFinStat}
+                    onChange={(e) => setDateFinStat(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Date fin</label>
-                <input
-                  type="date"
-                  disabled={enTrainDeSauvegarder}
-                  value={dateFinStat}
-                  onChange={(e) => setDateFinStat(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 shadow-xs"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Dépôt</label>
+                  <select
+                    disabled={enTrainDeSauvegarder}
+                    value={depotStatFiltre}
+                    onChange={(e) => setDepotStatFiltre(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
+                  >
+                    <option value="TOUS">Tous les dépôts</option>
+                    {depots.map((dep) => (
+                      <option key={dep.id} value={dep.id}>
+                        {dep.nom_depot || dep.Nom_Depot}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Article</label>
+                  <div
+                    onClick={() => {
+                      if (enTrainDeSauvegarder) return;
+                      setRechercheModalArticle('');
+                      setAfficherModalSelectionArticle(true);
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+                  >
+                    <span className="truncate uppercase">
+                      {artObj ? nomArticle : '-- Sélectionner --'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">🔍</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block font-black uppercase text-[9px] text-slate-700 mb-0.5">Article</label>
-              <div
-                onClick={() => {
-                  if (enTrainDeSauvegarder) return;
-                  setRechercheModalArticle('');
-                  setAfficherModalSelectionArticle(true);
-                }}
-                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
-              >
-                <span className="truncate uppercase">
-                  {articleStatObjet ? (articleStatObjet.Designation || articleStatObjet.designation) : '-- Sélectionner --'}
-                </span>
-                <span className="text-[10px] text-slate-400">🔍</span>
+            {artObj ? (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
+                  <h4 className="font-black uppercase text-[9.5px]">📈 STATISTIQUES & MOUVEMENTS : {nomArticle}</h4>
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={() => imprimerOngletActif('STATISTIQUES ARTICLE')}
+                    className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-0.5 rounded-lg text-[9.5px] border border-slate-700 flex items-center gap-1 shadow-2xs"
+                  >
+                    <span>🖨️ Imprimer</span>
+                  </button>
+                </div>
+
+                <div id="section-impression-statistiques" className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
+                        <th className="p-2.5">Nom de l'article</th>
+                        <th className="p-2.5 text-center">Type Mvt</th>
+                        <th className="p-2.5 text-center">Quantité</th>
+                        <th className="p-2.5 text-center text-blue-700">Stock Progressif</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                      {stats.lignes.length === 0 ? (
+                        <tr>
+                          <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré sur cette période.</td>
+                        </tr>
+                      ) : (
+                        stats.lignes.map((ligne, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50 transition">
+                            <td className="p-2.5 font-black uppercase text-slate-900">{nomArticle}</td>
+                            <td className="p-2.5 text-center">
+                              <span className={`px-2 py-0.5 rounded font-black text-[9.5px] ${
+                                ligne.typeAbr === 'APP' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                                ligne.typeAbr === 'ME' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                ligne.typeAbr === 'MS' ? 'bg-red-100 text-red-800 border border-red-200' :
+                                ligne.typeAbr === 'TR' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                'bg-blue-100 text-blue-800 border border-blue-200'
+                              }`}>
+                                {ligne.typeAbr}
+                              </span>
+                            </td>
+                            <td className={`p-2.5 text-center font-black ${ligne.impactStock < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                              {ligne.impactStock > 0 ? `+${ligne.quantiteMouvementee}` : ligne.impactStock < 0 ? `-${ligne.quantiteMouvementee}` : ligne.quantiteMouvementee}
+                            </td>
+                            <td className="p-2.5 text-center font-black text-blue-700 bg-blue-50/50">
+                              {ligne.stockProgressif}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-6 text-center text-slate-500 font-bold">Veuillez sélectionner un article.</div>
+            )}
           </div>
-
-          {articleStatObjet ? (
-            <div className="p-4 text-center text-slate-600 font-bold bg-slate-50 rounded-xl border">
-              💡 Article sélectionné : <strong>{articleStatObjet.Designation || articleStatObjet.designation}</strong>
-            </div>
-          ) : (
-            <div className="p-6 text-center text-slate-500 font-bold">Veuillez sélectionner un article.</div>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {modeVue === 'rapport' && (
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
@@ -1243,7 +1558,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
               <div className="space-y-1.5 pt-1">
                 {articlesModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun article trouvé pour le module {moduleActuel}.</p>
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun article trouvé.</p>
                 ) : (
                   articlesModalFiltres.map((art) => {
                     const idA = String(art.id_article || art.id);
@@ -1271,74 +1586,5 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       )}
 
     </div>
-  );
-}
-
-function ArticleLigneTableau({ art, depotFiltre, emplacementFiltre, emplacements, moduleActuel, recupererStockRPC, ouvrirEdition, enTrainDeSauvegarder }) {
-  const artId = art.id_article || art.id;
-  const [stockGlobal, setStockGlobal] = useState(null);
-  const [stocksEmplacements, setStocksEmplacements] = useState({});
-  const [chargement, setChargement] = useState(true);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function chargerStocksLigne() {
-      setChargement(true);
-      try {
-        const stockG = await recupererStockRPC(artId, depotFiltre, emplacementFiltre);
-        
-        const empMap = {};
-        for (const emp of emplacements) {
-          const sEmp = await recupererStockRPC(artId, depotFiltre, emp.id);
-          empMap[emp.id] = sEmp;
-        }
-
-        if (isMounted) {
-          setStockGlobal(stockG);
-          setStocksEmplacements(empMap);
-          setChargement(false);
-        }
-      } catch (err) {
-        if (isMounted) setChargement(false);
-      }
-    }
-    chargerStocksLigne();
-    return () => { isMounted = false; };
-  }, [artId, depotFiltre, emplacementFiltre, emplacements]);
-
-  return (
-    <tr 
-      onClick={() => !enTrainDeSauvegarder && ouvrirEdition(art)}
-      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-    >
-      <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
-        {art.Designation || art.designation}
-      </td>
-      <td className="p-2.5 text-center whitespace-nowrap">
-        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-          {chargement ? '...' : stockGlobal}
-        </span>
-      </td>
-
-      {emplacements.map((emp) => {
-        const stockEmp = stocksEmplacements[emp.id] || 0;
-        return (
-          <td key={emp.id} className="p-2.5 text-center whitespace-nowrap">
-            <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
-              {chargement ? '...' : stockEmp}
-            </span>
-          </td>
-        );
-      })}
-
-      {moduleActuel !== 'LIVRAISON' && (
-        <td className="p-2.5 text-right font-extrabold text-slate-800 text-[10px] whitespace-nowrap">
-          {art.Prix_Achat || art.prix_achat || 0}
-        </td>
-      )}
-      <td className="p-2.5 text-right font-black text-emerald-700 text-[10px] whitespace-nowrap">
-        {art.Prix_Vente || art.prix_vente || 0}
-      </td>
-    </tr>
   );
 }

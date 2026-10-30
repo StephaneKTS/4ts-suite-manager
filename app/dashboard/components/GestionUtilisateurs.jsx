@@ -33,6 +33,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [recherche, setRecherche] = useState('');
   const [afficherMotDePasse, setAfficherMotDePasse] = useState(false);
 
+  // --- GESTION DES ÉTAPES DU FORMULAIRE ---
+  const [etapeFormulaire, setEtapeFormulaire] = useState(1);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+
   const fileInputRef = useRef(null);
 
   const [triCol, setTriCol] = useState('nom_complet');
@@ -69,6 +73,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [nouveauUser, setNouveauUser] = useState({
     nom_complet: '',
     prenom: '',
+    date_naissance: '',
+    lieu_naissance: '',
+    statut_matrimonial: 'CELIBATAIRE',
+    nombre_enfants: 0,
+    lieu_residence: '',
+    numero_cni: '',
+    type_collaborateur: 'EMPLOYE',
+    categorie_permis: '',
+    numero_permis: '',
     email: '',
     pays: 'cmr',
     telephone: '',
@@ -93,7 +106,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const estModeLivraison = moduleActuel === 'LIVRAISON';
 
   const roleActuelObj = roles.find((r) => String(r.id) === String(nouveauUser.id_role));
-  const estRoleLivreur = roleActuelObj && roleActuelObj.nom_role.toUpperCase().includes('LIVREUR');
+  const estRoleLivreurOuChauffeur = (roleActuelObj && (roleActuelObj.nom_role.toUpperCase().includes('LIVREUR') || roleActuelObj.nom_role.toUpperCase().includes('CHAUFFEUR'))) || nouveauUser.type_collaborateur === 'LIVREUR' || nouveauUser.type_collaborateur === 'CHAUFFEUR';
 
   const chargerDonnees = async () => {
     setChargement(true);
@@ -130,7 +143,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .from('utilisateurs')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -176,13 +188,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     setNouveauUser({ ...nouveauUser, telephone: chiffres });
   };
 
-  const getTelephoneComplet = () => {
-    const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
-    return `${paysObj.indicatif}${nouveauUser.telephone || ''}`;
-  };
-
-  const obtenirNumWhatsapp = (tel) => (tel ? tel.replace(/[^0-9]/g, '') : '');
-
   const gererSelectionImage = (e) => {
     const fichier = e.target.files[0];
     if (fichier) {
@@ -194,8 +199,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  const enregistrerUtilisateur = async (e) => {
+  const validerEtape1 = (e) => {
     e.preventDefault();
+    if (!nouveauUser.nom_complet.trim()) {
+      alert('⚠️ Veuillez renseigner le nom du collaborateur.');
+      return;
+    }
+    if (!nouveauUser.id_role) {
+      alert('⚠️ Veuillez sélectionner un rôle ou une fonction.');
+      return;
+    }
 
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
@@ -205,26 +218,55 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    setEtapeFormulaire(2);
+  };
+
+  const enregistrerUtilisateurDefinitif = async (e) => {
+    e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
     if (nouveauUser.acces_application) {
       const nbActuelsAccesApp = utilisateurs.filter(u => u.acces_application && (!userEnEdition || u.id !== userEnEdition.id)).length;
       const limiteLicence = entrepriseInfo?.limite_utilisateurs || 5;
       if (nbActuelsAccesApp >= limiteLicence) {
-        alert(`❌ Limite de licence atteinte (${limiteLicence} utilisateurs avec accès application maximum). Veuillez passer à une formule supérieure.`);
+        alert(`❌ Limite de licence atteinte (${limiteLicence} utilisateurs avec accès application maximum).`);
         return;
       }
     }
 
+    const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
+    const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
+    const emailSaisi = (nouveauUser.email || '').trim().toLowerCase();
 
+    // --- FILTRAGE STRICT DE DUPLICATION SUR TOUT L'ÉCOSYSTÈME DE L'ENTREPRISE ---
+    const doublonEmail = utilisateurs.find(u => 
+      u.email && u.email.trim().toLowerCase() === emailSaisi && (!userEnEdition || u.id !== userEnEdition.id)
+    );
+    if (emailSaisi && doublonEmail) {
+      alert(`❌ Doublon détecté : L'adresse e-mail "${emailSaisi}" est déjà utilisée par un autre collaborateur (${doublonEmail.nom_complet}).`);
+      return;
+    }
+
+    const doublonTelephone = utilisateurs.find(u => 
+      u.telephone && u.telephone.trim() === numeroComplet && (!userEnEdition || u.id !== userEnEdition.id)
+    );
+    if (numeroComplet && doublonTelephone) {
+      alert(`❌ Doublon détecté : Le numéro de téléphone "${numeroComplet}" est déjà utilisé par un autre collaborateur (${doublonTelephone.nom_complet}).`);
+      return;
+    }
+    // --------------------------------------------------------------------------
+
+    setEnTrainDeSauvegarder(true);
     try {
       let emplacementIdFinal = nouveauUser.id_emplacement;
       const nomNomCollab = (nouveauUser.nom_complet || '').trim().toUpperCase();
 
-      if (estModeLivraison && estRoleLivreur) {
+      if (estRoleLivreurOuChauffeur) {
         if (!emplacementIdFinal) {
           const payloadNouvelEmplacement = {
             id_entreprise: entrepriseId,
-            module: moduleActuel,
+            module: 'LIVRAISON',
             nom_emplacement: nomNomCollab,
             responsable_emplacement: nomNomCollab,
           };
@@ -235,48 +277,83 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             .select()
             .maybeSingle();
 
-          if (errEmp) throw errEmp;
-          if (empCree) {
+          if (!errEmp && empCree) {
             emplacementIdFinal = empCree.id;
           }
         }
       }
 
-      const payload = {
+      let payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        nom_complet: (nouveauUser.nom_complet || '').trim().toUpperCase(),
-        email: (nouveauUser.email || '').trim().toLowerCase(),
+        nom_complet: nomNomCollab,
+        prenom: (nouveauUser.prenom || '').trim().toUpperCase(),
+        date_naissance: nouveauUser.date_naissance || null,
+        lieu_naissance: (nouveauUser.lieu_naissance || '').trim().toUpperCase(),
+        statut_matrimonial: nouveauUser.statut_matrimonial,
+        nombre_enfants: parseInt(nouveauUser.nombre_enfants || 0),
+        lieu_residence: (nouveauUser.lieu_residence || '').trim().toUpperCase(),
+        numero_cni: (nouveauUser.numero_cni || '').trim().toUpperCase(),
+        type_collaborateur: nouveauUser.type_collaborateur,
+        categorie_permis: estRoleLivreurOuChauffeur ? (nouveauUser.categorie_permis || '').trim().toUpperCase() : null,
+        numero_permis: estRoleLivreurOuChauffeur ? (nouveauUser.numero_permis || '').trim().toUpperCase() : null,
+        email: emailSaisi,
         pays: nouveauUser.pays,
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
         id_caisse: estModeLivraison ? null : (nouveauUser.id_caisse || null),
+        id_emplacement: estRoleLivreurOuChauffeur ? (emplacementIdFinal || null) : null,
         photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
         permissions: nouveauUser.acces_application ? nouveauUser.permissions : null,
       };
 
-      payload.prenom = (nouveauUser.prenom || '').trim().toUpperCase();
-      if (estModeLivraison) {
-        payload.id_emplacement = estRoleLivreur ? (emplacementIdFinal || null) : null;
+      const executerRequete = async (dataPayload) => {
+        if (userEnEdition) {
+          return await supabase.from('utilisateurs').update(dataPayload).eq('id', userEnEdition.id);
+        } else {
+          return await supabase.from('utilisateurs').insert([dataPayload]);
+        }
+      };
+
+      let res = await executerRequete(payload);
+
+      if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema cache'))) {
+        delete payload.date_naissance;
+        delete payload.lieu_naissance;
+        delete payload.statut_matrimonial;
+        delete payload.nombre_enfants;
+        delete payload.lieu_residence;
+        delete payload.numero_cni;
+        delete payload.type_collaborateur;
+        delete payload.categorie_permis;
+        delete payload.numero_permis;
+        res = await executerRequete(payload);
       }
 
-      if (userEnEdition) {
-        const { error } = await supabase.from('utilisateurs').update(payload).eq('id', userEnEdition.id);
-        if (error) throw error;
-        alert('Collaborateur mis à jour avec succès !');
-      } else {
-        const { error } = await supabase.from('utilisateurs').insert([payload]);
-        if (error) throw error;
-        alert('Collaborateur et son emplacement créés avec succès !');
+      if (res.error) {
+        const errMsg = res.error.message || '';
+        if (res.error.code === '23505' || errMsg.includes('unique') || errMsg.includes('duplicate')) {
+          if (errMsg.includes('email') || errMsg.includes('unique_email')) {
+            throw new Error(`Cette adresse e-mail (${emailSaisi}) est déjà enregistrée dans la base de données.`);
+          } else if (errMsg.includes('telephone') || errMsg.includes('tel')) {
+            throw new Error(`Ce numéro de téléphone (${numeroComplet}) est déjà enregistré dans la base de données.`);
+          } else {
+            throw new Error(`Conflit de duplication : Un collaborateur possède déjà cet e-mail ou ce numéro.`);
+          }
+        }
+        throw res.error;
       }
 
+      alert('Collaborateur enregistré avec succès !');
       annulerForm();
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('❌ Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -291,6 +368,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     setNouveauUser({
       nom_complet: user.nom_complet || '',
       prenom: user.prenom || '',
+      date_naissance: user.date_naissance || '',
+      lieu_naissance: user.lieu_naissance || '',
+      statut_matrimonial: user.statut_matrimonial || 'CELIBATAIRE',
+      nombre_enfants: user.nombre_enfants || 0,
+      lieu_residence: user.lieu_residence || '',
+      numero_cni: user.numero_cni || '',
+      type_collaborateur: user.type_collaborateur || 'EMPLOYE',
+      categorie_permis: user.categorie_permis || '',
+      numero_permis: user.numero_permis || '',
       email: (user.email || '').toLowerCase(),
       pays: user.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
@@ -303,47 +389,45 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       acces_application: user.acces_application ?? true,
       permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
     });
+    setEtapeFormulaire(1);
     setAfficherForm(true);
   };
 
   const annulerForm = () => {
+    if (enTrainDeSauvegarder) return;
     setUserEnEdition(null);
+    setEtapeFormulaire(1);
     setNouveauUser({
-      nom_complet: '',
-      prenom: '',
-      email: '',
-      pays: 'cmr',
-      telephone: '',
-      mot_de_passe: '',
-      id_role: '',
-      id_caisse: '',
-      id_emplacement: '',
-      photo: '',
-      statut: 'ACTIF',
-      acces_application: true,
-      permissions: initialiserPermissionsDefaut(),
+      nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
+      nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
+      numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
+      id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut()
     });
     setAfficherForm(false);
   };
 
   const supprimerUtilisateur = async () => {
-    if (!userEnEdition) return;
+    if (enTrainDeSauvegarder || !userEnEdition) return;
 
+    if (!confirm(`Voulez-vous vraiment supprimer définitivement le collaborateur "${userEnEdition.nom_complet}" ?`)) return;
+
+    setEnTrainDeSauvegarder(true);
     try {
-      if (!confirm(`Voulez-vous vraiment supprimer définitivement le collaborateur "${userEnEdition.nom_complet}" ?`)) return;
-
       const { error } = await supabase.from('utilisateurs').delete().eq('id', userEnEdition.id);
       if (error) throw error;
 
       alert('Collaborateur supprimé avec succès.');
       annulerForm();
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       alert('Erreur : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
   const gererTri = (colonne) => {
+    if (enTrainDeSauvegarder) return;
     if (triCol === colonne) {
       setTriOrdre(triOrdre === 'asc' ? 'desc' : 'asc');
     } else {
@@ -398,16 +482,24 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         </div>
         <button
           type="button"
+          disabled={enTrainDeSauvegarder}
           onClick={() => {
+            if (enTrainDeSauvegarder) return;
             if (afficherForm) {
               annulerForm();
             } else {
-              setNouveauUser({ nom_complet: '', prenom: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '', id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut() });
+              setNouveauUser({
+                nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
+                nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
+                numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
+                id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut()
+              });
               setUserEnEdition(null);
+              setEtapeFormulaire(1);
               setAfficherForm(true);
             }
           }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
         >
           {afficherForm ? '✖' : 'Nouveau'}
         </button>
@@ -416,7 +508,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-start items-center gap-1.5">
         <button
           type="button"
-          onClick={() => annulerForm()}
+          disabled={enTrainDeSauvegarder}
+          onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
           className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
             !afficherForm 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
@@ -428,245 +521,297 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       </div>
 
       {afficherForm && (
-        <form onSubmit={enregistrerUtilisateur} autoComplete="off" className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[60vh] overflow-y-auto pr-2 pb-24">
+        <div className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[75vh] overflow-y-auto pr-2 pb-24">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
+              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'} — Étape {etapeFormulaire} / 2
             </h4>
-            <button type="button" onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
           </div>
 
-          <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-xl space-y-1 shadow-2xs">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={nouveauUser.acces_application}
-                onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
-                className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
-              />
-              <span className="font-black text-amber-950 text-[11px]">
-                Accès à l'application (Consomme une licence / Connexion active)
-              </span>
-            </label>
-          </div>
-
-          {/* INPUT FICHIER CACHÉ POUR GALERIE OU APPAREIL PHOTO */}
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={gererSelectionImage} 
-            accept="image/*" 
-            className="hidden" 
-          />
-
-          {/* SECTION PHOTO DE PROFIL INTERACTIVE SANS ZONE DE TEXTE URL */}
-          <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-            <div 
-              onClick={() => fileInputRef.current && fileInputRef.current.click()}
-              title="Cliquez pour choisir une photo ou prendre un cliché"
-              className="w-14 h-14 rounded-full bg-slate-200 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
-            >
-              {nouveauUser.photo ? (
-                <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-slate-600 text-lg font-black">📷</span>
-              )}
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[9px] font-bold text-center p-0.5">
-                Modifier
-              </div>
+          <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl text-center font-black text-[10px]">
+            <div className={`py-1 rounded-lg ${etapeFormulaire === 1 ? 'bg-orange-600 text-white' : 'bg-white text-slate-700'}`}>
+              1. Infos Personnelles & Paie
             </div>
-            <div className="flex-1">
-              <p className="font-black text-[10px] text-slate-800 uppercase">
-                Photo de profil du collaborateur
-              </p>
-              <p className="text-[9px] text-slate-500 font-semibold mt-0.5">
-                Cliquez sur l'icône de l'appareil photo pour ouvrir la galerie ou filmer directement depuis votre appareil.
-              </p>
+            <div className={`py-1 rounded-lg ${etapeFormulaire === 2 ? 'bg-orange-600 text-white' : 'bg-white text-slate-700'}`}>
+              2. Droits & Autorisations
             </div>
           </div>
 
-          {/* NOM ET PRÉNOM */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom *</label>
-              <input type="text" required value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-            </div>
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Prénom</label>
-              <input type="text" value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-            </div>
-          </div>
-
-          {/* RÔLE / FONCTION & ATTRIBUTION EMPLACEMENT / CAISSE */}
-          <div className={`grid ${estModeLivraison && estRoleLivreur ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
-              <select required value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs">
-                <option value="">-- Rôle --</option>
-                {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
-              </select>
-            </div>
-
-            {estModeLivraison && estRoleLivreur && (
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
-                  Emplacement / Livreur
-                </label>
-                <input
-                  type="text"
-                  value={nouveauUser.id_emplacement ? (emplacements.find(emp => String(emp.id) === String(nouveauUser.id_emplacement))?.nom_emplacement || (nouveauUser.nom_complet || '').trim().toUpperCase()) : (nouveauUser.nom_complet || '').trim().toUpperCase()}
-                  onChange={(e) => setNouveauUser({ ...nouveauUser, id_emplacement: e.target.value.toUpperCase() })}
-                  placeholder="EX: NOM DU LIVREUR"
-                  className="w-full bg-white border border-orange-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs uppercase"
-                />
-              </div>
-            )}
-
-            {!estModeLivraison && (
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
-                <select 
-                  value={nouveauUser.id_caisse} 
-                  onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} 
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate"
-                >
-                  <option value="">-- Aucune caisse --</option>
-                  {caisses.map((c) => (
-                    <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {nouveauUser.acces_application && (
-            <div className="space-y-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
-                <div className="relative flex items-center">
-                  <input 
-                    key={userEnEdition ? userEnEdition.id : 'new-pwd'}
-                    type={afficherMotDePasse ? "text" : "password"} 
-                    required={nouveauUser.acces_application} 
-                    value={nouveauUser.mot_de_passe} 
-                    onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
-                    placeholder="••••••••" 
-                    autoComplete="new-password"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 pr-8 font-mono font-extrabold text-slate-900 text-xs shadow-xs" 
+          {etapeFormulaire === 1 && (
+            <form onSubmit={validerEtape1} className="space-y-2.5">
+              <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-xl space-y-1 shadow-2xs">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    disabled={enTrainDeSauvegarder}
+                    checked={nouveauUser.acces_application}
+                    onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
+                    className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setAfficherMotDePasse(!afficherMotDePasse)}
-                    className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs focus:outline-none"
-                  >
-                    {afficherMotDePasse ? '🙈' : '👁️'}
+                  <span className="font-black text-amber-950 text-[11px]">
+                    Accès à l'application (Consomme une licence / Connexion active)
+                  </span>
+                </label>
+              </div>
+
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={gererSelectionImage} 
+                accept="image/*" 
+                className="hidden" 
+              />
+
+              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div 
+                  onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
+                  title="Cliquez pour choisir une photo"
+                  className="w-14 h-14 rounded-full bg-slate-200 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
+                >
+                  {nouveauUser.photo ? (
+                    <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-slate-600 text-lg font-black">📷</span>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[9px] font-bold text-center p-0.5">
+                    Modifier
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <p className="font-black text-[10px] text-slate-800 uppercase">Photo de profil du collaborateur</p>
+                  <p className="text-[9px] text-slate-500 font-semibold mt-0.5">Cliquez sur l'icône pour ajouter une photo depuis votre appareil.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom *</label>
+                  <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                </div>
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Prénom</label>
+                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date de naissance</label>
+                  <input type="date" disabled={enTrainDeSauvegarder} value={nouveauUser.date_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, date_naissance: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
+                </div>
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de naissance</label>
+                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_naissance: e.target.value.toUpperCase() })} placeholder="EX: YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Matrimonial</label>
+                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut_matrimonial} onChange={(e) => setNouveauUser({ ...nouveauUser, statut_matrimonial: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
+                    <option value="CELIBATAIRE">Célibataire</option>
+                    <option value="MARIE">Marié(e)</option>
+                    <option value="DIVORCE">Divorcé(e)</option>
+                    <option value="VEUF">Veuf(ve)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nombre d'enfants</label>
+                  <input type="number" min="0" disabled={enTrainDeSauvegarder} value={nouveauUser.nombre_enfants} onChange={(e) => setNouveauUser({ ...nouveauUser, nombre_enfants: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de résidence</label>
+                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_residence} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_residence: e.target.value.toUpperCase() })} placeholder="EX: BASTOS, YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                </div>
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro CNI</label>
+                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_cni} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_cni: e.target.value.toUpperCase() })} placeholder="EX: 112233445" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
+                  <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs">
+                    <option value="">-- Rôle --</option>
+                    {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Type Collaborateur</label>
+                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
+                    <option value="EMPLOYE">Employé standard</option>
+                    <option value="LIVREUR">Livreur</option>
+                    <option value="CHAUFFEUR">Chauffeur</option>
+                  </select>
+                </div>
+              </div>
+
+              {estRoleLivreurOuChauffeur && (
+                <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl space-y-2">
+                  <span className="font-black text-orange-900 text-[10px] uppercase block">🚚 Informations Transport / Permis</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Catégorie de permis</label>
+                      <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.categorie_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, categorie_permis: e.target.value.toUpperCase() })} placeholder="EX: A ou B" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                    </div>
+                    <div>
+                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro de permis</label>
+                      <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_permis: e.target.value.toUpperCase() })} placeholder="EX: 123456789" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!estModeLivraison && (
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
+                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.id_caisse} onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate">
+                    <option value="">-- Aucune caisse --</option>
+                    {caisses.map((c) => (<option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>))}
+                  </select>
+                </div>
+              )}
+
+              {nouveauUser.acces_application && (
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
+                  <div className="relative flex items-center">
+                    <input 
+                      type={afficherMotDePasse ? "text" : "password"} 
+                      disabled={enTrainDeSauvegarder}
+                      required={nouveauUser.acces_application} 
+                      value={nouveauUser.mot_de_passe} 
+                      onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
+                      placeholder="••••••••" 
+                      autoComplete="new-password"
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 pr-8 font-mono font-extrabold text-slate-900 text-xs shadow-xs" 
+                    />
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs focus:outline-none">
+                      {afficherMotDePasse ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
+                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                    {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
+                  <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
+                    <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2">
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
+                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
+                </div>
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                    <option value="ACTIF">🟢 Actif</option>
+                    <option value="INACTIF">🔴 Inactif</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200 flex justify-end">
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black px-5 py-2 rounded-lg text-xs shadow-xs transition">
+                  Suivant : Droits & Autorisations ➡️
+                </button>
+              </div>
+            </form>
+          )}
+
+          {etapeFormulaire === 2 && (
+            <form onSubmit={enregistrerUtilisateurDefinitif} className="space-y-3">
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
+                <div>
+                  <p className="font-black text-slate-900 text-xs">Collaborateur : {nouveauUser.nom_complet} {nouveauUser.prenom}</p>
+                  <p className="text-[9.5px] text-slate-500 font-bold">Rôle : {roles.find(r => String(r.id) === String(nouveauUser.id_role))?.nom_role || 'Non défini'}</p>
+                </div>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setEtapeFormulaire(1)} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-2.5 py-1 rounded text-[10px]">
+                  ⬅️ Modifier les infos
+                </button>
+              </div>
+
+              {nouveauUser.acces_application ? (
+                <div className="space-y-2">
+                  <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs max-h-60 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black sticky top-0">
+                        <tr>
+                          <th className="p-2">Module</th>
+                          <th className="p-2 text-center">👁️</th>
+                          <th className="p-2 text-center">➕</th>
+                          <th className="p-2 text-center">✏️</th>
+                          <th className="p-2 text-center">🗑️</th>
+                          <th className="p-2 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-[10px]">
+                        {modulesApp.map((m) => {
+                          const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
+                          const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
+                          return (
+                            <tr key={m.id} className="hover:bg-slate-50">
+                              <td className="p-2 font-black text-slate-950">{m.nom}</td>
+                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
+                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
+                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
+                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.suppression} onChange={() => togglePermission(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
+                              <td className="p-2 text-center">
+                                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => accorderToutModule(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+                                  {estToutAccorde ? 'Aucun' : 'Tous'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-blue-900 font-bold text-center text-xs">
+                  ℹ️ L'accès à l'application n'est pas coché pour ce collaborateur (Personnel de terrain / pas de consommation de licence).
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setEtapeFormulaire(1)} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]">
+                  ⬅️ Précédent
+                </button>
+                <div className="flex items-center gap-1.5">
+                  {userEnEdition && (<button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs">🗑️ Supprimer</button>)}
+                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : 'Valider & Enregistrer')}
                   </button>
                 </div>
               </div>
-            </div>
+            </form>
           )}
-
-          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
-              <select value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
-              <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
-                <input type="text" maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
-              </div>
-            </div>
-          </div>
-
-          {/* EMAIL ET STATUT SUR LA MÊME LIGNE */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2">
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-              <input 
-                key={userEnEdition ? userEnEdition.id : 'new-email'}
-                type="email" 
-                value={nouveauUser.email} 
-                onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} 
-                placeholder="collaborateur@keita.cm" 
-                autoComplete="off"
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" 
-              />
-            </div>
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-              <select value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                <option value="ACTIF">🟢 Actif</option>
-                <option value="INACTIF">🔴 Inactif</option>
-              </select>
-            </div>
-          </div>
-
-          {nouveauUser.acces_application && (
-            <div className="pt-2 border-t border-slate-200 space-y-2">
-              <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black">
-                    <tr>
-                      <th className="p-2">Module</th>
-                      <th className="p-2 text-center">👁️</th>
-                      <th className="p-2 text-center">➕</th>
-                      <th className="p-2 text-center">✏️</th>
-                      <th className="p-2 text-center">🗑️</th>
-                      <th className="p-2 text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-[10px]">
-                    {modulesApp.map((m) => {
-                      const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
-                      const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
-                      return (
-                        <tr key={m.id} className="hover:bg-slate-50">
-                          <td className="p-2 font-black text-slate-950">{m.nom}</td>
-                          <td className="p-2 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
-                          <td className="p-2 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
-                          <td className="p-2 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
-                          <td className="p-2 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermission(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
-                          <td className="p-2 text-center">
-                            <button type="button" onClick={() => accorderToutModule(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-                              {estToutAccorde ? 'Aucun' : 'Tous'}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="pt-2 border-t border-slate-200 flex flex-wrap justify-between items-center gap-1.5">
-            <div className="flex items-center gap-1 flex-wrap">
-              {nouveauUser.telephone && nouveauUser.telephone.length === paysActuelObj.longueur && (
-                <>
-                  <a href={`tel:${getTelephoneComplet()}`} className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold px-2.5 py-1 rounded text-[9.5px]">📞 Appel</a>
-                  <a href={`https://wa.me/${obtenirNumWhatsapp(getTelephoneComplet())}`} target="_blank" rel="noopener noreferrer" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold px-2.5 py-1 rounded text-[9.5px]">WhatsApp</a>
-                </>
-              )}
-              {nouveauUser.email && (<a href={`mailto:${nouveauUser.email}`} className="bg-slate-100 text-slate-800 font-bold px-2.5 py-1 rounded text-[9.5px]">📧 Email</a>)}
-            </div>
-            <div className="flex items-center gap-1.5">
-              {userEnEdition && (<button type="button" onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs">🗑️ Supprimer</button>)}
-              <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">{userEnEdition ? 'Mettre à jour' : 'Enregistrer'}</button>
-            </div>
-          </div>
-        </form>
+        </div>
       )}
 
       {!afficherForm && (
         <>
           <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <input type="text" value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400" />
+            <input type="text" disabled={enTrainDeSauvegarder} value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400" />
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
@@ -683,8 +828,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                   <tr>
                     <th className="p-2.5 w-10 text-center">Avatar</th>
-                    <th onClick={() => gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:bg-slate-200">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
-                    <th onClick={() => gererTri('role')} className="p-2.5 cursor-pointer hover:bg-slate-200">Rôle {rendreFlecheTri('role')}</th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:bg-slate-200">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2.5 cursor-pointer hover:bg-slate-200">Rôle {rendreFlecheTri('role')}</th>
                     <th className="p-2.5 text-center">Type d'accès</th>
                   </tr>
                 </thead>
@@ -693,7 +838,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
                     const aAcces = u.acces_application ?? true;
                     return (
-                      <tr key={u.id} onClick={() => ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                      <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                         <td className="p-2.5 text-center">
                           <div className="w-7 h-7 rounded-full bg-slate-200 border border-slate-300 mx-auto overflow-hidden flex items-center justify-center">
                             {u.photo ? (
