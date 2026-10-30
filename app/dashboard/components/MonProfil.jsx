@@ -58,8 +58,12 @@ export default function MonProfil({ entrepriseId = '' }) {
     utilisateurConnecte.includes('STÉPHANE') || 
     utilisateurConnecte.includes('KENMOE');
 
-  // Détection si l'utilisateur connecté est rattaché à une entreprise ou s'il s'agit d'un utilisateur simple
   const estCompteEntreprise = Boolean(entrepriseId) && entrepriseId !== 'UTILISATEUR';
+
+  const estAdminEntreprise = 
+    estSuperAdmin || 
+    nomUtilisateurConnecte.toUpperCase().includes('ADMIN') || 
+    (entreprise && nomUtilisateurConnecte.toUpperCase() === (entreprise.nom_entreprise || '').toUpperCase());
 
   useEffect(() => {
     chargerInfosUtilisateurEtEntreprise();
@@ -468,8 +472,8 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           </div>
 
-          {/* Affichage des boutons de réabonnement et modules uniquement pour les comptes entreprises */}
-          {estCompteEntreprise && (
+          {/* Affichage des boutons de réabonnement et modules uniquement pour l'entreprise (admin / propriétaire) */}
+          {estAdminEntreprise && (
             <div className="grid grid-cols-3 gap-1.5">
               <button
                 type="button"
@@ -512,7 +516,7 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {estCompteEntreprise && modeAction === 'module_indisponible' && (
+          {estAdminEntreprise && modeAction === 'module_indisponible' && (
             <div className="bg-[#0d1b2a] border-2 border-amber-500/80 p-4 rounded-xl space-y-3 shadow-2xl animate-fadeIn text-center">
               <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-lg font-bold">
                 ⏳
@@ -535,7 +539,7 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {estCompteEntreprise && modeAction === 'switcher_module' && (
+          {estAdminEntreprise && modeAction === 'switcher_module' && (
             <div className="bg-[#0d1b2a] border-2 border-indigo-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
               <h4 className="font-black text-indigo-400 uppercase text-[10px] flex items-center justify-between">
                 <span>⚡ Gestion & Changement de Module</span>
@@ -602,7 +606,7 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {estCompteEntreprise && modeAction === 'reabonnement' && (
+          {estAdminEntreprise && modeAction === 'reabonnement' && (
             <div className="bg-[#0d1b2a] border-2 border-cyan-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
               <h4 className="font-black text-cyan-400 uppercase text-[10px]">
                 🔄 Réabonnement & Extension — Module : <span className="text-orange-400">{moduleActuel}</span>
@@ -664,7 +668,7 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {estCompteEntreprise && modeAction === 'nouveau_module' && (
+          {estAdminEntreprise && modeAction === 'nouveau_module' && (
             <div className="bg-[#0d1b2a] border-2 border-emerald-500/60 p-3 rounded-xl space-y-2.5 shadow-inner animate-fadeIn">
               <h4 className="font-black text-emerald-400 uppercase text-[10px]">
                 ➕ Souscrire à un nouveau module :

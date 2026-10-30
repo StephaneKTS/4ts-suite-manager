@@ -159,6 +159,11 @@ function DashboardContent() {
     utilisateurConnecte.includes('STÉPHANE') || 
     utilisateurConnecte.includes('KENMOE');
 
+  const estAdminEntreprise = 
+    estSuperAdmin || 
+    utilisateurConnecte.toUpperCase().includes('ADMIN') || 
+    utilisateurConnecte.toUpperCase() === (infosEntreprise.nom_entreprise || '').toUpperCase();
+
   const verifierPermission = (moduleId) => {
     if (estSuperAdmin) return true;
     if (!permissionsUser) return true;
@@ -407,7 +412,7 @@ function DashboardContent() {
             <MonProfil entrepriseId={entrepriseId} />
 
             <div className="space-y-2.5 pt-2">
-              {estSuperAdmin && (
+              {estAdminEntreprise && (
                 <button
                   onClick={() => setModuleActif('souscription')}
                   className="w-full bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-bold p-3 rounded-xl transition flex items-center justify-between shadow-md text-xs"
