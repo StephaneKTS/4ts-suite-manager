@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
 
 const LISTE_PAYS = [
@@ -32,13 +33,55 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   
   const [ongletActif, setOngletActif] = useState('repertoire');
 
-  const [roleUtilisateur, setRoleUtilisateur] = useState(null);
-  const [permissions, setPermissions] = useState({
-    peut_creer: true,
-    peut_modifier: true,
-    peut_supprimer: true,
-    peut_valider: true
-  });
+  // États initialisés vides pour éviter les faux droits par défaut au démarrage
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
+
+  // Récupération propre de la session locale au montage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
+      const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
+      if (userLocal) {
+        try {
+          const parsed = JSON.parse(userLocal);
+          setUtilisateurConnecte((parsed.nom_complet || parsed.nom || userLocal).toUpperCase());
+          if (parsed.email) setEmailConnecte(parsed.email);
+        } catch {
+          setUtilisateurConnecte(userLocal.toUpperCase());
+        }
+      }
+      if (emailLocal) setEmailConnecte(emailLocal);
+    }
+  }, []);
+
+  const emailActuel = emailConnecte || '';
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
+
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const cleCacheClients = `clients_${entrepriseId}_${moduleActuel}`;
+
+  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
+  const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleActuel
+  );
+
+  const permissions = {
+    peut_creer: verifierCreation('clients', estSuperAdmin),
+    peut_modifier: verifierModification('clients', estSuperAdmin),
+    peut_supprimer: verifierSuppression('clients', estSuperAdmin),
+    peut_voir: verifierPermission('clients', estSuperAdmin),
+  };
 
   const [limiteClients, setLimiteClients] = useState(20);
   const [triCol, setTriCol] = useState('nom_client');
@@ -66,50 +109,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     solde_credit: 0,
   });
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-  const cleCacheClients = `clients_${entrepriseId}_${moduleActuel}`;
-
-  const chargerDroitsUtilisateur = async () => {
-    try {
-      const emailConnecte = localStorage.getItem('utilisateur_email') || '';
-      if (!emailConnecte) return;
-
-      const { data: userRecord } = await supabase
-        .from('utilisateurs')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('email', emailConnecte)
-        .maybeSingle();
-
-      if (userRecord && userRecord.id_role) {
-        const { data: roleRecord } = await supabase
-          .from('roles')
-          .select('*')
-          .eq('id', userRecord.id_role)
-          .maybeSingle();
-
-        if (roleRecord) {
-          setRoleUtilisateur(roleRecord);
-          setPermissions({
-            peut_creer: roleRecord.peut_creer ?? true,
-            peut_modifier: roleRecord.peut_modifier ?? true,
-            peut_supprimer: roleRecord.peut_supprimer ?? true,
-            peut_valider: roleRecord.peut_valider ?? true
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Erreur chargement des droits :', err.message);
-    }
-  };
-
   const chargerDonnees = async () => {
     // 1. Chargement instantané depuis le cache local (Zéro attente)
     const clientsLocaux = localSync.recupererDonneesLocales(cleCacheClients);
@@ -121,8 +120,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
-      await chargerDroitsUtilisateur();
-
       const { data: dataCat } = await supabase
         .from('categories_clients')
         .select('*')
@@ -262,7 +259,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         setClients(prev => prev.map(c => c.id === clientEnEdition.id ? { ...c, ...payload } : c));
         alert('Client mis à jour avec succès !');
       } else {
-        // CORRECTION CRITIQUE : Ne PAS envoyer de champ id commençant par temp_ pour éviter l'erreur bigint sur Supabase
         const { error, data } = await supabase.from('clients').insert([
           {
             ...payload,
@@ -278,7 +274,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         alert('Client enregistré avec succès !');
       }
 
-      // Suppression et nettoyage de l'ancien cache local
       localStorage.removeItem(cleCacheClients);
 
       annulerForm();
@@ -292,6 +287,10 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   const ouvrirEdition = (client) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_modifier) {
+      alert('⛔ Accès refusé : Modification interdite par votre profil.');
+      return;
+    }
     setClientEnEdition(client);
     
     let telLocal = client.telephone || '';
@@ -554,6 +553,10 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   const enregistrerReglementClient = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+    if (!permissions.peut_modifier) {
+      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
+      return;
+    }
     if (!factureSelectionnee || !montantReglementSaisi) return;
     const montantAvance = parseFloat(montantReglementSaisi);
     if (isNaN(montantAvance) || montantAvance <= 0) {
@@ -587,6 +590,14 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauClient.pays) || LISTE_PAYS[0];
 
+  if (!permissions.peut_voir) {
+    return (
+      <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
+        ⛔ Vous n'avez pas l'autorisation d'afficher le module des clients.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
@@ -595,9 +606,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
           <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
             <span>👥</span> GESTION DES CLIENTS [{moduleActuel}]
           </h3>
-          {roleUtilisateur && (
+          {utilisateurConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
+              Utilisateur : {utilisateurConnecte}
             </span>
           )}
         </div>
@@ -651,7 +662,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
             )}
           </div>
 
-          {afficherForm && (
+          {afficherForm && permissions.peut_creer ? (
             <form onSubmit={enregistrerClient} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2 shadow-2xs">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
@@ -805,9 +816,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
             </form>
-          )}
-
-          {!afficherForm && (
+          ) : (
             <>
               <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
                 <input
@@ -856,8 +865,8 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                             <tr 
                               key={c.id} 
                               onClick={() => !enTrainDeSauvegarder && permissions.peut_modifier && ouvrirEdition(c)}
-                              className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                              title="Cliquer pour modifier"
+                              className={`transition select-none ${permissions.peut_modifier ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
+                              title={permissions.peut_modifier ? "Cliquer pour modifier" : ""}
                             >
                               <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate flex items-center gap-1.5">
                                 {c.nom_client}

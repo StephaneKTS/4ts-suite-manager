@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions';
 
 export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
   const [emplacements, setEmplacements] = useState([]);
@@ -10,20 +11,30 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
-  const [roleNom, setRoleNom] = useState('');
-  const [permissions, setPermissions] = useState({
-    lecture: true,
-    creation: true,
-    modification: true,
-    suppression: true, // Par défaut à true pour éviter les blocages intempestifs
-  });
+  // États initialisés vides pour éviter les faux droits par défaut au démarrage
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
 
-  const [limiteEmplacements, setLimiteEmplacements] = useState(20);
-  const [afficherForm, setAfficherForm] = useState(false);
-  const [nomEmplacement, setNomEmplacement] = useState('');
-  const [responsableEmplacement, setResponsableEmplacement] = useState('');
-  const [idDepot, setIdDepot] = useState('');
-  const [emplacementEnEdition, setEmplacementEnEdition] = useState(null);
+  // Récupération propre de la session locale au montage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
+      const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
+      if (userLocal) {
+        try {
+          const parsed = JSON.parse(userLocal);
+          setUtilisateurConnecte((parsed.nom_complet || parsed.nom || userLocal).toUpperCase());
+          if (parsed.email) setEmailConnecte(parsed.email);
+        } catch {
+          setUtilisateurConnecte(userLocal.toUpperCase());
+        }
+      }
+      if (emailLocal) setEmailConnecte(emailLocal);
+    }
+  }, []);
+
+  const emailActuel = emailConnecte || '';
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
@@ -34,49 +45,31 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
   const moduleActuel = obtenirModuleActuel();
 
-  const chargerPermissionsEtDonnees = async () => {
+  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
+  const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleActuel
+  );
+
+  const permissions = {
+    lecture: verifierPermission('emplacements_stock', estSuperAdmin) || verifierPermission('emplacements', estSuperAdmin),
+    creation: verifierCreation('emplacements_stock', estSuperAdmin) || verifierCreation('emplacements', estSuperAdmin),
+    modification: verifierModification('emplacements_stock', estSuperAdmin) || verifierModification('emplacements', estSuperAdmin),
+    suppression: verifierSuppression('emplacements_stock', estSuperAdmin) || verifierSuppression('emplacements', estSuperAdmin),
+  };
+
+  const [limiteEmplacements, setLimiteEmplacements] = useState(20);
+  const [afficherForm, setAfficherForm] = useState(false);
+  const [nomEmplacement, setNomEmplacement] = useState('');
+  const [responsableEmplacement, setResponsableEmplacement] = useState('');
+  const [idDepot, setIdDepot] = useState('');
+  const [emplacementEnEdition, setEmplacementEnEdition] = useState(null);
+
+  const chargerDonneesReference = async () => {
     setLoading(true);
     try {
-      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
-      const emailConnecteStr = localStorage.getItem('emailConnecte') || '';
-      
-      let estSuperAdminLocal = 
-        emailConnecteStr.toLowerCase().includes('steph') || 
-        (utilisateurConnecteStr && utilisateurConnecteStr.toUpperCase().includes('STÉPHANE')) ||
-        (utilisateurConnecteStr && utilisateurConnecteStr.toUpperCase().includes('KTS'));
-
-      if (utilisateurConnecteStr) {
-        try {
-          const userObj = JSON.parse(utilisateurConnecteStr);
-          const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-          setRoleNom(nomRoleUser);
-
-          if (estSuperAdminLocal || nomRoleUser === 'ADMINISTRATEUR' || nomRoleUser === 'SUPER_ADMIN' || nomRoleUser === 'DIRECTEUR') {
-            setPermissions({ lecture: true, creation: true, modification: true, suppression: true });
-          } else {
-            // Recherche élargie pour correspondre à toutes les variantes de clés possibles dans Supabase
-            const perms = userObj.permissions || {};
-            const pEmp = perms['emplacements_stock'] || perms['depots_stock'] || perms['depots'] || perms['emplacements'];
-            
-            if (pEmp) {
-              setPermissions({
-                lecture: pEmp.lecture ?? true,
-                creation: pEmp.creation ?? true,
-                modification: pEmp.modification ?? true,
-                suppression: pEmp.suppression ?? true,
-              });
-            }
-          }
-        } catch (e) {
-          // Si le parse échoue mais que c'est Stéphane KTS
-          if (estSuperAdminLocal) {
-            setPermissions({ lecture: true, creation: true, modification: true, suppression: true });
-          }
-        }
-      } else if (estSuperAdminLocal) {
-        setPermissions({ lecture: true, creation: true, modification: true, suppression: true });
-      }
-
       const { data: dataDepots } = await supabase
         .from('depots_stock')
         .select('*')
@@ -101,10 +94,14 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
   };
 
   useEffect(() => {
-    chargerPermissionsEtDonnees();
+    chargerDonneesReference();
   }, [entrepriseId, moduleActuel]);
 
   const ouvrirFormulaireNouveau = () => {
+    if (!permissions.creation) {
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Création interdite par votre profil.' });
+      return;
+    }
     setEmplacementEnEdition(null);
     setNomEmplacement('');
     setResponsableEmplacement('');
@@ -114,6 +111,10 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const ouvrirEdition = (emp) => {
+    if (!permissions.modification && !permissions.lecture) {
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Accès restreint.' });
+      return;
+    }
     setEmplacementEnEdition(emp);
     setNomEmplacement(emp.nom_emplacement || '');
     setResponsableEmplacement(emp.responsable_emplacement || '');
@@ -133,6 +134,15 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
   const enregistrerEmplacement = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+
+    if (emplacementEnEdition && !permissions.modification) {
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Modification interdite par votre profil.' });
+      return;
+    }
+    if (!emplacementEnEdition && !permissions.creation) {
+      setMsg({ type: 'error', text: '⛔ Action non autorisée : Création interdite par votre profil.' });
+      return;
+    }
 
     if (!nomEmplacement.trim()) {
       setMsg({ type: 'error', text: '⚠️ Veuillez renseigner le nom de l’emplacement.' });
@@ -169,7 +179,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
       }
 
       annulerForm();
-      await chargerPermissionsEtDonnees();
+      await chargerDonneesReference();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur : ' + err.message });
     } finally {
@@ -179,12 +189,8 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerEmplacement = async () => {
     if (!emplacementEnEdition) return;
-    
-    // Autorisation directe pour le Super-Admin ou si la permission est active
-    const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte') || '';
-    const estSuperAdminLocal = utilisateurConnecteStr.toUpperCase().includes('STÉPHANE') || utilisateurConnecteStr.toUpperCase().includes('KTS');
 
-    if (!permissions.suppression && !estSuperAdminLocal) {
+    if (!permissions.suppression) {
       alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
       return;
     }
@@ -201,7 +207,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
       setMsg({ type: 'success', text: 'Emplacement supprimé avec succès.' });
       annulerForm();
-      await chargerPermissionsEtDonnees();
+      await chargerDonneesReference();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
     }
@@ -214,6 +220,14 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
   const emplacementsAffiches = emplacements.slice(0, limiteEmplacements);
 
+  if (!permissions.lecture) {
+    return (
+      <div className="p-6 text-center bg-white rounded-xl border border-slate-200 text-rose-600 font-bold text-xs">
+        ⛔ Vous n'avez pas l'autorisation d'afficher le module des emplacements.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
@@ -222,20 +236,22 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
           <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
             📍 Emplacements ({emplacementsAffiches.length} / {emplacements.length})
           </h2>
-          {roleNom && (
+          {utilisateurConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleNom}
+              Utilisateur : {utilisateurConnecte}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={ouvrirFormulaireNouveau}
-            className="px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 text-white"
-          >
-            ＋ Nouveau
-          </button>
+          {permissions.creation && (
+            <button
+              type="button"
+              onClick={ouvrirFormulaireNouveau}
+              className="px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              ＋ Nouveau
+            </button>
+          )}
           <button
             type="button"
             onClick={() => { setAfficherForm(false); setEmplacementEnEdition(null); }}
@@ -256,7 +272,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {afficherForm ? (
+      {afficherForm && (permissions.creation || (emplacementEnEdition && permissions.modification)) ? (
         <form onSubmit={enregistrerEmplacement} className="bg-white p-3 rounded-xl border border-orange-500/50 shadow-sm space-y-2.5">
           <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
             <h3 className="font-extrabold text-slate-900 text-[11px] uppercase">
@@ -315,7 +331,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-            {emplacementEnEdition ? (
+            {emplacementEnEdition && permissions.suppression ? (
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
@@ -335,13 +351,15 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
               >
                 Annuler
               </button>
-              <button
-                type="submit"
-                disabled={enTrainDeSauvegarder}
-                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition flex items-center gap-1"
-              >
-                {enTrainDeSauvegarder ? 'Enregistrement...' : (emplacementEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-              </button>
+              {((emplacementEnEdition && permissions.modification) || (!emplacementEnEdition && permissions.creation)) && (
+                <button
+                  type="submit"
+                  disabled={enTrainDeSauvegarder}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition flex items-center gap-1"
+                >
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (emplacementEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                </button>
+              )}
             </div>
           </div>
         </form>
@@ -352,13 +370,15 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
           ) : emplacements.length === 0 ? (
             <div className="text-center py-6 space-y-2">
               <p className="text-slate-400 font-bold text-[10px]">Aucun emplacement enregistré.</p>
-              <button
-                type="button"
-                onClick={ouvrirFormulaireNouveau}
-                className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1 rounded text-[10px]"
-              >
-                ＋ Déclarer un emplacement
-              </button>
+              {permissions.creation && (
+                <button
+                  type="button"
+                  onClick={ouvrirFormulaireNouveau}
+                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1 rounded text-[10px]"
+                >
+                  ＋ Déclarer un emplacement
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -366,8 +386,10 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
                 {emplacementsAffiches.map((emp) => (
                   <div
                     key={emp.id}
-                    onClick={() => ouvrirEdition(emp)}
-                    className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 transition flex flex-col justify-between shadow-2xs group hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer"
+                    onClick={() => permissions.modification && ouvrirEdition(emp)}
+                    className={`p-2.5 rounded-lg border border-slate-200 bg-slate-50 transition flex flex-col justify-between shadow-2xs group ${
+                      permissions.modification ? 'hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer' : 'cursor-default'
+                    }`}
                   >
                     <div className="space-y-1">
                       <div>
@@ -389,7 +411,7 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
 
                     <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-end">
                       <span className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600">
-                        ✏️ Modifier
+                        {permissions.modification ? '✏️ Modifier' : '👁️ Consulter'}
                       </span>
                     </div>
                   </div>

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
+export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -89,7 +89,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     referenceDoc: '',
     motif: '',
     famille_filtre: 'TOUTES',
-    operateur: 'THÉODORE STÉPHANE',
+    operateur: 'STÉPHANE KTS',
   });
 
   const [modalPartageOuverte, setModalPartageOuverte] = useState(false);
@@ -125,7 +125,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
   };
 
   const chargerDonnees = async (silencieux = false) => {
-    if (!silencieux && mouvements.length === 0) setChargement(true);
+    const mouvementsLocaux = localSync.recupererDonneesLocales(cleCacheMouvements);
+    if (!silencieux && mouvementsLocaux && mouvementsLocaux.length > 0) {
+      setMouvements(mouvementsLocaux);
+      setChargement(false);
+    } else if (!silencieux) {
+      setChargement(true);
+    }
+
     try {
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
@@ -537,7 +544,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
       id_emplacement_destination: premier.id_emplacement_destination || '',
-      operateur: premier.operateur || 'THÉODORE STÉPHANE' 
+      operateur: premier.operateur || 'STÉPHANE KTS' 
     });
     setLignesPanier(lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
@@ -592,7 +599,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-TEST' }) {
     const numDocCle = formaterNumeroDocAffichage(numDocBrut);
     
     if (!acc[numDocCle]) { 
-      acc[numDocCle] = { numeroDoc: numDocCle, numeroDocBrut: numDocBrut, date: mvt.created_at || '', type: mvt.type_mouvement || '', operateur: mvt.operateur || 'THÉODORE STÉPHANE', lignesCount: 0 }; 
+      acc[numDocCle] = { numeroDoc: numDocCle, numeroDocBrut: numDocBrut, date: mvt.created_at || '', type: mvt.type_mouvement || '', operateur: mvt.operateur || 'STÉPHANE KTS', lignesCount: 0 }; 
     }
     acc[numDocCle].lignesCount += 1;
     return acc;

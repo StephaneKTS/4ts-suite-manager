@@ -3,10 +3,9 @@
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { usePermissions } from '@/lib/usePermissions'; // <-- Importation de notre hook sécurisé et indépendant
+import { usePermissions } from '@/lib/usePermissions'; 
 import SimulateurCadre from './components/SimulateurCadre';
 
-// Importation de tous vos composants métiers indépendants
 import GestionCaisses from './components/GestionCaisses';
 import GestionEmplacements from './components/GestionEmplacements';
 import GestionVentesHistoriques from './components/GestionVentesHistoriques';
@@ -27,8 +26,6 @@ import EspaceSouscription from './components/EspaceSouscription';
 import GestionCommandesLivraison from './components/GestionCommandesLivraison';
 import GrilleTarifaireLivraison from './components/GrilleTarifaireLivraison';
 import MonProfil from './components/MonProfil';
-
-// Importation de votre module de livraison
 import ModuleLivraison from './livraison/page';
 
 function DashboardContent() {
@@ -61,7 +58,6 @@ function DashboardContent() {
   const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
 
-  // Initialisation et nettoyage de session / cache
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
@@ -88,7 +84,6 @@ function DashboardContent() {
     }
   }, []);
 
-  // Synchronisation de l'entreprise
   useEffect(() => {
     async function fetchEntrepriseData() {
       const cleCacheDashboard = `4ts_dashboard_cache_${entrepriseIdUrl}`;
@@ -146,11 +141,8 @@ function DashboardContent() {
 
   const estModeLivraison = moduleCourant === 'LIVRAISON';
   const emailActuel = emailConnecte || infosEntreprise.email || 'stephs7352@gmail.com';
-  
-  // RESTRICTION STRICTE : Le bouton Super-Admin s'affiche uniquement pour stephs7352@gmail.com
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  // APPEL DU HOOK INDÉPENDANT POUR GÉRER LES PERMISSIONS & LE CACHE LOCAL
   const { chargementPermissions, verifierPermission: verifierPermissionBrute } = usePermissions(
     entrepriseId,
     utilisateurConnecte,
@@ -158,7 +150,6 @@ function DashboardContent() {
     moduleCourant
   );
 
-  // Fonction locale prenant en compte le Super-Admin
   const verifierPermission = (moduleId) => {
     return verifierPermissionBrute(moduleId, estSuperAdmin);
   };
@@ -363,12 +354,8 @@ function DashboardContent() {
       </div>
 
       <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 pb-20 w-full max-w-7xl mx-auto">
-        {chargementPermissions ? (
-          <div className="flex flex-col items-center justify-center py-20 space-y-2">
-            <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-cyan-300 font-bold text-xs">Vérification des habilitations et sécurisation...</p>
-          </div>
-        ) : ongletNavigation === 'rapports' && !moduleActif ? (
+        {/* Suppression du blocage global de chargement des permissions : affichage immédiat */}
+        {ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-2.5 w-full">
             <h2 className="text-[10px] sm:text-xs font-black text-cyan-400/80 uppercase tracking-wider px-0.5">
               COMPTABILITÉ
@@ -616,13 +603,11 @@ function DashboardContent() {
 
   return (
     <div className="w-full min-h-screen bg-[#02050b] flex justify-center items-center">
-      {/* Simulateur actif uniquement sur les grands écrans d'ordinateurs pour vos tests de labo */}
       <div className="hidden md:block w-full max-w-[1400px]">
         <SimulateurCadre>
           {contenuApp}
         </SimulateurCadre>
       </div>
-      {/* Affichage plein écran automatique sur tablettes et téléphones */}
       <div className="block md:hidden w-full">
         {contenuApp}
       </div>

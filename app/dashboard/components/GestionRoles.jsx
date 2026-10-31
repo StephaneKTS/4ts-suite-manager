@@ -98,7 +98,31 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      const listRoles = data || [];
+      let listRoles = data || [];
+
+      // 3. Vérification et auto-création du rôle système ADMINISTRATEUR s'il est absent
+      const adminExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR');
+
+      if (!adminExiste) {
+        const payloadAdmin = {
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          nom_role: 'ADMINISTRATEUR',
+          description: 'Rôle système administrateur avec tous les droits par défaut.',
+          permissions: { _plein_acces: true }
+        };
+
+        const { data: newAdmin, error: errAdmin } = await supabase
+          .from('roles')
+          .insert([payloadAdmin])
+          .select()
+          .single();
+
+        if (!errAdmin && newAdmin) {
+          listRoles = [newAdmin, ...listRoles];
+        }
+      }
+
       setRoles(listRoles);
 
       // Mise à jour du cache local propre
@@ -164,6 +188,13 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       };
 
       if (roleEnEdition) {
+        // Empêcher la modification de nom du rôle système ADMINISTRATEUR par sécurité
+        if ((roleEnEdition.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR' && nomSaisi !== 'ADMINISTRATEUR') {
+          alert('❌ Impossible de renommer le rôle système ADMINISTRATEUR.');
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
         const { error } = await supabase
           .from('roles')
           .update(payload)
@@ -181,7 +212,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           return;
         }
 
-        // Insertion sans ID temporaire pour éviter les erreurs de type bigint/UUID sur Supabase
         const { error, data } = await supabase.from('roles').insert([payload]).select().single();
         if (error) throw error;
 
@@ -191,9 +221,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         alert('Rôle créé avec succès !');
       }
 
-      // Suppression et nettoyage de l'ancien cache local
       localStorage.removeItem(cleCacheRoles);
-
       annulerForm();
       await chargerRolesEtPermissions();
     } catch (err) {
@@ -227,6 +255,12 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerRole = async () => {
     if (enTrainDeSauvegarder || !roleEnEdition) return;
+
+    // Protection du rôle système ADMINISTRATEUR contre la suppression
+    if ((roleEnEdition.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR') {
+      alert('❌ SUPPRESSION INTERDITE : Le rôle système ADMINISTRATEUR ne peut pas être supprimé.');
+      return;
+    }
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -369,18 +403,17 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             </button>
           </div>
 
-          {/* Ligne unique pour le Nom du Rôle et la Description */}
           <div className="flex flex-col sm:flex-row gap-2 w-full">
             <div className="w-full sm:w-1/3">
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom du Rôle *</label>
               <input
                 type="text"
                 required
-                disabled={enTrainDeSauvegarder}
+                disabled={enTrainDeSauvegarder || (roleEnEdition && (roleEnEdition.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR')}
                 value={nouveauRole.nom_role}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
                 placeholder="EX: MANAGER..."
-                className="w-full border border-slate-300 rounded p-1.5 font-extrabold uppercase text-xs shadow-xs bg-white text-slate-900"
+                className="w-full border border-slate-300 rounded p-1.5 font-extrabold uppercase text-xs shadow-xs bg-white text-slate-900 disabled:bg-slate-100"
               />
             </div>
             <div className="w-full sm:w-2/3">
@@ -435,7 +468,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="pt-2 border-t border-slate-200 flex justify-between items-center gap-2">
-            {roleEnEdition ? (
+            {roleEnEdition && (roleEnEdition.nom_role || '').trim().toUpperCase() !== 'ADMINISTRATEUR' ? (
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
@@ -500,7 +533,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">
                     {rolesAffiches.map((r) => {
-                      const nbModulesActifs = Object.values(r.permissions || {}).filter(p => p.lecture).length;
+                      const estAdmin = (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR';
+                      const nbModulesActifs = estAdmin ? modulesApp.length : Object.values(r.permissions || {}).filter(p => p.lecture).length;
                       return (
                         <tr
                           key={r.id}
@@ -509,8 +543,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                           title="Cliquer pour modifier"
                         >
                           <td className="p-2.5 font-extrabold uppercase text-slate-900 w-1/3 truncate">
-                            <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full">
-                              🛡️ {r.nom_role}
+                            <span className={`${estAdmin ? 'bg-indigo-100 text-indigo-900 border-indigo-200' : 'bg-orange-100 text-orange-900 border-orange-200'} border px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full`}>
+                              {estAdmin ? '👑' : '🛡️'} {r.nom_role}
                             </span>
                           </td>
                           <td className="p-2.5 text-slate-600 font-medium w-1/2 truncate max-w-[150px] sm:max-w-xs">
@@ -518,7 +552,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                           </td>
                           <td className="p-2.5 text-center w-1/6">
                             <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded font-black text-[9px]">
-                              {nbModulesActifs}
+                              {estAdmin ? 'Tous' : nbModulesActifs}
                             </span>
                           </td>
                         </tr>

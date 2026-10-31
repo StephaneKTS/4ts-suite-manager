@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' }) {
+export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' }) {
   const [commandes, setCommandes] = useState([]);
   const [lignesCommandesMap, setLignesCommandesMap] = useState({});
   const [partenaires, setPartenaires] = useState([]);
@@ -67,8 +67,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   const [rechercheArticleInput, setRechercheArticleInput] = useState('');
 
   const [partenaireSansStockage, setPartenaireSansStockage] = useState(false);
-
-  const dateDuJourStr = new Date().toISOString().split('T')[0];
 
   // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
   const obtenirPremierJourDuMois = () => {
@@ -198,7 +196,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
   };
 
   const chargerDonnees = async () => {
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL
     const commandesLocales = localSync.recupererDonneesLocales(`commandes_livraison_${entrepriseId}`);
     const lignesLocales = localSync.recupererDonneesLocales(`lignes_commandes_${entrepriseId}`);
     const partenairesLocaux = localSync.recupererDonneesLocales(`partenaires_livraison_${entrepriseId}`);
@@ -222,7 +219,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
         supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('commandes_livraison_lignes').select('*'),
         supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        // CORRECTION : Récupération de TOUS les articles de l'entreprise (sans restreindre au module) pour voir 'COCA 1L'
         supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false }),
         supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('emplacements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -312,7 +308,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId]);
 
-  // --- FONCTION DE CALCUL DE STOCK EXACT (IDENTIQUE À GESTION ARTICLES) ---
   const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
     if (emplacementCible && emplacementCible !== 'TOUS') {
       let stockEmp = 0;
@@ -414,7 +409,6 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
     return Math.max(0, totalEntrees - totalSorties);
   };
 
-  // Récupération dynamique et sécurisée du stock réel (priorité calcul local direct, puis RPC)
   const recupererStockReelRPC = async (articleId) => {
     let emplacementCible = null;
 
@@ -434,14 +428,12 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-TEST' })
       return stocksArticlesCache[cacheKey];
     }
 
-    // 1. Calcul local direct (infaillible et instantané)
     const stockLocal = calculerStockReelDirect(articleId, depotId, emplacementCible);
     if (stockLocal > 0) {
       setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockLocal }));
       return stockLocal;
     }
 
-    // 2. Fallback RPC Supabase
     try {
       const { data, error } = await supabase.rpc('calculer_stock_reel', {
         p_article_id: parseInt(articleId),

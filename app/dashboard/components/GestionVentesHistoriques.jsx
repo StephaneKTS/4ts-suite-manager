@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
-export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) {
+export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }) {
   const [ventes, setVentes] = useState([]);
   const [articlesStock, setArticlesStock] = useState([]);
   const [clientsList, setClientsList] = useState([]);
@@ -130,23 +131,20 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const chargerCacheLocal = () => {
     if (typeof window === 'undefined') return false;
     try {
-      const cacheBrut = localStorage.getItem(cacheKey);
-      if (cacheBrut) {
-        const dataCache = JSON.parse(cacheBrut);
-        if (dataCache && dataCache.entrepriseId === entrepriseId && dataCache.module === moduleActuel) {
-          setVentes(dataCache.ventes || []);
-          setVentesHistoriques(dataCache.ventes || []);
-          setArticlesStock(dataCache.articlesStock || []);
-          setClientsList(dataCache.clientsList || []);
-          setCategoriesList(dataCache.categoriesList || []);
-          setCaissesList(dataCache.caissesList || []);
-          setDepotsList(dataCache.depotsList || []);
-          setMouvements(dataCache.mouvements || []);
-          setApprovisionnements(dataCache.approvisionnements || []);
-          setUtilisateursList(dataCache.utilisateursList || []);
-          setCloturesList(dataCache.cloturesList || []);
-          return true;
-        }
+      const cacheBrut = localSync.recupererDonneesLocales(cacheKey);
+      if (cacheBrut && Array.isArray(cacheBrut.ventes)) {
+        setVentes(cacheBrut.ventes || []);
+        setVentesHistoriques(cacheBrut.ventes || []);
+        setArticlesStock(cacheBrut.articlesStock || []);
+        setClientsList(cacheBrut.clientsList || []);
+        setCategoriesList(cacheBrut.categoriesList || []);
+        setCaissesList(cacheBrut.caissesList || []);
+        setDepotsList(cacheBrut.depotsList || []);
+        setMouvements(cacheBrut.mouvements || []);
+        setApprovisionnements(cacheBrut.approvisionnements || []);
+        setUtilisateursList(cacheBrut.utilisateursList || []);
+        setCloturesList(cacheBrut.cloturesList || []);
+        return true;
       }
     } catch (e) {
       console.error('Erreur lecture cache local :', e);
@@ -154,27 +152,21 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
     return false;
   };
 
-  // --- MISE À JOUR ET PURGE DE L'ANCIEN CACHE LOCAL ---
   const sauvegarderCacheLocal = (donnees) => {
     if (typeof window === 'undefined') return;
     try {
-      // Nettoyage de l'ancien cache ou des clés obsolètes pour cette entité
-      localStorage.removeItem(cacheKey);
-      
-      const payloadCache = {
+      localSync.sauvegarderDonneesLocales(cacheKey, {
         entrepriseId,
         module: moduleActuel,
         timestamp: Date.now(),
         ...donnees
-      };
-      localStorage.setItem(cacheKey, JSON.stringify(payloadCache));
+      });
     } catch (e) {
       console.error('Erreur écriture cache local :', e);
     }
   };
 
   const chargerDonneesEtPermissions = async () => {
-    // Affichage instantané depuis le cache local si disponible
     const cacheExiste = chargerCacheLocal();
     if (!cacheExiste) {
       setChargement(true);
@@ -245,7 +237,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       const dataUsers = resUsers.data || [];
       const dataClotures = resClotures.data || [];
 
-      // Mise à jour des états
       setVentes(ventesData);
       setVentesHistoriques(ventesData);
       setArticlesStock(dataArticles);
@@ -295,7 +286,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         setClientNomSelectionne((dataClients[0].nom_client || dataClients[0].nom || dataClients[0].libelle || 'CLIENTS DIVERS').toUpperCase());
       }
 
-      // Sauvegarde instantanée dans le nouveau cache local propre et isolé
       sauvegarderCacheLocal({
         ventes: ventesData,
         articlesStock: dataArticles,
@@ -318,6 +308,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
   useEffect(() => {
     chargerDonneesEtPermissions();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   useEffect(() => {
@@ -329,7 +320,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
     }
   }, [clientSelectionneObj]);
 
-  // --- IDENTIFIER LES TICKETS DÉJÀ CLÔTURÉS POUR LES EXCLURE DES NOUVELLES CLÔTURES ---
   const idsTicketsClotures = new Set();
   cloturesList.forEach(cl => {
     if (cl.ids_tickets && Array.isArray(cl.ids_tickets)) {
@@ -659,12 +649,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
       if (errVente) {
         if (errVente.code === '23505') {
-          alert('⛔ Erreur : Ce numéro de ticket existe déjà.');
+          localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
         } else {
           throw errVente;
         }
-        setEnTrainDeSauvegarder(false);
-        return;
       }
 
       if (montantCreditRestant > 0 && clientIdFinal) {
@@ -672,7 +660,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         if (clientRef) {
           const creditActuel = Number(clientRef.solde_credit || clientRef.credit || 0);
           const nouveauCredit = creditActuel + montantCreditRestant;
-          await supabase.from('clients').update({ solde_credit: nouveauCredit }).eq('id', clientIdFinal);
+          const { error: errCli } = await supabase.from('clients').update({ solde_credit: nouveauCredit }).eq('id', clientIdFinal);
+          if (errCli) {
+            localSync.ajouterFileAttente('UPDATE', 'clients', { id: clientIdFinal, solde_credit: nouveauCredit });
+          }
         }
       }
 
@@ -690,10 +681,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
         const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
         if (errMvt) {
-          console.error("Erreur enregistrement mouvement stock associé à la vente:", errMvt.message);
+          localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
         }
       }
 
+      localStorage.removeItem(cacheKey);
       alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré avec succès (${typeReglementVente}) !`);
       
       setPanier([]);
@@ -772,8 +764,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       }
 
       const { error } = await supabase.from('ventes_historiques').delete().eq('id', ticketEnCoursDeSuppression.id);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'ventes_historiques', { id: ticketEnCoursDeSuppression.id });
+      }
 
+      localStorage.removeItem(cacheKey);
       alert(`✅ Ticket #${ticketEnCoursDeSuppression.numero_ticket} supprimé avec succès par l'administrateur.`);
       setAfficherModalAuthSuppression(false);
       setTicketSelectionne(null);
@@ -938,7 +933,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
     return 0;
   });
 
-  // --- CALCULS CLÔTURE CAISSE (UNIQUEMENT SUR LES VENTES NON CLÔTURÉES) ---
   const ventesClotureFiltrees = ventesNonCloturees.filter((v) => {
     let matchDate = true;
     if (v.created_at) {
@@ -963,7 +957,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
   const montantReelClotureNum = Number(montantReelVerseCloture || 0);
   const ecartCaisseCloture = montantReelClotureNum - montantAttenduCloture;
 
-  // --- FILTRAGE DE L'HISTORIQUE DES CAISSES CLÔTURÉES SELON LES PARAMÈTRES DE CLÔTURE ---
   const cloturesHistoriqueFiltrees = cloturesList.filter((cl) => {
     let matchDate = true;
     if (cl.date_debut && cl.date_fin) {
@@ -1012,7 +1005,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
       const idsTicketsInclus = ventesClotureFiltrees.map(v => v.id);
       const codeClotureRef = `CLOTURE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
 
-      // 1. Enregistrer dans la table des clôtures de caisse
       const payloadCloture = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -1033,13 +1025,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
 
       const { error: errClotureTable } = await supabase.from('clotures_caisses').insert([payloadCloture]);
       if (errClotureTable) {
-        console.error("Erreur enregistrement clotures_caisses:", errClotureTable.message);
-        alert("Erreur lors de l'enregistrement de la clôture : " + errClotureTable.message);
-        setEnTrainDeSauvegarder(false);
-        return;
+        localSync.ajouterFileAttente('INSERT', 'clotures_caisses', payloadCloture);
       }
 
-      // 2. Insertion dans le journal des caisses / mouvements de caisse
       const payloadJournalCaisse = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -1053,9 +1041,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-TEST' }) 
         created_at: new Date().toISOString()
       };
 
-      await supabase.from('mouvements_caisse').insert([payloadJournalCaisse]);
-      await supabase.from('journal_caisses').insert([payloadJournalCaisse]);
+      const { error: errMvtCaisse } = await supabase.from('mouvements_caisse').insert([payloadJournalCaisse]);
+      if (errMvtCaisse) {
+        localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payloadJournalCaisse);
+      }
 
+      const { error: errJnlCaisse } = await supabase.from('journal_caisses').insert([payloadJournalCaisse]);
+      if (errJnlCaisse) {
+        localSync.ajouterFileAttente('INSERT', 'journal_caisses', payloadJournalCaisse);
+      }
+
+      localStorage.removeItem(cacheKey);
       alert(`✅ Clôture de caisse validée avec succès ! Montant de ${montantAttenduCloture.toLocaleString('fr-FR')} CFA versé dans la caisse "${nomCaisseDest}".`);
       
       setAfficherModalVersementCloture(false);

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' }) {
+export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' }) {
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -457,7 +457,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       if (approEnEditionId) { 
         payload.id = approEnEditionId;
         const { error } = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId);
-        if (error) localSync.ajouterFileAttente('UPDATE', 'approvisionnements', payload);
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'approvisionnements', payload);
+        }
 
         const listeMaj = approvisionnements.map(a => a.id === approEnEditionId ? { ...a, ...payload } : a);
         setApprovisionnements(listeMaj);
@@ -466,7 +468,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         const idTemp = 'temp_' + Date.now();
         const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
         const { error } = await supabase.from('approvisionnements').insert([payload]); 
-        if (error) localSync.ajouterFileAttente('INSERT', 'approvisionnements', payload);
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'approvisionnements', payload);
+        }
 
         const listeMaj = [nouvelObjet, ...approvisionnements];
         setApprovisionnements(listeMaj);
@@ -523,7 +527,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
       if (approEnEditionId) { 
         payload.id = approEnEditionId;
         const { error } = await supabase.from('bons_commande_fournisseurs').update(payload).eq('id', approEnEditionId);
-        if (error) localSync.ajouterFileAttente('UPDATE', 'bons_commande_fournisseurs', payload);
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'bons_commande_fournisseurs', payload);
+        }
 
         const listeMaj = bonsCommandes.map(c => c.id === approEnEditionId ? { ...c, ...payload } : c);
         setBonsCommandes(listeMaj);
@@ -532,7 +538,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-TEST' })
         const idTemp = 'temp_' + Date.now();
         const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
         const { error } = await supabase.from('bons_commande_fournisseurs').insert([payload]); 
-        if (error) localSync.ajouterFileAttente('INSERT', 'bons_commande_fournisseurs', payload);
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'bons_commande_fournisseurs', payload);
+        }
 
         const listeMaj = [nouvelObjet, ...bonsCommandes];
         setBonsCommandes(listeMaj);

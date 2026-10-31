@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 import GestionVentesHistoriques from './GestionVentesHistoriques';
 import GestionJournalCaisse from './GestionJournalCaisse';
 
-export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
+export default function GestionRapports({ entrepriseId = '4TS-234321' }) {
   const [vueActive, setVueActive] = useState('ventes'); // 'ventes' ou ID de la sous-table de saisie comptable
   const [tiroirTresorerieOuvert, setTiroirTresorerieOuvert] = useState(false);
   
@@ -58,13 +59,22 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheRapports = `rapports_${entrepriseId}_${moduleActuel}`;
 
   // --- RÈGLE 2 : FONCTION RPC SUPABASE ---
   // Chargement des permissions et des données via une fonction RPC PostgreSQL avec fallback sécurisé
   const chargerPermissionsEtRapports = async () => {
-    setChargement(true);
+    // 1. Chargement instantané depuis le cache local (Zéro attente)
+    const rapportsLocaux = localSync.recupererDonneesLocales(cleCacheRapports);
+    if (rapportsLocaux && rapportsLocaux.length > 0) {
+      setRapports(rapportsLocaux);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
     try {
-      // 1. Charger et analyser les permissions de l'employé connecté
+      // 2. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
@@ -103,12 +113,13 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      // 2. Charger les données comptables et de rapports
+      // 3. Charger les données comptables et de rapports
       const { data: dataRpc, error: rpcError } = await supabase.rpc('recuperer_rapports_comptables', {
         p_entreprise_id: entrepriseId,
         p_module: moduleActuel
       });
 
+      let listRapports = [];
       if (rpcError) {
         const { data, error } = await supabase
           .from('journal_caisse')
@@ -120,12 +131,18 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        setRapports(data || []);
+        listRapports = data || [];
       } else {
-        setRapports(dataRpc || []);
+        listRapports = dataRpc || [];
       }
+
+      setRapports(listRapports);
+      localSync.sauvegarderDonneesLocales(cleCacheRapports, listRapports);
     } catch (err) {
       console.error('Erreur chargement rapports :', err.message);
+      if (!rapportsLocaux || rapportsLocaux.length === 0) {
+        setRapports([]);
+      }
     } finally {
       setChargement(false);
     }
@@ -133,6 +150,7 @@ export default function GestionRapports({ entrepriseId = '4TS-TEST' }) {
 
   useEffect(() => {
     chargerPermissionsEtRapports();
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel, filtreDateDebut, filtreDateFin]);
 
   // Sous-tables du bloc Saisie Comptable (Grand livre et Journal regroupés sous Saisie des Opérations)

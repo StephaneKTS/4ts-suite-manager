@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
 
 const LISTE_PAYS = [
@@ -34,6 +35,46 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const cleCacheFournisseurs = `fournisseurs_${entrepriseId}_${moduleActuel}`;
   const estModeLivraison = moduleActuel === 'LIVRAISON';
   const libelleEntite = estModeLivraison ? 'PARTENAIRES' : 'FOURNISSEURS';
+
+  // États initialisés vides pour éviter les faux droits par défaut au démarrage
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
+
+  // Récupération propre de la session locale au montage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
+      const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
+      if (userLocal) {
+        try {
+          const parsed = JSON.parse(userLocal);
+          setUtilisateurConnecte((parsed.nom_complet || parsed.nom || userLocal).toUpperCase());
+          if (parsed.email) setEmailConnecte(parsed.email);
+        } catch {
+          setUtilisateurConnecte(userLocal.toUpperCase());
+        }
+      }
+      if (emailLocal) setEmailConnecte(emailLocal);
+    }
+  }, []);
+
+  const emailActuel = emailConnecte || '';
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
+
+  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
+  const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleActuel
+  );
+
+  const permissions = {
+    lecture: verifierPermission('fournisseurs', estSuperAdmin),
+    creation: verifierCreation('fournisseurs', estSuperAdmin),
+    modification: verifierModification('fournisseurs', estSuperAdmin),
+    suppression: verifierSuppression('fournisseurs', estSuperAdmin),
+  };
 
   // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
   const [partenaires, setPartenaires] = useState(() => {
@@ -77,8 +118,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [partenaireEnEdition, setPartenaireEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
 
-  const [roleNom, setRoleNom] = useState('');
-
   const [nouveauPartenaire, setNouveauPartenaire] = useState({
     nom_fournisseur: '',
     statut_stockage: 'AVEC_STOCKAGE',
@@ -93,17 +132,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const chargerPermissionsEtDonnees = async (silencieux = false) => {
     if (!silencieux && partenaires.length === 0) setChargement(true);
     try {
-      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
-      if (utilisateurConnecteStr) {
-        try {
-          const userObj = JSON.parse(utilisateurConnecteStr);
-          const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-          setRoleNom(nomRoleUser);
-        } catch (e) {
-          setRoleNom(utilisateurConnecteStr.trim().toUpperCase());
-        }
-      }
-
       let listPartenaires = [];
       const { data: partenairesRpc, error: rpcError } = await supabase.rpc('recuperer_fournisseurs', {
         p_entreprise_id: entrepriseId,
@@ -206,6 +234,15 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
+    if (partenaireEnEdition && !permissions.modification) {
+      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
+      return;
+    }
+    if (!partenaireEnEdition && !permissions.creation) {
+      alert('⛔ Action non autorisée : Création interdite par votre profil.');
+      return;
+    }
+
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauPartenaire.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauPartenaire.telephone || '').replace(/[^0-9]/g, '');
 
@@ -280,7 +317,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           localSync.ajouterFileAttente('UPDATE', 'fournisseurs', payload);
         }
 
-        // Mise à jour immédiate et locale pour affichage instantané
         const listeMaj = partenaires.map(p => p.id === partenaireEnEdition.id ? { ...p, ...payload } : p);
         setPartenaires(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
@@ -296,7 +332,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           localSync.ajouterFileAttente('INSERT', 'fournisseurs', payload);
         }
 
-        // Insertion immédiate et locale pour affichage instantané
         const listeMaj = [nouvelObjet, ...partenaires];
         setPartenaires(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
@@ -316,6 +351,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   const ouvrirEdition = (partenaire) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.modification) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les éléments.');
+      return;
+    }
     setPartenaireEnEdition(partenaire);
     const soldeCalcule = calculerSoldeDettePartenaire(partenaire);
     
@@ -356,6 +395,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerPartenaire = async () => {
     if (enTrainDeSauvegarder || !partenaireEnEdition) return;
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
+      return;
+    }
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -576,6 +619,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const enregistrerReglementFacture = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+    if (!permissions.modification) {
+      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
+      return;
+    }
     if (!factureSelectionnee || !montantReglementSaisi) return;
     const montantAvance = parseFloat(montantReglementSaisi);
     if (isNaN(montantAvance) || montantAvance <= 0) {
@@ -626,29 +673,31 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
             <span>🏢</span> GESTION DES {libelleEntite} ({partenairesAffiches.length} / {partenairesFiltres.length})
           </h3>
-          {roleNom && (
+          {utilisateurConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleNom}
+              Utilisateur : {utilisateurConnecte}
             </span>
           )}
         </div>
-        <button
-          type="button"
-          disabled={enTrainDeSauvegarder}
-          onClick={() => {
-            if (enTrainDeSauvegarder) return;
-            if (afficherForm) {
-              annulerForm();
-            } else {
-              setNouveauPartenaire({ nom_fournisseur: '', statut_stockage: 'AVEC_STOCKAGE', pays: 'cmr', telephone: '', email: '', adresse: '', solde_dette: 0, id_depot: '' });
-              setPartenaireEnEdition(null);
-              setAfficherForm(true);
-            }
-          }}
-          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-        >
-          {afficherForm ? '✖' : 'Nouveau'}
-        </button>
+        {permissions.creation && (
+          <button
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={() => {
+              if (enTrainDeSauvegarder) return;
+              if (afficherForm) {
+                annulerForm();
+              } else {
+                setNouveauPartenaire({ nom_fournisseur: '', statut_stockage: 'AVEC_STOCKAGE', pays: 'cmr', telephone: '', email: '', adresse: '', solde_dette: 0, id_depot: '' });
+                setPartenaireEnEdition(null);
+                setAfficherForm(true);
+              }
+            }}
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          >
+            {afficherForm ? '✖' : 'Nouveau'}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
@@ -676,7 +725,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
       {ongletActif === 'repertoire' && (
         <>
-          {afficherForm && (
+          {afficherForm && permissions.creation ? (
             <form onSubmit={enregistrerPartenaire} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
@@ -857,7 +906,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  {partenaireEnEdition && (
+                  {partenaireEnEdition && permissions.suppression && (
                     <button
                       type="button"
                       disabled={enTrainDeSauvegarder}
@@ -867,15 +916,15 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
                     </button>
                   )}
-                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs transition">
-                    {enTrainDeSauvegarder ? 'Enregistrement...' : (partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                  </button>
+                  {permissions.modification && (
+                    <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs transition">
+                      {enTrainDeSauvegarder ? 'Enregistrement...' : (partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
-          )}
-
-          {!afficherForm && (
+          ) : (
             <>
               <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
                 <input
@@ -922,9 +971,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                           return (
                             <tr 
                               key={f.id} 
-                              onClick={() => !enTrainDeSauvegarder && ouvrirEdition(f)}
-                              className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                              title="Cliquer pour modifier"
+                              onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirEdition(f)}
+                              className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
+                              title={permissions.modification ? "Cliquer pour modifier" : ""}
                             >
                               <td className="p-2.5 font-black uppercase text-slate-900 truncate">{nomP}</td>
                               <td className="p-2.5 whitespace-nowrap">
@@ -1126,7 +1175,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       <span className="text-red-700">Reste : {totauxFacture.resteAPayer.toLocaleString('fr-FR')} F</span>
                     </div>
 
-                    {totauxFacture.resteAPayer > 0 && (
+                    {totauxFacture.resteAPayer > 0 && permissions.modification && (
                       <form onSubmit={enregistrerReglementFacture} className="flex gap-2 pt-1 border-t border-slate-100">
                         <input
                           type="number"

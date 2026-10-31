@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { localSync } from '../../lib/localSync';
 
-export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST' }) {
+export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-234321' }) {
   const [challenges, setChallenges] = useState([]);
   const [employesList, setEmployesList] = useState([]);
   const [rolesList, setRolesList] = useState([]);
@@ -43,6 +44,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheChallenges = `challenges_commerciaux_${entrepriseId}_${moduleActuel}`;
 
   // État du formulaire de challenge
   const [nouveauChallenge, setNouveauChallenge] = useState({
@@ -64,9 +66,17 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
 
   // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
   const chargerChallenges = async () => {
-    setChargement(true);
+    // 1. Chargement instantané depuis le cache local (Zéro attente)
+    const challengesLocaux = localSync.recupererDonneesLocales(cleCacheChallenges);
+    if (challengesLocaux && challengesLocaux.length > 0) {
+      setChallenges(challengesLocaux);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
     try {
-      // 1. Charger et analyser les permissions de l'employé connecté
+      // 2. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
@@ -125,6 +135,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
       }
 
       setChallenges(liste);
+      localSync.sauvegarderDonneesLocales(cleCacheChallenges, liste);
 
       // Charger la liste des employés
       const { data: empData } = await supabase
@@ -147,6 +158,9 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
       }
     } catch (err) {
       console.error('Erreur chargement challenges :', err.message);
+      if (!challengesLocaux || challengesLocaux.length === 0) {
+        setChallenges([]);
+      }
     } finally {
       setChargement(false);
     }
@@ -154,6 +168,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
 
   useEffect(() => { 
     chargerChallenges(); 
+    localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
   // Calcul du nombre de jours selon le choix de simulation
@@ -207,14 +222,24 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
       };
 
       if (challengeEnEdition) {
+        payloadChallenge.id = challengeEnEdition.id;
         const { error } = await supabase.from('challenges_commerciaux').update(payloadChallenge).eq('id', challengeEnEdition.id);
-        if (error) throw error;
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'challenges_commerciaux', payloadChallenge);
+        }
         alert('Challenge commercial mis à jour avec succès !');
       } else {
-        const { error } = await supabase.from('challenges_commerciaux').insert([payloadChallenge]);
-        if (error) throw error;
+        const idTemp = 'temp_' + Date.now();
+        const payloadInsertion = { ...payloadChallenge, id: idTemp };
+
+        const { error, data } = await supabase.from('challenges_commerciaux').insert([payloadChallenge]).select().maybeSingle();
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'challenges_commerciaux', payloadInsertion);
+        }
         alert('Challenge commercial créé avec succès !');
       }
+
+      localStorage.removeItem(cleCacheChallenges);
       annulerForm();
       await chargerChallenges();
     } catch (err) { 
@@ -277,8 +302,11 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-TEST'
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('challenges_commerciaux').delete().eq('id', challengeEnEdition.id);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'challenges_commerciaux', { id: challengeEnEdition.id });
+      }
 
+      localStorage.removeItem(cleCacheChallenges);
       alert('Challenge supprimé avec succès.');
       annulerForm();
       await chargerChallenges();

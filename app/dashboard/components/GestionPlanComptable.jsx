@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
+export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
   const [comptes, setComptes] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
@@ -230,21 +230,26 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
           .from('comptes_comptables')
           .update(payload)
           .eq('id', compteEnEdition.id);
-        if (error) throw error;
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'comptes_comptables', { ...payload, id: compteEnEdition.id });
+        }
 
         setComptes(prev => prev.map(c => c.id === compteEnEdition.id ? { ...c, ...payload } : c));
         alert('Compte mis à jour avec succès !');
       } else {
-        const { error, data } = await supabase.from('comptes_comptables').insert([payload]).select().single();
-        if (error) throw error;
+        const idTemp = 'temp_' + Date.now();
+        const payloadInsertion = { ...payload, id: idTemp };
 
-        if (data) {
+        const { error, data } = await supabase.from('comptes_comptables').insert([payload]).select().maybeSingle();
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'comptes_comptables', payloadInsertion);
+          setComptes(prev => [payloadInsertion, ...prev]);
+        } else if (data) {
           setComptes(prev => [data, ...prev.filter(c => c.id !== data.id)]);
         }
         alert('Compte créé avec succès !');
       }
 
-      // Suppression et nettoyage de l'ancien cache local
       localStorage.removeItem(cleCacheComptes);
 
       annulerForm();
@@ -292,7 +297,9 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('comptes_comptables').delete().eq('id', compteEnEdition.id);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'comptes_comptables', { id: compteEnEdition.id });
+      }
 
       setComptes(prev => prev.filter(c => c.id !== compteEnEdition.id));
       localStorage.removeItem(cleCacheComptes);
@@ -342,7 +349,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-TEST' }) {
       return 0;
     });
 
-  // Application de la limite mobile
   const comptesAffiches = comptesFiltres.slice(0, limiteComptes);
 
   return (

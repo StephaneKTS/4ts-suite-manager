@@ -17,6 +17,7 @@ export default function ConnexionEntreprise() {
     localStorage.removeItem('emailConnecte');
     localStorage.removeItem('entrepriseId');
     localStorage.removeItem('utilisateur_connecte');
+    localStorage.removeItem('permissions_utilisateur'); // Nettoyage de l'ancienne session de permissions
 
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
@@ -40,6 +41,7 @@ export default function ConnexionEntreprise() {
     try {
       let entrepriseIdCible = null;
       let nomUtilisateurConnecte = '';
+      let matrixPermissions = { _aucun_acces: true };
       let authenticated = false;
 
       // 1. RECHERCHE DANS LES UTILISATEURS (Employés par e-mail, nom ou téléphone)
@@ -56,7 +58,6 @@ export default function ConnexionEntreprise() {
           const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
           const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
 
-          // Nettoyage intelligent du téléphone (retrait de '+' et suppression de l'indicatif 237 si présent)
           let telBase = u.telephone ? String(u.telephone).replace(/[^0-9]/g, '') : '';
           if (telBase.startsWith('237')) telBase = telBase.substring(3);
 
@@ -80,6 +81,26 @@ export default function ConnexionEntreprise() {
 
           entrepriseIdCible = utilisateurTrouve.id_entreprise;
           nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
+
+          // Récupération des permissions de l'utilisateur (via son rôle lié id_role ou permissions directes)
+          if (utilisateurTrouve.id_role) {
+            const { data: roleData, error: errRole } = await supabase
+              .from('roles')
+              .select('permissions, nom_role')
+              .eq('id', utilisateurTrouve.id_role)
+              .maybeSingle();
+
+            if (!errRole && roleData) {
+              if ((roleData.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR') {
+                matrixPermissions = { _plein_acces: true };
+              } else if (roleData.permissions) {
+                matrixPermissions = roleData.permissions;
+              }
+            }
+          } else if (utilisateurTrouve.permissions) {
+            matrixPermissions = utilisateurTrouve.permissions;
+          }
+
           authenticated = true;
         }
       }
@@ -116,10 +137,12 @@ export default function ConnexionEntreprise() {
             if (!mdpBase || mdpBase === cleanPin) {
               entrepriseIdCible = entrepriseTrouvee.id_entreprise;
               
-              if (entrepriseIdCible === '4TS-234321') {
+              if (entrepriseIdCible === '4TS-234321' || cleanIdentifiant.toLowerCase() === 'stephs7352@gmail.com') {
                 nomUtilisateurConnecte = 'STEPHANE KTS';
+                matrixPermissions = { _plein_acces: true };
               } else {
                 nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
+                matrixPermissions = { _plein_acces: true }; // Par défaut l'admin d'entreprise a tous les accès
               }
               
               authenticated = true;
@@ -134,9 +157,11 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant, e-mail ou numéro de téléphone introuvable dans le système. Accès non autorisé.");
       }
 
+      // Sauvegarde de la session et des permissions locales (chargement unique à la connexion)
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
+      localStorage.setItem('permissions_utilisateur', JSON.stringify(matrixPermissions));
 
       window.location.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
 

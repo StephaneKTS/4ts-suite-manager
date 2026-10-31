@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
 
 export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
@@ -10,7 +11,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
-  // Règle 1 : Pagination / Limite d'affichage pour fluidifier le mobile
+  // Pagination / Limite d'affichage pour fluidifier le mobile
   const [limiteCaisses, setLimiteCaisses] = useState(20);
 
   const [afficherForm, setAfficherForm] = useState(false);
@@ -19,13 +20,30 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const [natureCaisse, setNatureCaisse] = useState('FACTURATION');
   const [caisseEnEdition, setCaisseEnEdition] = useState(null);
 
-  // État des permissions utilisateur strictes
-  const [permissions, setPermissions] = useState({
-    peutVoir: true,
-    peutCreer: true,
-    peutModifier: true,
-    peutSupprimer: true,
-  });
+  // États initialisés vides pour éviter les faux droits par défaut au démarrage
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
+
+  // Récupération propre de la session locale au montage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
+      const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
+      if (userLocal) {
+        try {
+          const parsed = JSON.parse(userLocal);
+          setUtilisateurConnecte((parsed.nom_complet || parsed.nom || userLocal).toUpperCase());
+          if (parsed.email) setEmailConnecte(parsed.email);
+        } catch {
+          setUtilisateurConnecte(userLocal.toUpperCase());
+        }
+      }
+      if (emailLocal) setEmailConnecte(emailLocal);
+    }
+  }, []);
+
+  const emailActuel = emailConnecte || '';
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
@@ -37,12 +55,27 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
   const cleCacheCaisses = `caisses_${entrepriseId}_${moduleActuel}`;
 
+  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
+  const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleActuel
+  );
+
+  const permissions = {
+    peutVoir: verifierPermission('caisses', estSuperAdmin) || verifierPermission('caisse', estSuperAdmin),
+    peutCreer: verifierCreation('caisses', estSuperAdmin) || verifierCreation('caisse', estSuperAdmin),
+    peutModifier: verifierModification('caisses', estSuperAdmin) || verifierModification('caisse', estSuperAdmin),
+    peutSupprimer: verifierSuppression('caisses', estSuperAdmin) || verifierSuppression('caisse', estSuperAdmin),
+  };
+
   useEffect(() => {
-    chargerPermissionsEtCaisses();
+    chargerCaisses();
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
-  const chargerPermissionsEtCaisses = async () => {
+  const chargerCaisses = async () => {
     // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL DU MODULE ACTIF
     const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses);
     if (caissesLocales && caissesLocales.length > 0) {
@@ -53,25 +86,6 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
-      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
-      if (utilisateurConnecteStr) {
-        const userObj = JSON.parse(utilisateurConnecteStr);
-        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-
-        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-          const permModule = userObj.permissions?.['caisses'] || userObj.permissions?.['caisse'];
-          
-          if (permModule) {
-            setPermissions({
-              peutVoir: permModule.lecture ?? permModule.voir ?? true,
-              peutCreer: permModule.creation ?? permModule.creer ?? true,
-              peutModifier: permModule.modification ?? permModule.modifier ?? false,
-              peutSupprimer: permModule.suppression ?? permModule.supprimer ?? true,
-            });
-          }
-        }
-      }
-
       // 2. RÉCUPÉRATION SUPABASE ROBUSTE (Filtrage par entreprise et module)
       const { data, error } = await supabase
         .from('caisses')
@@ -195,7 +209,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       localStorage.removeItem(cleCacheCaisses);
 
       annulerForm();
-      await chargerPermissionsEtCaisses();
+      await chargerCaisses();
     } catch (err) {
       if (err.code === '23505') {
         setMsg({ type: 'error', text: '⛔ Erreur : Ce code caisse ou ce nom existe déjà.' });
@@ -230,7 +244,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       
       setMsg({ type: 'success', text: 'Caisse supprimée avec succès.' });
       annulerForm();
-      await chargerPermissionsEtCaisses();
+      await chargerCaisses();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
     } finally {
@@ -291,7 +305,7 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {afficherForm ? (
+      {afficherForm && permissions.peutCreer ? (
         <form onSubmit={enregistrerCaisse} className="bg-white p-3 rounded-xl border border-orange-500/50 shadow-sm space-y-2.5">
           <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
             <h3 className="font-extrabold text-slate-900 text-[11px] uppercase">
@@ -413,8 +427,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
                 {caissesAffichees.map((c) => (
                   <div
                     key={c.id}
-                    onClick={() => ouvrirEdition(c)}
-                    className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer transition flex flex-col justify-between shadow-2xs group"
+                    onClick={() => permissions.peutModifier && ouvrirEdition(c)}
+                    className={`p-2.5 rounded-lg border border-slate-200 bg-slate-50 transition flex flex-col justify-between shadow-2xs group ${
+                      permissions.peutModifier ? 'hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer' : 'cursor-default'
+                    }`}
                   >
                     <div className="space-y-1">
                       <div>

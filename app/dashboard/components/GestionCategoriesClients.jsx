@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) {
+export default function GestionCategoriesClients({ entrepriseId = '4TS-234321' }) {
   const [categories, setCategories] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
@@ -152,17 +152,23 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       };
 
       if (categorieEnEdition) {
+        payload.id = categorieEnEdition.id;
         const { error } = await supabase.from('categories_clients').update(payload).eq('id', categorieEnEdition.id);
-        if (error) throw error;
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'categories_clients', payload);
+        }
 
         setCategories(prev => prev.map(c => c.id === categorieEnEdition.id ? { ...c, ...payload } : c));
         alert('Mise à jour réussie !');
       } else {
-        // Insertion sans ID temporaire pour éviter les erreurs de type bigint sur Supabase
-        const { error, data } = await supabase.from('categories_clients').insert([payload]).select().single();
-        if (error) throw error;
+        const idTemp = 'temp_' + Date.now();
+        const payloadInsertion = { ...payload, id: idTemp };
 
-        if (data) {
+        const { error, data } = await supabase.from('categories_clients').insert([payload]).select().maybeSingle();
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'categories_clients', payloadInsertion);
+          setCategories(prev => [payloadInsertion, ...prev]);
+        } else if (data) {
           setCategories(prev => [data, ...prev.filter(c => c.id !== data.id)]);
         }
         alert('Création réussie !');
@@ -256,7 +262,9 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-TEST' }) 
       }
 
       const { error } = await supabase.from('categories_clients').delete().eq('id', categorieEnEdition.id);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'categories_clients', { id: categorieEnEdition.id });
+      }
 
       setCategories(prev => prev.filter(c => c.id !== categorieEnEdition.id));
       localStorage.removeItem(cleCacheCategories);

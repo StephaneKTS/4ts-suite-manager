@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
 
 export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
@@ -15,6 +16,46 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
   const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
+
+  // États initialisés vides pour éviter les faux droits par défaut au démarrage
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
+
+  // Récupération propre de la session locale au montage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
+      const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
+      if (userLocal) {
+        try {
+          const parsed = JSON.parse(userLocal);
+          setUtilisateurConnecte((parsed.nom_complet || parsed.nom || userLocal).toUpperCase());
+          if (parsed.email) setEmailConnecte(parsed.email);
+        } catch {
+          setUtilisateurConnecte(userLocal.toUpperCase());
+        }
+      }
+      if (emailLocal) setEmailConnecte(emailLocal);
+    }
+  }, []);
+
+  const emailActuel = emailConnecte || '';
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
+
+  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
+  const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleActuel
+  );
+
+  const permissions = {
+    lecture: verifierPermission('depots_stock', estSuperAdmin),
+    creation: verifierCreation('depots_stock', estSuperAdmin),
+    modification: verifierModification('depots_stock', estSuperAdmin),
+    suppression: verifierSuppression('depots_stock', estSuperAdmin),
+  };
 
   // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
   const [depots, setDepots] = useState(() => {
@@ -40,9 +81,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   const [depotOuvertId, setDepotOuvertId] = useState(null);
 
-  const [roleNom, setRoleNom] = useState('');
-  const [estAdmin, setEstAdmin] = useState(false);
-
   const [nouveauDepot, setNouveauDepot] = useState({
     nom_depot: '',
     adresse_localisation: '',
@@ -65,24 +103,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const chargerDepots = async (silencieux = false) => {
     if (!silencieux && depots.length === 0) setChargement(true);
     try {
-      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
-      if (utilisateurConnecteStr) {
-        try {
-          const userObj = JSON.parse(utilisateurConnecteStr);
-          const r = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-          setRoleNom(r);
-          if (r.includes('ADMIN') || r.includes('DIRECTEUR') || r.includes('STÉPHANE') || r.includes('KENMOE')) {
-            setEstAdmin(true);
-          }
-        } catch (e) {
-          const r = utilisateurConnecteStr.trim().toUpperCase();
-          setRoleNom(r);
-          if (r.includes('ADMIN') || r.includes('STÉPHANE') || r.includes('KENMOE')) {
-            setEstAdmin(true);
-          }
-        }
-      }
-
       const { data: dataDepots, error: errDepots } = await supabase
         .from('depots_stock')
         .select('*')
@@ -128,6 +148,15 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const enregistrerDepot = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+
+    if (depotEnEdition && !permissions.modification) {
+      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
+      return;
+    }
+    if (!depotEnEdition && !permissions.creation) {
+      alert('⛔ Action non autorisée : Création interdite par votre profil.');
+      return;
+    }
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -196,6 +225,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   const ouvrirEdition = (depot) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.modification) {
+      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les dépôts.');
+      return;
+    }
     setDepotEnEdition(depot);
     setNouveauDepot({
       nom_depot: depot.nom_depot || depot.Nom_Depot || '',
@@ -220,6 +253,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerDepotDepuisFormulaire = async () => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
+      return;
+    }
     if (!depotEnEdition) {
       alert("⚠️ Aucun dépôt sélectionné pour la suppression.");
       return;
@@ -263,6 +300,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const ajouterEmplacement = async (e, depot) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
+    if (!permissions.creation) {
+      alert('⛔ Action non autorisée : Ajout d’emplacement interdit par votre profil.');
+      return;
+    }
     if (!nouveauNomEmplacement.trim()) return;
 
     setEnTrainDeSauvegarder(true);
@@ -301,6 +342,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
   const supprimerEmplacement = async (empId) => {
     if (enTrainDeSauvegarder) return;
+    if (!permissions.suppression) {
+      alert('⛔ Action non autorisée : Suppression d’emplacement interdite par votre profil.');
+      return;
+    }
     if (!confirm('Supprimer cet emplacement ?')) return;
 
     setEnTrainDeSauvegarder(true);
@@ -334,30 +379,32 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
             <span>🏢</span> GESTION DES DÉPÔTS ({depotsAffiches.length} / {depots.length})
           </h3>
-          {roleNom && (
+          {utilisateurConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleNom}
+              Utilisateur : {utilisateurConnecte}
             </span>
           )}
         </div>
         
-        <button
-          type="button"
-          disabled={enTrainDeSauvegarder}
-          onClick={() => {
-            if (enTrainDeSauvegarder) return;
-            if (afficherFormDepot) {
-              annulerFormDepot();
-            } else {
-              setDepotEnEdition(null);
-              setNouveauDepot({ nom_depot: '', adresse_localisation: '', responsable_depot: '', est_depot_par_defaut: false });
-              setAfficherFormDepot(true);
-            }
-          }}
-          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-        >
-          {afficherFormDepot ? '✖' : 'Nouveau'}
-        </button>
+        {permissions.creation && (
+          <button
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={() => {
+              if (enTrainDeSauvegarder) return;
+              if (afficherFormDepot) {
+                annulerFormDepot();
+              } else {
+                setDepotEnEdition(null);
+                setNouveauDepot({ nom_depot: '', adresse_localisation: '', responsable_depot: '', est_depot_par_defaut: false });
+                setAfficherFormDepot(true);
+              }
+            }}
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          >
+            {afficherFormDepot ? '✖' : 'Nouveau'}
+          </button>
+        )}
       </div>
 
       <div className="flex justify-start items-center gap-1.5">
@@ -375,13 +422,13 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         </button>
       </div>
 
-      {afficherFormDepot ? (
+      {afficherFormDepot && permissions.creation ? (
         <form onSubmit={enregistrerDepot} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
           <div className="flex justify-between items-center pb-1 border-b border-slate-100">
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
               {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot || depotEnEdition.Nom_Depot}` : `Nouveau Dépôt / Magasin`}
             </span>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✖</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[10px]">
@@ -441,7 +488,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="pt-2 flex justify-between items-center border-t border-slate-200">
-            {depotEnEdition ? (
+            {depotEnEdition && permissions.suppression ? (
               <button 
                 type="button" 
                 disabled={enTrainDeSauvegarder}
@@ -454,9 +501,11 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
             <div className="flex gap-1.5">
               <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-[10px]">Annuler</button>
-              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-xs">
-                {enTrainDeSauvegarder ? 'Enregistrement...' : (depotEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-              </button>
+              {permissions.modification && (
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-xs">
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (depotEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                </button>
+              )}
             </div>
           </div>
         </form>
@@ -486,8 +535,8 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                   }`}
                 >
                   <div
-                    onClick={() => !enTrainDeSauvegarder && ouvrirEdition(dep)}
-                    className="p-2.5 cursor-pointer flex items-center justify-between gap-2 hover:bg-orange-50/70 transition select-none"
+                    onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirEdition(dep)}
+                    className={`p-2.5 flex items-center justify-between gap-2 transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
                   >
                     <div className="flex items-center gap-2 truncate">
                       <span className="text-base shrink-0">🏢</span>
@@ -527,41 +576,43 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                         </span>
                       </div>
 
-                      <form
-                        onSubmit={(e) => ajouterEmplacement(e, dep)}
-                        className="bg-white p-2 rounded-lg border border-slate-300 flex gap-1.5 items-end shadow-2xs"
-                      >
-                        <div className="flex-1">
-                          <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Emplacement</label>
-                          <input
-                            type="text"
-                            required
-                            disabled={enTrainDeSauvegarder}
-                            value={nouveauNomEmplacement}
-                            onChange={(e) => setNouveauNomEmplacement(e.target.value.toUpperCase())}
-                            placeholder="EX: RAYON A1"
-                            className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold uppercase text-slate-900 shadow-xs"
-                          />
-                        </div>
-
-                        <div className="flex-1">
-                          <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Responsable</label>
-                          <div 
-                            onClick={() => { if (!enTrainDeSauvegarder) setModalRespOuverte(true); }} 
-                            className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold text-slate-900 cursor-pointer truncate shadow-xs"
-                          >
-                            {responsableEmplacement ? responsableEmplacement : `-- Choisir --`}
-                          </div>
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={enTrainDeSauvegarder}
-                          className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1 rounded text-[10px] shadow-xs shrink-0 flex items-center gap-1"
+                      {permissions.creation && (
+                        <form
+                          onSubmit={(e) => ajouterEmplacement(e, dep)}
+                          className="bg-white p-2 rounded-lg border border-slate-300 flex gap-1.5 items-end shadow-2xs"
                         >
-                          <span>➕</span> Ajouter
-                        </button>
-                      </form>
+                          <div className="flex-1">
+                            <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Emplacement</label>
+                            <input
+                              type="text"
+                              required
+                              disabled={enTrainDeSauvegarder}
+                              value={nouveauNomEmplacement}
+                              onChange={(e) => setNouveauNomEmplacement(e.target.value.toUpperCase())}
+                              placeholder="EX: RAYON A1"
+                              className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold uppercase text-slate-900 shadow-xs"
+                            />
+                          </div>
+
+                          <div className="flex-1">
+                            <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Responsable</label>
+                            <div 
+                              onClick={() => { if (!enTrainDeSauvegarder) setModalRespOuverte(true); }} 
+                              className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold text-slate-900 cursor-pointer truncate shadow-xs"
+                            >
+                              {responsableEmplacement ? responsableEmplacement : `-- Choisir --`}
+                            </div>
+                          </div>
+
+                          <button
+                            type="submit"
+                            disabled={enTrainDeSauvegarder}
+                            className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1 rounded text-[10px] shadow-xs shrink-0 flex items-center gap-1"
+                          >
+                            <span>➕</span> Ajouter
+                          </button>
+                        </form>
+                      )}
 
                       {emplacements.length === 0 ? (
                         <p className="text-center text-slate-500 py-2 font-bold italic text-[10px]">Aucun emplacement enregistré.</p>
@@ -581,15 +632,17 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                                   <p className="font-black text-slate-900 text-[10px] truncate">📦 {empNom}</p>
                                   <p className="text-[8.5px] text-slate-600 font-bold truncate">👤 {empResp}</p>
                                 </div>
-                                <button
-                                  type="button"
-                                  disabled={enTrainDeSauvegarder}
-                                  onClick={() => supprimerEmplacement(empId)}
-                                  className="text-red-500 hover:text-red-700 disabled:opacity-50 p-1 rounded text-[10px] shrink-0 font-bold"
-                                  title="Supprimer"
-                                >
-                                  🗑️
-                                </button>
+                                {permissions.suppression && (
+                                  <button
+                                    type="button"
+                                    disabled={enTrainDeSauvegarder}
+                                    onClick={() => supprimerEmplacement(empId)}
+                                    className="text-red-500 hover:text-red-700 disabled:opacity-50 p-1 rounded text-[10px] shrink-0 font-bold"
+                                    title="Supprimer"
+                                  >
+                                    🗑️
+                                  </button>
+                                )}
                               </div>
                             );
                           })}

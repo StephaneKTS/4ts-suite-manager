@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
 
 export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
@@ -15,12 +16,55 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const [limiteArticles, setLimiteArticles] = useState(20);
 
-  const [permissions, setPermissions] = useState({
-    peut_creer: true,
-    peut_modifier: true,
-    peut_supprimer: true,
-    peut_valider: true
-  });
+  // États initialisés vides pour éviter les faux droits par défaut au démarrage
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
+
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
+
+  // Récupération propre de la session locale au montage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
+      const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
+      if (userLocal) {
+        try {
+          const parsed = JSON.parse(userLocal);
+          setUtilisateurConnecte((parsed.nom_complet || parsed.nom || userLocal).toUpperCase());
+          if (parsed.email) setEmailConnecte(parsed.email);
+        } catch {
+          setUtilisateurConnecte(userLocal.toUpperCase());
+        }
+      }
+      if (emailLocal) setEmailConnecte(emailLocal);
+    }
+  }, []);
+
+  const emailActuel = emailConnecte || '';
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
+
+  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
+  const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleActuel
+  );
+
+  const permissions = {
+    lecture: verifierPermission('articles_stock', estSuperAdmin),
+    creation: verifierCreation('articles_stock', estSuperAdmin),
+    modification: verifierModification('articles_stock', estSuperAdmin),
+    suppression: verifierSuppression('articles_stock', estSuperAdmin),
+  };
 
   const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
@@ -73,49 +117,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     date_peremption: '',
   });
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-  const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
-
   const toutesLesSuggestionsArticles = Array.from(
     new Set(articles.map(art => (art.Designation || art.designation || '').trim().toUpperCase()))
   ).sort();
 
-  const chargerDroitsUtilisateur = async () => {
-    try {
-      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
-      if (utilisateurConnecteStr) {
-        const userObj = JSON.parse(utilisateurConnecteStr);
-        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-
-        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-          const permArticles = userObj.permissions?.['articles'] || userObj.permissions?.['stock'] || userObj.permissions?.['catalogue'];
-          
-          if (permArticles) {
-            setPermissions({
-              peut_creer: permArticles.creation ?? permArticles.peut_creer ?? true,
-              peut_modifier: permArticles.modification ?? permArticles.peut_modifier ?? true,
-              peut_supprimer: permArticles.suppression ?? permArticles.peut_supprimer ?? false,
-              peut_valider: permArticles.validation ?? permArticles.peut_valider ?? true
-            });
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Erreur chargement des droits :', err.message);
-    }
-  };
-
   const chargerDonneesReference = async () => {
     try {
-      await chargerDroitsUtilisateur();
-
       const { data: dataEnt } = await supabase
         .from('entreprises')
         .select('*')
@@ -507,12 +514,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
-    if (articleEnEdition && !permissions.peut_modifier) {
-      alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.");
+    if (articleEnEdition && !permissions.modification) {
+      alert("⛔ Action non autorisée : Modification interdite par votre profil.");
       return;
     }
-    if (!articleEnEdition && !permissions.peut_creer) {
-      alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de création.");
+    if (!articleEnEdition && !permissions.creation) {
+      alert("⛔ Action non autorisée : Création interdite par votre profil.");
       return;
     }
 
@@ -567,8 +574,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const ouvrirEdition = (article) => {
     if (enTrainDeSauvegarder) return;
-    if (!permissions.peut_modifier) {
-      alert("⛔ Accès refusé : Vous n’avez pas le droit de modifier les articles.");
+    if (!permissions.modification) {
+      alert("⛔ Action non autorisée : Vous n’avez pas le droit de modifier les articles.");
       return;
     }
     setArticleEnEdition(article);
@@ -606,8 +613,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const supprimerArticleDepuisFormulaire = async () => {
     if (enTrainDeSauvegarder || !articleEnEdition) return;
 
-    if (!permissions.peut_supprimer) {
-      alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.");
+    if (!permissions.suppression) {
+      alert("⛔ Action non autorisée : Suppression interdite par votre profil.");
       return;
     }
 
@@ -857,31 +864,24 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           {isGestionPerissablesActive() && <span className="text-[8px] bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200 shrink-0">Périssables</span>}
         </div>
         
-        <button
-          type="button"
-          disabled={enTrainDeSauvegarder || !permissions.peut_creer}
-          onClick={() => {
-            if (!permissions.peut_creer) {
-              alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de création.");
-              return;
-            }
-            if (afficherForm) {
-              annulerForm();
-            } else {
-              setModeVue('catalogue');
-              annulerForm();
-              setAfficherForm(true);
-            }
-          }}
-          className={`font-bold px-2.5 py-1.5 rounded-lg transition shadow-2xs text-[10px] shrink-0 ${
-            permissions.peut_creer 
-              ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer' 
-              : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
-          }`}
-          title={!permissions.peut_creer ? "Accès restreint : Droits de création requis" : ""}
-        >
-          {afficherForm ? '✖' : '+ Nouveau'}
-        </button>
+        {permissions.creation && (
+          <button
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={() => {
+              if (afficherForm) {
+                annulerForm();
+              } else {
+                setModeVue('catalogue');
+                annulerForm();
+                setAfficherForm(true);
+              }
+            }}
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-2.5 py-1.5 rounded-lg transition shadow-2xs text-[10px] shrink-0"
+          >
+            {afficherForm ? '✖' : '+ Nouveau'}
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-1 w-full">
@@ -936,7 +936,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       {modeVue === 'catalogue' && (
         <div className="space-y-2">
-          {afficherForm ? (
+          {afficherForm && permissions.creation ? (
             <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
               
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
@@ -1160,17 +1160,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="pt-2 flex justify-between items-center border-t border-slate-200">
-                {articleEnEdition ? (
+                {articleEnEdition && permissions.suppression ? (
                   <button 
                     type="button" 
-                    disabled={enTrainDeSauvegarder || !permissions.peut_supprimer}
+                    disabled={enTrainDeSauvegarder}
                     onClick={supprimerArticleDepuisFormulaire} 
-                    className={`font-black px-3 py-1.5 rounded-lg text-xs shadow-xs ${
-                      permissions.peut_supprimer 
-                        ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer' 
-                        : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
-                    }`}
-                    title={!permissions.peut_supprimer ? "Accès restreint : Droits de suppression requis" : ""}
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded-lg text-xs shadow-xs"
                   >
                     {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
                   </button>
@@ -1179,18 +1174,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 <div className="flex gap-1.5">
                   <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
                   
-                  <button 
-                    type="submit" 
-                    disabled={enTrainDeSauvegarder || (articleEnEdition ? !permissions.peut_modifier : !permissions.peut_creer)}
-                    className={`font-black px-4 py-1.5 rounded-lg shadow-xs text-xs transition flex items-center gap-1 ${
-                      (articleEnEdition ? permissions.peut_modifier : permissions.peut_creer)
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                        : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
-                    }`}
-                    title={!(articleEnEdition ? permissions.peut_modifier : permissions.peut_creer) ? "Accès restreint : Droits insuffisants" : ""}
-                  >
-                    {enTrainDeSauvegarder ? 'Enregistrement...' : (articleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                  </button>
+                  {permissions.modification && (
+                    <button 
+                      type="submit" 
+                      disabled={enTrainDeSauvegarder}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg shadow-xs text-xs transition"
+                    >
+                      {enTrainDeSauvegarder ? 'Enregistrement...' : (articleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
@@ -1318,13 +1310,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                             key={artId}
                             onClick={() => {
                               if (enTrainDeSauvegarder) return;
-                              if (!permissions.peut_modifier) {
-                                alert("⛔ Accès refusé : Vous n’avez pas le droit de modifier les articles.");
+                              if (!permissions.modification) {
+                                alert("⛔ Action non autorisée : Vous n’avez pas le droit de modifier les articles.");
                                 return;
                               }
                               ouvrirEdition(art);
                             }}
-                            className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                            className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
                           >
                             <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
                               {art.Designation || art.designation}
