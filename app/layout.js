@@ -14,6 +14,12 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "4TS Suite Manager",
   description: "Suite de gestion d'entreprise, logistique et commerciale",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "4TS Suite Manager",
+  },
 };
 
 export default function RootLayout({ children }) {
