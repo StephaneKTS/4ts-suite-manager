@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions';
+import { localSync } from '@/lib/localSync';
 
 export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [familles, setFamilles] = useState([]);
@@ -10,21 +12,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [modeAffichage, setModeAffichage] = useState('LISTE'); // 'LISTE' ou 'SAISIE'
   const [familleSelectionnee, setFamilleSelectionnee] = useState(null);
   
-  // --- GESTION DES DROITS ET AUTORISATIONS ---
-  const [roleNom, setRoleNom] = useState('');
-  const [permissions, setPermissions] = useState({
-    lecture: true,
-    creation: true,
-    modification: true,
-    suppression: true,
-  });
-
-  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
-  const [limiteFamilles, setLimiteFamilles] = useState(20);
-
-  const [nouveauFamille, setNouveauFamille] = useState({
-    nom_famille: '',
-  });
+  // États initialisés vides pour éviter les faux droits par défaut au démarrage
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
 
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
@@ -34,50 +24,58 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const cleCacheFamilles = `cache_familles_${entrepriseId}_${moduleActuel}`;
 
-  const chargerPermissionsEtFamilles = async () => {
-    setChargement(true);
-    try {
-      // 1. Charger et analyser les permissions de l'employé connecté
-      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
-      if (utilisateurConnecteStr) {
-        const userObj = JSON.parse(utilisateurConnecteStr);
-        const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-        setRoleNom(nomRoleUser);
-
-        if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-          const pFamille = userObj.permissions?.['familles_articles'] || userObj.permissions?.['articles'] || userObj.permissions?.['stock'];
-          
-          if (pFamille) {
-            setPermissions({
-              lecture: pFamille.lecture ?? true,
-              creation: pFamille.creation ?? true,
-              modification: pFamille.modification ?? true,
-              suppression: pFamille.suppression ?? true,
-            });
-          } else {
-            const { data: roleData } = await supabase
-              .from('roles')
-              .select('*')
-              .eq('id_entreprise', entrepriseId)
-              .eq('module', moduleActuel)
-              .eq('nom_role', nomRoleUser)
-              .maybeSingle();
-
-            const rolePerm = roleData?.permissions?.['familles_articles'] || roleData?.permissions?.['articles'] || roleData?.permissions?.['stock'];
-            if (rolePerm) {
-              setPermissions({
-                lecture: rolePerm.lecture ?? true,
-                creation: rolePerm.creation ?? true,
-                modification: rolePerm.modification ?? true,
-                suppression: rolePerm.suppression ?? true,
-              });
-            }
-          }
+  // Récupération propre de la session locale au montage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
+      const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
+      if (userLocal) {
+        try {
+          const parsed = JSON.parse(userLocal);
+          setUtilisateurConnecte((parsed.nom_complet || parsed.nom || userLocal).toUpperCase());
+          if (parsed.email) setEmailConnecte(parsed.email);
+        } catch {
+          setUtilisateurConnecte(userLocal.toUpperCase());
         }
       }
+      if (emailLocal) setEmailConnecte(emailLocal);
+    }
+  }, []);
 
-      // 2. Charger les familles d'articles
+  const emailActuel = emailConnecte || '';
+  const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
+
+  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
+  const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleActuel
+  );
+
+  const permissions = {
+    lecture: verifierPermission('familles_articles', estSuperAdmin),
+    creation: verifierCreation('familles_articles', estSuperAdmin),
+    modification: verifierModification('familles_articles', estSuperAdmin),
+    suppression: verifierSuppression('familles_articles', estSuperAdmin),
+  };
+
+  const [limiteFamilles, setLimiteFamilles] = useState(20);
+  const [nouveauFamille, setNouveauFamille] = useState({ nom_famille: '' });
+
+  const chargerFamilles = async () => {
+    // ⚡ Affichage instantané depuis le cache local (zéro latence perçue)
+    const cacheLocal = localSync.recupererDonneesLocales(cleCacheFamilles);
+    if (cacheLocal && cacheLocal.length > 0) {
+      setFamilles(cacheLocal);
+      setChargement(false);
+    } else {
+      setChargement(true);
+    }
+
+    try {
       let { data, error } = await supabase
         .from('familles_articles')
         .select('*')
@@ -86,7 +84,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         .order('created_at', { ascending: false });
 
       if (error && error.message.includes('column')) {
-        console.warn('⚠️ Colonne module non détectée, bascule en mode global temporaire...');
         const resSecours = await supabase
           .from('familles_articles')
           .select('*')
@@ -99,7 +96,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         throw error;
       }
 
-      setFamilles(data || []);
+      const listeFinale = data || [];
+      setFamilles(listeFinale);
+      localSync.sauvegarderDonneesLocales(cleCacheFamilles, listeFinale);
     } catch (err) {
       console.error('Erreur :', err.message);
     } finally {
@@ -108,7 +107,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   };
 
   useEffect(() => {
-    chargerPermissionsEtFamilles();
+    if (entrepriseId) {
+      chargerFamilles();
+    }
   }, [entrepriseId, moduleActuel]);
 
   const enregistrerFamille = async (e) => {
@@ -151,8 +152,10 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         if (error) throw error;
         alert('Famille créée avec succès !');
       }
+
+      if (typeof window !== 'undefined') localStorage.removeItem(cleCacheFamilles);
       reinitialiser();
-      chargerPermissionsEtFamilles();
+      await chargerFamilles();
       setModeAffichage('LISTE');
     } catch (err) {
       alert('Erreur : ' + err.message);
@@ -174,12 +177,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       return;
     }
     setFamilleSelectionnee(famille);
-    setNouveauFamille({
-      nom_famille: famille.nom_famille || '',
-    });
+    setNouveauFamille({ nom_famille: famille.nom_famille || '' });
   };
 
-  // --- RÈGLE 2 : FONCTION RPC SUPABASE ---
   const supprimerFamille = async () => {
     if (enTrainDeSauvegarder || !familleSelectionnee) return;
     if (!permissions.suppression) {
@@ -221,7 +221,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
       if (articlesRattaches.length > 0) {
         const exempleArticle = articlesRattaches[0].Designation || articlesRattaches[0].designation || 'ARTICLE';
-        alert(`❌ SUPPRESSION BLOQUÉE : Cette famille ("${familleSelectionnee.nom_famille}") contient encore ${articlesRattaches.length} article(s) rattaché(s) (ex: "${exempleArticle}"). Vous devez d'abord réaffecter ou supprimer ces articles avant de pouvoir supprimer cette famille.`);
+        alert(`❌ SUPPRESSION BLOQUÉE : Cette famille ("${familleSelectionnee.nom_famille}") contient encore ${articlesRattaches.length} article(s) rattaché(s) (ex: "${exempleArticle}"). Vous devez d'abord réaffecter ou supprimer ces articles.`);
         setEnTrainDeSauvegarder(false);
         return;
       }
@@ -234,9 +234,11 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       const { error } = await supabase.from('familles_articles').delete().eq('id', familleSelectionnee.id);
       if (error) throw error;
 
+      if (typeof window !== 'undefined') localStorage.removeItem(cleCacheFamilles);
+
       alert('Famille supprimée avec succès.');
       reinitialiser();
-      chargerPermissionsEtFamilles();
+      await chargerFamilles();
     } catch (err) {
       alert('Erreur : ' + err.message);
     } finally {
@@ -244,7 +246,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // Application de la pagination mobile
   const famillesAffichees = familles.slice(0, limiteFamilles);
 
   return (
@@ -255,9 +256,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
             <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES ({famillesAffichees.length} / {familles.length})
           </h3>
-          {roleNom && (
+          {utilisateurConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleNom}
+              Utilisateur : {utilisateurConnecte}
             </span>
           )}
         </div>
@@ -359,7 +360,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                  {chargement ? (
+                  {chargement && familles.length === 0 ? (
                     <tr>
                       <td className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
                     </tr>

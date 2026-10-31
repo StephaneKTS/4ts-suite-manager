@@ -171,7 +171,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const chargerArticles = async () => {
     setChargement(true);
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL DU MODULE ACTIF
     const articlesLocaux = localSync.recupererDonneesLocales(cleCacheArticles);
     if (articlesLocaux && articlesLocaux.length > 0) {
       setArticles(articlesLocaux);
@@ -180,7 +179,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
-      // CORRECTION : Filtrage strict par module pour isoler les articles par module (Boutique, Livraison, etc.)
       let { data, error } = await supabase
         .from('articles_stock')
         .select('*')
@@ -220,7 +218,35 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return false;
   };
 
-  // CALCUL EXACT ET STRICT DU STOCK PAR DÉPÔT ET EMPLACEMENT (RAYON)
+  const articleAeuMouvementChezPartenaire = (articleId, depotId) => {
+    if (!depotId || depotId === 'TOUS') return true;
+
+    const aMouvement = mouvements.some(m => {
+      if (String(m.id_article) !== String(articleId)) return false;
+      const matchSource = String(m.id_depot_source || '') === String(depotId);
+      const matchDest = String(m.id_depot_destination || '') === String(depotId);
+      return matchSource || matchDest;
+    });
+
+    if (aMouvement) return true;
+
+    const aAppro = approvisionnements.some(app => {
+      const depApp = String(app.id_depot_destination || app.id_depot || '');
+      if (depApp !== String(depotId)) return false;
+
+      let listArt = [];
+      if (typeof app.details_articles === 'string') {
+        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = app.details_articles;
+      }
+
+      return listArt.some(item => String(item.id_article || item.article_id) === String(articleId));
+    });
+
+    return aAppro;
+  };
+
   const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
     if (emplacementCible !== 'TOUS') {
       let stockEmp = 0;
@@ -527,7 +553,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         if (error) throw error;
       }
 
-      // NETTOYAGE DU CACHE LOCAL POUR FORCER LE RECHARGEMENT FRAIS DEPUIS SUPABASE
       localStorage.removeItem(cleCacheArticles);
 
       alert(`Article enregistré avec succès !`);
@@ -622,9 +647,20 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const articlesFiltres = articles.filter((art) => {
+    const artId = art.id_article || art.id;
+
     const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
     if (!matchFamille) return false;
+
+    const matchDepotMouvement = articleAeuMouvementChezPartenaire(artId, depotFiltre);
+    if (!matchDepotMouvement) return false;
+
     return true;
+  });
+
+  const articlesRapportFiltres = articles.filter((art) => {
+    const artId = art.id_article || art.id;
+    return articleAeuMouvementChezPartenaire(artId, depotRapportFiltre);
   });
 
   const gererTri = (colonne) => {
@@ -821,24 +857,31 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           {isGestionPerissablesActive() && <span className="text-[8px] bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200 shrink-0">Périssables</span>}
         </div>
         
-        {permissions.peut_creer && (
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => {
-              if (afficherForm) {
-                annulerForm();
-              } else {
-                setModeVue('catalogue');
-                annulerForm();
-                setAfficherForm(true);
-              }
-            }}
-            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-2.5 py-1.5 rounded-lg transition shadow-2xs text-[10px] shrink-0"
-          >
-            {afficherForm ? '✖' : '+ Nouveau'}
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={enTrainDeSauvegarder || !permissions.peut_creer}
+          onClick={() => {
+            if (!permissions.peut_creer) {
+              alert("⛔ Accès refusé : Votre profil ne dispose pas des droits de création.");
+              return;
+            }
+            if (afficherForm) {
+              annulerForm();
+            } else {
+              setModeVue('catalogue');
+              annulerForm();
+              setAfficherForm(true);
+            }
+          }}
+          className={`font-bold px-2.5 py-1.5 rounded-lg transition shadow-2xs text-[10px] shrink-0 ${
+            permissions.peut_creer 
+              ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer' 
+              : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
+          }`}
+          title={!permissions.peut_creer ? "Accès restreint : Droits de création requis" : ""}
+        >
+          {afficherForm ? '✖' : '+ Nouveau'}
+        </button>
       </div>
 
       <div className="grid grid-cols-3 gap-1 w-full">
@@ -893,7 +936,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       {modeVue === 'catalogue' && (
         <div className="space-y-2">
-          {afficherForm && permissions.peut_creer ? (
+          {afficherForm ? (
             <form onSubmit={enregistrerArticle} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl shadow-md space-y-2.5">
               
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
@@ -1117,12 +1160,17 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div className="pt-2 flex justify-between items-center border-t border-slate-200">
-                {articleEnEdition && permissions.peut_supprimer ? (
+                {articleEnEdition ? (
                   <button 
                     type="button" 
-                    disabled={enTrainDeSauvegarder}
+                    disabled={enTrainDeSauvegarder || !permissions.peut_supprimer}
                     onClick={supprimerArticleDepuisFormulaire} 
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded-lg text-xs shadow-xs"
+                    className={`font-black px-3 py-1.5 rounded-lg text-xs shadow-xs ${
+                      permissions.peut_supprimer 
+                        ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer' 
+                        : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
+                    }`}
+                    title={!permissions.peut_supprimer ? "Accès restreint : Droits de suppression requis" : ""}
                   >
                     {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
                   </button>
@@ -1131,15 +1179,18 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 <div className="flex gap-1.5">
                   <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-xs">Annuler</button>
                   
-                  {((articleEnEdition && permissions.peut_modifier) || (!articleEnEdition && permissions.peut_creer)) && (
-                    <button 
-                      type="submit" 
-                      disabled={enTrainDeSauvegarder}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg shadow-xs text-xs transition flex items-center gap-1"
-                    >
-                      {enTrainDeSauvegarder ? 'Enregistrement...' : (articleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                    </button>
-                  )}
+                  <button 
+                    type="submit" 
+                    disabled={enTrainDeSauvegarder || (articleEnEdition ? !permissions.peut_modifier : !permissions.peut_creer)}
+                    className={`font-black px-4 py-1.5 rounded-lg shadow-xs text-xs transition flex items-center gap-1 ${
+                      (articleEnEdition ? permissions.peut_modifier : permissions.peut_creer)
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                        : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-60'
+                    }`}
+                    title={!(articleEnEdition ? permissions.peut_modifier : permissions.peut_creer) ? "Accès restreint : Droits insuffisants" : ""}
+                  >
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (articleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                  </button>
                 </div>
               </div>
             </form>
@@ -1265,7 +1316,14 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         return (
                           <tr 
                             key={artId}
-                            onClick={() => !enTrainDeSauvegarder && ouvrirEdition(art)}
+                            onClick={() => {
+                              if (enTrainDeSauvegarder) return;
+                              if (!permissions.peut_modifier) {
+                                alert("⛔ Accès refusé : Vous n’avez pas le droit de modifier les articles.");
+                                return;
+                              }
+                              ouvrirEdition(art);
+                            }}
                             className="hover:bg-orange-50/70 cursor-pointer transition select-none"
                           >
                             <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
@@ -1524,12 +1582,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                {articles.length === 0 ? (
+                {articlesRapportFiltres.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
+                    <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article n'a fait de mouvement pour ce partenaire.</td>
                   </tr>
                 ) : (
-                  articles.map((art) => {
+                  articlesRapportFiltres.map((art) => {
                     const artId = art.id_article || art.id;
                     const rep = calculerLigneRapportStock(artId);
 

@@ -33,43 +33,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [userEnEdition, setUserEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
   const [afficherMotDePasse, setAfficherMotDePasse] = useState(false);
-
-  // --- GESTION DES ÉTAPES DU FORMULAIRE ---
-  const [etapeFormulaire, setEtapeFormulaire] = useState(1);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const fileInputRef = useRef(null);
 
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
-
-  const modulesApp = [
-    { id: 'caisse', nom: '🛒 Caisse & Vente' },
-    { id: 'articles_stock', nom: '📦 Articles & Stock' },
-    { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
-    { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' },
-    { id: 'familles_articles', nom: '🏷️ Familles & Catégories' },
-    { id: 'mouvements_stock', nom: '🔄 Mouvements Stock' },
-    { id: 'approvisionnements', nom: '📥 Approvisionnements' },
-    { id: 'clients', nom: '👥 Fichier Clients' },
-    { id: 'categories_clients', nom: '🏷️ Catégories Clients' },
-    { id: 'fournisseurs', nom: '🤝 Fournisseurs' },
-    { id: 'caisses', nom: '💵 Gestion Caisses' },
-    { id: 'ventes_historiques', nom: '📊 Historique Ventes & Rapports' },
-    { id: 'commandes_livraison', nom: '📦 Commandes & Livraisons' },
-    { id: 'grille_tarifaire', nom: '🗺️ Grille Tarifaire Livraison' },
-    { id: 'challenges_commerciaux', nom: '🏆 Challenges Commerciaux' },
-    { id: 'plan_comptable', nom: '📚 Plan Comptable & Journal' },
-    { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
-  ];
-
-  const initialiserPermissionsDefaut = () => {
-    const perms = {};
-    modulesApp.forEach((m) => {
-      perms[m.id] = { lecture: false, creation: false, modification: false, suppression: false };
-    });
-    return perms;
-  };
 
   const [nouveauUser, setNouveauUser] = useState({
     nom_complet: '',
@@ -93,7 +62,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     photo: '',
     statut: 'ACTIF',
     acces_application: true,
-    permissions: initialiserPermissionsDefaut(),
   });
 
   const obtenirModuleActuel = () => {
@@ -189,31 +157,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
-  const togglePermission = (moduleId, action) => {
-    setNouveauUser((prev) => {
-      const permsModule = prev.permissions[moduleId] || { lecture: false, creation: false, modification: false, suppression: false };
-      const nouvelleValeur = !permsModule[action];
-      let majModule = { ...permsModule, [action]: nouvelleValeur };
-      if ((action === 'creation' || action === 'modification' || action === 'suppression') && nouvelleValeur) {
-        majModule.lecture = true;
-      }
-      return {
-        ...prev,
-        permissions: { ...prev.permissions, [moduleId]: majModule },
-      };
-    });
-  };
-
-  const accorderToutModule = (moduleId, toutAccorder) => {
-    setNouveauUser((prev) => ({
-      ...prev,
-      permissions: {
-        ...prev.permissions,
-        [moduleId]: { lecture: toutAccorder, creation: toutAccorder, modification: toutAccorder, suppression: toutAccorder },
-      },
-    }));
-  };
-
   const gererSaisieTelephone = (e) => {
     const chiffres = e.target.value.replace(/[^0-9]/g, '');
     setNouveauUser({ ...nouveauUser, telephone: chiffres });
@@ -230,8 +173,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  const validerEtape1 = (e) => {
+  const enregistrerUtilisateurDefinitif = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
     if (!nouveauUser.nom_complet.trim()) {
       alert('⚠️ Veuillez renseigner le nom du collaborateur.');
       return;
@@ -249,16 +194,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         alert(`⚠️ Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`);
         return;
       }
-    }
 
-    setEtapeFormulaire(2);
-  };
-
-  const enregistrerUtilisateurDefinitif = async (e) => {
-    e.preventDefault();
-    if (enTrainDeSauvegarder) return;
-
-    if (nouveauUser.acces_application) {
       const nbActuelsAccesApp = utilisateurs.filter(u => u.acces_application && (!userEnEdition || u.id !== userEnEdition.id)).length;
       const limiteLicence = entrepriseInfo?.limite_utilisateurs || 5;
       if (nbActuelsAccesApp >= limiteLicence) {
@@ -340,7 +276,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
-        permissions: nouveauUser.acces_application ? nouveauUser.permissions : null,
       };
 
       if (userEnEdition) {
@@ -400,21 +335,18 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       photo: user.photo || '',
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
-      permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
     });
-    setEtapeFormulaire(1);
     setAfficherForm(true);
   };
 
   const annulerForm = () => {
     if (enTrainDeSauvegarder) return;
     setUserEnEdition(null);
-    setEtapeFormulaire(1);
     setNouveauUser({
       nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
       nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
       numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
-      id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut()
+      id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true
     });
     setAfficherForm(false);
   };
@@ -508,10 +440,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
                 nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
                 numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
-                id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, permissions: initialiserPermissionsDefaut()
+                id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true
               });
               setUserEnEdition(null);
-              setEtapeFormulaire(1);
               setAfficherForm(true);
             }
           }}
@@ -540,291 +471,219 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         <div className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[75vh] overflow-y-auto pr-2 pb-24">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'} — Étape {etapeFormulaire} / 2
+              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
             </h4>
             <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl text-center font-black text-[10px]">
-            <div className={`py-1 rounded-lg ${etapeFormulaire === 1 ? 'bg-orange-600 text-white' : 'bg-white text-slate-700'}`}>
-              1. Infos Personnelles & Paie
+          <form onSubmit={enregistrerUtilisateurDefinitif} className="space-y-2.5">
+            <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-xl space-y-1 shadow-2xs">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  disabled={enTrainDeSauvegarder}
+                  checked={nouveauUser.acces_application}
+                  onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
+                  className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+                />
+                <span className="font-black text-amber-950 text-[11px]">
+                  Accès à l'application (Consomme une licence / Connexion active)
+                </span>
+              </label>
             </div>
-            <div className={`py-1 rounded-lg ${etapeFormulaire === 2 ? 'bg-orange-600 text-white' : 'bg-white text-slate-700'}`}>
-              2. Droits & Autorisations
+
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={gererSelectionImage} 
+              accept="image/*" 
+              className="hidden" 
+            />
+
+            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div 
+                onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
+                title="Cliquez pour choisir une photo"
+                className="w-14 h-14 rounded-full bg-slate-200 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
+              >
+                {nouveauUser.photo ? (
+                  <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-slate-600 text-lg font-black">📷</span>
+                )}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[9px] font-bold text-center p-0.5">
+                  Modifier
+                </div>
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-[10px] text-slate-800 uppercase">Photo de profil du collaborateur</p>
+                <p className="text-[9px] text-slate-500 font-semibold mt-0.5">Cliquez sur l'icône pour ajouter une photo depuis votre appareil.</p>
+              </div>
             </div>
-          </div>
 
-          {etapeFormulaire === 1 && (
-            <form onSubmit={validerEtape1} className="space-y-2.5">
-              <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-xl space-y-1 shadow-2xs">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    disabled={enTrainDeSauvegarder}
-                    checked={nouveauUser.acces_application}
-                    onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
-                    className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
-                  />
-                  <span className="font-black text-amber-950 text-[11px]">
-                    Accès à l'application (Consomme une licence / Connexion active)
-                  </span>
-                </label>
-              </div>
-
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={gererSelectionImage} 
-                accept="image/*" 
-                className="hidden" 
-              />
-
-              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <div 
-                  onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
-                  title="Cliquez pour choisir une photo"
-                  className="w-14 h-14 rounded-full bg-slate-200 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
-                >
-                  {nouveauUser.photo ? (
-                    <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-slate-600 text-lg font-black">📷</span>
-                  )}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[9px] font-bold text-center p-0.5">
-                    Modifier
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <p className="font-black text-[10px] text-slate-800 uppercase">Photo de profil du collaborateur</p>
-                  <p className="text-[9px] text-slate-500 font-semibold mt-0.5">Cliquez sur l'icône pour ajouter une photo depuis votre appareil.</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom *</label>
-                  <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                </div>
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Prénom</label>
-                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date de naissance</label>
-                  <input type="date" disabled={enTrainDeSauvegarder} value={nouveauUser.date_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, date_naissance: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
-                </div>
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de naissance</label>
-                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_naissance: e.target.value.toUpperCase() })} placeholder="EX: YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Matrimonial</label>
-                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut_matrimonial} onChange={(e) => setNouveauUser({ ...nouveauUser, statut_matrimonial: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
-                    <option value="CELIBATAIRE">Célibataire</option>
-                    <option value="MARIE">Marié(e)</option>
-                    <option value="DIVORCE">Divorcé(e)</option>
-                    <option value="VEUF">Veuf(ve)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nombre d'enfants</label>
-                  <input type="number" min="0" disabled={enTrainDeSauvegarder} value={nouveauUser.nombre_enfants} onChange={(e) => setNouveauUser({ ...nouveauUser, nombre_enfants: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de résidence</label>
-                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_residence} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_residence: e.target.value.toUpperCase() })} placeholder="EX: BASTOS, YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                </div>
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro CNI</label>
-                  <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_cni} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_cni: e.target.value.toUpperCase() })} placeholder="EX: 112233445" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
-                  <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs">
-                    <option value="">-- Rôle --</option>
-                    {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Type Collaborateur</label>
-                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
-                    <option value="EMPLOYE">Employé standard</option>
-                    <option value="LIVREUR">Livreur</option>
-                    <option value="CHAUFFEUR">Chauffeur</option>
-                  </select>
-                </div>
-              </div>
-
-              {estRoleLivreurOuChauffeur && (
-                <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl space-y-2">
-                  <span className="font-black text-orange-900 text-[10px] uppercase block">🚚 Informations Transport / Permis</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Catégorie de permis</label>
-                      <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.categorie_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, categorie_permis: e.target.value.toUpperCase() })} placeholder="EX: A ou B" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                    </div>
-                    <div>
-                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro de permis</label>
-                      <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_permis: e.target.value.toUpperCase() })} placeholder="EX: 123456789" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {!estModeLivraison && (
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
-                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.id_caisse} onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate">
-                    <option value="">-- Aucune caisse --</option>
-                    {caisses.map((c) => (<option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>))}
-                  </select>
-                </div>
-              )}
-
-              {nouveauUser.acces_application && (
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
-                  <div className="relative flex items-center">
-                    <input 
-                      type={afficherMotDePasse ? "text" : "password"} 
-                      disabled={enTrainDeSauvegarder}
-                      required={nouveauUser.acces_application} 
-                      value={nouveauUser.mot_de_passe} 
-                      onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
-                      placeholder="••••••••" 
-                      autoComplete="new-password"
-                      className="w-full bg-white border border-slate-300 rounded p-1.5 pr-8 font-mono font-extrabold text-slate-900 text-xs shadow-xs" 
-                    />
-                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs focus:outline-none">
-                      {afficherMotDePasse ? '🙈' : '👁️'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Affichage conditionnel des zones téléphone et email uniquement si acces_application est true */}
-              {nouveauUser.acces_application && (
-                <>
-                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
-                    <div>
-                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
-                      <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                        {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
-                      </select>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                      <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                        <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
-                        <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-                    <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
-                  </div>
-                </>
-              )}
-
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-                <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                  <option value="ACTIF">🟢 Actif</option>
-                  <option value="INACTIF">🔴 Inactif</option>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom *</label>
+                <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+              </div>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Prénom</label>
+                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date de naissance</label>
+                <input type="date" disabled={enTrainDeSauvegarder} value={nouveauUser.date_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, date_naissance: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
+              </div>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de naissance</label>
+                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_naissance: e.target.value.toUpperCase() })} placeholder="EX: YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Matrimonial</label>
+                <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut_matrimonial} onChange={(e) => setNouveauUser({ ...nouveauUser, statut_matrimonial: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
+                  <option value="CELIBATAIRE">Célibataire</option>
+                  <option value="MARIE">Marié(e)</option>
+                  <option value="DIVORCE">Divorcé(e)</option>
+                  <option value="VEUF">Veuf(ve)</option>
                 </select>
               </div>
-
-              <div className="pt-2 border-t border-slate-200 flex justify-end">
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black px-5 py-2 rounded-lg text-xs shadow-xs transition">
-                  Suivant : Droits & Autorisations ➡️
-                </button>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nombre d'enfants</label>
+                <input type="number" min="0" disabled={enTrainDeSauvegarder} value={nouveauUser.nombre_enfants} onChange={(e) => setNouveauUser({ ...nouveauUser, nombre_enfants: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
               </div>
-            </form>
-          )}
+            </div>
 
-          {etapeFormulaire === 2 && (
-            <form onSubmit={enregistrerUtilisateurDefinitif} className="space-y-3">
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex justify-between items-center">
-                <div>
-                  <p className="font-black text-slate-900 text-xs">Collaborateur : {nouveauUser.nom_complet} {nouveauUser.prenom}</p>
-                  <p className="text-[9.5px] text-slate-500 font-bold">Rôle : {roles.find(r => String(r.id) === String(nouveauUser.id_role))?.nom_role || 'Non défini'}</p>
-                </div>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setEtapeFormulaire(1)} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-2.5 py-1 rounded text-[10px]">
-                  ⬅️ Modifier les infos
-                </button>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de résidence</label>
+                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_residence} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_residence: e.target.value.toUpperCase() })} placeholder="EX: BASTOS, YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
               </div>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro CNI</label>
+                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_cni} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_cni: e.target.value.toUpperCase() })} placeholder="EX: 112233445" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+              </div>
+            </div>
 
-              {nouveauUser.acces_application ? (
-                <div className="space-y-2">
-                  <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Droits & Permissions par Module :</h5>
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs max-h-60 overflow-y-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black sticky top-0">
-                        <tr>
-                          <th className="p-2">Module</th>
-                          <th className="p-2 text-center">👁️</th>
-                          <th className="p-2 text-center">➕</th>
-                          <th className="p-2 text-center">✏️</th>
-                          <th className="p-2 text-center">🗑️</th>
-                          <th className="p-2 text-center">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-[10px]">
-                        {modulesApp.map((m) => {
-                          const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
-                          const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
-                          return (
-                            <tr key={m.id} className="hover:bg-slate-50">
-                              <td className="p-2 font-black text-slate-950">{m.nom}</td>
-                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.lecture} onChange={() => togglePermission(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
-                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.creation} onChange={() => togglePermission(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
-                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.modification} onChange={() => togglePermission(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
-                              <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.suppression} onChange={() => togglePermission(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
-                              <td className="p-2 text-center">
-                                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => accorderToutModule(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-                                  {estToutAccorde ? 'Aucun' : 'Tous'}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
+                <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs">
+                  <option value="">-- Rôle --</option>
+                  {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Type Collaborateur</label>
+                <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
+                  <option value="EMPLOYE">Employé standard</option>
+                  <option value="LIVREUR">Livreur</option>
+                  <option value="CHAUFFEUR">Chauffeur</option>
+                </select>
+              </div>
+            </div>
+
+            {estRoleLivreurOuChauffeur && (
+              <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl space-y-2">
+                <span className="font-black text-orange-900 text-[10px] uppercase block">🚚 Informations Transport / Permis</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Catégorie de permis</label>
+                    <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.categorie_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, categorie_permis: e.target.value.toUpperCase() })} placeholder="EX: A ou B" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                  </div>
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro de permis</label>
+                    <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_permis: e.target.value.toUpperCase() })} placeholder="EX: 123456789" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
                   </div>
                 </div>
-              ) : (
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-blue-900 font-bold text-center text-xs">
-                  ℹ️ L'accès à l'application n'est pas coché pour ce collaborateur (Personnel de terrain / pas de consommation de licence).
-                </div>
-              )}
+              </div>
+            )}
 
-              <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setEtapeFormulaire(1)} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]">
-                  ⬅️ Précédent
-                </button>
-                <div className="flex items-center gap-1.5">
-                  {userEnEdition && (<button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs">🗑️ Supprimer</button>)}
-                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
-                    {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : 'Valider & Enregistrer')}
+            {!estModeLivraison && (
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
+                <select disabled={enTrainDeSauvegarder} value={nouveauUser.id_caisse} onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate">
+                  <option value="">-- Aucune caisse --</option>
+                  {caisses.map((c) => (<option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>))}
+                </select>
+              </div>
+            )}
+
+            {nouveauUser.acces_application && (
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
+                <div className="relative flex items-center">
+                  <input 
+                    type={afficherMotDePasse ? "text" : "password"} 
+                    disabled={enTrainDeSauvegarder}
+                    required={nouveauUser.acces_application} 
+                    value={nouveauUser.mot_de_passe} 
+                    onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
+                    placeholder="••••••••" 
+                    autoComplete="new-password"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 pr-8 font-mono font-extrabold text-slate-900 text-xs shadow-xs" 
+                  />
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs focus:outline-none">
+                    {afficherMotDePasse ? '🙈' : '👁️'}
                   </button>
                 </div>
               </div>
-            </form>
-          )}
+            )}
+
+            {nouveauUser.acces_application && (
+              <>
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
+                    <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                      {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
+                    <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                      <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
+                      <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
+                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+              <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                <option value="ACTIF">🟢 Actif</option>
+                <option value="INACTIF">🔴 Inactif</option>
+              </select>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
+              {userEnEdition && (
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs shadow-xs transition">
+                  🗑️ Supprimer
+                </button>
+              )}
+              <div className="flex items-center gap-2 ml-auto">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-lg text-xs transition">
+                  Annuler
+                </button>
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-5 py-2 rounded-lg text-xs shadow-xs transition">
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : 'Valider & Enregistrer')}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
 

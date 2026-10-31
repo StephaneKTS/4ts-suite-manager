@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { usePermissions } from '@/lib/usePermissions'; // <-- Importation de notre hook sécurisé et indépendant
 import SimulateurCadre from './components/SimulateurCadre';
 
 // Importation de tous vos composants métiers indépendants
@@ -55,8 +56,6 @@ function DashboardContent() {
   
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('STEPHANE KTS');
   const [emailConnecte, setEmailConnecte] = useState('stephs7352@gmail.com');
-  const [permissionsUser, setPermissionsUser] = useState(null);
-  
   const [logoEntreprise, setLogoEntreprise] = useState('');
 
   const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
@@ -145,55 +144,23 @@ function DashboardContent() {
     }
   }, [entrepriseIdUrl]);
 
-  // Synchronisation des permissions utilisateur
-  useEffect(() => {
-    async function fetchUserData() {
-      if (!entrepriseId) return;
-      try {
-        const { data: usersList } = await supabase
-          .from('utilisateurs')
-          .select('*')
-          .eq('id_entreprise', entrepriseId);
-
-        let utilisateurTrouve = null;
-
-        if (usersList && usersList.length > 0) {
-          utilisateurTrouve = usersList.find(u => {
-            const nomCompletBase = `${u.nom_complet || u.nom || ''} ${u.prenom || ''}`.trim().toLowerCase();
-            const nomRecherche = utilisateurConnecte.toLowerCase();
-            const matchNom = nomCompletBase.includes(nomRecherche) || nomRecherche.includes(nomCompletBase);
-            const matchEmail = emailConnecte && u.email && u.email.toLowerCase() === emailConnecte.toLowerCase();
-            return matchNom || matchEmail;
-          });
-        }
-
-        if (utilisateurTrouve) {
-          setPermissionsUser(utilisateurTrouve.permissions || null);
-        }
-      } catch (err) {
-        console.error("Erreur chargement utilisateur :", err);
-      }
-    }
-    fetchUserData();
-  }, [emailConnecte, utilisateurConnecte, entrepriseId]);
-
   const estModeLivraison = moduleCourant === 'LIVRAISON';
   const emailActuel = emailConnecte || infosEntreprise.email || 'stephs7352@gmail.com';
   
   // RESTRICTION STRICTE : Le bouton Super-Admin s'affiche uniquement pour stephs7352@gmail.com
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  const estAdminEntreprise = 
-    estSuperAdmin || 
-    utilisateurConnecte.toUpperCase().includes('ADMIN') || 
-    utilisateurConnecte.toUpperCase() === (infosEntreprise.nom_entreprise || '').toUpperCase();
+  // APPEL DU HOOK INDÉPENDANT POUR GÉRER LES PERMISSIONS & LE CACHE LOCAL
+  const { chargementPermissions, verifierPermission: verifierPermissionBrute } = usePermissions(
+    entrepriseId,
+    utilisateurConnecte,
+    emailConnecte,
+    moduleCourant
+  );
 
+  // Fonction locale prenant en compte le Super-Admin
   const verifierPermission = (moduleId) => {
-    if (estSuperAdmin) return true;
-    if (!permissionsUser) return true;
-    const permModule = permissionsUser[moduleId];
-    if (!permModule) return true;
-    return permModule.lecture === true;
+    return verifierPermissionBrute(moduleId, estSuperAdmin);
   };
 
   const tenterAccesModule = (moduleId, nomModuleAffichage) => {
@@ -396,7 +363,12 @@ function DashboardContent() {
       </div>
 
       <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 pb-20 w-full max-w-7xl mx-auto">
-        {ongletNavigation === 'rapports' && !moduleActif ? (
+        {chargementPermissions ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-2">
+            <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-cyan-300 font-bold text-xs">Vérification des habilitations et sécurisation...</p>
+          </div>
+        ) : ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-2.5 w-full">
             <h2 className="text-[10px] sm:text-xs font-black text-cyan-400/80 uppercase tracking-wider px-0.5">
               COMPTABILITÉ
@@ -520,60 +492,84 @@ function DashboardContent() {
               ACCUEIL
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
-              <div onClick={() => setModuleActif('commandes_livraison')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Commandes & Livraisons</span>
-              </div>
-              <div onClick={() => setModuleActif('articles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Stock Articles</span>
-              </div>
-              <div onClick={() => setModuleActif('grille_tarifaire')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Grille Tarifaire</span>
-              </div>
-              <div onClick={() => setModuleActif('caisses')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Création Caisse</span>
-              </div>
-              <div onClick={() => setModuleActif('emplacements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">📍</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Emplacements Livreurs</span>
-              </div>
-              <div onClick={() => setModuleActif('depots')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🏢</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
-              </div>
-              <div onClick={() => setModuleActif('familles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
-              </div>
-              <div onClick={() => setModuleActif('challenges_commerciaux')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🏆</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Challenges Commerciaux</span>
-              </div>
-              <div onClick={() => setModuleActif('mouvements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
-              </div>
-              <div onClick={() => setModuleActif('approvisionnements')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">📥</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
-              </div>
+              {verifierPermission('commandes_livraison') && (
+                <div onClick={() => tenterAccesModule('commandes_livraison', 'Commandes & Livraisons')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Commandes & Livraisons</span>
+                </div>
+              )}
+              {verifierPermission('articles_stock') && (
+                <div onClick={() => tenterAccesModule('articles', 'Stock Articles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Stock Articles</span>
+                </div>
+              )}
+              {verifierPermission('grille_tarifaire') && (
+                <div onClick={() => tenterAccesModule('grille_tarifaire', 'Grille Tarifaire')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Grille Tarifaire</span>
+                </div>
+              )}
+              {verifierPermission('caisses') && (
+                <div onClick={() => tenterAccesModule('caisses', 'Création Caisse')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Création Caisse</span>
+                </div>
+              )}
+              {verifierPermission('emplacements_stock') && (
+                <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Livreurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">📍</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Emplacements Livreurs</span>
+                </div>
+              )}
+              {verifierPermission('depots_stock') && (
+                <div onClick={() => tenterAccesModule('depots', 'Dépôts de stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
+                </div>
+              )}
+              {verifierPermission('familles_articles') && (
+                <div onClick={() => tenterAccesModule('familles', "Familles d'Articles")} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
+                </div>
+              )}
+              {verifierPermission('challenges_commerciaux') && (
+                <div onClick={() => tenterAccesModule('challenges_commerciaux', 'Challenges Commerciaux')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏆</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Challenges Commerciaux</span>
+                </div>
+              )}
+              {verifierPermission('mouvements_stock') && (
+                <div onClick={() => tenterAccesModule('mouvements', 'Mouvement Stock')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
+                </div>
+              )}
+              {verifierPermission('approvisionnements') && (
+                <div onClick={() => tenterAccesModule('approvisionnements', 'Achats & Approvisionnement')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
+                </div>
+              )}
               {verifierPermission('roles_utilisateurs') && (
-                <div onClick={() => setModuleActif('roles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
                   <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                   <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion des Rôles</span>
                 </div>
               )}
-              <div onClick={() => setModuleActif('fournisseurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🤝</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion Partenaire</span>
-              </div>
-              <div onClick={() => setModuleActif('utilisateurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
-              </div>
+              {verifierPermission('fournisseurs') && (
+                <div onClick={() => tenterAccesModule('fournisseurs', 'Gestion Partenaire')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion Partenaire</span>
+                </div>
+              )}
+              {verifierPermission('roles_utilisateurs') && (
+                <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
+                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
+                </div>
+              )}
             </div>
           </div>
         ) : (
