@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 
 export default function ConnexionEntreprise() {
@@ -177,9 +178,16 @@ export default function ConnexionEntreprise() {
     <div className="min-h-screen bg-[#0d1b2a] flex items-center justify-center p-4 font-sans text-xs">
       <div className="max-w-md w-full bg-[#1b263b] border border-blue-900/60 rounded-2xl shadow-2xl p-6 text-slate-100 space-y-6">
         
-        <div className="text-center space-y-2">
-          <div className="inline-block bg-orange-600 text-white font-black text-lg px-4 py-2 rounded-xl shadow-md tracking-wider">
-            4TS
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <div className="w-16 h-16 relative mb-1 flex items-center justify-center bg-[#0d1b2a] border border-blue-900/50 rounded-2xl shadow-md overflow-hidden">
+            <Image
+              src="/logo-4ts.png"
+              alt="Logo 4TS Suite Manager"
+              width={56}
+              height={56}
+              className="object-contain"
+              priority
+            />
           </div>
           <h1 className="text-xl font-extrabold uppercase tracking-tight text-white">
             Connexion Espace
