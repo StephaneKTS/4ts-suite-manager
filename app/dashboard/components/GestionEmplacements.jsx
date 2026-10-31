@@ -236,11 +236,6 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
           <h2 className="font-extrabold text-slate-900 text-xs flex items-center gap-1.5 uppercase">
             📍 Emplacements ({emplacementsAffiches.length} / {emplacements.length})
           </h2>
-          {utilisateurConnecte && (
-            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Utilisateur : {utilisateurConnecte}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1">
           {permissions.creation && (

@@ -600,7 +600,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const resultatNetGrandLivre = totalEntreesGrandLivre - totalSortiesGrandLivre;
 
-  // --- JOURNAL DE CAISSE CORRIGÉ (Sans colonne Caisse et avec motifs ultra-abrégés) ---
+  // --- JOURNAL DE CAISSE CORRIGÉ ---
   const caisseSelectionneeObj = caisses.find(c => String(c.id) === String(caisseSelectionneeJournal));
   const estCaissePrincipaleSelectionnee = caisseSelectionneeObj && ((caisseSelectionneeObj.nature || '').toUpperCase() === 'PRINCIPALE' || (caisseSelectionneeObj.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (caisseSelectionneeObj.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
 
@@ -754,11 +754,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return m.type_mouvement === 'ENTREE' ? acc + Number(m.montant) : acc - Number(m.montant);
   }, 0);
 
-  const montantAttenduCaisse = moduleActuel === 'LIVRAISON'
+  const montantTotalFacture = moduleActuel === 'LIVRAISON'
     ? (livreurControle
         ? commandesLivraison
             .filter(cmd => {
-              if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
               if (dateControle && cmd.date_commande !== dateControle) return false;
               if (livreurControle && (cmd.vendeur_livreur || '').trim().toUpperCase() !== livreurControle.trim().toUpperCase()) return false;
               return true;
@@ -777,6 +776,20 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             .reduce((sum, v) => sum + (Number(v.montant_regle ?? v.total_montant) || 0), 0)
         : 0);
 
+  const montantTotalEncaisse = moduleActuel === 'LIVRAISON'
+    ? (livreurControle
+        ? commandesLivraison
+            .filter(cmd => {
+              if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
+              if (dateControle && cmd.date_commande !== dateControle) return false;
+              if (livreurControle && (cmd.vendeur_livreur || '').trim().toUpperCase() !== livreurControle.trim().toUpperCase()) return false;
+              return true;
+            })
+            .reduce((sum, cmd) => sum + (Number(cmd.montant_commande) || 0), 0)
+        : 0)
+    : montantTotalFacture;
+
+  const montantAttenduCaisse = montantTotalEncaisse;
   const ecartCaisse = montantVerse !== '' ? Number(montantVerse) - montantAttenduCaisse : 0;
 
   const validerFormulaireControle = () => {
@@ -1384,7 +1397,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             </div>
           )}
 
-          {/* CONTENU : JOURNAL DE CAISSE (Sans colonne Caisse et avec motifs ultra-abrégés) */}
+          {/* CONTENU : JOURNAL DE CAISSE */}
           {modeSaisie === 'journal_caisse' && (
             <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
               <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
@@ -1610,16 +1623,33 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
                 )}
 
+                {/* 1. LIGNE : MONTANT TOTAL & TOTAL ENCAISSÉ SUR LA MÊME LIGNE */}
                 <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-200">
                   <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Attendu :</label>
-                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-950 text-[10px] text-center truncate shadow-2xs">
-                      {montantAttenduCaisse.toLocaleString('fr-FR')}
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">MONTANT TOTAL :</label>
+                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-950 text-[11px] truncate shadow-2xs">
+                      {montantTotalFacture.toLocaleString('fr-FR')} CFA
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">TOTAL ENCAISSÉ :</label>
+                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-emerald-600 text-[11px] truncate shadow-2xs">
+                      {montantTotalEncaisse.toLocaleString('fr-FR')} CFA
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. LIGNE : MONTANT ATTENDU, VERSEMENT ET ÉCART SUR LA MÊME LIGNE */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-200">
+                  <div>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">MONTANT ATTENDU :</label>
+                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-blue-600 text-[10px] truncate shadow-2xs">
+                      {montantAttenduCaisse.toLocaleString('fr-FR')} CFA
                     </div>
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Versé * :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">VERSEMENT * :</label>
                     <input
                       type="number"
                       required
@@ -1631,12 +1661,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-emerald-700 text-[10px] shadow-2xs disabled:bg-slate-100"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Écart :</label>
-                  <div className={`p-1.5 rounded-lg border text-[10px] font-black text-center shadow-2xs ${montantVerse === '' ? 'bg-white border-slate-300 text-slate-400' : ecartCaisse === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : ecartCaisse > 0 ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
-                    {montantVerse === '' ? '-' : ecartCaisse === 0 ? '0 (Parfait)' : ecartCaisse > 0 ? `+ ${ecartCaisse.toLocaleString('fr-FR')} (Excédent)` : `${ecartCaisse.toLocaleString('fr-FR')} (Manquant)`}
+                  <div>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">ÉCART DE CAISSE :</label>
+                    <div className={`p-1.5 rounded-lg border text-[10px] font-black text-center shadow-2xs truncate ${montantVerse === '' ? 'bg-white border-slate-300 text-slate-400' : ecartCaisse === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : ecartCaisse > 0 ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
+                      {montantVerse === '' ? '-' : ecartCaisse === 0 ? '0 CFA' : ecartCaisse > 0 ? `+${ecartCaisse.toLocaleString('fr-FR')} CFA` : `${ecartCaisse.toLocaleString('fr-FR')} CFA`}
+                    </div>
                   </div>
                 </div>
               </div>
