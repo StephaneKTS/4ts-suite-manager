@@ -158,8 +158,23 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    const nomDepotClean = nouveauDepot.nom_depot.trim().toUpperCase();
+    if (!nomDepotClean) return;
+
     setEnTrainDeSauvegarder(true);
     try {
+      // 🔒 BARRIÈRE ANTI-DOUBLONS : Vérifier si un dépôt avec ce même nom existe déjà pour cette entreprise et ce module
+      if (!depotEnEdition) {
+        const depotExistant = depots.find(d => 
+          (d.nom_depot || d.Nom_Depot || '').trim().toUpperCase() === nomDepotClean
+        );
+        if (depotExistant) {
+          alert(`⚠️ Un dépôt nommé "${nomDepotClean}" existe déjà. La création d'un doublon a été bloquée.`);
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+      }
+
       if (nouveauDepot.est_depot_par_defaut) {
         await supabase
           .from('depots_stock')
@@ -169,7 +184,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       }
 
       const payload = {
-        nom_depot: nouveauDepot.nom_depot.trim().toUpperCase(),
+        nom_depot: nomDepotClean,
         adresse_localisation: nouveauDepot.adresse_localisation.trim().toUpperCase(),
         responsable_depot: nouveauDepot.responsable_depot,
         est_depot_par_defaut: nouveauDepot.est_depot_par_defaut,
@@ -265,14 +280,29 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     const depotIdCible = depotEnEdition.id || depotEnEdition.ID;
     const depotNomCible = depotEnEdition.nom_depot || depotEnEdition.Nom_Depot || 'ce dépôt';
 
-    if (!confirm(`Voulez-vous vraiment supprimer définitivement le dépôt "${depotNomCible}" ?`)) {
+    if (!confirm(`Voulez-vous vraiment supprimer définitivement le dépôt "${depotNomCible}" et ses emplacements ?`)) {
       return;
     }
 
     setEnTrainDeSauvegarder(true);
     try {
-      const { error } = await supabase.from('depots_stock').delete().eq('id', depotIdCible);
-      if (error) {
+      // 1. Supprimer d'abord les emplacements rattachés à ce dépôt pour éviter les orphelins
+      const { error: errEmp } = await supabase
+        .from('emplacements_stock')
+        .delete()
+        .eq('id_depot', depotIdCible);
+
+      if (errEmp) {
+        localSync.ajouterFileAttente('DELETE', 'emplacements_stock', { id_depot: depotIdCible });
+      }
+
+      // 2. Supprimer ensuite le dépôt de la base de données
+      const { error: errDep } = await supabase
+        .from('depots_stock')
+        .delete()
+        .eq('id', depotIdCible);
+
+      if (errDep) {
         localSync.ajouterFileAttente('DELETE', 'depots_stock', { id: depotIdCible });
       }
       
@@ -281,12 +311,12 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       localSync.sauvegarderDonneesLocales(cleCacheDepots, listeMaj);
 
       localStorage.removeItem(cleCacheDepots);
-      alert('Dépôt supprimé avec succès.');
+      alert('Dépôt et ses emplacements associés supprimés avec succès.');
       if (depotOuvertId === depotIdCible) setDepotOuvertId(null);
       annulerFormDepot();
       await chargerDepots(true);
     } catch (err) {
-      alert('Erreur de suppression : ' + err.message);
+      alert('Erreur lors de la suppression : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }

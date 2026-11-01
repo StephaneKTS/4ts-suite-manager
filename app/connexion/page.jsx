@@ -138,13 +138,9 @@ export default function ConnexionEntreprise() {
             if (!mdpBase || mdpBase === cleanPin) {
               entrepriseIdCible = entrepriseTrouvee.id_entreprise;
               
-              if (entrepriseIdCible === '4TS-234321' || cleanIdentifiant.toLowerCase() === 'stephs7352@gmail.com') {
-                nomUtilisateurConnecte = 'STEPHANE KTS';
-                matrixPermissions = { _plein_acces: true };
-              } else {
-                nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-                matrixPermissions = { _plein_acces: true }; // Par défaut l'admin d'entreprise a tous les accès
-              }
+              // Utilisation directe des informations de l'entreprise trouvée sans forçage arbitraire global
+              nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
+              matrixPermissions = { _plein_acces: true }; // Par défaut l'admin d'entreprise a tous les accès
               
               authenticated = true;
             } else {

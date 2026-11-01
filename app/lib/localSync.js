@@ -46,19 +46,48 @@ export const localSync = {
 
       console.log('🔄 Synchronisation des données hors-ligne vers Supabase...');
 
+      const nouvelleQueue = [];
+
       for (const item of queue) {
-        const { table, payload } = item;
-        // On pousse les données vers Supabase en arrière-plan
-        const { error } = await supabaseClient.from(table).upsert(payload);
+        const { table, action, payload } = item;
+        
+        // Nettoyage global de TOUTES les propriétés commençant par "temp_" (id, id_commande, etc.)
+        let payloadPropre = { ...payload };
+        Object.keys(payloadPropre).forEach(key => {
+          if (payloadPropre[key] && String(payloadPropre[key]).startsWith('temp_')) {
+            delete payloadPropre[key];
+          }
+        });
+
+        let error = null;
+
+        if (action === 'DELETE') {
+          // Si c'était une suppression avec un ID temp, inutile de l'envoyer au cloud
+          if (payload.id && String(payload.id).startsWith('temp_')) {
+            continue;
+          }
+          const res = await supabaseClient.from(table).delete().match(payloadPropre);
+          error = res.error;
+        } else {
+          // Par défaut : UPSERT / INSERT
+          const res = await supabaseClient.from(table).upsert(payloadPropre);
+          error = res.error;
+        }
+
         if (error) {
           console.error(`Erreur sync table ${table}:`, error.message);
-          return; // On arrête et on réessaiera plus tard
+          // On garde l'élément dans la file pour réessayer plus tard s'il s'agit d'une vraie erreur réseau
+          nouvelleQueue.push(item);
         }
       }
 
-      // Si tout est réussi, on vide la file d'attente
-      localStorage.removeItem('4ts_offline_queue');
-      console.log('✅ Synchronisation cloud réussie !');
+      // On met à jour la file d'attente (en retirant les éléments réussis, en gardant les bloqués)
+      if (nouvelleQueue.length > 0) {
+        localStorage.setItem('4ts_offline_queue', JSON.stringify(nouvelleQueue));
+      } else {
+        localStorage.removeItem('4ts_offline_queue');
+        console.log('✅ Synchronisation cloud réussie !');
+      }
     } catch (e) {
       console.error('Erreur lors de la synchronisation globale :', e);
     }

@@ -24,6 +24,9 @@ export default function MonProfil({ entrepriseId = '' }) {
   const [roleUtilisateur, setRoleUtilisateur] = useState('');
   const [avatarUtilisateur, setAvatarUtilisateur] = useState('');
 
+  // Modules autorisés pour l'employé connecté
+  const [modulesAutorisesUser, setModulesAutorisesUser] = useState(['BOUTIQUE']);
+
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
   const [confirmerMotDePasse, setConfirmerMotDePasse] = useState('');
   const [logoEntreprise, setLogoEntreprise] = useState('');
@@ -146,33 +149,39 @@ export default function MonProfil({ entrepriseId = '' }) {
       }
 
       let utilisateurTrouve = null;
+      let modulesDisponiblesPourUser = [moduleActuel];
+
       const { data: usersList } = await supabase
         .from('utilisateurs')
         .select('*')
         .eq('id_entreprise', idEffectif);
 
       if (usersList && usersList.length > 0) {
-        utilisateurTrouve = usersList.find(u => {
+        const correspondanceUser = usersList.filter(u => {
           const nomCompletBase = `${u.nom_complet || u.nom || ''} ${u.prenom || ''}`.trim().toLowerCase();
           const nomRecherche = utilisateurConnecte.toLowerCase();
-          const matchNom = nomCompletBase.includes(nomRecherche) || nomRecherche.includes(nomCompletBase);
+          const matchNom = nomRecherche && (nomCompletBase.includes(nomRecherche) || nomRecherche.includes(nomCompletBase));
           const matchEmail = emailConnecte && u.email && u.email.toLowerCase() === emailConnecte.toLowerCase();
           return matchNom || matchEmail;
         });
+
+        if (correspondanceUser.length > 0) {
+          utilisateurTrouve = correspondanceUser[0];
+          modulesDisponiblesPourUser = correspondanceUser.map(u => (u.module || 'BOUTIQUE').toUpperCase());
+        }
       }
 
-      let nomFinal = utilisateurConnecte || entrepriseTrouvee?.nom_entreprise || 'STEPHANE KTS';
-      let emailFinal = emailConnecte || entrepriseTrouvee?.email || 'stephs7352@gmail.com';
-      let telephoneFinal = entrepriseTrouvee?.telephone || '655597099';
-      let roleFinal = 'Administrateur';
-      let avatarFinal = '';
+      setModulesAutorisesUser(Array.from(new Set(modulesDisponiblesPourUser)));
 
-      if (utilisateurTrouve) {
-        nomFinal = `${utilisateurTrouve.nom || utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || nomFinal;
-        emailFinal = utilisateurTrouve.email || emailFinal;
-        telephoneFinal = utilisateurTrouve.telephone || utilisateurTrouve.phone || telephoneFinal;
-        roleFinal = utilisateurTrouve.role || utilisateurTrouve.type_collaborateur || roleFinal;
-        avatarFinal = utilisateurTrouve.avatar || utilisateurTrouve.photo || '';
+      // RÈGLE D'AFFICHAGE STRICTE : Si l'utilisateur connecté est un employé spécifique (ex: David), on affiche ses infos, sinon l'entreprise
+      let nomFinal = utilisateurTrouve ? (`${utilisateurTrouve.nom || utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim()) : (entrepriseTrouvee?.nom_entreprise || 'STEPHANE KTS');
+      let emailFinal = utilisateurTrouve?.email || emailConnecte || entrepriseTrouvee?.email || 'stephs7352@gmail.com';
+      let telephoneFinal = utilisateurTrouve?.telephone || entrepriseTrouvee?.telephone || '655597099';
+      let roleFinal = utilisateurTrouve?.role || utilisateurTrouve?.type_collaborateur || (estAdminEntreprise ? 'Administrateur' : 'Employé');
+      let avatarFinal = utilisateurTrouve?.avatar || utilisateurTrustAvatar(utilisateurTrouve) || '';
+
+      function utilisateurTrustAvatar(u) {
+        return u?.photo || '';
       }
 
       setNomUtilisateurConnecte(nomFinal);
@@ -504,21 +513,20 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
 
             <div className="space-y-1 overflow-hidden">
-              {estCompteEntreprise ? (
-                <>
-                  <span className="block text-[9px] uppercase font-bold text-blue-300">Entreprise rattachée : <strong className="text-orange-400">{entreprise.nom_entreprise || 'N/A'}</strong></span>
-                  <span className="text-[9px] font-mono text-slate-400 block">ID : {entreprise.id_entreprise || 'N/A'}</span>
-                </>
-              ) : (
-                <span className="block text-[9px] uppercase font-bold text-blue-300">Compte Utilisateur Standard</span>
-              )}
+              <span className="block text-[9px] uppercase font-bold text-blue-300">
+                ENTREPRISE RATTACHÉE : <strong className="text-orange-400">{entreprise.nom_entreprise || 'N/A'}</strong>
+              </span>
+              <span className="text-[9px] font-mono text-slate-400 block">
+                ID : {entreprise.id_entreprise || 'N/A'}
+              </span>
               <h4 className="font-extrabold text-white uppercase text-sm truncate">
-                {nomUtilisateurConnecte || 'Stéphane KTS'}
+                {nomUtilisateurConnecte || entreprise.nom_entreprise || 'Stéphane KTS'}
               </h4>
             </div>
           </div>
 
-          {estAdminEntreprise && (
+          {/* MENU DES BOUTONS D'ACTION (ADMIN VS EMPLOYÉ) */}
+          {estAdminEntreprise ? (
             <div className="grid grid-cols-3 gap-1.5">
               <button
                 type="button"
@@ -559,6 +567,21 @@ export default function MonProfil({ entrepriseId = '' }) {
                 <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
               </button>
             </div>
+          ) : (
+            <div className="grid grid-cols-1">
+              <button
+                type="button"
+                onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
+                className={`w-full font-black py-2.5 px-3 rounded-xl shadow transition uppercase text-[10px] flex items-center justify-center gap-1.5 border ${
+                  modeAction === 'switcher_module' 
+                    ? 'bg-orange-700 text-white border-orange-400' 
+                    : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
+                }`}
+              >
+                <span>⚡</span>
+                <span>{modeAction === 'switcher_module' ? 'Fermer le sélecteur de module' : 'Changer de module (Accès employé)'}</span>
+              </button>
+            </div>
           )}
 
           {estAdminEntreprise && modeAction === 'module_indisponible' && (
@@ -584,19 +607,35 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          {estAdminEntreprise && modeAction === 'switcher_module' && (
+          {/* PANNEAU DE SWITCH RAPIDE DE MODULE */}
+          {modeAction === 'switcher_module' && (
             <div className="bg-[#0d1b2a] border-2 border-indigo-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
               <h4 className="font-black text-indigo-400 uppercase text-[10px] flex items-center justify-between">
-                <span>⚡ Gestion & Changement de Module</span>
+                <span>⚡ Choix & Basculement de Module</span>
                 <span className="text-slate-400 font-normal">Actif : <strong className="text-orange-400">{moduleActuel}</strong></span>
               </h4>
 
               <div className="grid grid-cols-2 gap-2">
                 {LISTE_MODULES_PRINCIPAUX.map((mod) => {
                   const estSouscrit = espacesSouscrits.includes(mod);
+                  const estAutorisePourUser = estAdminEntreprise || estSuperAdmin || modulesAutorisesUser.includes(mod);
                   const estActif = moduleActuel === mod;
                   const modCapitalized = mod.charAt(0) + mod.slice(1).toLowerCase();
                   const infoTarif = TARIFS_MODULES[modCapitalized] || { disponible: true };
+
+                  if (!estAdminEntreprise && !estSuperAdmin && !estAutorisePourUser) {
+                    return (
+                      <div
+                        key={mod}
+                        className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/40 text-slate-600 flex flex-col items-center justify-center gap-1 cursor-not-allowed opacity-50"
+                      >
+                        <span className="text-xs uppercase font-bold">{mod}</span>
+                        <span className="text-[8px] bg-slate-800 text-slate-500 px-2 py-0.5 rounded font-bold">
+                          🔒 Non autorisé
+                        </span>
+                      </div>
+                    );
+                  }
 
                   if (!infoTarif.disponible) {
                     return (
@@ -613,13 +652,13 @@ export default function MonProfil({ entrepriseId = '' }) {
                     );
                   }
 
-                  if (estSouscrit) {
+                  if (estSouscrit || estAutorisePourUser) {
                     return (
                       <button
                         key={mod}
                         type="button"
                         disabled={estActif || changementModuleEnCours}
-                        onClick={() => gererClicModule(mod)}
+                        onClick={() => basculerModuleActif(mod)}
                         className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${
                           estActif 
                             ? 'bg-orange-600/40 border-orange-500 text-white font-black cursor-default shadow' 
@@ -628,7 +667,7 @@ export default function MonProfil({ entrepriseId = '' }) {
                       >
                         <span className="text-xs uppercase font-black">{mod}</span>
                         <span className={`text-[8.5px] font-bold px-2 py-0.5 rounded ${estActif ? 'bg-orange-500 text-white' : 'bg-emerald-950 text-emerald-400'}`}>
-                          {estActif ? 'Module Actif ✓' : 'Cliquer pour switcher ⚡'}
+                          {estActif ? 'Module Actif ✓' : 'Cliquer pour basculer ⚡'}
                         </span>
                       </button>
                     );
@@ -636,12 +675,14 @@ export default function MonProfil({ entrepriseId = '' }) {
                     return (
                       <div 
                         key={mod}
-                        onClick={() => setModeAction('nouveau_module')}
+                        onClick={() => {
+                          if (estAdminEntreprise) setModeAction('nouveau_module');
+                        }}
                         className="p-2.5 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-500 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-orange-500/50 transition group"
                       >
                         <span className="text-xs uppercase font-bold line-through group-hover:text-slate-300">{mod}</span>
                         <span className="text-[8px] bg-slate-800 text-orange-400 group-hover:bg-orange-600 group-hover:text-white px-2 py-0.5 rounded font-bold transition">
-                          🔒 Non souscrit (Souscrire ➔)
+                          🔒 Non souscrit
                         </span>
                       </div>
                     );
@@ -656,21 +697,6 @@ export default function MonProfil({ entrepriseId = '' }) {
               <h4 className="font-black text-cyan-400 uppercase text-[10px]">
                 🔄 Réabonnement & Extension — Module : <span className="text-orange-400">{moduleActuel}</span>
               </h4>
-
-              {/* BANNIÈRE PROMOTIONNELLE & RÉDUCTIONS */}
-              <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-orange-500/50 p-2.5 rounded-xl text-center space-y-1 shadow">
-                <div className="flex items-center justify-center gap-1 text-amber-400 font-black text-[10px] uppercase">
-                  <span>🔥 OFFRE SPÉCIALE ENTREPRISE : JUSQU'À 35% DE RÉDUCTION !</span>
-                </div>
-                <p className="text-[9px] text-slate-300 leading-tight">
-                  Profitez de remises automatiques exceptionnelles : <strong className="text-orange-400">jusqu'à 20%</strong> sur la durée (3, 6, 9 ou 12 mois) et <strong className="text-orange-400">jusqu'à 15%</strong> sur l'ajout d'utilisateurs !
-                </p>
-                {detailsCalculReabonnement.tauxRemise > 0 && (
-                  <div className="inline-block bg-orange-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full shadow-sm animate-pulse mt-1">
-                    🎉 Remise appliquée : -{detailsCalculReabonnement.tauxRemise}% sur votre facture !
-                  </div>
-                )}
-              </div>
 
               <div className="grid grid-cols-2 gap-2 bg-[#1b263b] p-2.5 rounded-xl border border-blue-900/50 text-center">
                 <div>

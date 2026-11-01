@@ -66,6 +66,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
 
   // --- GESTION DES DROITS ET AUTORISATIONS ---
   const [roleNom, setRoleNom] = useState('');
+  const [nomUtilisateurConnecte, setNomUtilisateurConnecte] = useState('DAVID');
   const [permissions, setPermissions] = useState({
     peut_creer: true,
     peut_modifier: true,
@@ -89,7 +90,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     referenceDoc: '',
     motif: '',
     famille_filtre: 'TOUTES',
-    operateur: 'STÉPHANE KTS',
+    operateur: 'DAVID',
   });
 
   const [modalPartageOuverte, setModalPartageOuverte] = useState(false);
@@ -134,10 +135,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     }
 
     try {
+      let nomConnecteEffectif = 'DAVID';
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         try {
           const userObj = JSON.parse(utilisateurConnecteStr);
+          nomConnecteEffectif = (userObj.nom_complet || userObj.nom_utilisateur || userObj.nom || userObj.prenom || userObj.name || userObj.email?.split('@')[0] || 'DAVID').trim().toUpperCase();
           const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
           setRoleNom(nomRoleUser);
 
@@ -155,6 +158,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
           }
         } catch (e) {}
       }
+
+      setNomUtilisateurConnecte(nomConnecteEffectif);
+      setEnTeteDoc(prev => ({ ...prev, operateur: nomConnecteEffectif }));
 
       const { data: dataDepots } = await supabase
         .from('depots_stock')
@@ -233,7 +239,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
       }
 
       if (!mouvementEnEditionId) {
-        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvementsList) }));
+        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvementsList), operateur: nomConnecteEffectif }));
       }
     } catch (err) { 
       console.error('Erreur (mode hors-ligne actif) :', err.message); 
@@ -493,7 +499,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
           id_article: parseInt(ligne.id_article),
           quantite: ligne.quantite,
           motif_remarque: enTeteDoc.numeroDoc,
-          operateur: enTeteDoc.operateur,
+          operateur: nomUtilisateurConnecte,
         };
 
         const idTemp = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7);
@@ -544,7 +550,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
       id_emplacement_destination: premier.id_emplacement_destination || '',
-      operateur: premier.operateur || 'STÉPHANE KTS' 
+      operateur: premier.operateur || nomUtilisateurConnecte 
     });
     setLignesPanier(lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
@@ -599,7 +605,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     const numDocCle = formaterNumeroDocAffichage(numDocBrut);
     
     if (!acc[numDocCle]) { 
-      acc[numDocCle] = { numeroDoc: numDocCle, numeroDocBrut: numDocBrut, date: mvt.created_at || '', type: mvt.type_mouvement || '', operateur: mvt.operateur || 'STÉPHANE KTS', lignesCount: 0 }; 
+      acc[numDocCle] = { numeroDoc: numDocCle, numeroDocBrut: numDocBrut, date: mvt.created_at || '', type: mvt.type_mouvement || '', operateur: mvt.operateur || nomUtilisateurConnecte, lignesCount: 0 }; 
     }
     acc[numDocCle].lignesCount += 1;
     return acc;
@@ -685,12 +691,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
 
           <div className={`bg-white border-2 border-orange-500/50 p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
             <div className="flex justify-between items-center pb-1 border-b">
-              <span className="font-extrabold text-[10px] text-orange-600 uppercase">{libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}</span>
+              <div className="flex flex-col">
+                <span className="font-extrabold text-[10px] text-orange-600 uppercase">
+                  {libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}
+                </span>
+                <span className="text-[8px] text-slate-500 font-bold uppercase mt-0.5">
+                  Opérateur : <strong className="text-slate-800">{enTeteDoc.operateur || nomUtilisateurConnecte}</strong>
+                </span>
+              </div>
               <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span>
             </div>
             
             <div className="space-y-1.5 text-[9.5px]">
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label>
                   <input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
@@ -698,10 +711,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
                 <div>
                   <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. (Optionnel)</label>
                   <input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
-                </div>
-                <div>
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Opérateur</label>
-                  <input type="text" disabled value={enTeteDoc.operateur} className="w-full bg-slate-100 text-slate-800 border rounded p-1 font-bold truncate" />
                 </div>
               </div>
 

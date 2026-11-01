@@ -4,7 +4,20 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' }) {
+export default function GestionCommandesLivraison({ entrepriseId: propEntrepriseId = '4TS-234321' }) {
+  // Récupération dynamique de l'entrepriseId depuis l'URL si disponible (ex: ?entreprise=4TS-653628)
+  const [entrepriseId, setEntrepriseId] = useState(propEntrepriseId);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const entParam = params.get('entreprise');
+      if (entParam) {
+        setEntrepriseId(entParam);
+      }
+    }
+  }, []);
+
   const [commandes, setCommandes] = useState([]);
   const [lignesCommandesMap, setLignesCommandesMap] = useState({});
   const [partenaires, setPartenaires] = useState([]);
@@ -110,6 +123,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
   const [modalRapportPartenaireOuverte, setModalRapportPartenaireOuverte] = useState(false);
   const [rechercheRapportPartenaireInput, setRechercheRapportPartenaireInput] = useState('');
 
+  // --- ÉTATS POUR L'ONGLET CLÔTURE ---
+  const [clotureDateDebut, setClotureDateDebut] = useState(new Date().toISOString().split('T')[0]);
+  const [clotureDateFin, setClotureDateFin] = useState(new Date().toISOString().split('T')[0]);
+  const [clotureLivreur, setClotureLivreur] = useState('');
+  const [modalClotureLivreurOuverte, setModalClotureLivreurOuverte] = useState(false);
+  const [rechercheClotureLivreurInput, setRechercheClotureLivreurInput] = useState('');
+
   const [colonneTri, setColonneTri] = useState('date');
   const [ordreTri, setOrdreTri] = useState('asc');
 
@@ -196,6 +216,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
   };
 
   const chargerDonnees = async () => {
+    setChargement(true);
     const commandesLocales = localSync.recupererDonneesLocales(`commandes_livraison_${entrepriseId}`);
     const lignesLocales = localSync.recupererDonneesLocales(`lignes_commandes_${entrepriseId}`);
     const partenairesLocaux = localSync.recupererDonneesLocales(`partenaires_livraison_${entrepriseId}`);
@@ -220,8 +241,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
         supabase.from('commandes_livraison_lignes').select('*'),
         supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false }),
-        supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('emplacements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId),
+        supabase.from('emplacements_stock').select('*').eq('id_entreprise', entrepriseId),
         supabase.from('utilisateurs').select('*').eq('id_entreprise', entrepriseId),
         supabase.from('grille_tarifaire_livraison').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId),
@@ -304,15 +325,26 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
   };
 
   useEffect(() => {
-    chargerDonnees();
-    localSync.synchroniserVersCloud(supabase);
+    if (entrepriseId) {
+      chargerDonnees();
+      localSync.synchroniserVersCloud(supabase);
+    }
   }, [entrepriseId]);
 
   const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
+    // Si un emplacement (livreur) est ciblé
     if (emplacementCible && emplacementCible !== 'TOUS') {
       let stockEmp = 0;
       mouvements.forEach(m => {
         if (String(m.id_article) !== String(articleId)) return;
+
+        // Restriction par dépôt / partenaire si spécifié
+        if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
+          const matchDepSource = String(m.id_depot_source || '') === String(depotCible);
+          const matchDepDest = String(m.id_depot_destination || '') === String(depotCible);
+          if (!matchDepSource && !matchDepDest) return;
+        }
+
         const qte = parseInt(m.quantite || 0);
         const typeMvt = (m.type_mouvement || '').toUpperCase();
         
@@ -337,6 +369,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
       return Math.max(0, stockEmp);
     }
 
+    // Si seul le dépôt (partenaire) est ciblé
     if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
       let stockDepot = 0;
       mouvements.forEach(m => {
@@ -413,13 +446,37 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
     let emplacementCible = null;
 
     if (livreurAssigne.trim() !== '') {
-      const empTrouve = emplacements.find(e => 
-        String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
-        ((e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
-        (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase())
-      );
+      const nomLivreurSaisi = livreurAssigne.trim().toUpperCase();
+
+      let empTrouve = emplacements.find(e => {
+        if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
+        const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
+        const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
+        return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || nomLivreurSaisi.includes(nomEmp);
+      });
+
+      if (!empTrouve) {
+        const userTrouve = utilisateurs.find(u => {
+          if (String(u.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
+          let nomU = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
+          if (!nomU && u.email) nomU = u.email.split('@')[0].toUpperCase();
+          return nomU === nomLivreurSaisi || nomU.includes(nomLivreurSaisi);
+        });
+
+        if (userTrouve) {
+          empTrouve = emplacements.find(e => 
+            String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
+            (String(e.responsable_id || '') === String(userTrouve.id) ||
+             String(e.id_utilisateur || '') === String(userTrouve.id) ||
+             String(e.utilisateur_id || '') === String(userTrouve.id))
+          );
+        }
+      }
+
       if (empTrouve) {
         emplacementCible = empTrouve.id;
+      } else {
+        emplacementCible = 'AUCUN_EMPLACEMENT';
       }
     }
 
@@ -428,8 +485,8 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
       return stocksArticlesCache[cacheKey];
     }
 
-    const stockLocal = calculerStockReelDirect(articleId, depotId, emplacementCible);
-    if (stockLocal > 0) {
+    const stockLocal = calculerStockReelDirect(articleId, depotId, emplacementCible === 'AUCUN_EMPLACEMENT' ? null : emplacementCible);
+    if (stockLocal > 0 || emplacementCible === 'AUCUN_EMPLACEMENT') {
       setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockLocal }));
       return stockLocal;
     }
@@ -439,15 +496,13 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
         p_article_id: parseInt(articleId),
         p_entreprise_id: entrepriseId,
         p_depot_id: depotId || 'AUCUN_DEPOT',
-        p_emplacement_id: emplacementCible
+        p_emplacement_id: emplacementCible === 'AUCUN_EMPLACEMENT' ? null : emplacementCible
       });
 
       if (!error && data !== null) {
         const stockVal = parseInt(data, 10);
-        if (stockVal > 0) {
-          setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockVal }));
-          return stockVal;
-        }
+        setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockVal }));
+        return stockVal;
       }
     } catch (err) {
       console.error('Erreur RPC stock :', err.message);
@@ -565,6 +620,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
   const livreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheLivreurInput.toLowerCase()));
   const filtreLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheFiltreLivreurInput.toLowerCase()));
   const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
+  const clotureLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheClotureLivreurInput.toLowerCase()));
 
   const articlesFiltres = articles.filter((a) => {
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
@@ -663,6 +719,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
     setFraisLivraisonSaisi(cmd.frais_livraison !== undefined && cmd.frais_livraison !== null ? String(cmd.frais_livraison) : '');
     setLivreurAssigne(cmd.vendeur_livreur || '');
     setStatutCommandeSaisi(cmd.statut_commande || 'EN ATTENTE');
+    setStocksArticlesCache({});
     
     if (cmd.id_partenaire) {
       handleChangementPartenaire(cmd.id_partenaire);
@@ -728,6 +785,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
       setLivreurAssigne('');
       setStatutCommandeSaisi('EN ATTENTE');
       setCommandeEnEdition(null);
+      setStocksArticlesCache({});
       setVueActive('LISTE');
       chargerDonnees();
     } catch (err) {
@@ -787,17 +845,37 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
 
         if (doublonTrouve) {
           alert(`❌ Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateCommande)}. Impossible de la dupliquer.`);
+          setSauvegardeEnCours(false);
           return;
         }
       }
 
       let empIdTrouve = null;
       if (livreurAssigne.trim() !== '') {
-        const empObj = emplacements.find(e => 
-          String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
-          ((e.nom_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase() ||
-          (e.responsable_emplacement || '').trim().toUpperCase() === livreurAssigne.trim().toUpperCase())
-        );
+        const nomLivreurSaisi = livreurAssigne.trim().toUpperCase();
+        let empObj = emplacements.find(e => {
+          if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
+          const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
+          const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
+          return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || nomLivreurSaisi.includes(nomEmp);
+        });
+
+        if (!empObj) {
+          const userObj = utilisateurs.find(u => {
+            if (String(u.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
+            let nomU = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
+            if (!nomU && u.email) nomU = u.email.split('@')[0].toUpperCase();
+            return nomU === nomLivreurSaisi || nomU.includes(nomLivreurSaisi);
+          });
+          if (userObj) {
+            empObj = emplacements.find(e => 
+              String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
+              (String(e.responsable_id || '') === String(userObj.id) || 
+               String(e.id_utilisateur || '') === String(userObj.id) ||
+               String(e.utilisateur_id || '') === String(userObj.id))
+            );
+          }
+        }
         if (empObj) empIdTrouve = empObj.id;
       }
 
@@ -808,6 +886,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
             alert(
               `🚫 ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`
             );
+            setSauvegardeEnCours(false);
             return;
           }
         }
@@ -833,25 +912,21 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
         statut_commande: statutCommandeSaisi,
       };
 
-      let idCmdCourante = commandeEnEdition ? commandeEnEdition.id : null;
+      let idCmdCourante = null;
 
       if (commandeEnEdition) {
         const statutPrecedent = commandeEnEdition.statut_commande || 'EN ATTENTE';
-        payload.id = commandeEnEdition.id;
+        idCmdCourante = commandeEnEdition.id;
 
         const { error: errUp } = await supabase
           .from('commandes_livraison_en_tete')
           .update(payload)
           .eq('id', commandeEnEdition.id);
 
-        if (errUp) {
-          localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', payload);
-        }
+        if (errUp) throw errUp;
 
         const { error: errDel } = await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
-        if (errDel) {
-          localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
-        }
+        if (errDel) throw errDel;
 
         if (!partenaireSansStockage && statutCommandeSaisi === 'LIVRÉ' && statutPrecedent !== 'LIVRÉ') {
           for (const item of lignesSaisies) {
@@ -865,28 +940,21 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
               id_article: parseInt(item.id_article),
               quantite: item.quantite,
               motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
-              id: 'temp_' + Date.now() + Math.random()
             };
             const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-            if (errMvt) {
-              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-            }
+            if (errMvt) console.error("Erreur mouvement:", errMvt.message);
           }
         }
 
       } else {
-        idCmdCourante = 'temp_' + Date.now();
-        payload.id = idCmdCourante;
-
         const { data: cmdInseree, error: errCmd } = await supabase
           .from('commandes_livraison_en_tete')
           .insert([payload])
           .select()
-          .maybeSingle();
+          .single();
 
-        if (errCmd) {
-          localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', payload);
-        } else if (cmdInseree) {
+        if (errCmd) throw errCmd;
+        if (cmdInseree) {
           idCmdCourante = cmdInseree.id;
         }
 
@@ -902,19 +970,15 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
               id_article: parseInt(item.id_article),
               quantite: item.quantite,
               motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
-              id: 'temp_' + Date.now() + Math.random()
             };
             const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-            if (errMvt) {
-              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-            }
+            if (errMvt) console.error("Erreur mouvement:", errMvt.message);
           }
         }
       }
 
       if (!partenaireSansStockage && lignesSaisies.length > 0 && idCmdCourante) {
         const payloadLignes = lignesSaisies.map(l => ({
-          id: 'temp_' + Date.now() + Math.random(),
           id_commande: idCmdCourante,
           id_article: l.id_article,
           designation: l.designation,
@@ -926,10 +990,16 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
           .from('commandes_livraison_lignes')
           .insert(payloadLignes);
 
-        if (errLignes) {
-          payloadLignes.forEach(pl => localSync.ajouterFileAttente('INSERT', 'commandes_livraison_lignes', pl));
-        }
+        if (errLignes) throw errLignes;
       }
+
+      const [anneeCmd, moisCmd] = dateCommande.split('-');
+      const premierJourCmd = `${anneeCmd}-${moisCmd}-01`;
+      const dernierJourCmd = new Date(parseInt(anneeCmd), parseInt(moisCmd), 0).toISOString().split('T')[0];
+      
+      setFiltreDateDebut(premierJourCmd);
+      setFiltreDateFin(dernierJourCmd);
+      setFiltreStatut('');
 
       alert(commandeEnEdition ? 'Commande mise à jour avec succès !' : 'Commande enregistrée avec succès !');
       setNumeroCommande('1');
@@ -947,8 +1017,9 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
       setLivreurAssigne('');
       setStatutCommandeSaisi('EN ATTENTE');
       setCommandeEnEdition(null);
+      setStocksArticlesCache({});
       setVueActive('LISTE');
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       alert('Erreur technique : ' + (err.message || err));
     } finally {
@@ -1024,6 +1095,48 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
 
     return matchIntervalle && matchLivreur && matchPartenaire;
   });
+
+  const commandesCloture = commandes.filter((cmd) => {
+    if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
+
+    let matchIntervalle = true;
+    let matchLivreur = true;
+
+    if (clotureDateDebut && clotureDateFin) {
+      matchIntervalle = cmd.date_commande >= clotureDateDebut && cmd.date_commande <= clotureDateFin;
+    } else if (clotureDateDebut) {
+      matchIntervalle = cmd.date_commande >= clotureDateDebut;
+    } else if (clotureDateFin) {
+      matchIntervalle = cmd.date_commande <= clotureDateFin;
+    }
+
+    if (clotureLivreur) {
+      matchLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase() === clotureLivreur.trim().toUpperCase();
+    }
+
+    return matchIntervalle && matchLivreur;
+  });
+
+  const resumeClotureParLivreur = {};
+  commandesCloture.forEach(cmd => {
+    const livreurNom = (cmd.vendeur_livreur || 'NON ASSIGNÉ').trim().toUpperCase();
+    if (!resumeClotureParLivreur[livreurNom]) {
+      resumeClotureParLivreur[livreurNom] = {
+        nom: livreurNom,
+        nombreCommandes: 0,
+        montantTotalEncaisse: 0,
+        totalFraisLivraison: 0,
+      };
+    }
+    resumeClotureParLivreur[livreurNom].nombreCommandes += 1;
+    resumeClotureParLivreur[livreurNom].montantTotalEncaisse += Number(cmd.montant_commande || 0);
+    resumeClotureParLivreur[livreurNom].totalFraisLivraison += Number(cmd.frais_livraison || 0);
+  });
+
+  const listeResumeCloture = Object.values(resumeClotureParLivreur);
+
+  const totalEncaisseGlobalCloture = listeResumeCloture.reduce((acc, item) => acc + item.montantTotalEncaisse, 0);
+  const totalFraisGlobalCloture = listeResumeCloture.reduce((acc, item) => acc + item.totalFraisLivraison, 0);
 
   const gererTri = (colonne) => {
     if (colonneTri === colonne) {
@@ -1218,6 +1331,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
                 setLivreurAssigne('');
                 setStatutCommandeSaisi('EN ATTENTE');
                 setLignesSaisies([]);
+                setStocksArticlesCache({});
                 setVueActive('CREATION');
               }}
               className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
@@ -1241,8 +1355,148 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
           >
             📊 Rapport
           </button>
+
+          <button
+            type="button"
+            onClick={() => setVueActive('CLOTURE')}
+            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
+              vueActive === 'CLOTURE' 
+                ? 'bg-emerald-900 text-white border-emerald-900' 
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+            }`}
+          >
+            🔐 Clôture
+          </button>
         </div>
       </div>
+
+      {vueActive === 'CLOTURE' && (
+        <div className="space-y-3">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+              <span className="font-black text-emerald-900 uppercase text-[10px] flex items-center gap-1">
+                🔐 CLÔTURE DE CAISSE DES LIVREURS
+              </span>
+              {(clotureDateDebut !== new Date().toISOString().split('T')[0] || clotureDateFin !== new Date().toISOString().split('T')[0] || clotureLivreur) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ajd = new Date().toISOString().split('T')[0];
+                    setClotureDateDebut(ajd);
+                    setClotureDateFin(ajd);
+                    setClotureLivreur('');
+                  }}
+                  className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] underline"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
+                  <input
+                    type="date"
+                    value={clotureDateDebut}
+                    onChange={(e) => setClotureDateDebut(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
+                  <input
+                    type="date"
+                    value={clotureDateFin}
+                    onChange={(e) => setClotureDateFin(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
+                <button
+                  type="button"
+                  onClick={() => { setRechercheClotureLivreurInput(''); setModalClotureLivreurOuverte(true); }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                >
+                  <span className="truncate">{clotureLivreur || 'TOUS LES LIVREURS'}</span>
+                  <span className="text-slate-400 shrink-0">🔍</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg p-3 space-y-3">
+            <div className="flex flex-row justify-between items-center border-b border-slate-800 pb-2">
+              <div>
+                <h4 className="font-black text-xs uppercase tracking-wider text-emerald-400">
+                  RÉSUMÉ DE CLÔTURE DES LIVRAISONS
+                </h4>
+                <p className="text-[10px] text-slate-300 font-extrabold mt-0.5">
+                  Période : <span className="text-white">{clotureDateDebut === clotureDateFin ? formaterDateJJMMAAAA(clotureDateDebut) : `Du ${formaterDateJJMMAAAA(clotureDateDebut)} au ${formaterDateJJMMAAAA(clotureDateFin)}`}</span>
+                </p>
+              </div>
+              <div className="bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-[10px] font-bold text-slate-200">
+                Livreurs : <strong className="text-emerald-400">{listeResumeCloture.length}</strong>
+              </div>
+            </div>
+
+            {listeResumeCloture.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-xl text-[10px]">
+                Aucune commande livrée enregistrée pour cette période.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {listeResumeCloture.map((item, index) => {
+                  const resteAVerser = item.montantTotalEncaisse - item.totalFraisLivraison;
+                  return (
+                    <div key={index} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm space-y-2 text-slate-900">
+                      <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+                        <span className="font-black text-xs uppercase text-blue-700 flex items-center gap-1">
+                          🛵 {item.nom}
+                        </span>
+                        <span className="bg-orange-100 text-orange-800 font-extrabold px-2 py-0.5 rounded-full text-[9px]">
+                          {item.nombreCommandes} commande(s) livrée(s)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                          <span className="block text-[8px] text-slate-500 uppercase font-bold">Montant Encaissé</span>
+                          <span className="font-mono font-black text-emerald-700 text-xs">{item.montantTotalEncaisse.toLocaleString('fr-FR')} F</span>
+                        </div>
+                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                          <span className="block text-[8px] text-slate-500 uppercase font-bold">Frais (Indicatif)</span>
+                          <span className="font-mono font-bold text-slate-700 text-xs">{item.totalFraisLivraison.toLocaleString('fr-FR')} F</span>
+                        </div>
+                        <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                          <span className="block text-[8px] text-emerald-800 uppercase font-bold">Total / Net</span>
+                          <span className="font-mono font-black text-emerald-900 text-xs">{resteAVerser.toLocaleString('fr-FR')} F</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="bg-emerald-950 text-white p-3 rounded-xl border border-emerald-900 flex justify-between items-center text-xs font-black">
+                  <div>
+                    <span className="block text-[9px] text-emerald-300 uppercase">Total Général Encaissé</span>
+                    <span className="font-mono text-sm text-emerald-400">{totalEncaisseGlobalCloture.toLocaleString('fr-FR')} F</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="block text-[9px] text-emerald-300 uppercase">Total Frais Inclus</span>
+                    <span className="font-mono text-sm text-orange-300">{totalFraisGlobalCloture.toLocaleString('fr-FR')} F</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {vueActive === 'RAPPORT' && (
         <div className="space-y-3">
@@ -1667,14 +1921,11 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
                   <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
                     {articlesFiltres.map((art) => {
                       const idArt = art.id_article || art.id;
-                      const cacheKey = `${idArt}_${depotId}_${livreurAssigne || 'none'}`;
-                      const stockDisp = stocksArticlesCache[cacheKey];
 
                       return (
                         <ArticleItemStockCard 
-                          key={idArt} 
+                          key={`${idArt}_${livreurAssigne}`} 
                           art={art} 
-                          stockDisp={stockDisp} 
                           onSelect={() => ajouterArticleAuPanier(art)} 
                           chargerStock={async () => await recupererStockReelRPC(idArt)}
                         />
@@ -1744,6 +1995,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
                       disabled={sauvegardeEnCours}
                       onClick={() => {
                         setLignesSaisies([]);
+                        setStocksArticlesCache({});
                         setVueActive('LISTE');
                         setCommandeEnEdition(null);
                       }}
@@ -1814,6 +2066,7 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
                   disabled={sauvegardeEnCours}
                   onClick={() => {
                     setLignesSaisies([]);
+                    setStocksArticlesCache({});
                     setVueActive('LISTE');
                     setCommandeEnEdition(null);
                   }}
@@ -1901,11 +2154,11 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
                   />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  <div onClick={() => { setLivreurAssigne(''); setModalLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">
+                  <div onClick={() => { setLivreurAssigne(''); setStocksArticlesCache({}); setModalLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">
                     -- Non assigné --
                   </div>
                   {livreursFiltres.map((nomEmp, idx) => (
-                    <div key={idx} onClick={() => { setLivreurAssigne(nomEmp); setModalLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex items-center gap-2 shadow-2xs">
+                    <div key={idx} onClick={() => { setLivreurAssigne(nomEmp); setStocksArticlesCache({}); setModalLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer flex items-center gap-2 shadow-2xs">
                       <div className="w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center shrink-0 text-slate-500 font-bold text-[10px]">
                         {nomEmp.charAt(0)}
                       </div>
@@ -1942,14 +2195,11 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
                   ) : (
                     articlesFiltres.map((art) => {
                       const idArt = art.id_article || art.id;
-                      const cacheKey = `${idArt}_${depotId}_${livreurAssigne || 'none'}`;
-                      const stockDisp = stocksArticlesCache[cacheKey];
 
                       return (
                         <ArticleModalItemCard 
-                          key={idArt} 
+                          key={`${idArt}_${livreurAssigne}`} 
                           art={art} 
-                          stockDisp={stockDisp} 
                           onSelect={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} 
                           chargerStock={async () => await recupererStockReelRPC(idArt)}
                         />
@@ -2285,29 +2535,43 @@ export default function GestionCommandesLivraison({ entrepriseId = '4TS-234321' 
         </div>
       )}
 
+      {modalClotureLivreurOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR (CLÔTURE)</h4>
+              <button type="button" onClick={() => setModalClotureLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
+            </div>
+            <input type="text" value={rechercheClotureLivreurInput} onChange={(e) => setRechercheClotureLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              <div onClick={() => { setClotureLivreur(''); setModalClotureLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Tous les livreurs --</div>
+              {clotureLivreursFiltres.map((nom, idx) => (
+                <div key={idx} onClick={() => { setClotureLivreur(nom); setModalClotureLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{nom}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
 
-function ArticleItemStockCard({ art, stockDisp, onSelect, chargerStock }) {
-  const [stock, setStock] = useState(stockDisp);
-  const [chargementStock, setChargementStock] = useState(stockDisp === undefined);
+function ArticleItemStockCard({ art, onSelect, chargerStock }) {
+  const [stock, setStock] = useState(0);
+  const [chargementStock, setChargementStock] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    if (stockDisp === undefined) {
-      chargerStock().then((val) => {
-        if (isMounted) {
-          setStock(val);
-          setChargementStock(false);
-        }
-      });
-    } else {
-      setStock(stockDisp);
-      setChargementStock(false);
-    }
+    setChargementStock(true);
+    chargerStock().then((val) => {
+      if (isMounted) {
+        setStock(val);
+        setChargementStock(false);
+      }
+    });
     return () => { isMounted = false; };
-  }, [stockDisp]);
+  }, [chargerStock]);
 
   const designation = art.Designation || art.designation || art.nom;
   const estEpuise = !chargementStock && stock <= 0;
@@ -2329,25 +2593,21 @@ function ArticleItemStockCard({ art, stockDisp, onSelect, chargerStock }) {
   );
 }
 
-function ArticleModalItemCard({ art, stockDisp, onSelect, chargerStock }) {
-  const [stock, setStock] = useState(stockDisp);
-  const [chargementStock, setChargementStock] = useState(stockDisp === undefined);
+function ArticleModalItemCard({ art, onSelect, chargerStock }) {
+  const [stock, setStock] = useState(0);
+  const [chargementStock, setChargementStock] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    if (stockDisp === undefined) {
-      chargerStock().then((val) => {
-        if (isMounted) {
-          setStock(val);
-          setChargementStock(false);
-        }
-      });
-    } else {
-      setStock(stockDisp);
-      setChargementStock(false);
-    }
+    setChargementStock(true);
+    chargerStock().then((val) => {
+      if (isMounted) {
+        setStock(val);
+        setChargementStock(false);
+      }
+    });
     return () => { isMounted = false; };
-  }, [stockDisp]);
+  }, [chargerStock]);
 
   const designation = art.Designation || art.designation || art.nom;
   const estEpuise = !chargementStock && stock <= 0;

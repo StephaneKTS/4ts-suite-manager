@@ -333,7 +333,7 @@ function DashboardContent() {
           {(moduleActif || ongletNavigation !== 'accueil') ? (
             <button
               onClick={() => {
-                if (['journal', 'grand_livre', 'controle', 'plan_comptable'].includes(moduleActif)) {
+                if (['journal', 'grand_livre', 'controle', 'plan_comptable', 'caisses'].includes(moduleActif)) {
                   setModuleActif(null);
                   setOngletNavigation('rapports');
                 } else {
@@ -343,7 +343,7 @@ function DashboardContent() {
               }}
               className="bg-sky-900/60 hover:bg-sky-800 text-cyan-200 font-bold px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] transition border border-cyan-500/40 shadow-sm flex items-center gap-1"
             >
-              {['journal', 'grand_livre', 'controle', 'plan_comptable'].includes(moduleActif) ? '← Comptabilité' : '← Accueil'}
+              {['journal', 'grand_livre', 'controle', 'plan_comptable', 'caisses'].includes(moduleActif) ? '← Comptabilité' : '← Accueil'}
             </button>
           ) : (
             <span className="text-[9px] sm:text-[10px] bg-cyan-950 text-cyan-300 font-bold px-2 py-0.5 rounded-full border border-cyan-500/40 shadow-sm">
@@ -354,7 +354,6 @@ function DashboardContent() {
       </div>
 
       <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 pb-20 w-full max-w-7xl mx-auto">
-        {/* Suppression du blocage global de chargement des permissions : affichage immédiat */}
         {ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-2.5 w-full">
             <h2 className="text-[10px] sm:text-xs font-black text-cyan-400/80 uppercase tracking-wider px-0.5">
@@ -376,6 +375,16 @@ function DashboardContent() {
                   <div>
                     <h3 className="font-extrabold text-slate-100 text-xs sm:text-sm">Plan Comptable</h3>
                     <p className="text-[10px] text-cyan-200/70 mt-0.5">Gestion et consultation du plan comptable.</p>
+                  </div>
+                </div>
+              )}
+              {/* Ajout exclusif dans le menu comptabilité pour le module LIVRAISON */}
+              {estModeLivraison && verifierPermission('caisses') && (
+                <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 shadow-md group">
+                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                  <div>
+                    <h3 className="font-extrabold text-slate-100 text-xs sm:text-sm">Création Caisse</h3>
+                    <p className="text-[10px] text-cyan-200/70 mt-0.5">Création et gestion des caisses de livraison.</p>
                   </div>
                 </div>
               )}
@@ -497,12 +506,7 @@ function DashboardContent() {
                   <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Grille Tarifaire</span>
                 </div>
               )}
-              {verifierPermission('caisses') && (
-                <div onClick={() => tenterAccesModule('caisses', 'Création Caisse')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
-                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                  <span className="font-bold text-slate-200 text-[11px] sm:text-xs leading-tight">Création Caisse</span>
-                </div>
-              )}
+              {/* Note: La tuile Création Caisse a été retirée d'ici pour le module LIVRAISON */}
               {verifierPermission('emplacements_stock') && (
                 <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Livreurs')} className="bg-[#0b1329] hover:bg-[#0f1d3e] border border-cyan-900/50 hover:border-cyan-400 p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 shadow-sm group">
                   <span className="text-2xl group-hover:scale-110 transition">📍</span>

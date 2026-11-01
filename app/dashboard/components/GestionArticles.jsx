@@ -259,6 +259,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       let stockEmp = 0;
       mouvements.forEach(m => {
         if (String(m.id_article) !== String(articleId)) return;
+        
+        if (depotCible !== 'TOUS') {
+          const matchDepSource = String(m.id_depot_source || '') === String(depotCible);
+          const matchDepDest = String(m.id_depot_destination || '') === String(depotCible);
+          if (!matchDepSource && !matchDepDest) return;
+        }
+
         const qte = parseInt(m.quantite || 0);
         const typeMvt = (m.type_mouvement || '').toUpperCase();
         
@@ -701,13 +708,21 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const articlesAffiches = articlesTries.slice(0, limiteArticles);
 
+  // SOLUTION ADAPTÉE : Filtrage des emplacements basé sur les mouvements réels du partenaire
   const emplacementsDisponibles = depotFiltre === 'TOUS' 
     ? emplacements 
-    : emplacements.filter(emp => String(emp.id_depot || emp.depot_id || '') === String(depotFiltre));
+    : emplacements.filter(emp => {
+        const empId = String(emp.id || '');
+        return mouvements.some(m => {
+          const matchDepot = String(m.id_depot_source || '') === String(depotFiltre) || String(m.id_depot_destination || '') === String(depotFiltre);
+          const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
+          return matchDepot && matchEmplacement;
+        });
+      });
 
-  const emplacementsTableau = depotFiltre === 'TOUS'
-    ? emplacements
-    : emplacements.filter(emp => String(emp.id_depot || emp.depot_id || '') === String(depotFiltre));
+  const emplacementsTableau = emplacementFiltre !== 'TOUS'
+    ? emplacements.filter(emp => String(emp.id || emp.id_emplacement || '') === String(emplacementFiltre))
+    : emplacementsDisponibles;
 
   const articlesModalFiltres = articles.filter(art => {
     const nom = (art.Designation || art.designation || '').toLowerCase();
@@ -805,11 +820,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const famObj = familles.find(f => String(f.id) === String(familleFiltre));
       const depObj = depots.find(d => String(d.id) === String(depotFiltre));
       const empObj = emplacements.find(e => String(e.id) === String(emplacementFiltre));
+      const libelleDepotRapport = moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt';
       infosFiltresHtml = `
         <div class="meta-info">
           <span><strong>Famille :</strong> ${famObj ? (famObj.nom_famille || famObj.Nom_Famille) : 'Toutes'}</span>
-          <span><strong>Dépôt :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
-          <span><strong>Emplacement :</strong> ${empObj ? empObj.nom_emplacement : 'Tous'}</span>
+          <span><strong>${libelleDepotRapport} :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
+          <span><strong>Livreur :</strong> ${empObj ? empObj.nom_emplacement : 'Tous'}</span>
         </div>
       `;
     }
@@ -1208,7 +1224,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   </div>
 
                   <div>
-                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Dépôt</label>
+                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">
+                      {moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt'}
+                    </label>
                     <select
                       disabled={enTrainDeSauvegarder}
                       value={depotFiltre}
@@ -1225,7 +1243,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   </div>
 
                   <div>
-                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Emplacement</label>
+                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Livreur</label>
                     <select
                       disabled={enTrainDeSauvegarder}
                       value={emplacementFiltre}
@@ -1405,14 +1423,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Dépôt</label>
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">
+                    {moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt'}
+                  </label>
                   <select
                     disabled={enTrainDeSauvegarder}
                     value={depotStatFiltre}
                     onChange={(e) => setDepotStatFiltre(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
                   >
-                    <option value="TOUS">Tous les dépôts</option>
+                    <option value="TOUS">{moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts'}</option>
                     {depots.map((dep) => (
                       <option key={dep.id} value={dep.id}>
                         {dep.nom_depot || dep.Nom_Depot}
@@ -1531,14 +1551,16 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               </div>
 
               <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5">Dépôt / Partenaire</label>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5">
+                  {moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt'}
+                </label>
                 <select
                   disabled={enTrainDeSauvegarder}
                   value={depotRapportFiltre}
                   onChange={(e) => setDepotRapportFiltre(e.target.value)}
                   className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
                 >
-                  <option value="TOUS">Tous les dépôts</option>
+                  <option value="TOUS">{moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts'}</option>
                   {depots.map((dep) => (
                     <option key={dep.id} value={dep.id}>
                       {dep.nom_depot || dep.Nom_Depot}

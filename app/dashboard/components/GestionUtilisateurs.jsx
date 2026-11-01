@@ -22,12 +22,20 @@ const LISTE_PAYS = [
   { code: 'dza', indicatif: '+213', longueur: 9 },
 ];
 
+const MODULES_DISPONIBLES = [
+  { id: 'BOUTIQUE', label: '🏪 Boutique / Ventes' },
+  { id: 'LIVRAISON', label: '🚚 Livraison / Transport' },
+  { id: 'STOCK', label: '📦 Stock & Logistique' },
+  { id: 'COMPTABILITE', label: '📊 Comptabilité & Caisse' },
+];
+
 export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [roles, setRoles] = useState([]);
   const [caisses, setCaisses] = useState([]);
   const [emplacements, setEmplacements] = useState([]);
   const [entrepriseInfo, setEntrepriseInfo] = useState(null);
+  const [modulesSouscrits, setModulesSouscrits] = useState(['BOUTIQUE']);
   const [chargement, setChargement] = useState(false);
   const [afficherForm, setAfficherForm] = useState(false);
   const [userEnEdition, setUserEnEdition] = useState(null);
@@ -62,6 +70,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     photo: '',
     statut: 'ACTIF',
     acces_application: true,
+    modules_cibles: [],
   });
 
   const obtenirModuleActuel = () => {
@@ -101,7 +110,17 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .maybeSingle();
-      if (dataEnt) setEntrepriseInfo(dataEnt);
+      
+      if (dataEnt) {
+        setEntrepriseInfo(dataEnt);
+        if (dataEnt.modules_souscrits && Array.isArray(dataEnt.modules_souscrits)) {
+          setModulesSouscrits(dataEnt.modules_souscrits.map(m => m.toUpperCase()));
+        } else if (dataEnt.module) {
+          setModulesSouscrits([dataEnt.module.toUpperCase()]);
+        } else {
+          setModulesSouscrits([moduleActuel, 'BOUTIQUE']);
+        }
+      }
 
       const { data: dataRoles } = await supabase
         .from('roles')
@@ -173,6 +192,22 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
+  const basculerModuleCible = (modId) => {
+    if (!modulesSouscrits.includes(modId)) {
+      alert(`⚠️ Votre entreprise n'a pas souscrit au module "${modId}". Veuillez souscrire à ce module pour y autoriser du personnel.`);
+      return;
+    }
+
+    setNouveauUser(prev => {
+      const exists = prev.modules_cibles.includes(modId);
+      if (exists) {
+        return { ...prev, modules_cibles: prev.modules_cibles.filter(m => m !== modId) };
+      } else {
+        return { ...prev, modules_cibles: [...prev.modules_cibles, modId] };
+      }
+    });
+  };
+
   const enregistrerUtilisateurDefinitif = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
@@ -186,6 +221,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    const modulesPayload = nouveauUser.modules_cibles.length > 0 
+      ? nouveauUser.modules_cibles 
+      : [moduleActuel];
+
     if (nouveauUser.acces_application) {
       const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
       const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
@@ -194,37 +233,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         alert(`⚠️ Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`);
         return;
       }
-
-      const nbActuelsAccesApp = utilisateurs.filter(u => u.acces_application && (!userEnEdition || u.id !== userEnEdition.id)).length;
-      const limiteLicence = entrepriseInfo?.limite_utilisateurs || 5;
-      if (nbActuelsAccesApp >= limiteLicence) {
-        alert(`❌ Limite de licence atteinte (${limiteLicence} utilisateurs avec accès application maximum).`);
-        return;
-      }
     }
 
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
     const numeroComplet = (nouveauUser.acces_application && chiffresPur) ? `${paysObj.indicatif}${chiffresPur}` : '';
     const emailSaisi = nouveauUser.acces_application ? (nouveauUser.email || '').trim().toLowerCase() : '';
-
-    if (nouveauUser.acces_application) {
-      const doublonEmail = utilisateurs.find(u => 
-        u.email && u.email.trim().toLowerCase() === emailSaisi && (!userEnEdition || u.id !== userEnEdition.id)
-      );
-      if (emailSaisi && doublonEmail) {
-        alert(`❌ Doublon détecté : L'adresse e-mail "${emailSaisi}" est déjà utilisée par un autre collaborateur (${doublonEmail.nom_complet}).`);
-        return;
-      }
-
-      const doublonTelephone = utilisateurs.find(u => 
-        u.telephone && u.telephone.trim() === numeroComplet && (!userEnEdition || u.id !== userEnEdition.id)
-      );
-      if (numeroComplet && doublonTelephone) {
-        alert(`❌ Doublon détecté : Le numéro de téléphone "${numeroComplet}" est déjà utilisé par un autre collaborateur (${doublonTelephone.nom_complet}).`);
-        return;
-      }
-    }
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -252,9 +266,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      let payload = {
+      let basePayload = {
         id_entreprise: entrepriseId,
-        module: moduleActuel,
         nom_complet: nomNomCollab,
         prenom: (nouveauUser.prenom || '').trim().toUpperCase(),
         date_naissance: nouveauUser.date_naissance || null,
@@ -279,23 +292,54 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       };
 
       if (userEnEdition) {
-        const { error } = await supabase.from('utilisateurs').update(payload).eq('id', userEnEdition.id);
-        if (error) throw error;
+        // Récupérer tous les enregistrements existants de cet employé dans l'entreprise (par ID ou nom)
+        const { data: existingRecords, error: errFetch } = await supabase
+          .from('utilisateurs')
+          .select('id, module')
+          .eq('id_entreprise', entrepriseId)
+          .or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomNomCollab}`);
 
-        setUtilisateurs(prev => prev.map(u => u.id === userEnEdition.id ? { ...u, ...payload } : u));
-        alert('Collaborateur mis à jour avec succès !');
-      } else {
-        const { error, data } = await supabase.from('utilisateurs').insert([payload]).select().single();
-        if (error) throw error;
+        if (errFetch) throw errFetch;
 
-        if (data) {
-          setUtilisateurs(prev => [data, ...prev.filter(u => u.id !== data.id)]);
+        // Pour chaque module disponible, on crée, met à jour ou supprime selon les cases cochées
+        for (const modObj of MODULES_DISPONIBLES) {
+          const modCible = modObj.id;
+          const doitEtreActif = modulesPayload.includes(modCible);
+          const recordTrouve = existingRecords?.find(r => (r.module || '').toUpperCase() === modCible);
+
+          if (doitEtreActif) {
+            if (recordTrouve) {
+              await supabase
+                .from('utilisateurs')
+                .update({ ...basePayload, module: modCible })
+                .eq('id', recordTrouve.id);
+            } else {
+              await supabase
+                .from('utilisateurs')
+                .insert([{ ...basePayload, module: modCible }]);
+            }
+          } else {
+            if (recordTrouve) {
+              // Sécurité : Ne pas supprimer le module courant si c'est celui sur lequel l'admin est logqué (optionnel, ici on supprime si décoché)
+              await supabase
+                .from('utilisateurs')
+                .delete()
+                .eq('id', recordTrouve.id);
+            }
+          }
         }
-        alert('Collaborateur enregistré avec succès !');
+
+        alert('✅ Accès multi-modules mis à jour et figés avec succès !');
+      } else {
+        for (const modCible of modulesPayload) {
+          let payloadModule = { ...basePayload, module: modCible };
+          const { error } = await supabase.from('utilisateurs').insert([payloadModule]);
+          if (error) console.error(`Erreur insertion module ${modCible}:`, error.message);
+        }
+        alert('✅ Collaborateur créé et affecté aux modules sélectionnés !');
       }
 
       localStorage.removeItem(cleCacheUtilisateurs);
-
       annulerForm();
       await chargerDonnees();
     } catch (err) {
@@ -305,12 +349,35 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  const ouvrirEdition = (user) => {
+  const ouvrirEdition = async (user) => {
     setUserEnEdition(user);
     let telLocal = user.telephone || '';
     const paysTrouve = LISTE_PAYS.find(p => user.telephone && user.telephone.startsWith(p.indicatif)) || LISTE_PAYS[0];
     if (user.telephone && user.telephone.startsWith(paysTrouve.indicatif)) {
       telLocal = user.telephone.replace(paysTrouve.indicatif, '');
+    }
+
+    // Récupérer de façon fiable tous les modules de l'employé dans l'entreprise
+    let modulesActuelsUser = [moduleActuel];
+    try {
+      const nomCollab = (user.nom_complet || '').trim();
+      let query = supabase
+        .from('utilisateurs')
+        .select('module')
+        .eq('id_entreprise', entrepriseId);
+
+      if (nomCollab) {
+        query = query.or(`id.eq.${user.id},nom_complet.eq.${nomCollab}`);
+      } else {
+        query = query.eq('id', user.id);
+      }
+
+      const { data: userModulesData, error: errMod } = await query;
+      if (!errMod && userModulesData && userModulesData.length > 0) {
+        modulesActuelsUser = userModulesData.map(item => (item.module || '').toUpperCase()).filter(Boolean);
+      }
+    } catch (err) {
+      console.error('Erreur récupération modules utilisateur :', err);
     }
 
     setNouveauUser({
@@ -335,6 +402,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       photo: user.photo || '',
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
+      modules_cibles: Array.from(new Set([...modulesActuelsUser, moduleActuel])),
     });
     setAfficherForm(true);
   };
@@ -346,24 +414,30 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
       nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
       numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
-      id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true
+      id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel]
     });
     setAfficherForm(false);
   };
 
   const supprimerUtilisateur = async () => {
     if (enTrainDeSauvegarder || !userEnEdition) return;
-
     if (!confirm(`Voulez-vous vraiment supprimer définitivement le collaborateur "${userEnEdition.nom_complet}" ?`)) return;
 
     setEnTrainDeSauvegarder(true);
     try {
-      const { error } = await supabase.from('utilisateurs').delete().eq('id', userEnEdition.id);
+      const nomCollab = (userEnEdition.nom_complet || '').trim();
+      let queryDel = supabase.from('utilisateurs').delete().eq('id_entreprise', entrepriseId);
+      if (nomCollab) {
+        queryDel = queryDel.or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomCollab}`);
+      } else {
+        queryDel = queryDel.eq('id', userEnEdition.id);
+      }
+
+      const { error } = await queryDel;
       if (error) throw error;
 
       setUtilisateurs(prev => prev.filter(u => u.id !== userEnEdition.id));
       localStorage.removeItem(cleCacheUtilisateurs);
-
       alert('Collaborateur supprimé avec succès.');
       annulerForm();
       await chargerDonnees();
@@ -440,7 +514,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
                 nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
                 numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
-                id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true
+                id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel]
               });
               setUserEnEdition(null);
               setAfficherForm(true);
@@ -471,7 +545,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         <div className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[75vh] overflow-y-auto pr-2 pb-24">
           <div className="flex justify-between items-center border-b border-slate-200 pb-1">
             <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
+              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur & Licences modules'}
             </h4>
             <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
           </div>
@@ -490,6 +564,54 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                   Accès à l'application (Consomme une licence / Connexion active)
                 </span>
               </label>
+            </div>
+
+            {/* SELECTION DES MODULES */}
+            <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl space-y-1.5 shadow-2xs">
+              <span className="font-black text-slate-900 text-[10px] uppercase block">
+                💳 Modules et accès autorisés pour cet employé :
+              </span>
+              <p className="text-[9px] text-slate-500 font-medium">
+                {userEnEdition 
+                  ? "Cochez de nouveaux modules souscrits pour lui accorder l'accès." 
+                  : "Seuls les modules souscrits par votre entreprise sont cliquables."}
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 pt-1">
+                {MODULES_DISPONIBLES.map((mod) => {
+                  const estSouscrit = modulesSouscrits.includes(mod.id);
+                  const estCoche = nouveauUser.modules_cibles.includes(mod.id);
+
+                  return (
+                    <div 
+                      key={mod.id} 
+                      onClick={() => estSouscrit && basculerModuleCible(mod.id)}
+                      className={`flex items-center justify-between p-2 rounded-lg border transition select-none ${
+                        !estSouscrit 
+                          ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed' 
+                          : estCoche 
+                            ? 'bg-orange-50 border-orange-500 text-orange-950 font-bold cursor-pointer' 
+                            : 'bg-white border-slate-300 text-slate-700 cursor-pointer hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <input
+                          type="checkbox"
+                          disabled={!estSouscrit}
+                          checked={estCoche}
+                          onChange={() => {}}
+                          className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        <span className="text-[10px] truncate">{mod.label}</span>
+                      </div>
+                      {!estSouscrit ? (
+                        <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold shrink-0">Non souscrit</span>
+                      ) : estCoche && userEnEdition ? (
+                        <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold shrink-0">Accès actif</span>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <input 
