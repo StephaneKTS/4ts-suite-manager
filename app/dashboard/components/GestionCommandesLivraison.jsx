@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
 export default function GestionCommandesLivraison({ entrepriseId: propEntrepriseId = '4TS-234321' }) {
-  // Récupération dynamique de l'entrepriseId depuis l'URL si disponible (ex: ?entreprise=4TS-653628)
   const [entrepriseId, setEntrepriseId] = useState(propEntrepriseId);
 
   useEffect(() => {
@@ -28,10 +27,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [grilleTarifaire, setGrilleTarifaire] = useState([]);
   const [mouvements, setMouvements] = useState([]);
   const [approvisionnements, setApprovisionnements] = useState([]);
+  const [caisses, setCaisses] = useState([]);
+  const [cloturesEffectuees, setCloturesEffectuees] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
-  // --- GESTION DES DROITS ET AUTORISATIONS DES EMPLOYÉS ---
   const [roleUtilisateur, setRoleUtilisateur] = useState(null);
   const [permissions, setPermissions] = useState({
     peut_creer: true,
@@ -40,15 +40,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     peut_valider: true
   });
 
-  // Cache local pour stocker les stocks calculés
   const [stocksArticlesCache, setStocksArticlesCache] = useState({});
-
-  // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteCommandes, setLimiteCommandes] = useState(20);
-
   const [commandesAppelees, setCommandesAppelees] = useState({});
 
   const [vueActive, setVueActive] = useState('LISTE');
+  const [sousOngletCloture, setSousOngletCloture] = useState('nouveau');
   const [commandeEnEdition, setCommandeEnEdition] = useState(null);
 
   const [numeroCommande, setNumeroCommande] = useState('1');
@@ -81,7 +78,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const [partenaireSansStockage, setPartenaireSansStockage] = useState(false);
 
-  // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
+  const [totalVerseCloture, setTotalVerseCloture] = useState('');
+  const [modalCaisseClotureOuverte, setModalCaisseClotureOuverte] = useState(false);
+  const [caisseSelectionneeCloture, setCaisseSelectionneeCloture] = useState('');
+
   const obtenirPremierJourDuMois = () => {
     const d = new Date();
     const annee = d.getFullYear();
@@ -123,7 +123,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [modalRapportPartenaireOuverte, setModalRapportPartenaireOuverte] = useState(false);
   const [rechercheRapportPartenaireInput, setRechercheRapportPartenaireInput] = useState('');
 
-  // --- ÉTATS POUR L'ONGLET CLÔTURE ---
   const [clotureDateDebut, setClotureDateDebut] = useState(new Date().toISOString().split('T')[0]);
   const [clotureDateFin, setClotureDateFin] = useState(new Date().toISOString().split('T')[0]);
   const [clotureLivreur, setClotureLivreur] = useState('');
@@ -134,9 +133,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [ordreTri, setOrdreTri] = useState('asc');
 
   const rapportRef = useRef(null);
-
   const [lignesSaisies, setLignesSaisies] = useState([]);
-
   const moduleActuel = 'LIVRAISON';
 
   const formaterDateCourte = (dateStr) => {
@@ -144,10 +141,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     try {
       const [annee, mois, jour] = dateStr.split('-');
       const dateObj = new Date(parseInt(annee), parseInt(mois) - 1, parseInt(jour));
-      
       const options = { weekday: 'short' };
       let nomJour = dateObj.toLocaleDateString('fr-FR', options).replace('.', '').toUpperCase();
-      
       return `${nomJour} ${jour}/${mois}/${annee}`;
     } catch (e) {
       return dateStr;
@@ -159,11 +154,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     try {
       const [annee, mois, jour] = dateStr.split('-');
       const dateObj = new Date(parseInt(annee), parseInt(mois) - 1, parseInt(jour));
-      
       const options = { weekday: 'long' };
       let nomJour = dateObj.toLocaleDateString('fr-FR', options);
       nomJour = nomJour.charAt(0).toUpperCase() + nomJour.slice(1);
-
       return `${nomJour} ${jour}/${mois}/${annee}`;
     } catch (e) {
       return dateStr;
@@ -224,6 +217,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const depotsLocaux = localSync.recupererDonneesLocales(`depots_livraison_${entrepriseId}`);
     const emplacementsLocaux = localSync.recupererDonneesLocales(`emplacements_livraison_${entrepriseId}`);
     const grilleLocale = localSync.recupererDonneesLocales(`grille_tarifaire_${entrepriseId}`);
+    const caissesLocales = localSync.recupererDonneesLocales(`caisses_${entrepriseId}_${moduleActuel}`);
+    const cloturesLocales = localSync.recupererDonneesLocales(`clotures_livraison_${entrepriseId}`);
 
     if (commandesLocales && commandesLocales.length > 0) setCommandes(commandesLocales);
     if (lignesLocales) setLignesCommandesMap(lignesLocales);
@@ -232,11 +227,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     if (depotsLocaux && depotsLocaux.length > 0) setDepots(depotsLocaux);
     if (emplacementsLocaux && emplacementsLocaux.length > 0) setEmplacements(emplacementsLocaux);
     if (grilleLocale && grilleLocale.length > 0) setGrilleTarifaire(grilleLocale);
+    if (caissesLocales && caissesLocales.length > 0) setCaisses(caissesLocales);
+    if (cloturesLocales && cloturesLocales.length > 0) setCloturesEffectuees(cloturesLocales);
 
     try {
       await chargerDroitsUtilisateur();
 
-      const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resTarif, resMouv, resAppro] = await Promise.all([
+      const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resTarif, resMouv, resAppro, resCaisses, resClotures] = await Promise.all([
         supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('commandes_livraison_lignes').select('*'),
         supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -246,7 +243,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         supabase.from('utilisateurs').select('*').eq('id_entreprise', entrepriseId),
         supabase.from('grille_tarifaire_livraison').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId)
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId),
+        supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId),
+        supabase.from('clotures_caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false })
       ]);
 
       const commandesData = resCmd.data || [];
@@ -288,6 +287,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       }
       if (resMouv.data) setMouvements(resMouv.data);
       if (resAppro.data) setApprovisionnements(resAppro.data);
+      if (resCaisses.data) {
+        setCaisses(resCaisses.data);
+        localSync.sauvegarderDonneesLocales(`caisses_${entrepriseId}_${moduleActuel}`, resCaisses.data);
+      }
+      if (resClotures.data) {
+        setCloturesEffectuees(resClotures.data);
+        localSync.sauvegarderDonneesLocales(`clotures_livraison_${entrepriseId}`, resClotures.data);
+      }
 
       setStocksArticlesCache({});
       calculerNumeroAutomatique(commandesData, idPartenaire, dateCommande);
@@ -332,13 +339,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   }, [entrepriseId]);
 
   const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
-    // Si un emplacement (livreur) est ciblé
     if (emplacementCible && emplacementCible !== 'TOUS') {
       let stockEmp = 0;
       mouvements.forEach(m => {
         if (String(m.id_article) !== String(articleId)) return;
 
-        // Restriction par dépôt / partenaire si spécifié
         if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
           const matchDepSource = String(m.id_depot_source || '') === String(depotCible);
           const matchDepDest = String(m.id_depot_destination || '') === String(depotCible);
@@ -369,7 +374,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       return Math.max(0, stockEmp);
     }
 
-    // Si seul le dépôt (partenaire) est ciblé
     if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
       let stockDepot = 0;
       mouvements.forEach(m => {
@@ -452,7 +456,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
         const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
         const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
-        return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || nomLivreurSaisi.includes(nomEmp);
+        return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || livreurAssigne.includes(nomEmp);
       });
 
       if (!empTrouve) {
@@ -857,7 +861,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
           const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
           const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
-          return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || nomLivreurSaisi.includes(nomEmp);
+          return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || livreurAssigne.includes(nomEmp);
         });
 
         if (!empObj) {
@@ -1114,7 +1118,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       matchLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase() === clotureLivreur.trim().toUpperCase();
     }
 
-    return matchIntervalle && matchLivreur;
+    if (!matchIntervalle || !matchLivreur) return false;
+
+    const dejaCloturee = cloturesEffectuees.some(cl => {
+      const livCloture = (cl.caissier || '').trim().toUpperCase();
+      const cmdLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase();
+      if (livCloture && cmdLivreur && livCloture !== cmdLivreur) return false;
+
+      const dateDebutCl = cl.date_debut || cl.created_at?.split('T')[0];
+      const dateFinCl = cl.date_fin || dateDebutCl;
+      if (dateDebutCl && dateFinCl) {
+        return cmd.date_commande >= dateDebutCl && cmd.date_commande <= dateFinCl;
+      }
+      return false;
+    });
+
+    return !dejaCloturee;
   });
 
   const resumeClotureParLivreur = {};
@@ -1134,9 +1153,88 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   });
 
   const listeResumeCloture = Object.values(resumeClotureParLivreur);
-
   const totalEncaisseGlobalCloture = listeResumeCloture.reduce((acc, item) => acc + item.montantTotalEncaisse, 0);
-  const totalFraisGlobalCloture = listeResumeCloture.reduce((acc, item) => acc + item.totalFraisLivraison, 0);
+  
+  const numericTotalVerse = parseFloat(totalVerseCloture) || 0;
+  const ecartGlobalCloture = totalEncaisseGlobalCloture - numericTotalVerse;
+
+  const validerEtVerserCloture = async (caisseId, nomCaisse) => {
+    const montantVerséNum = parseFloat(totalVerseCloture) || 0;
+    if (montantVerséNum <= 0) {
+      alert('⚠️ Veuillez saisir un montant versé valide supérieur à 0.');
+      return;
+    }
+    if (!caisseId) {
+      alert('⚠️ Veuillez sélectionner une caisse.');
+      return;
+    }
+
+    const parsedBigInt = parseInt(caisseId, 10);
+    const finalCaisseId = isNaN(parsedBigInt) ? caisseId : parsedBigInt;
+
+    setSauvegardeEnCours(true);
+    try {
+      let maxNum = 0;
+      cloturesEffectuees.forEach(cl => {
+        const code = cl.code_cloture || '';
+        const matchNum = code.match(/LIVR-(\d+)/);
+        if (matchNum) {
+          const numPart = parseInt(matchNum[1], 10);
+          if (!isNaN(numPart) && numPart > maxNum) {
+            maxNum = numPart;
+          }
+        }
+      });
+      const prochainNum = maxNum + 1;
+      const baseCodePiece = `LIVR-${String(prochainNum).padStart(2, '0')}`;
+      const prefixLivreur = clotureLivreur ? `${clotureLivreur.trim().toUpperCase()} - ` : '';
+      const codePieceCloture = `${prefixLivreur}${baseCodePiece}`;
+
+      const libelleCloture = `VERS. CLÔTURE LIVRAISON ${clotureLivreur ? `- ${clotureLivreur}` : ''} (${clotureDateDebut === clotureDateFin ? clotureDateDebut : `Du ${clotureDateDebut} au ${clotureDateFin}`})`;
+
+      const payloadCloture = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+        code_cloture: codePieceCloture,
+        date_debut: clotureDateDebut,
+        date_fin: clotureDateFin,
+        caissier: clotureLivreur || 'TOUS',
+        montant_total_encaisse: totalEncaisseGlobalCloture,
+        montant_reel_verse: montantVerséNum,
+        ecart_caisse: ecartGlobalCloture,
+        id_caisse_destination: finalCaisseId,
+        created_at: new Date().toISOString()
+      };
+
+      const { error: errCloture } = await supabase.from('clotures_caisses').insert([payloadCloture]);
+      if (errCloture) throw errCloture;
+
+      const payloadMvt = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+        id_caisse: finalCaisseId,
+        type_mouvement: 'ENTREE',
+        montant: montantVerséNum,
+        libelle: libelleCloture.trim().toUpperCase(),
+        piece_physique: codePieceCloture,
+        created_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase.from('mouvements_caisse').insert([payloadMvt]);
+      if (error) throw error;
+
+      alert(`✅ Clôture enregistrée sous le numéro ${codePieceCloture} et versement de ${montantVerséNum.toLocaleString('fr-FR')} CFA effectué avec succès dans la caisse "${nomCaisse}" !`);
+      
+      setCaisseSelectionneeCloture(caisseId);
+      setModalCaisseClotureOuverte(false);
+      setTotalVerseCloture('');
+      await chargerDonnees();
+    } catch (err) {
+      alert('Erreur lors du versement dans le journal de caisse : ' + err.message);
+    } finally {
+      setSauvegardeEnCours(false);
+    }
+  };
 
   const gererTri = (colonne) => {
     if (colonneTri === colonne) {
@@ -1288,14 +1386,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       `}</style>
 
-      <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1.5 overflow-hidden">
-        <div className="flex items-center gap-2">
-          <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">
+      <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1 overflow-hidden">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <h3 className="font-extrabold text-slate-900 uppercase text-[10px] flex items-center gap-0.5 shrink-0">
             <span>📦</span> LIVRAISON
           </h3>
           {roleUtilisateur && (
-            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
+            <span className="text-[8px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-bold border border-slate-200 truncate max-w-[90px]">
+              {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
             </span>
           )}
         </div>
@@ -1304,7 +1402,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           <button
             type="button"
             onClick={() => setVueActive('LISTE')}
-            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
+            className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'LISTE' 
                 ? 'bg-slate-900 text-white border-slate-900' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
@@ -1334,7 +1432,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 setStocksArticlesCache({});
                 setVueActive('CREATION');
               }}
-              className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
+              className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
                 vueActive === 'CREATION' 
                   ? 'bg-orange-600 text-white border-orange-600' 
                   : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
@@ -1347,7 +1445,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           <button
             type="button"
             onClick={() => setVueActive('RAPPORT')}
-            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
+            className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'RAPPORT' 
                 ? 'bg-blue-900 text-white border-blue-900' 
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
@@ -1359,7 +1457,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           <button
             type="button"
             onClick={() => setVueActive('CLOTURE')}
-            className={`font-bold px-2 py-1 rounded-md transition shadow-2xs text-[10px] border whitespace-nowrap ${
+            className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'CLOTURE' 
                 ? 'bg-emerald-900 text-white border-emerald-900' 
                 : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -1372,129 +1470,239 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       {vueActive === 'CLOTURE' && (
         <div className="space-y-3">
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-              <span className="font-black text-emerald-900 uppercase text-[10px] flex items-center gap-1">
-                🔐 CLÔTURE DE CAISSE DES LIVREURS
-              </span>
-              {(clotureDateDebut !== new Date().toISOString().split('T')[0] || clotureDateFin !== new Date().toISOString().split('T')[0] || clotureLivreur) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ajd = new Date().toISOString().split('T')[0];
-                    setClotureDateDebut(ajd);
-                    setClotureDateFin(ajd);
-                    setClotureLivreur('');
-                  }}
-                  className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] underline"
-                >
-                  Réinitialiser
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
-                  <input
-                    type="date"
-                    value={clotureDateDebut}
-                    onChange={(e) => setClotureDateDebut(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
-                  <input
-                    type="date"
-                    value={clotureDateFin}
-                    onChange={(e) => setClotureDateFin(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
-                <button
-                  type="button"
-                  onClick={() => { setRechercheClotureLivreurInput(''); setModalClotureLivreurOuverte(true); }}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
-                >
-                  <span className="truncate">{clotureLivreur || 'TOUS LES LIVREURS'}</span>
-                  <span className="text-slate-400 shrink-0">🔍</span>
-                </button>
-              </div>
-            </div>
+          <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setSousOngletCloture('nouveau')}
+              className={`flex-1 py-1.5 px-3 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+                sousOngletCloture === 'nouveau' ? 'bg-emerald-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
+              }`}
+            >
+              ➕ Nouvelle Clôture
+            </button>
+            <button
+              type="button"
+              onClick={() => setSousOngletCloture('liste')}
+              className={`flex-1 py-1.5 px-3 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+                sousOngletCloture === 'liste' ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
+              }`}
+            >
+              📋 Liste des Clôtures ({cloturesEffectuees.length})
+            </button>
           </div>
 
-          <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg p-3 space-y-3">
-            <div className="flex flex-row justify-between items-center border-b border-slate-800 pb-2">
-              <div>
-                <h4 className="font-black text-xs uppercase tracking-wider text-emerald-400">
-                  RÉSUMÉ DE CLÔTURE DES LIVRAISONS
-                </h4>
-                <p className="text-[10px] text-slate-300 font-extrabold mt-0.5">
-                  Période : <span className="text-white">{clotureDateDebut === clotureDateFin ? formaterDateJJMMAAAA(clotureDateDebut) : `Du ${formaterDateJJMMAAAA(clotureDateDebut)} au ${formaterDateJJMMAAAA(clotureDateFin)}`}</span>
-                </p>
-              </div>
-              <div className="bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-[10px] font-bold text-slate-200">
-                Livreurs : <strong className="text-emerald-400">{listeResumeCloture.length}</strong>
-              </div>
-            </div>
+          {sousOngletCloture === 'nouveau' && (
+            <div className="space-y-3">
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+                  <span className="font-black text-emerald-900 uppercase text-[10px] flex items-center gap-1">
+                    🔐 CLÔTURE DE CAISSE DES LIVREURS
+                  </span>
+                  {(clotureDateDebut !== new Date().toISOString().split('T')[0] || clotureDateFin !== new Date().toISOString().split('T')[0] || clotureLivreur) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ajd = new Date().toISOString().split('T')[0];
+                        setClotureDateDebut(ajd);
+                        setClotureDateFin(ajd);
+                        setClotureLivreur('');
+                      }}
+                      className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] underline"
+                    >
+                      Réinitialiser
+                    </button>
+                  )}
+                </div>
 
-            {listeResumeCloture.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-xl text-[10px]">
-                Aucune commande livrée enregistrée pour cette période.
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
+                      <input
+                        type="date"
+                        value={clotureDateDebut}
+                        onChange={(e) => setClotureDateDebut(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
+                      <input
+                        type="date"
+                        value={clotureDateFin}
+                        onChange={(e) => setClotureDateFin(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
+                    <button
+                      type="button"
+                      onClick={() => { setRechercheClotureLivreurInput(''); setModalClotureLivreurOuverte(true); }}
+                      className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                    >
+                      <span className="truncate">{clotureLivreur || 'TOUS LES LIVREURS'}</span>
+                      <span className="text-slate-400 shrink-0">🔍</span>
+                    </button>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {listeResumeCloture.map((item, index) => {
-                  const resteAVerser = item.montantTotalEncaisse - item.totalFraisLivraison;
-                  return (
-                    <div key={index} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm space-y-2 text-slate-900">
-                      <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                        <span className="font-black text-xs uppercase text-blue-700 flex items-center gap-1">
-                          🛵 {item.nom}
+
+              <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg p-3 space-y-3">
+                <div className="flex flex-row justify-between items-center border-b border-slate-800 pb-2">
+                  <div>
+                    <h4 className="font-black text-xs uppercase tracking-wider text-emerald-400">
+                      RÉSUMÉ DE CLÔTURE DES LIVRAISONS
+                    </h4>
+                    <p className="text-[10px] text-slate-300 font-extrabold mt-0.5">
+                      Période : <span className="text-white">{clotureDateDebut === clotureDateFin ? formaterDateJJMMAAAA(clotureDateDebut) : `Du ${formaterDateJJMMAAAA(clotureDateDebut)} au ${formaterDateJJMMAAAA(clotureDateFin)}`}</span>
+                    </p>
+                  </div>
+                  <div className="bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-[10px] font-bold text-slate-200">
+                    Livreurs : <strong className="text-emerald-400">{listeResumeCloture.length}</strong>
+                  </div>
+                </div>
+
+                {listeResumeCloture.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-xl text-[10px]">
+                    Aucune commande livrée en attente de clôture pour cette période.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {listeResumeCloture.map((item, index) => {
+                      const resteAVerser = item.montantTotalEncaisse - item.totalFraisLivraison;
+                      return (
+                        <div key={index} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm space-y-2 text-slate-900">
+                          <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+                            <span className="font-black text-xs uppercase text-blue-700 flex items-center gap-1">
+                              🛵 {item.nom}
+                            </span>
+                            <span className="bg-orange-100 text-orange-800 font-extrabold px-2 py-0.5 rounded-full text-[9px]">
+                              {item.nombreCommandes} commande(s) livrée(s)
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              <span className="block text-[8px] text-slate-500 uppercase font-bold">Montant Encaissé</span>
+                              <span className="font-mono font-black text-emerald-700 text-xs">{item.montantTotalEncaisse.toLocaleString('fr-FR')} F</span>
+                            </div>
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              <span className="block text-[8px] text-slate-500 uppercase font-bold">Frais (Indicatif)</span>
+                              <span className="font-mono font-bold text-slate-700 text-xs">{item.totalFraisLivraison.toLocaleString('fr-FR')} F</span>
+                            </div>
+                            <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                              <span className="block text-[8px] text-emerald-800 uppercase font-bold">Total / Net</span>
+                              <span className="font-mono font-black text-emerald-900 text-xs">{resteAVerser.toLocaleString('fr-FR')} F</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="bg-black text-white p-3.5 rounded-xl border-2 border-red-600 space-y-3 shadow-xl">
+                      <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+                        <span className="font-black text-xs uppercase tracking-wider text-red-500 flex items-center gap-1.5">
+                          🔴 CLÔTURE & VERSEMENT GLOBAL
                         </span>
-                        <span className="bg-orange-100 text-orange-800 font-extrabold px-2 py-0.5 rounded-full text-[9px]">
-                          {item.nombreCommandes} commande(s) livrée(s)
-                        </span>
+                        {caisseSelectionneeCloture && (
+                          <span className="bg-neutral-800 text-white px-2 py-0.5 rounded text-[9px] font-bold border border-neutral-700">
+                            Caisse : <strong className="text-red-400">{caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || caisseSelectionneeCloture}</strong>
+                          </span>
+                        )}
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                          <span className="block text-[8px] text-slate-500 uppercase font-bold">Montant Encaissé</span>
-                          <span className="font-mono font-black text-emerald-700 text-xs">{item.montantTotalEncaisse.toLocaleString('fr-FR')} F</span>
+                      <div className="grid grid-cols-2 gap-3 text-center">
+                        <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800">
+                          <span className="block text-[9px] text-neutral-400 uppercase font-bold mb-1">Total versé (saisi manuellement)</span>
+                          <input
+                            type="number"
+                            value={totalVerseCloture}
+                            onChange={(e) => setTotalVerseCloture(e.target.value)}
+                            placeholder="0"
+                            className="w-full bg-black border border-neutral-700 rounded p-1.5 text-center font-mono text-sm font-black text-white focus:outline-none focus:border-red-500"
+                          />
                         </div>
-                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                          <span className="block text-[8px] text-slate-500 uppercase font-bold">Frais (Indicatif)</span>
-                          <span className="font-mono font-bold text-slate-700 text-xs">{item.totalFraisLivraison.toLocaleString('fr-FR')} F</span>
+                        
+                        <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 flex flex-col justify-center">
+                          <span className="block text-[9px] text-neutral-400 uppercase font-bold">Écart</span>
+                          <span className="font-mono text-sm font-black text-red-500 mt-1">{ecartGlobalCloture.toLocaleString('fr-FR')} F</span>
                         </div>
-                        <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                          <span className="block text-[8px] text-emerald-800 uppercase font-bold">Total / Net</span>
-                          <span className="font-mono font-black text-emerald-900 text-xs">{resteAVerser.toLocaleString('fr-FR')} F</span>
-                        </div>
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setModalCaisseClotureOuverte(true)}
+                          className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition shadow-md border border-red-500"
+                        >
+                          {caisseSelectionneeCloture 
+                            ? `Valider et clôturer vers : ${caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || 'Caisse sélectionnée'}` 
+                            : 'Valider et clôturer (Choisir la caisse) ➔'}
+                        </button>
                       </div>
                     </div>
-                  );
-                })}
-
-                <div className="bg-emerald-950 text-white p-3 rounded-xl border border-emerald-900 flex justify-between items-center text-xs font-black">
-                  <div>
-                    <span className="block text-[9px] text-emerald-300 uppercase">Total Général Encaissé</span>
-                    <span className="font-mono text-sm text-emerald-400">{totalEncaisseGlobalCloture.toLocaleString('fr-FR')} F</span>
                   </div>
-                  <div className="text-right">
-                    <span className="block text-[9px] text-emerald-300 uppercase">Total Frais Inclus</span>
-                    <span className="font-mono text-sm text-orange-300">{totalFraisGlobalCloture.toLocaleString('fr-FR')} F</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {sousOngletCloture === 'liste' && (
+            <div className="space-y-3">
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                <h4 className="font-black text-slate-900 uppercase text-[10px]">
+                  📋 HISTORIQUE DES CLÔTURES EFFECTUÉES ({cloturesEffectuees.length})
+                </h4>
+              </div>
+
+              {cloturesEffectuees.length === 0 ? (
+                <div className="bg-white p-8 text-center text-slate-400 font-bold italic rounded-xl border border-slate-200 text-[10px]">
+                  Aucune clôture de caisse enregistrée pour le moment.
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 uppercase text-[9px] font-black border-b border-slate-200">
+                          <th className="p-2">Date Clôture</th>
+                          <th className="p-2 font-mono">N° Clôture</th>
+                          <th className="p-2 text-right">Attendu</th>
+                          <th className="p-2 text-right">Versé</th>
+                          <th className="p-2 text-right">Écart</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-[10px]">
+                        {cloturesEffectuees.map((cl) => {
+                          const dateObj = new Date(cl.created_at || cl.date_debut);
+                          const dateFormatee = !isNaN(dateObj) ? dateObj.toLocaleDateString('fr-FR') : '-';
+                          const atten = Number(cl.montant_total_encaisse || cl.montant_attendu || 0);
+                          const verse = Number(cl.montant_reel_verse || cl.montant_verse || 0);
+                          const ecart = Number(cl.ecart_caisse || cl.ecart || 0);
+
+                          return (
+                            <tr key={cl.id} className="hover:bg-slate-50 transition">
+                              <td className="p-2 font-bold text-slate-700 whitespace-nowrap">{dateFormatee}</td>
+                              <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{cl.code_cloture || 'LIVR-00'}</td>
+                              <td className="p-2 text-right font-mono font-bold text-slate-700">{atten.toLocaleString('fr-FR')}</td>
+                              <td className="p-2 text-right font-mono font-black text-emerald-700">{verse.toLocaleString('fr-FR')}</td>
+                              <td className={`p-2 text-right font-mono font-bold ${ecart === 0 ? 'text-slate-600' : 'text-red-600'}`}>
+                                {ecart.toLocaleString('fr-FR')}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -2291,7 +2499,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">STATUT COMMANDE</label>
                 <select
                   value={filtreStatut}
                   onChange={(e) => setFiltreStatut(e.target.value)}
@@ -2460,6 +2668,41 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {modalCaisseClotureOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🏧</span> CHOISIR LA CAISSE DE VERSEMENT
+              </h4>
+              <button type="button" onClick={() => setModalCaisseClotureOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+            </div>
+            
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1">
+              {caisses.filter(c => !c.module || c.module.toUpperCase() === moduleActuel).length === 0 ? (
+                <div className="p-6 text-center text-slate-500 font-bold text-xs">Aucune caisse enregistrée pour le module livraison. Veuillez en créer une.</div>
+              ) : (
+                caisses
+                  .filter(c => !c.module || c.module.toUpperCase() === moduleActuel)
+                  .map((c) => (
+                    <div 
+                      key={c.id} 
+                      onClick={() => validerEtVerserCloture(c.id, c.nom_caisse)} 
+                      className="p-3 rounded-xl border border-slate-200 hover:border-red-600 hover:bg-red-50/40 cursor-pointer flex justify-between items-center shadow-2xs transition"
+                    >
+                      <div>
+                        <span className="font-mono font-black text-red-600 text-xs block">{c.code_caisse}</span>
+                        <span className="font-black text-slate-900 text-xs uppercase">{c.nom_caisse}</span>
+                      </div>
+                      <span className="text-[9px] bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded border">{c.nature || 'CAISSE'}</span>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
         </div>
       )}
 

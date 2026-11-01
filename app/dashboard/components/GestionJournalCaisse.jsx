@@ -600,11 +600,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const resultatNetGrandLivre = totalEntreesGrandLivre - totalSortiesGrandLivre;
 
-  // --- JOURNAL DE CAISSE CORRIGÉ ---
-  const caisseSelectionneeObj = caisses.find(c => String(c.id) === String(caisseSelectionneeJournal));
-  const estCaissePrincipaleSelectionnee = caisseSelectionneeObj && ((caisseSelectionneeObj.nature || '').toUpperCase() === 'PRINCIPALE' || (caisseSelectionneeObj.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (caisseSelectionneeObj.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
+  // --- JOURNAL DE CAISSE CORRIGÉ (ISOLATION STRICTE PAR MODULE & SUPPRESSION DES DOUBLONS) ---
+  const idsCaissesModuleActuel = new Set(caisses.map(c => String(c.id)));
 
   const mouvementsDeCaisseFiltres = mouvements.filter(m => {
+    // 🔒 Sécurité : ignorer si la caisse n'appartient pas au module actif
+    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
+
     if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
     const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
     if (dateDebutJournal && dateMvt < dateDebutJournal) return false;
@@ -614,6 +616,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const ventesTransformeesEnMouvements = ventes
     .filter(v => {
+      // 🔒 Sécurité module
+      if (v.id_caisse && !idsCaissesModuleActuel.has(String(v.id_caisse))) return false;
+
       if (caisseSelectionneeJournal) {
         if (String(v.id_caisse) !== String(caisseSelectionneeJournal)) return false;
       }
@@ -635,60 +640,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       created_at: v.created_at
     }));
 
-  const versementsClotureTransformesFromClotures = cloturesCaissesList
-    .filter(cl => {
-      const dateCl = cl.date_debut || cl.created_at?.split('T')[0] || '';
-      if (dateDebutJournal && dateCl < dateDebutJournal) return false;
-      if (dateFinJournal && dateCl > dateFinJournal) return false;
-      if (caisseSelectionneeJournal) {
-        const idDest = cl.id_caisse_destination || caissesPrincipalesPourSaisie[0]?.id;
-        if (String(idDest) !== String(caisseSelectionneeJournal)) return false;
-      }
-      return true;
-    })
-    .map(cl => ({
-      id: `cloture-caisse-${cl.id}`,
-      id_entreprise: cl.id_entreprise,
-      module: cl.module,
-      id_caisse: cl.id_caisse_destination || caissesPrincipalesPourSaisie[0]?.id || null,
-      type_mouvement: 'ENTREE',
-      montant: Number((cl.montant_reel_verse ?? cl.montant_attendu ?? cl.montant_total_encaisse) || 0),
-      libelle: `VERS. CLÔT [${cl.code_cloture || 'CL'}]`,
-      id_compte: null,
-      piece_physique: cl.code_cloture || `CL-${cl.id}`,
-      created_at: cl.created_at || `${cl.date_debut}T00:00:00`
-    }));
-
-  const versementsClotureTransformesFromEtats = etatsCaisseList
-    .filter(e => {
-      if (e.statut_versement !== 'VERSE') return false;
-      const dateEtat = e.date_debut || '';
-      if (dateDebutJournal && dateEtat < dateDebutJournal) return false;
-      if (dateFinJournal && dateEtat > dateFinJournal) return false;
-      if (caisseSelectionneeJournal) {
-        if (String(e.id_caisse) !== String(caisseSelectionneeJournal)) return false;
-      }
-      return true;
-    })
-    .map(e => ({
-      id: `versement-etat-${e.id}`,
-      id_entreprise: e.id_entreprise,
-      module: e.module,
-      id_caisse: e.id_caisse || caissesPrincipalesPourSaisie[0]?.id || null,
-      type_mouvement: 'ENTREE',
-      montant: Number(e.montant_verse || 0),
-      libelle: `VERS. CLÔT [${e.code_piece || 'CL'}]`,
-      id_compte: null,
-      piece_physique: e.code_piece || `CL-${e.id}`,
-      created_at: e.created_at || `${e.date_debut}T00:00:00`
-    }));
-
-  const tousLesVersementsClotures = [...versementsClotureTransformesFromClotures, ...versementsClotureTransformesFromEtats];
+  // Note : Les versements de clôture sont déjà enregistrés directement dans mouvements_caisse lors de leur validation.
+  // Nous n'injectons plus les tableaux virtuels (tousLesVersementsClotures) pour éviter la duplication constatée.
 
   const mouvementsJournalTries = [
     ...mouvementsDeCaisseFiltres, 
-    ...ventesTransformeesEnMouvements, 
-    ...tousLesVersementsClotures
+    ...ventesTransformeesEnMouvements
   ].sort((a, b) => {
     let valA, valB;
     if (colonneTriJournal === 'created_at') {
@@ -733,6 +690,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const soldeJournal = totalEntreesJournal - totalSortiesJournal;
 
   const mouvementsManuelsFiltres = mouvements.filter(m => {
+    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
     if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
     const lib = (m.libelle || '').toUpperCase();
     if (lib === 'VERSEMENT' || lib.includes('VERSEMENT ÉTAT') || lib.includes('CLÔTURE')) return false;
@@ -745,6 +703,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const mouvementsManuelsAffiches = mouvementsManuelsFiltres.slice(0, limiteHistorique);
 
   const reportAntérieur = mouvements.filter(m => {
+    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
     if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
     const lib = (m.libelle || '').toUpperCase();
     if (lib === 'VERSEMENT' || lib.includes('VERSEMENT ÉTAT') || lib.includes('CLÔTURE')) return false;
@@ -930,6 +889,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   };
 
   const etatsCaisseFiltres = etatsCaisseList.filter(etat => {
+    if (etat.id_caisse && !idsCaissesModuleActuel.has(String(etat.id_caisse))) return false;
     const dateEtat = etat.date_debut || '';
     if (filtreDateDebut && dateEtat < filtreDateDebut) return false;
     if (filtreDateFin && dateEtat > filtreDateFin) return false;

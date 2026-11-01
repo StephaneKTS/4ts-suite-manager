@@ -86,12 +86,12 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
-      // 2. RÉCUPÉRATION SUPABASE ROBUSTE (Filtrage par entreprise et module)
+      // 2. RÉCUPÉRATION SUPABASE STRICTEMENT ISOLÉE PAR MODULE[cite: 31]
       const { data, error } = await supabase
         .from('caisses')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .or(`module.eq.${moduleActuel},module.eq.${moduleActuel.toLowerCase()},module.is.null`)
+        .eq('module', moduleActuel) // ⬅️ Isolation stricte par module actif pour éviter les fuites Boutique/Livraison
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -198,14 +198,12 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
         if (error) throw error;
 
-        // MISE À JOUR INSTANTANÉ DE L'ÉTAT LOCAL DE LA TABLE
         if (data) {
           setCaisses(prev => [data, ...prev.filter(c => c.id !== data.id)]);
         }
         setMsg({ type: 'success', text: '✅ Nouvelle caisse enregistrée avec succès !' });
       }
 
-      // NETTOYAGE DU CACHE LOCAL POUR FORCER LE RAFRAÎCHISSEMENT PROPRE
       localStorage.removeItem(cleCacheCaisses);
 
       annulerForm();
