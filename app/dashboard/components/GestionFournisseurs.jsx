@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
@@ -39,6 +39,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   // États initialisés vides pour éviter les faux droits par défaut au démarrage
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
+
+  // Référence pour cibler le champ Nom / Raison Sociale
+  const nomInputRef = useRef(null);
 
   // Récupération propre de la session locale au montage
   useEffect(() => {
@@ -375,6 +378,14 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       id_depot: partenaire.id_depot || '',
     });
     setAfficherForm(true);
+
+    // Focus et sélection automatique du champ Nom
+    setTimeout(() => {
+      if (nomInputRef.current) {
+        nomInputRef.current.focus();
+        nomInputRef.current.select();
+      }
+    }, 50);
   };
 
   const annulerForm = () => {
@@ -691,6 +702,14 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 setNouveauPartenaire({ nom_fournisseur: '', statut_stockage: 'AVEC_STOCKAGE', pays: 'cmr', telephone: '', email: '', adresse: '', solde_dette: 0, id_depot: '' });
                 setPartenaireEnEdition(null);
                 setAfficherForm(true);
+
+                // Focus et sélection automatique du texte à l'ouverture du formulaire Nouveau
+                setTimeout(() => {
+                  if (nomInputRef.current) {
+                    nomInputRef.current.focus();
+                    nomInputRef.current.select();
+                  }
+                }, 50);
               }
             }}
             className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
@@ -745,10 +764,13 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom / Raison Sociale *</label>
                   <input
+                    ref={nomInputRef}
+                    autoFocus
                     type="text"
                     required
                     disabled={enTrainDeSauvegarder}
                     value={nouveauPartenaire.nom_fournisseur}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = e.target.value.toUpperCase();
                       setNouveauPartenaire({ 
@@ -808,6 +830,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       type="text"
                       disabled={enTrainDeSauvegarder}
                       value={nouveauPartenaire.id_depot}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, id_depot: e.target.value.toUpperCase() })}
                       placeholder="EX: NOM DU DEPOT"
                       className="w-full bg-white border border-orange-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs uppercase"
@@ -833,6 +856,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                     type="text"
                     disabled={enTrainDeSauvegarder}
                     value={nouveauPartenaire.adresse}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, adresse: e.target.value.toUpperCase() })}
                     placeholder="EX: DOUALA - AKWA"
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
@@ -869,6 +893,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       disabled={enTrainDeSauvegarder}
                       maxLength={paysActuelObj.longueur}
                       value={nouveauPartenaire.telephone}
+                      onFocus={(e) => e.target.select()}
                       onChange={gererSaisieTelephone}
                       placeholder="6XXXXXXXX"
                       className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none"
@@ -883,6 +908,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   type="email"
                   disabled={enTrainDeSauvegarder}
                   value={nouveauPartenaire.email}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, email: e.target.value.toLowerCase() })}
                   placeholder="contact@email.com"
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400"
@@ -931,6 +957,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   type="text"
                   disabled={enTrainDeSauvegarder}
                   value={recherche}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setRecherche(e.target.value.toUpperCase())}
                   placeholder="RECHERCHER PAR NOM OU TÉLÉPHONE..."
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs placeholder:text-slate-400"
@@ -1183,6 +1210,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                           disabled={enTrainDeSauvegarder}
                           placeholder="Montant règlement / avance"
                           value={montantReglementSaisi}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => setMontantReglementSaisi(e.target.value)}
                           className="w-full bg-white border border-slate-300 rounded p-1.5 text-[10px] font-extrabold text-slate-900 shadow-xs"
                           required

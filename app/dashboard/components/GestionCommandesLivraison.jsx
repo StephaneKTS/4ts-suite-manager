@@ -722,7 +722,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     setZoneGrilleSelectionnee(cmd.zone_effective_livraison || cmd.adresse_livraison || '');
     setFraisLivraisonSaisi(cmd.frais_livraison !== undefined && cmd.frais_livraison !== null ? String(cmd.frais_livraison) : '');
     setLivreurAssigne(cmd.vendeur_livreur || '');
-    setStatutCommandeSaisi(cmd.statut_commande || 'EN ATTENTE');
+    setStatutCommandeSaisi(cmd.statut || cmd.statut_commande || 'EN ATTENTE');
     setStocksArticlesCache({});
     
     if (cmd.id_partenaire) {
@@ -895,7 +895,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         if (empObj) empIdTrouve = empObj.id;
       }
 
-      if (!partenaireSansStockage && statutCommandeSaisi === 'LIVRÉ') {
+      const statutNormVerif = (statutCommandeSaisi || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const estLivreVerif = statutNormVerif === 'LIVRE' || statutNormVerif === 'LIVRÉ';
+
+      if (!partenaireSansStockage && estLivreVerif) {
         for (const item of lignesSaisies) {
           const stockEmp = await recupererStockReelRPC(item.id_article);
           if (stockEmp < item.quantite) {
@@ -925,13 +928,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         zone_effective_livraison: zoneGrilleSelectionnee || adresseLivraison,
         frais_livraison: parseFloat(fraisLivraisonSaisi) || 0,
         vendeur_livreur: livreurAssigne,
+        statut: statutCommandeSaisi,
         statut_commande: statutCommandeSaisi,
       };
 
       let idCmdCourante = null;
 
       if (commandeEnEdition) {
-        const statutPrecedent = commandeEnEdition.statut_commande || 'EN ATTENTE';
+        const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'EN ATTENTE';
+        const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const etaitDejaLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
         idCmdCourante = commandeEnEdition.id;
 
         const { error: errUp } = await supabase
@@ -944,7 +950,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         const { error: errDel } = await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
         if (errDel) throw errDel;
 
-        if (!partenaireSansStockage && statutCommandeSaisi === 'LIVRÉ' && statutPrecedent !== 'LIVRÉ') {
+        if (!partenaireSansStockage && estLivreVerif && !etaitDejaLivre) {
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: entrepriseId,
@@ -974,7 +980,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           idCmdCourante = cmdInseree.id;
         }
 
-        if (!partenaireSansStockage && statutCommandeSaisi === 'LIVRÉ') {
+        if (!partenaireSansStockage && estLivreVerif) {
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: entrepriseId,
@@ -1063,7 +1069,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       matchDate = cmd.date_commande <= filtreDateFin;
     }
     if (filtreStatut) {
-      matchStatut = (cmd.statut_commande || 'EN ATTENTE') === filtreStatut;
+      const statutCMDReel = (cmd.statut || cmd.statut_commande || 'EN ATTENTE').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const filtreStatutNorm = filtreStatut.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      matchStatut = statutCMDReel === filtreStatutNorm;
     }
 
     return matchPartenaire && matchLivreur && matchDate && matchStatut;
@@ -1088,8 +1096,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const commandesAffichees = commandesFiltrees.slice(0, limiteCommandes);
 
   const commandesRapport = commandes.filter((cmd) => {
-    const statutCmd = (cmd.statut_commande || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (statutCmd !== 'LIVRE' && statutCmd !== 'LIVRÉ') return false;
+    const statutBrut = cmd.statut || cmd.statut_commande || '';
+    const statutCmd = (statutBrut).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (statutCmd !== 'LIVRE') return false;
 
     let matchIntervalle = true;
     let matchLivreur = true;
@@ -1114,8 +1123,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   });
 
   const commandesCloture = commandes.filter((cmd) => {
-    const statutCmd = (cmd.statut_commande || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (statutCmd !== 'LIVRE' && statutCmd !== 'LIVRÉ') return false;
+    const statutBrut = cmd.statut || cmd.statut_commande || '';
+    const statutCmd = (statutBrut).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (statutCmd !== 'LIVRE') return false;
 
     let matchIntervalle = true;
     let matchLivreur = true;
@@ -2580,9 +2590,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           ) : (
             <div className="space-y-2">
               {commandesAffichees.map((cmd) => {
-                const statut = cmd.statut_commande || 'EN ATTENTE';
+                const statut = cmd.statut || cmd.statut_commande || 'EN ATTENTE';
                 let badgeColor = 'bg-amber-100 text-amber-800 border-amber-300';
-                if (statut === 'LIVRÉ') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                if (statut === 'LIVRÉ' || statut === 'LIVRE') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
                 if (statut === 'REPORTÉ') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
                 if (statut === 'ANNULÉ') badgeColor = 'bg-rose-100 text-rose-800 border-rose-300';
 
@@ -2608,7 +2618,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     onClick={() => ouvrirCommandePourModification(cmd)}
                     className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1.5"
                   >
-                    {/* LIGNE 1 : Numéro, Partenaire, Livreur et Statut sur la même ligne ultra compacte */}
                     <div className="flex justify-between items-center gap-1.5">
                       <div className="flex items-center gap-1 min-w-0 shrink-0">
                         <span className="font-mono font-black text-orange-600 text-[10px] shrink-0">{cmd.numero_commande}</span>
@@ -2626,7 +2635,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    {/* LIGNE 2 : Date, Montant et Trajet */}
                     <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center gap-2 text-[10px]">
                       <div className="text-slate-800 font-bold truncate">
                         {cmd.point_a ? (
@@ -2654,7 +2662,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    {/* LIGNE 3 : Articles / Colis et Téléphone Client */}
                     <div className="flex justify-between items-center gap-2 pt-0.5 text-[9px]">
                       <div className="text-slate-600 font-medium truncate">
                         {lignesCmd.length > 0 ? (

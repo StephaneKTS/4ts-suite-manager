@@ -618,6 +618,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       date_peremption: article.date_peremption || '',
     });
     setAfficherForm(true);
+    // Focus et sélection automatique du texte à l'ouverture de l'édition
+    setTimeout(() => {
+      if (designationInputRef.current) {
+        designationInputRef.current.focus();
+        designationInputRef.current.select();
+      }
+    }, 50);
   };
 
   const annulerForm = () => {
@@ -922,6 +929,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   setNouveauArticle(prev => ({ ...prev, Famille: familles[0].id }));
                 }
                 setAfficherForm(true);
+                // Donner le focus et sélectionner le texte de la désignation à l'ouverture
+                setTimeout(() => {
+                  if (designationInputRef.current) {
+                    designationInputRef.current.focus();
+                    designationInputRef.current.select();
+                  }
+                }, 50);
               }
             }}
             className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-2.5 py-1.5 rounded-lg transition shadow-2xs text-[10px] shrink-0"
@@ -1005,6 +1019,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       setTimeout(() => {
                         if (designationInputRef.current) {
                           designationInputRef.current.focus();
+                          designationInputRef.current.select();
                         }
                       }, 50);
                     }}
@@ -1023,11 +1038,13 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">Désignation *</label>
                   <input
                     ref={designationInputRef}
+                    autoFocus
                     type="text"
                     required
                     disabled={enTrainDeSauvegarder}
                     list="liste-suggestions-articles"
                     value={nouveauArticle.Designation}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value.toUpperCase() })}
                     placeholder="EX: JUS 250ML"
                     style={{ textTransform: 'uppercase' }}
@@ -1104,6 +1121,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     type="text"
                     disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.Code_Barre}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value.toUpperCase() })}
                     placeholder="600123"
                     style={{ textTransform: 'uppercase' }}
@@ -1167,6 +1185,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       type="text"
                       disabled={enTrainDeSauvegarder}
                       value={nouveauArticle.Photo}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNouveauArticle({ ...nouveauArticle, Photo: e.target.value })}
                       placeholder="https://lien-image.com/photo.jpg"
                       className="flex-1 min-w-[150px] bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none truncate"
@@ -1244,6 +1263,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       type="text"
                       disabled={enTrainDeSauvegarder}
                       value={rechercheArticleInput}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setRechercheArticleInput(e.target.value)}
                       placeholder="🔍 Saisir le nom d'un article..."
                       style={{ textTransform: 'uppercase' }}
@@ -1700,6 +1720,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 autoFocus
                 disabled={enTrainDeSauvegarder}
                 value={rechercheModalArticle}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setRechercheModalArticle(e.target.value.toUpperCase())}
                 placeholder="Rechercher..."
                 style={{ textTransform: 'uppercase' }}
