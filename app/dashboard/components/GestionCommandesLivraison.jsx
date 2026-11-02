@@ -840,7 +840,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     try {
       const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
-      // Nettoyage et normalisation rigoureuse de la date au format AAAA-MM-JJ
       let dateNormalisee = dateCommande;
       if (dateNormalisee.includes('/')) {
         const parts = dateNormalisee.split('/');
@@ -1089,7 +1088,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const commandesAffichees = commandesFiltrees.slice(0, limiteCommandes);
 
   const commandesRapport = commandes.filter((cmd) => {
-    if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
+    const statutCmd = (cmd.statut_commande || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (statutCmd !== 'LIVRE' && statutCmd !== 'LIVRÉ') return false;
 
     let matchIntervalle = true;
     let matchLivreur = true;
@@ -1113,10 +1113,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     return matchIntervalle && matchLivreur && matchPartenaire;
   });
 
-  // CORRECTION CLÔTURE : Normalisation stricte et souple pour capturer les commandes "LIVRÉ"
   const commandesCloture = commandes.filter((cmd) => {
-    const statutCmd = (cmd.statut_commande || '').trim().toUpperCase();
-    if (statutCmd !== 'LIVRÉ') return false;
+    const statutCmd = (cmd.statut_commande || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (statutCmd !== 'LIVRE' && statutCmd !== 'LIVRÉ') return false;
 
     let matchIntervalle = true;
     let matchLivreur = true;
@@ -1146,6 +1145,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const dejaCloturee = cloturesEffectuees.some(cl => {
       const livCloture = (cl.caissier || '').trim().toUpperCase();
       const cmdLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase();
+      
       if (livCloture && cmdLivreur && livCloture !== 'TOUS' && livCloture !== cmdLivreur) return false;
 
       const dateDebutCl = cl.date_debut || cl.created_at?.split('T')[0];
@@ -1409,7 +1409,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       `}</style>
 
-      {/* Barre principale des onglets ultra-compacte pour éviter toute superposition avec le titre LIVRAISON */}
       <div className="bg-white px-2 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1 overflow-hidden">
         <div className="flex items-center gap-1 min-w-0 shrink-0">
           <h3 className="font-extrabold text-slate-900 uppercase text-[9px] flex items-center gap-0.5 shrink-0">
@@ -1494,7 +1493,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       {vueActive === 'CLOTURE' && (
         <div className="space-y-3">
-          {/* Sous-onglets clôture réduits sur une seule ligne avec cadre très compact */}
           <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
             <button
               type="button"
@@ -1539,7 +1537,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   )}
                 </div>
 
-                {/* Champs Date début, Date fin et Livreur sur la même ligne */}
                 <div className="grid grid-cols-3 gap-1.5 items-end">
                   <div>
                     <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Début</label>
@@ -1575,7 +1572,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 </div>
               </div>
 
-              {/* Bloc titre unifié "EN ATTENTE DE CLOTURE" */}
               <div className="flex justify-between items-center bg-slate-100 p-2 rounded-lg border border-slate-200">
                 <div className="min-w-0 pr-1">
                   <h4 className="font-black text-[10px] uppercase tracking-wider text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -2506,32 +2502,66 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-1.5">
-                <div>
-                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
+              <div>
+                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
+                <button
+                  type="button"
+                  onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
+                  className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                >
+                  <span className="truncate">{filtreLivreur || 'Tous'}</span>
+                  <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="block font-black mb-1 text-[8px] text-slate-700 uppercase truncate">Statut</label>
+                <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
                   <button
                     type="button"
-                    onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                    onClick={() => setFiltreStatut('')}
+                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                      filtreStatut === '' ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
                   >
-                    <span className="truncate">{filtreLivreur || 'Tous'}</span>
-                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                    Tous
                   </button>
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Statut</label>
-                  <select
-                    value={filtreStatut}
-                    onChange={(e) => setFiltreStatut(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                  <button
+                    type="button"
+                    onClick={() => setFiltreStatut('EN ATTENTE')}
+                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                      filtreStatut === 'EN ATTENTE' ? 'bg-amber-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
                   >
-                    <option value="">Tous les statuts</option>
-                    <option value="EN ATTENTE">EN ATTENTE</option>
-                    <option value="LIVRÉ">LIVRÉ</option>
-                    <option value="REPORTÉ">REPORTÉ</option>
-                    <option value="ANNULÉ">ANNULÉ</option>
-                  </select>
+                    En attente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFiltreStatut('LIVRÉ')}
+                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                      filtreStatut === 'LIVRÉ' ? 'bg-emerald-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    Livré
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFiltreStatut('REPORTÉ')}
+                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                      filtreStatut === 'REPORTÉ' ? 'bg-blue-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    Reporté
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFiltreStatut('ANNULÉ')}
+                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                      filtreStatut === 'ANNULÉ' ? 'bg-rose-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    Annulé
+                  </button>
                 </div>
               </div>
             </div>
@@ -2576,102 +2606,100 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <div
                     key={cmd.id}
                     onClick={() => ouvrirCommandePourModification(cmd)}
-                    className="bg-white border border-slate-200 p-3 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-2"
+                    className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1.5"
                   >
-                    <div className="flex justify-between items-center gap-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono font-black text-orange-600 text-xs">{cmd.numero_commande}</span>
-                        <span className="text-slate-300">•</span>
-                        <span className="font-extrabold text-slate-900 text-[10px] uppercase">{cmd.nom_partenaire}</span>
-                        <span className="text-slate-300">•</span>
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${badgeColor}`}>
+                    {/* LIGNE 1 : Numéro, Partenaire, Livreur et Statut sur la même ligne ultra compacte */}
+                    <div className="flex justify-between items-center gap-1.5">
+                      <div className="flex items-center gap-1 min-w-0 shrink-0">
+                        <span className="font-mono font-black text-orange-600 text-[10px] shrink-0">{cmd.numero_commande}</span>
+                        <span className="text-slate-300 text-[9px]">•</span>
+                        <span className="font-extrabold text-slate-900 text-[9px] uppercase truncate max-w-[85px]">{cmd.nom_partenaire}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="font-extrabold text-blue-700 uppercase text-[9px] truncate max-w-[90px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
+                          🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
+                        </span>
+                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full border truncate ${badgeColor}`}>
                           {statut}
                         </span>
                       </div>
-                      
+                    </div>
+
+                    {/* LIGNE 2 : Date, Montant et Trajet */}
+                    <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center gap-2 text-[10px]">
+                      <div className="text-slate-800 font-bold truncate">
+                        {cmd.point_a ? (
+                          <span className="truncate">
+                            📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
+                          </span>
+                        ) : (
+                          <span className="truncate">
+                            📍 <strong className="text-slate-900">{cmd.adresse_livraison}</strong>
+                          </span>
+                        )}
+
+                        {cmd.zone_effective_livraison && cmd.zone_effective_livraison !== cmd.adresse_livraison && (
+                          <span className="text-orange-600 font-extrabold ml-1">🚀 {cmd.zone_effective_livraison}</span>
+                        )}
+                      </div>
+
                       <div className="text-right shrink-0">
-                        <span className="bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded border">
+                        <span className="bg-slate-100 text-slate-700 text-[8px] font-bold px-1 py-0.5 rounded border">
                           📅 {formaterDateCourte(cmd.date_commande)}
                         </span>
-                        <div className="font-black text-emerald-700 text-xs font-mono mt-0.5">
+                        <div className="font-black text-emerald-700 text-[10px] font-mono mt-0.5">
                           {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F
                         </div>
                       </div>
                     </div>
 
-                    <div className="border-t border-slate-100 pt-1.5 space-y-1.5 text-[10px]">
-                      <div className="flex justify-between items-center gap-2">
-                        <div className="font-extrabold text-blue-700 uppercase flex items-center gap-1 shrink-0">
-                          <span>🛵</span> {cmd.vendeur_livreur || 'Aucun livreur assigné'}
-                        </div>
-
-                        <div className="truncate text-slate-800 font-bold text-right">
-                          {cmd.point_a ? (
-                            <span>
-                              📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
-                            </span>
-                          ) : (
-                            <span>
-                              📍 <strong className="text-slate-900">{cmd.adresse_livraison}</strong>
-                            </span>
-                          )}
-
-                          {cmd.zone_effective_livraison && cmd.zone_effective_livraison !== cmd.adresse_livraison && (
-                            <span className="text-orange-600 font-extrabold ml-1">🚀 {cmd.zone_effective_livraison}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center pt-0.5">
-                        <div className="text-slate-600 font-medium truncate">
-                          {lignesCmd.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {lignesCmd.map((l, idx) => (
-                                <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[9px]">
-                                  {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
-                                </span>
-                              ))}
-                            </div>
-                          ) : cmd.nature_colis ? (
-                            <span className="text-blue-700 font-bold">📦 {cmd.nature_colis}</span>
-                          ) : (
-                            <span className="text-slate-400 italic">Aucun article</span>
-                          )}
-                        </div>
-
-                        {cmd.numero_client && (
-                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <a
-                              href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-1 rounded-md text-[10px] font-black transition flex items-center justify-center shadow-2xs"
-                              title={`Message WhatsApp ${cmd.numero_client}`}
-                            >
-                              💬
-                            </a>
-                            <a
-                              href={`tel:${cmd.numero_client}`}
-                              onClick={() => {
-                                setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
-                              }}
-                              className={`font-mono px-2 py-0.5 rounded-md border flex items-center gap-1 transition shadow-sm text-[10px] font-black ${styleNumero} ${
-                                estEnAttente 
-                                  ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
-                                  : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
-                              }`}
-                              title={`Appeler le client ${cmd.numero_client}`}
-                            >
-                              <span>📞</span> 
-                              <span className="tracking-wide">{cmd.numero_client}</span>
-                            </a>
+                    {/* LIGNE 3 : Articles / Colis et Téléphone Client */}
+                    <div className="flex justify-between items-center gap-2 pt-0.5 text-[9px]">
+                      <div className="text-slate-600 font-medium truncate">
+                        {lignesCmd.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 truncate">
+                            {lignesCmd.map((l, idx) => (
+                              <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1 py-0.5 rounded text-[8px]">
+                                {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
+                              </span>
+                            ))}
                           </div>
+                        ) : cmd.nature_colis ? (
+                          <span className="text-blue-700 font-bold">📦 {cmd.nature_colis}</span>
+                        ) : (
+                          <span className="text-slate-400 italic">Aucun article</span>
                         )}
                       </div>
 
-                      <div className="flex justify-end items-center text-[9px] text-slate-400 font-bold">
-                        <span>(Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F)</span>
-                      </div>
+                      {cmd.numero_client && (
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <a
+                            href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-0.5 rounded text-[9px] font-black transition flex items-center justify-center shadow-2xs"
+                            title={`Message WhatsApp ${cmd.numero_client}`}
+                          >
+                            💬
+                          </a>
+                          <a
+                            href={`tel:${cmd.numero_client}`}
+                            onClick={() => {
+                              setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
+                            }}
+                            className={`font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition shadow-sm text-[9px] font-black ${styleNumero} ${
+                              estEnAttente 
+                                ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
+                                : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                            }`}
+                            title={`Appeler le client ${cmd.numero_client}`}
+                          >
+                            <span>📞</span> 
+                            <span className="tracking-wide">{cmd.numero_client}</span>
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

@@ -30,6 +30,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
   const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
 
+  // État pour la recherche textuelle d'un article
+  const [rechercheArticleInput, setRechercheArticleInput] = useState('');
+
   // Récupération propre de la session locale au montage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -136,8 +139,19 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
-        .order('nom_famille', { ascending: true });
-      setFamilles(dataFam || []);
+        .order('created_at', { ascending: true }); // Tri par date de création pour garantir que la première créée est en premier
+      
+      const listeFam = dataFam || [];
+      setFamilles(listeFam);
+
+      // Définir TOUJOURS la première famille créée comme famille par défaut au chargement si elle existe
+      if (listeFam.length > 0) {
+        const premiereFamilleId = String(listeFam[0].id);
+        if (familleFiltre === 'TOUTES' || !familleFiltre) {
+          setFamilleFiltre(premiereFamilleId);
+        }
+        setNouveauArticle(prev => ({ ...prev, Famille: prev.Famille || premiereFamilleId }));
+      }
 
       const { data: dataDep } = await supabase
         .from('depots_stock')
@@ -536,6 +550,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    // Gestion automatique de la famille par défaut (la première créée si non renseignée)
+    let familleIdFinale = nouveauArticle.Famille;
+    if (!familleIdFinale && familles.length > 0) {
+      familleIdFinale = familles[0].id;
+    }
+
     setEnTrainDeSauvegarder(true);
     try {
       const payloadArticle = {
@@ -543,7 +563,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         module: moduleActuel,
         Designation: designationClean,
         Code_Barre: (nouveauArticle.Code_Barre || '').trim().toUpperCase(),
-        Famille: nouveauArticle.Famille,
+        Famille: familleIdFinale,
         Prix_Achat: moduleActuel !== 'LIVRAISON' ? (parseFloat(nouveauArticle.Prix_Achat) || 0) : 0,
         Prix_Vente: parseFloat(nouveauArticle.Prix_Vente) || 0,
         Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte) || 5,
@@ -589,7 +609,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     setNouveauArticle({
       Code_Barre: article.Code_Barre || article.code_barre || '',
       Designation: article.Designation || article.designation || '',
-      Famille: article.Famille || article.famille || '',
+      Famille: article.Famille || article.famille || (familles.length > 0 ? familles[0].id : ''),
       Prix_Achat: article.Prix_Achat || article.prix_achat || 0,
       Prix_Vente: article.Prix_Vente || article.prix_vente || 0,
       Seuil_Alerte: article.Seuil_Alerte || article.seuil_alerte || 5,
@@ -606,7 +626,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     setNouveauArticle({
       Code_Barre: '',
       Designation: '',
-      Famille: '',
+      Famille: familles.length > 0 ? familles[0].id : '',
       Prix_Achat: 0,
       Prix_Vente: 0,
       Seuil_Alerte: 5,
@@ -663,7 +683,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const articlesFiltres = articles.filter((art) => {
     const artId = art.id_article || art.id;
 
-    const matchFamille = familleFiltre === 'TOUTES' || String(art.Famille || art.famille) === String(familleFiltre);
+    // Filtre par nom / désignation avec la barre de recherche
+    const designationArt = (art.Designation || art.designation || '').toLowerCase();
+    if (rechercheArticleInput.trim() !== '' && !designationArt.includes(rechercheArticleInput.trim().toLowerCase())) {
+      return false;
+    }
+
+    // Utilisation de la première famille par défaut si aucun filtre spécifique n'est appliqué
+    const familleEffective = (familleFiltre === 'TOUTES' && familles.length > 0) ? familles[0].id : familleFiltre;
+    const matchFamille = familleEffective === 'TOUTES' || !familleEffective || String(art.Famille || art.famille) === String(familleEffective);
     if (!matchFamille) return false;
 
     const matchDepotMouvement = articleAeuMouvementChezPartenaire(artId, depotFiltre);
@@ -708,7 +736,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const articlesAffiches = articlesTries.slice(0, limiteArticles);
 
-  // SOLUTION ADAPTÉE : Filtrage des emplacements basé sur les mouvements réels du partenaire
   const emplacementsDisponibles = depotFiltre === 'TOUS' 
     ? emplacements 
     : emplacements.filter(emp => {
@@ -890,6 +917,10 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               } else {
                 setModeVue('catalogue');
                 annulerForm();
+                // Assigner automatiquement la première famille créée lors de l'ouverture du formulaire de création
+                if (familles.length > 0) {
+                  setNouveauArticle(prev => ({ ...prev, Famille: familles[0].id }));
+                }
                 setAfficherForm(true);
               }
             }}
@@ -968,7 +999,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <select
                     required
                     disabled={enTrainDeSauvegarder}
-                    value={nouveauArticle.Famille}
+                    value={nouveauArticle.Famille || (familles.length > 0 ? familles[0].id : '')}
                     onChange={(e) => {
                       setNouveauArticle({ ...nouveauArticle, Famille: e.target.value });
                       setTimeout(() => {
@@ -1205,6 +1236,32 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           ) : (
             <>
               <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
+                {/* BARRE DE RECHERCHE */}
+                <div>
+                  <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Rechercher un article</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      disabled={enTrainDeSauvegarder}
+                      value={rechercheArticleInput}
+                      onChange={(e) => setRechercheArticleInput(e.target.value)}
+                      placeholder="🔍 Saisir le nom d'un article..."
+                      style={{ textTransform: 'uppercase' }}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5 pl-7 font-extrabold text-slate-900 text-[10px] shadow-xs uppercase focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    />
+                    <span className="absolute left-2 top-2 text-slate-400 text-[10px]">🔍</span>
+                    {rechercheArticleInput && (
+                      <button
+                        type="button"
+                        onClick={() => setRechercheArticleInput('')}
+                        className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 font-black text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-3 gap-1">
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Famille</label>
