@@ -840,15 +840,28 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     try {
       const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
+      // Nettoyage et normalisation rigoureuse de la date au format AAAA-MM-JJ
+      let dateNormalisee = dateCommande;
+      if (dateNormalisee.includes('/')) {
+        const parts = dateNormalisee.split('/');
+        if (parts.length === 3) {
+          if (parts[2].length === 4) {
+            dateNormalisee = `${parts[2]}-${parts[1]}-${parts[0]}`;
+          } else if (parts[0].length === 4) {
+            dateNormalisee = `${parts[0]}-${parts[1]}-${parts[2]}`;
+          }
+        }
+      }
+
       if (!commandeEnEdition) {
         const doublonTrouve = commandes.find(c => 
           c.numero_commande === numeroComplet &&
-          c.date_commande === dateCommande &&
+          c.date_commande === dateNormalisee &&
           String(c.id_partenaire) === String(idPartenaire)
         );
 
         if (doublonTrouve) {
-          alert(`❌ Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateCommande)}. Impossible de la dupliquer.`);
+          alert(`❌ Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}. Impossible de la dupliquer.`);
           setSauvegardeEnCours(false);
           return;
         }
@@ -902,7 +915,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         id_entreprise: entrepriseId,
         module: moduleActuel,
         numero_commande: numeroComplet,
-        date_commande: dateCommande,
+        date_commande: dateNormalisee,
         id_partenaire: idPartenaire,
         nom_partenaire: partObj ? (partObj.nom_fournisseur || partObj.nom) : '',
         montant_commande: napGlobal,
@@ -997,7 +1010,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         if (errLignes) throw errLignes;
       }
 
-      const [anneeCmd, moisCmd] = dateCommande.split('-');
+      const [anneeCmd, moisCmd] = dateNormalisee.split('-');
       const premierJourCmd = `${anneeCmd}-${moisCmd}-01`;
       const dernierJourCmd = new Date(parseInt(anneeCmd), parseInt(moisCmd), 0).toISOString().split('T')[0];
       
@@ -1100,22 +1113,32 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     return matchIntervalle && matchLivreur && matchPartenaire;
   });
 
+  // CORRECTION CLÔTURE : Normalisation stricte et souple pour capturer les commandes "LIVRÉ"
   const commandesCloture = commandes.filter((cmd) => {
-    if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
+    const statutCmd = (cmd.statut_commande || '').trim().toUpperCase();
+    if (statutCmd !== 'LIVRÉ') return false;
 
     let matchIntervalle = true;
     let matchLivreur = true;
 
+    let dateCmdStr = (cmd.date_commande || '').split('T')[0];
+    if (dateCmdStr.includes('/')) {
+      const p = dateCmdStr.split('/');
+      if (p.length === 3) dateCmdStr = `${p[2]}-${p[1]}-${p[0]}`;
+    }
+
     if (clotureDateDebut && clotureDateFin) {
-      matchIntervalle = cmd.date_commande >= clotureDateDebut && cmd.date_commande <= clotureDateFin;
+      matchIntervalle = dateCmdStr >= clotureDateDebut && dateCmdStr <= clotureDateFin;
     } else if (clotureDateDebut) {
-      matchIntervalle = cmd.date_commande >= clotureDateDebut;
+      matchIntervalle = dateCmdStr >= clotureDateDebut;
     } else if (clotureDateFin) {
-      matchIntervalle = cmd.date_commande <= clotureDateFin;
+      matchIntervalle = dateCmdStr <= clotureDateFin;
     }
 
     if (clotureLivreur) {
-      matchLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase() === clotureLivreur.trim().toUpperCase();
+      const livreurCmd = (cmd.vendeur_livreur || '').trim().toUpperCase();
+      const livreurFiltre = clotureLivreur.trim().toUpperCase();
+      matchLivreur = livreurCmd === livreurFiltre || livreurCmd.includes(livreurFiltre) || livreurFiltre.includes(livreurCmd);
     }
 
     if (!matchIntervalle || !matchLivreur) return false;
@@ -1123,12 +1146,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const dejaCloturee = cloturesEffectuees.some(cl => {
       const livCloture = (cl.caissier || '').trim().toUpperCase();
       const cmdLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase();
-      if (livCloture && cmdLivreur && livCloture !== cmdLivreur) return false;
+      if (livCloture && cmdLivreur && livCloture !== 'TOUS' && livCloture !== cmdLivreur) return false;
 
       const dateDebutCl = cl.date_debut || cl.created_at?.split('T')[0];
       const dateFinCl = cl.date_fin || dateDebutCl;
       if (dateDebutCl && dateFinCl) {
-        return cmd.date_commande >= dateDebutCl && cmd.date_commande <= dateFinCl;
+        return dateCmdStr >= dateDebutCl && dateCmdStr <= dateFinCl;
       }
       return false;
     });
@@ -1386,29 +1409,30 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       `}</style>
 
-      <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1 overflow-hidden">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <h3 className="font-extrabold text-slate-900 uppercase text-[10px] flex items-center gap-0.5 shrink-0">
+      {/* Barre principale des onglets ultra-compacte pour éviter toute superposition avec le titre LIVRAISON */}
+      <div className="bg-white px-2 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1 overflow-hidden">
+        <div className="flex items-center gap-1 min-w-0 shrink-0">
+          <h3 className="font-extrabold text-slate-900 uppercase text-[9px] flex items-center gap-0.5 shrink-0">
             <span>📦</span> LIVRAISON
           </h3>
           {roleUtilisateur && (
-            <span className="text-[8px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-bold border border-slate-200 truncate max-w-[90px]">
+            <span className="text-[7px] bg-slate-100 text-slate-700 px-1 py-0.5 rounded-full font-bold border border-slate-200 truncate max-w-[70px]">
               {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
             </span>
           )}
         </div>
         
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
             onClick={() => setVueActive('LISTE')}
-            className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
+            className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
               vueActive === 'LISTE' 
                 ? 'bg-slate-900 text-white border-slate-900' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
             }`}
           >
-            📄 Liste
+            Liste
           </button>
 
           {permissions.peut_creer && (
@@ -1432,70 +1456,71 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 setStocksArticlesCache({});
                 setVueActive('CREATION');
               }}
-              className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
+              className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
                 vueActive === 'CREATION' 
                   ? 'bg-orange-600 text-white border-orange-600' 
                   : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
               }`}
             >
-              + Créer
+              Créer
             </button>
           )}
 
           <button
             type="button"
             onClick={() => setVueActive('RAPPORT')}
-            className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
+            className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
               vueActive === 'RAPPORT' 
                 ? 'bg-blue-900 text-white border-blue-900' 
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
             }`}
           >
-            📊 Rapport
+            Rapport
           </button>
 
           <button
             type="button"
             onClick={() => setVueActive('CLOTURE')}
-            className={`font-bold px-1.5 py-1 rounded-md transition shadow-2xs text-[9px] border whitespace-nowrap ${
+            className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
               vueActive === 'CLOTURE' 
                 ? 'bg-emerald-900 text-white border-emerald-900' 
                 : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
             }`}
           >
-            🔐 Clôture
+            Clôture
           </button>
         </div>
       </div>
 
       {vueActive === 'CLOTURE' && (
         <div className="space-y-3">
-          <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {/* Sous-onglets clôture réduits sur une seule ligne avec cadre très compact */}
+          <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
             <button
               type="button"
               onClick={() => setSousOngletCloture('nouveau')}
-              className={`flex-1 py-1.5 px-3 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+              className={`flex-1 py-1 px-1 rounded font-black text-[9px] uppercase transition shadow-2xs whitespace-nowrap text-center ${
                 sousOngletCloture === 'nouveau' ? 'bg-emerald-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
               }`}
             >
-              ➕ Nouvelle Clôture
+              Nouvelle Clôture
             </button>
             <button
               type="button"
               onClick={() => setSousOngletCloture('liste')}
-              className={`flex-1 py-1.5 px-3 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+              className={`flex-1 py-1 px-1 rounded font-black text-[9px] uppercase transition shadow-2xs whitespace-nowrap text-center ${
                 sousOngletCloture === 'liste' ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
               }`}
             >
-              📋 Liste des Clôtures ({cloturesEffectuees.length})
+              Liste Clôture ({cloturesEffectuees.length})
             </button>
           </div>
 
           {sousOngletCloture === 'nouveau' && (
             <div className="space-y-3">
-              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                  <span className="font-black text-emerald-900 uppercase text-[10px] flex items-center gap-1">
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-1">
+                  <span className="font-black text-emerald-900 uppercase text-[9px] flex items-center gap-1">
                     🔐 CLÔTURE DE CAISSE DES LIVREURS
                   </span>
                   {(clotureDateDebut !== new Date().toISOString().split('T')[0] || clotureDateFin !== new Date().toISOString().split('T')[0] || clotureLivreur) && (
@@ -1507,147 +1532,145 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         setClotureDateFin(ajd);
                         setClotureLivreur('');
                       }}
-                      className="text-emerald-600 hover:text-emerald-700 font-bold text-[10px] underline"
+                      className="text-emerald-600 hover:text-emerald-700 font-bold text-[9px] underline"
                     >
                       Réinitialiser
                     </button>
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
-                      <input
-                        type="date"
-                        value={clotureDateDebut}
-                        onChange={(e) => setClotureDateDebut(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
-                      <input
-                        type="date"
-                        value={clotureDateFin}
-                        onChange={(e) => setClotureDateFin(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                      />
-                    </div>
+                {/* Champs Date début, Date fin et Livreur sur la même ligne */}
+                <div className="grid grid-cols-3 gap-1.5 items-end">
+                  <div>
+                    <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Début</label>
+                    <input
+                      type="date"
+                      value={clotureDateDebut}
+                      onChange={(e) => setClotureDateDebut(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                    />
                   </div>
 
                   <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
+                    <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Fin</label>
+                    <input
+                      type="date"
+                      value={clotureDateFin}
+                      onChange={(e) => setClotureDateFin(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
                     <button
                       type="button"
                       onClick={() => { setRechercheClotureLivreurInput(''); setModalClotureLivreurOuverte(true); }}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px] uppercase text-left flex justify-between items-center truncate"
                     >
-                      <span className="truncate">{clotureLivreur || 'TOUS LES LIVREURS'}</span>
-                      <span className="text-slate-400 shrink-0">🔍</span>
+                      <span className="truncate">{clotureLivreur || 'TOUS'}</span>
+                      <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg p-3 space-y-3">
-                <div className="flex flex-row justify-between items-center border-b border-slate-800 pb-2">
-                  <div>
-                    <h4 className="font-black text-xs uppercase tracking-wider text-emerald-400">
-                      RÉSUMÉ DE CLÔTURE DES LIVRAISONS
-                    </h4>
-                    <p className="text-[10px] text-slate-300 font-extrabold mt-0.5">
-                      Période : <span className="text-white">{clotureDateDebut === clotureDateFin ? formaterDateJJMMAAAA(clotureDateDebut) : `Du ${formaterDateJJMMAAAA(clotureDateDebut)} au ${formaterDateJJMMAAAA(clotureDateFin)}`}</span>
-                    </p>
-                  </div>
-                  <div className="bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-[10px] font-bold text-slate-200">
-                    Livreurs : <strong className="text-emerald-400">{listeResumeCloture.length}</strong>
-                  </div>
+              {/* Bloc titre unifié "EN ATTENTE DE CLOTURE" */}
+              <div className="flex justify-between items-center bg-slate-100 p-2 rounded-lg border border-slate-200">
+                <div className="min-w-0 pr-1">
+                  <h4 className="font-black text-[10px] uppercase tracking-wider text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
+                    EN ATTENTE DE CLOTURE
+                  </h4>
+                  <p className="text-[9px] text-slate-600 font-bold mt-0.5 truncate">
+                    Période : <span className="text-slate-900">{clotureDateDebut === clotureDateFin ? formaterDateJJMMAAAA(clotureDateDebut) : `Du ${formaterDateJJMMAAAA(clotureDateDebut)} au ${formaterDateJJMMAAAA(clotureDateFin)}`}</span>
+                  </p>
                 </div>
+                <div className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-[9px] font-bold text-slate-800 shrink-0 whitespace-nowrap shadow-2xs">
+                  Livreurs : <strong className="text-emerald-700">{listeResumeCloture.length}</strong>
+                </div>
+              </div>
 
-                {listeResumeCloture.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-xl text-[10px]">
-                    Aucune commande livrée en attente de clôture pour cette période.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {listeResumeCloture.map((item, index) => {
-                      const resteAVerser = item.montantTotalEncaisse - item.totalFraisLivraison;
-                      return (
-                        <div key={index} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm space-y-2 text-slate-900">
-                          <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                            <span className="font-black text-xs uppercase text-blue-700 flex items-center gap-1">
-                              🛵 {item.nom}
-                            </span>
-                            <span className="bg-orange-100 text-orange-800 font-extrabold px-2 py-0.5 rounded-full text-[9px]">
-                              {item.nombreCommandes} commande(s) livrée(s)
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                              <span className="block text-[8px] text-slate-500 uppercase font-bold">Montant Encaissé</span>
-                              <span className="font-mono font-black text-emerald-700 text-xs">{item.montantTotalEncaisse.toLocaleString('fr-FR')} F</span>
-                            </div>
-                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                              <span className="block text-[8px] text-slate-500 uppercase font-bold">Frais (Indicatif)</span>
-                              <span className="font-mono font-bold text-slate-700 text-xs">{item.totalFraisLivraison.toLocaleString('fr-FR')} F</span>
-                            </div>
-                            <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                              <span className="block text-[8px] text-emerald-800 uppercase font-bold">Total / Net</span>
-                              <span className="font-mono font-black text-emerald-900 text-xs">{resteAVerser.toLocaleString('fr-FR')} F</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    <div className="bg-black text-white p-3.5 rounded-xl border-2 border-red-600 space-y-3 shadow-xl">
-                      <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
-                        <span className="font-black text-xs uppercase tracking-wider text-red-500 flex items-center gap-1.5">
-                          🔴 CLÔTURE & VERSEMENT GLOBAL
-                        </span>
-                        {caisseSelectionneeCloture && (
-                          <span className="bg-neutral-800 text-white px-2 py-0.5 rounded text-[9px] font-bold border border-neutral-700">
-                            Caisse : <strong className="text-red-400">{caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || caisseSelectionneeCloture}</strong>
+              {listeResumeCloture.length === 0 ? (
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs text-center text-slate-400 font-bold italic text-[10px]">
+                  Aucune commande livrée en attente de clôture pour cette période.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {listeResumeCloture.map((item, index) => {
+                    const resteAVerser = item.montantTotalEncaisse - item.totalFraisLivraison;
+                    return (
+                      <div key={index} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm space-y-2 text-slate-900">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+                          <span className="font-black text-xs uppercase text-blue-700 flex items-center gap-1">
+                            🛵 {item.nom}
                           </span>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-center">
-                        <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800">
-                          <span className="block text-[9px] text-neutral-400 uppercase font-bold mb-1">Total versé (saisi manuellement)</span>
-                          <input
-                            type="number"
-                            value={totalVerseCloture}
-                            onChange={(e) => setTotalVerseCloture(e.target.value)}
-                            placeholder="0"
-                            className="w-full bg-black border border-neutral-700 rounded p-1.5 text-center font-mono text-sm font-black text-white focus:outline-none focus:border-red-500"
-                          />
+                          <span className="bg-orange-100 text-orange-800 font-extrabold px-2 py-0.5 rounded-full text-[9px]">
+                            {item.nombreCommandes} commande(s) livrée(s)
+                          </span>
                         </div>
-                        
-                        <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 flex flex-col justify-center">
-                          <span className="block text-[9px] text-neutral-400 uppercase font-bold">Écart</span>
-                          <span className="font-mono text-sm font-black text-red-500 mt-1">{ecartGlobalCloture.toLocaleString('fr-FR')} F</span>
+
+                        <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                            <span className="block text-[8px] text-slate-500 uppercase font-bold">Montant Encaissé</span>
+                            <span className="font-mono font-black text-emerald-700 text-xs">{item.montantTotalEncaisse.toLocaleString('fr-FR')} F</span>
+                          </div>
+                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                            <span className="block text-[8px] text-slate-500 uppercase font-bold">Frais (Indicatif)</span>
+                            <span className="font-mono font-bold text-slate-700 text-xs">{item.totalFraisLivraison.toLocaleString('fr-FR')} F</span>
+                          </div>
+                          <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                            <span className="block text-[8px] text-emerald-800 uppercase font-bold">Total / Net</span>
+                            <span className="font-mono font-black text-emerald-900 text-xs">{resteAVerser.toLocaleString('fr-FR')} F</span>
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
 
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => setModalCaisseClotureOuverte(true)}
-                          className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition shadow-md border border-red-500"
-                        >
-                          {caisseSelectionneeCloture 
-                            ? `Valider et clôturer vers : ${caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || 'Caisse sélectionnée'}` 
-                            : 'Valider et clôturer (Choisir la caisse) ➔'}
-                        </button>
+                  <div className="bg-black text-white p-3.5 rounded-xl border-2 border-red-600 space-y-3 shadow-xl">
+                    <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
+                      <span className="font-black text-xs uppercase tracking-wider text-red-500 flex items-center gap-1.5">
+                        🔴 CLÔTURE & VERSEMENT GLOBAL
+                      </span>
+                      {caisseSelectionneeCloture && (
+                        <span className="bg-neutral-800 text-white px-2 py-0.5 rounded text-[9px] font-bold border border-neutral-700">
+                          Caisse : <strong className="text-red-400">{caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || caisseSelectionneeCloture}</strong>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-center">
+                      <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800">
+                        <span className="block text-[9px] text-neutral-400 uppercase font-bold mb-1">Total versé (saisi manuellement)</span>
+                        <input
+                          type="number"
+                          value={totalVerseCloture}
+                          onChange={(e) => setTotalVerseCloture(e.target.value)}
+                          placeholder="0"
+                          className="w-full bg-black border border-neutral-700 rounded p-1.5 text-center font-mono text-sm font-black text-white focus:outline-none focus:border-red-500"
+                        />
+                      </div>
+                      
+                      <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 flex flex-col justify-center">
+                        <span className="block text-[9px] text-neutral-400 uppercase font-bold">Écart</span>
+                        <span className="font-mono text-sm font-black text-red-500 mt-1">{ecartGlobalCloture.toLocaleString('fr-FR')} F</span>
                       </div>
                     </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setModalCaisseClotureOuverte(true)}
+                        className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition shadow-md border border-red-500"
+                      >
+                        {caisseSelectionneeCloture 
+                          ? `Valider et clôturer vers : ${caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || 'Caisse sélectionnée'}` 
+                          : 'Valider et clôturer (Choisir la caisse) ➔'}
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1782,40 +1805,41 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             </div>
           </div>
 
-          <div ref={rapportRef} className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg overflow-hidden space-y-0 p-3">
-            <div className="bg-slate-900 text-white pb-3 flex flex-row justify-between items-center gap-2 border-b border-slate-800">
-              <div className="truncate">
-                <h4 className="titre-rapport-principal font-black text-xs uppercase tracking-wider text-orange-400 truncate">
+          <div ref={rapportRef} className="space-y-2">
+            <div className="bg-slate-900 text-white px-3 py-2 rounded-xl border border-slate-800 shadow-sm flex flex-col gap-1.5">
+              <div className="flex flex-row justify-between items-center gap-2">
+                <h4 className="titre-rapport-principal font-black text-[10px] uppercase tracking-wider text-orange-400 truncate">
                   RAPPORT DE LIVRAISON
                 </h4>
-                <p className="sous-titre-livreur text-[10px] text-slate-200 font-extrabold mt-0.5 truncate">
-                  Livreur : <span className="text-blue-400 uppercase">{nomLivreurRapport}</span>
-                </p>
-              </div>
-              
-              <div className="flex items-center gap-1.5 shrink-0">
-                <div className="bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 text-[9px] font-bold">
-                  Total livré : <strong className="text-emerald-400">{commandesRapport.length}</strong>
-                </div>
+                
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-700 text-[9px] font-bold whitespace-nowrap">
+                    Total livré : <strong className="text-emerald-400">{commandesRapport.length}</strong>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={imprimerRapport}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black px-2 py-1 rounded-lg text-[9px] transition flex items-center gap-1 shadow-2xs print-hide"
-                >
-                  🖨️ Imprimer
-                </button>
+                  <button
+                    type="button"
+                    onClick={imprimerRapport}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black px-2 py-0.5 rounded-lg text-[9px] transition flex items-center gap-1 shadow-2xs print-hide whitespace-nowrap"
+                  >
+                    🖨️ Imprimer
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-800 pt-1 flex items-center text-[10px] text-slate-300 font-extrabold truncate">
+                Livreur : <span className="text-blue-400 uppercase ml-1">{nomLivreurRapport}</span>
               </div>
             </div>
 
             {chargement && commandes.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-bold bg-white">Chargement...</div>
+              <div className="p-8 text-center text-slate-400 font-bold bg-white rounded-xl border border-slate-200">Chargement...</div>
             ) : commandesRapport.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-b-xl text-[10px]">
+              <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-xl border border-slate-200 text-[10px]">
                 Aucune livraison validée ne correspond à vos critères.
               </div>
             ) : (
-              <div className="bg-white rounded-xl overflow-hidden shadow-sm mt-3">
+              <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -1832,14 +1856,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                           </th>
                         )}
                         <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('article')}>
-                          Détails / Trajet {colonneTri === 'article' && (ordreTri === 'asc' ? '▲' : '▼')}
+                          Article {colonneTri === 'article' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                         {!rapportLivreur && <th className="p-2">Livreur</th>}
                         <th className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('montant')}>
-                          Montant (F) {colonneTri === 'montant' && (ordreTri === 'asc' ? '▲' : '▼')}
+                          Montant {colonneTri === 'montant' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                         <th className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('frais')}>
-                          Frais (F) {colonneTri === 'frais' && (ordreTri === 'asc' ? '▲' : '▼')}
+                          Frais {colonneTri === 'frais' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                       </tr>
                     </thead>
@@ -1905,7 +1929,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
           <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-2.5">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
                 <input
@@ -1931,13 +1955,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <span className="text-slate-400 shrink-0">🔍</span>
                 </button>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD (Auto) *</label>
                 <div className="flex items-center bg-slate-100 border border-slate-300 rounded overflow-hidden shadow-xs">
-                  <span className="bg-slate-200 px-1.5 py-1.5 text-[10px] font-black text-orange-600 border-r border-slate-300 shrink-0">
+                  <span className="bg-slate-200 px-1 py-1.5 text-[9px] font-black text-orange-600 border-r border-slate-300 shrink-0">
                     CMD-
                   </span>
                   <input
@@ -1948,7 +1970,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   />
                 </div>
               </div>
+            </div>
 
+            <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
                   N° Client * <span className={`text-[8px] font-bold ${numeroClient.trim().length === 9 ? 'text-emerald-600' : 'text-rose-600'}`}>({numeroClient.trim().length}/9)</span>
@@ -1980,10 +2004,61 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   }`}
                 />
               </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse *</label>
+                <input
+                  ref={inputAdresseRef}
+                  type="text"
+                  required
+                  list="liste-zones-commandes"
+                  value={adresseLivraison}
+                  onChange={(e) => handleChangementAdresse(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="Quartier..."
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                />
+                <datalist id="liste-zones-commandes">
+                  {grilleTarifaire.map((tarif) => (
+                    <option key={tarif.id} value={tarif.nom_zone}>
+                      {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
+                <input
+                  ref={inputMontantRef}
+                  type="number"
+                  step="0.01"
+                  required
+                  value={montantSaisi}
+                  onChange={(e) => setMontantSaisi(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  placeholder="0"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut *</label>
+              <select
+                value={statutCommandeSaisi}
+                onChange={(e) => setStatutCommandeSaisi(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs cursor-pointer"
+              >
+                <option value="EN ATTENTE">EN ATTENTE</option>
+                <option value="LIVRÉ">LIVRÉ</option>
+                <option value="REPORTÉ">REPORTÉ</option>
+                <option value="ANNULÉ">ANNULÉ</option>
+              </select>
             </div>
 
             {partenaireSansStockage && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Départ) *</label>
                   <input
@@ -2010,65 +2085,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 </div>
               </div>
             )}
-
-            <div className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-5">
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse *</label>
-                <input
-                  ref={inputAdresseRef}
-                  type="text"
-                  required
-                  list="liste-zones-commandes"
-                  value={adresseLivraison}
-                  onChange={(e) => handleChangementAdresse(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  placeholder="Quartier..."
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
-                />
-                <datalist id="liste-zones-commandes">
-                  {grilleTarifaire.map((tarif) => (
-                    <option key={tarif.id} value={tarif.nom_zone}>
-                      {tarif.nom_zone} ({Number(tarif.frais).toLocaleString('fr-FR')} F)
-                    </option>
-                  ))}
-                </datalist>
-              </div>
-
-              <div className="col-span-3">
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
-                <input
-                  ref={inputMontantRef}
-                  type="number"
-                  step="0.01"
-                  required
-                  value={montantSaisi}
-                  onChange={(e) => setMontantSaisi(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  placeholder="0"
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                />
-              </div>
-
-              <div className="col-span-4">
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase text-right">Statut *</label>
-                <select
-                  value={statutCommandeSaisi}
-                  onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs text-right cursor-pointer"
-                >
-                  <option value="EN ATTENTE">EN ATTENTE</option>
-                  <option value="LIVRÉ">LIVRÉ</option>
-                  <option value="REPORTÉ">REPORTÉ</option>
-                  <option value="ANNULÉ">ANNULÉ</option>
-                </select>
-              </div>
-            </div>
           </div>
 
           <div className="bg-blue-50/70 border-2 border-blue-200 p-3 rounded-xl shadow-md space-y-2">
             <div className="flex items-center justify-between border-b border-blue-200 pb-1">
               <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
-                🔒 ZONE SUPERVISEUR
+                🔒 ZONE RÉSERVÉE AU SUPERVISEUR
               </span>
             </div>
 
@@ -2446,71 +2468,71 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             </div>
 
             <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Date Début</label>
                   <input
                     type="date"
                     value={filtreDateDebut}
                     onChange={(e) => setFiltreDateDebut(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Date Fin</label>
                   <input
                     type="date"
                     value={filtreDateFin}
                     onChange={(e) => setFiltreDateFin(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Partenaire</label>
                   <button
                     type="button"
                     onClick={() => { setRechercheFiltrePartenaireInput(''); setModalFiltrePartenaireOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] text-left flex justify-between items-center truncate"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] text-left flex justify-between items-center truncate"
                   >
                     <span className="truncate">
                       {filtrePartenaire ? (partenaires.find(p => String(p.id) === String(filtrePartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(filtrePartenaire))?.nom || 'Tous') : 'Tous'}
                     </span>
-                    <span className="text-slate-400 shrink-0">🔍</span>
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
-                  <button
-                    type="button"
-                    onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
-                  >
-                    <span className="truncate">{filtreLivreur || 'Tous'}</span>
-                    <span className="text-slate-400 shrink-0">🔍</span>
+                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
                   </button>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">STATUT COMMANDE</label>
-                <select
-                  value={filtreStatut}
-                  onChange={(e) => setFiltreStatut(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
-                >
-                  <option value="">Tous les statuts</option>
-                  <option value="EN ATTENTE">EN ATTENTE</option>
-                  <option value="LIVRÉ">LIVRÉ</option>
-                  <option value="REPORTÉ">REPORTÉ</option>
-                  <option value="ANNULÉ">ANNULÉ</option>
-                </select>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                  >
+                    <span className="truncate">{filtreLivreur || 'Tous'}</span>
+                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Statut</label>
+                  <select
+                    value={filtreStatut}
+                    onChange={(e) => setFiltreStatut(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                  >
+                    <option value="">Tous les statuts</option>
+                    <option value="EN ATTENTE">EN ATTENTE</option>
+                    <option value="LIVRÉ">LIVRÉ</option>
+                    <option value="REPORTÉ">REPORTÉ</option>
+                    <option value="ANNULÉ">ANNULÉ</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -2578,43 +2600,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     </div>
 
                     <div className="border-t border-slate-100 pt-1.5 space-y-1.5 text-[10px]">
-                      <div className="flex justify-between items-center">
-                        <div className="font-extrabold text-blue-700 uppercase flex items-center gap-1">
+                      <div className="flex justify-between items-center gap-2">
+                        <div className="font-extrabold text-blue-700 uppercase flex items-center gap-1 shrink-0">
                           <span>🛵</span> {cmd.vendeur_livreur || 'Aucun livreur assigné'}
                         </div>
-                        
-                        {cmd.numero_client && (
-                          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                            <a
-                              href={`tel:${cmd.numero_client}`}
-                              onClick={() => {
-                                setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
-                              }}
-                              className={`font-mono px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition shadow-sm text-xs font-black ${styleNumero} ${
-                                estEnAttente 
-                                  ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
-                                  : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
-                              }`}
-                              title={`Appeler le client ${cmd.numero_client}`}
-                            >
-                              <span className="text-sm">📞</span> 
-                              <span className="text-xs sm:text-sm tracking-wide">{cmd.numero_client}</span>
-                            </a>
-                            <a
-                              href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-1.5 rounded-lg text-xs font-black transition flex items-center justify-center shadow-2xs"
-                              title={`Message WhatsApp ${cmd.numero_client}`}
-                            >
-                              💬
-                            </a>
-                          </div>
-                        )}
-                      </div>
 
-                      <div className="flex justify-between items-center text-slate-800 font-bold">
-                        <div className="truncate">
+                        <div className="truncate text-slate-800 font-bold text-right">
                           {cmd.point_a ? (
                             <span>
                               📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
@@ -2629,26 +2620,57 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             <span className="text-orange-600 font-extrabold ml-1">🚀 {cmd.zone_effective_livraison}</span>
                           )}
                         </div>
-
-                        <div className="text-right shrink-0 ml-2">
-                          <span className="text-[9px] text-slate-400 font-bold">(Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F)</span>
-                        </div>
                       </div>
 
-                      <div className="text-slate-600 font-medium">
-                        {lignesCmd.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {lignesCmd.map((l, idx) => (
-                              <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[9px]">
-                                {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
-                              </span>
-                            ))}
+                      <div className="flex justify-between items-center pt-0.5">
+                        <div className="text-slate-600 font-medium truncate">
+                          {lignesCmd.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {lignesCmd.map((l, idx) => (
+                                <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[9px]">
+                                  {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : cmd.nature_colis ? (
+                            <span className="text-blue-700 font-bold">📦 {cmd.nature_colis}</span>
+                          ) : (
+                            <span className="text-slate-400 italic">Aucun article</span>
+                          )}
+                        </div>
+
+                        {cmd.numero_client && (
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <a
+                              href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-1 rounded-md text-[10px] font-black transition flex items-center justify-center shadow-2xs"
+                              title={`Message WhatsApp ${cmd.numero_client}`}
+                            >
+                              💬
+                            </a>
+                            <a
+                              href={`tel:${cmd.numero_client}`}
+                              onClick={() => {
+                                setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
+                              }}
+                              className={`font-mono px-2 py-0.5 rounded-md border flex items-center gap-1 transition shadow-sm text-[10px] font-black ${styleNumero} ${
+                                estEnAttente 
+                                  ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
+                                  : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                              }`}
+                              title={`Appeler le client ${cmd.numero_client}`}
+                            >
+                              <span>📞</span> 
+                              <span className="tracking-wide">{cmd.numero_client}</span>
+                            </a>
                           </div>
-                        ) : cmd.nature_colis ? (
-                          <span className="text-blue-700 font-bold">📦 {cmd.nature_colis}</span>
-                        ) : (
-                          <span className="text-slate-400 italic">Aucun article</span>
                         )}
+                      </div>
+
+                      <div className="flex justify-end items-center text-[9px] text-slate-400 font-bold">
+                        <span>(Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F)</span>
                       </div>
                     </div>
                   </div>

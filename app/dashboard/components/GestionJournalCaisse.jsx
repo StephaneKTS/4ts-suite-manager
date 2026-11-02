@@ -640,9 +640,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       created_at: v.created_at
     }));
 
-  // Note : Les versements de clôture sont déjà enregistrés directement dans mouvements_caisse lors de leur validation.
-  // Nous n'injectons plus les tableaux virtuels (tousLesVersementsClotures) pour éviter la duplication constatée.
-
   const mouvementsJournalTries = [
     ...mouvementsDeCaisseFiltres, 
     ...ventesTransformeesEnMouvements
@@ -837,7 +834,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         id_caisse: caisseDestinationVersement,
         type_mouvement: 'ENTREE',
         montant: Number(etat.montant_verse),
-        libelle: `VERS. CLÔT [${numClotureAssocie}]`,
+        libelle: `VERS`, // 👈 Modification ici : libellé simplifié à "VERS"
         piece_physique: numClotureAssocie,
         created_at: new Date().toISOString()
       };
