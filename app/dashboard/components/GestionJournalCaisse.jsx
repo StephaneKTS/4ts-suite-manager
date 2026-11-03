@@ -273,6 +273,22 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     setNumeroPieceCloture(prochainNum);
   }, [dateControle, etatsCaisseList, cloturesCaissesList]);
 
+  // Si on est en mode LIVRAISON, mettre à jour automatiquement le montant versé avec la somme des frais de livraison
+  useEffect(() => {
+    if (moduleActuel === 'LIVRAISON' && livreurControle) {
+      const totalFraisLivraisonLivreur = commandesLivraison
+        .filter(cmd => {
+          if ((cmd.statut_commande || 'EN ATTENTE') !== 'LIVRÉ') return false;
+          if (dateControle && cmd.date_commande !== dateControle) return false;
+          if (livreurControle && (cmd.vendeur_livreur || '').trim().toUpperCase() !== livreurControle.trim().toUpperCase()) return false;
+          return true;
+        })
+        .reduce((sum, cmd) => sum + (Number(cmd.frais_livraison) || 0), 0);
+
+      setMontantVerse(totalFraisLivraisonLivreur > 0 ? String(totalFraisLivraisonLivreur) : '');
+    }
+  }, [moduleActuel, livreurControle, dateControle, commandesLivraison]);
+
   const preparerNouvelleCloture = () => {
     setCaisseControleId('');
     setCaissierFiltre('');
@@ -509,15 +525,21 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   };
 
   // --- GRAND LIVRE TRANSVERSAL ---
-  const mouvementsMvtsGrandLivre = mouvements.map(m => ({
-    id: `mvt-${m.id}`,
-    created_at: m.created_at,
-    piece_physique: m.piece_physique || '-',
-    id_compte: m.id_compte,
-    libelle: m.libelle || 'MOUV. CAISSE',
-    type_mouvement: m.type_mouvement,
-    montant: Number(m.montant || 0)
-  }));
+  const mouvementsMvtsGrandLivre = mouvements.map(m => {
+    let libelleAffichage = m.libelle || 'MOUV. CAISSE';
+    if (moduleActuel === 'LIVRAISON' && (libelleAffichage.toUpperCase().includes('CLÔTURE LIVRAISON') || libelleAffichage.toUpperCase().includes('VERS. CLÔTURE'))) {
+      libelleAffichage = 'Frais Livr.';
+    }
+    return {
+      id: `mvt-${m.id}`,
+      created_at: m.created_at,
+      piece_physique: m.piece_physique || '-',
+      id_compte: m.id_compte,
+      libelle: libelleAffichage,
+      type_mouvement: m.type_mouvement,
+      montant: Number(m.montant || 0)
+    };
+  });
 
   const ventesGrandLivre = ventes.map(v => ({
     id: `vente-${v.id}`,
@@ -604,7 +626,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const idsCaissesModuleActuel = new Set(caisses.map(c => String(c.id)));
 
   const mouvementsDeCaisseFiltres = mouvements.filter(m => {
-    // 🔒 Sécurité : ignorer si la caisse n'appartient pas au module actif
     if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
 
     if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
@@ -612,11 +633,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     if (dateDebutJournal && dateMvt < dateDebutJournal) return false;
     if (dateFinJournal && dateMvt > dateFinJournal) return false;
     return true;
+  }).map(m => {
+    let libelleAffichage = m.libelle || '';
+    if (moduleActuel === 'LIVRAISON' && (libelleAffichage.toUpperCase().includes('CLÔTURE LIVRAISON') || libelleAffichage.toUpperCase().includes('VERS. CLÔTURE'))) {
+      libelleAffichage = 'Frais Livr.';
+    }
+    return { ...m, libelle: libelleAffichage };
   });
 
   const ventesTransformeesEnMouvements = ventes
     .filter(v => {
-      // 🔒 Sécurité module
       if (v.id_caisse && !idsCaissesModuleActuel.has(String(v.id_caisse))) return false;
 
       if (caisseSelectionneeJournal) {
@@ -695,6 +721,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     if (dateDebutJournal && dateMvt < dateDebutJournal) return false;
     if (dateFinJournal && dateMvt > dateFinJournal) return false;
     return true;
+  }).map(m => {
+    let libelleAffichage = m.libelle || '';
+    if (moduleActuel === 'LIVRAISON' && (libelleAffichage.toUpperCase().includes('CLÔTURE LIVRAISON') || libelleAffichage.toUpperCase().includes('VERS. CLÔTURE'))) {
+      libelleAffichage = 'Frais Livr.';
+    }
+    return { ...m, libelle: libelleAffichage };
   });
 
   const mouvementsManuelsAffiches = mouvementsManuelsFiltres.slice(0, limiteHistorique);
@@ -828,13 +860,15 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       const etat = etatEnCoursDeVersement;
       const numClotureAssocie = etat.code_piece || `CL-${(etat.date_debut || '').replace(/-/g, '')}-1`;
 
+      const libelleMouvement = moduleActuel === 'LIVRAISON' ? 'Frais Livr.' : 'VERS';
+
       const payloadMvt = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
         id_caisse: caisseDestinationVersement,
         type_mouvement: 'ENTREE',
         montant: Number(etat.montant_verse),
-        libelle: `VERS`, // 👈 Modification ici : libellé simplifié à "VERS"
+        libelle: libelleMouvement, 
         piece_physique: numClotureAssocie,
         created_at: new Date().toISOString()
       };

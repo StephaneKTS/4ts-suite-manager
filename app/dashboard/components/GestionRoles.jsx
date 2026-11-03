@@ -123,6 +123,52 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
+      // 4. Vérification et auto-création du rôle système LIVREUR s'il est absent
+      const livreurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'LIVREUR');
+
+      if (!livreurExiste) {
+        const payloadLivreur = {
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          nom_role: 'LIVREUR',
+          description: 'Rôle système figé pour les livreurs et chauffeurs.',
+          permissions: initialiserPermissionsDefaut()
+        };
+
+        const { data: newLivreur, error: errLivreur } = await supabase
+          .from('roles')
+          .insert([payloadLivreur])
+          .select()
+          .single();
+
+        if (!errLivreur && newLivreur) {
+          listRoles = [newLivreur, ...listRoles];
+        }
+      }
+
+      // 5. Vérification et auto-création du rôle système SUPERVISEUR s'il est absent
+      const superviseurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'SUPERVISEUR');
+
+      if (!superviseurExiste) {
+        const payloadSuperviseur = {
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          nom_role: 'SUPERVISEUR',
+          description: 'Rôle système figé pour la supervision et le contrôle.',
+          permissions: initialiserPermissionsDefaut()
+        };
+
+        const { data: newSuperviseur, error: errSuperviseur } = await supabase
+          .from('roles')
+          .insert([payloadSuperviseur])
+          .select()
+          .single();
+
+        if (!errSuperviseur && newSuperviseur) {
+          listRoles = [newSuperviseur, ...listRoles];
+        }
+      }
+
       setRoles(listRoles);
 
       // Mise à jour du cache local propre
@@ -188,9 +234,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       };
 
       if (roleEnEdition) {
-        // Empêcher la modification de nom du rôle système ADMINISTRATEUR par sécurité
-        if ((roleEnEdition.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR' && nomSaisi !== 'ADMINISTRATEUR') {
-          alert('❌ Impossible de renommer le rôle système ADMINISTRATEUR.');
+        const nomRoleAncien = (roleEnEdition.nom_role || '').trim().toUpperCase();
+        // Empêcher la modification de nom des rôles systèmes ADMINISTRATEUR, LIVREUR ou SUPERVISEUR par sécurité
+        if (['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes(nomRoleAncien) && nomSaisi !== nomRoleAncien) {
+          alert(`❌ Impossible de renommer le rôle système ${nomRoleAncien}.`);
           setEnTrainDeSauvegarder(false);
           return;
         }
@@ -256,9 +303,11 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const supprimerRole = async () => {
     if (enTrainDeSauvegarder || !roleEnEdition) return;
 
-    // Protection du rôle système ADMINISTRATEUR contre la suppression
-    if ((roleEnEdition.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR') {
-      alert('❌ SUPPRESSION INTERDITE : Le rôle système ADMINISTRATEUR ne peut pas être supprimé.');
+    const nomRoleCible = (roleEnEdition.nom_role || '').trim().toUpperCase();
+
+    // Protection des rôles systèmes ADMINISTRATEUR, LIVREUR et SUPERVISEUR contre la suppression
+    if (['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes(nomRoleCible)) {
+      alert(`❌ SUPPRESSION INTERDITE : Le rôle système ${nomRoleCible} ne peut pas être supprimé.`);
       return;
     }
 
@@ -409,7 +458,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               <input
                 type="text"
                 required
-                disabled={enTrainDeSauvegarder || (roleEnEdition && (roleEnEdition.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR')}
+                disabled={enTrainDeSauvegarder || (roleEnEdition && ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes((roleEnEdition.nom_role || '').trim().toUpperCase()))}
                 value={nouveauRole.nom_role}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
                 placeholder="EX: MANAGER..."
@@ -468,7 +517,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="pt-2 border-t border-slate-200 flex justify-between items-center gap-2">
-            {roleEnEdition && (roleEnEdition.nom_role || '').trim().toUpperCase() !== 'ADMINISTRATEUR' ? (
+            {roleEnEdition && !['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes((roleEnEdition.nom_role || '').trim().toUpperCase()) ? (
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
@@ -533,7 +582,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">
                     {rolesAffiches.map((r) => {
-                      const estAdmin = (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR';
+                      const nomRoleUpper = (r.nom_role || '').trim().toUpperCase();
+                      const estAdmin = nomRoleUpper === 'ADMINISTRATEUR';
+                      const estLivreur = nomRoleUpper === 'LIVREUR';
+                      const estSuperviseur = nomRoleUpper === 'SUPERVISEUR';
                       const nbModulesActifs = estAdmin ? modulesApp.length : Object.values(r.permissions || {}).filter(p => p.lecture).length;
                       return (
                         <tr
@@ -543,8 +595,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                           title="Cliquer pour modifier"
                         >
                           <td className="p-2.5 font-extrabold uppercase text-slate-900 w-1/3 truncate">
-                            <span className={`${estAdmin ? 'bg-indigo-100 text-indigo-900 border-indigo-200' : 'bg-orange-100 text-orange-900 border-orange-200'} border px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full`}>
-                              {estAdmin ? '👑' : '🛡️'} {r.nom_role}
+                            <span className={`${estAdmin ? 'bg-indigo-100 text-indigo-900 border-indigo-200' : estLivreur ? 'bg-orange-100 text-orange-900 border-orange-200' : estSuperviseur ? 'bg-amber-100 text-amber-900 border-amber-200' : 'bg-slate-100 text-slate-900 border-slate-200'} border px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full`}>
+                              {estAdmin ? '👑' : estLivreur ? '🚚' : estSuperviseur ? '👁️' : '🛡️'} {r.nom_role}
                             </span>
                           </td>
                           <td className="p-2.5 text-slate-600 font-medium w-1/2 truncate max-w-[150px] sm:max-w-xs">

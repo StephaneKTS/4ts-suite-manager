@@ -87,7 +87,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const estModeLivraison = moduleActuel === 'LIVRAISON';
 
   const roleActuelObj = roles.find((r) => String(r.id) === String(nouveauUser.id_role));
-  const estRoleLivreurOuChauffeur = (roleActuelObj && (roleActuelObj.nom_role.toUpperCase().includes('LIVREUR') || roleActuelObj.nom_role.toUpperCase().includes('CHAUFFEUR'))) || nouveauUser.type_collaborateur === 'LIVREUR' || nouveauUser.type_collaborateur === 'CHAUFFEUR';
+  const estRoleLivreurStrict = roleActuelObj && (roleActuelObj.nom_role || '').trim().toUpperCase() === 'LIVREUR';
+  const estRoleLivreurOuChauffeur = estRoleLivreurStrict || (roleActuelObj && (roleActuelObj.nom_role.toUpperCase().includes('LIVREUR') || roleActuelObj.nom_role.toUpperCase().includes('CHAUFFEUR'))) || nouveauUser.type_collaborateur === 'LIVREUR' || nouveauUser.type_collaborateur === 'CHAUFFEUR';
 
   const chargerDonnees = async () => {
     const utilisateursLocaux = localSync.recupererDonneesLocales(cleCacheUtilisateurs);
@@ -153,13 +154,21 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .from('utilisateurs')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      const listUsers = dataUsers || [];
-      setUtilisateurs(listUsers);
+      
+      const rawUsers = dataUsers || [];
+      const mapUniques = new Map();
+      rawUsers.forEach((u) => {
+        const cleUnique = (u.nom_complet || '').trim().toUpperCase() + '_' + (u.prenom || '').trim().toUpperCase();
+        if (!mapUniques.has(cleUnique) || u.acces_application) {
+          mapUniques.set(cleUnique, u);
+        }
+      });
+      const listUsers = Array.from(mapUniques.values());
 
+      setUtilisateurs(listUsers);
       localSync.sauvegarderDonneesLocales(cleCacheUtilisateurs, listUsers);
     } catch (err) {
       console.error('Erreur chargement utilisateurs :', err.message);
@@ -221,13 +230,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    const modulesPayload = nouveauUser.modules_cibles.length > 0 
-      ? nouveauUser.modules_cibles 
-      : [moduleActuel];
+    const emailNettoye = (nouveauUser.email || '').trim().toLowerCase();
+    const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
+    const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
 
     if (nouveauUser.acces_application) {
-      const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
-      const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
+      if (!emailNettoye && chiffresPur.length === 0) {
+        alert('⚠️ Veuillez renseigner soit un email, soit un numéro de téléphone pour permettre la connexion.');
+        return;
+      }
 
       if (chiffresPur.length > 0 && chiffresPur.length !== paysObj.longueur) {
         alert(`⚠️ Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`);
@@ -235,17 +246,20 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       }
     }
 
-    const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
-    const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
-    const numeroComplet = (nouveauUser.acces_application && chiffresPur) ? `${paysObj.indicatif}${chiffresPur}` : '';
-    const emailSaisi = nouveauUser.acces_application ? (nouveauUser.email || '').trim().toLowerCase() : '';
+    const modulesPayload = nouveauUser.modules_cibles.length > 0 
+      ? nouveauUser.modules_cibles 
+      : [moduleActuel];
+
+    const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : null;
+    const emailFinal = emailNettoye ? emailNettoye : null;
 
     setEnTrainDeSauvegarder(true);
     try {
       let emplacementIdFinal = nouveauUser.id_emplacement;
       const nomNomCollab = (nouveauUser.nom_complet || '').trim().toUpperCase();
 
-      if (estRoleLivreurOuChauffeur) {
+      // Création automatique de l'emplacement UNIQUEMENT pour les utilisateurs ayant strictement le rôle LIVREUR
+      if (estRoleLivreurStrict) {
         if (!emplacementIdFinal) {
           const payloadNouvelEmplacement = {
             id_entreprise: entrepriseId,
@@ -279,20 +293,19 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         type_collaborateur: nouveauUser.type_collaborateur,
         categorie_permis: estRoleLivreurOuChauffeur ? (nouveauUser.categorie_permis || '').trim().toUpperCase() : null,
         numero_permis: estRoleLivreurOuChauffeur ? (nouveauUser.numero_permis || '').trim().toUpperCase() : null,
-        email: emailSaisi,
-        pays: nouveauUser.acces_application ? nouveauUser.pays : null,
+        email: emailFinal,
+        pays: nouveauUser.pays,
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
         id_caisse: estModeLivraison ? null : (nouveauUser.id_caisse || null),
-        id_emplacement: estRoleLivreurOuChauffeur ? (emplacementIdFinal || null) : null,
+        id_emplacement: estRoleLivreurStrict ? (emplacementIdFinal || null) : null,
         photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
       };
 
       if (userEnEdition) {
-        // Récupérer tous les enregistrements existants de cet employé dans l'entreprise (par ID ou nom)
         const { data: existingRecords, error: errFetch } = await supabase
           .from('utilisateurs')
           .select('id, module')
@@ -301,7 +314,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
         if (errFetch) throw errFetch;
 
-        // Pour chaque module disponible, on crée, met à jour ou supprime selon les cases cochées
         for (const modObj of MODULES_DISPONIBLES) {
           const modCible = modObj.id;
           const doitEtreActif = modulesPayload.includes(modCible);
@@ -320,7 +332,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             }
           } else {
             if (recordTrouve) {
-              // Sécurité : Ne pas supprimer le module courant si c'est celui sur lequel l'admin est logqué (optionnel, ici on supprime si décoché)
               await supabase
                 .from('utilisateurs')
                 .delete()
@@ -357,7 +368,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       telLocal = user.telephone.replace(paysTrouve.indicatif, '');
     }
 
-    // Récupérer de façon fiable tous les modules de l'employé dans l'entreprise
     let modulesActuelsUser = [moduleActuel];
     try {
       const nomCollab = (user.nom_complet || '').trim();
@@ -757,30 +767,26 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               </div>
             )}
 
-            {nouveauUser.acces_application && (
-              <>
-                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
-                    <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                      {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                    <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                      <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
-                      <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
-                    </div>
-                  </div>
+            <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
+                <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                  {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
+                <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                  <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
+                  <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
                 </div>
+              </div>
+            </div>
 
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
-                </div>
-              </>
-            )}
+            <div>
+              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
+              <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
+            </div>
 
             <div>
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
