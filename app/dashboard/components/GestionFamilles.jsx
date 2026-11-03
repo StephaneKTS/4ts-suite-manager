@@ -63,7 +63,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const [limiteFamilles, setLimiteFamilles] = useState(20);
-  const [nouveauFamille, setNouveauFamille] = useState({ nom_famille: '' });
+  const [nouveauFamille, setNouveauFamille] = useState({ nom_famille: '', suivi_stock: true });
 
   const chargerFamilles = async () => {
     // ⚡ Affichage instantané depuis le cache local (zéro latence perçue)
@@ -136,6 +136,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         id_entreprise: entrepriseId,
         module: moduleActuel,
         nom_famille: nouveauFamille.nom_famille.trim().toUpperCase(),
+        suivi_stock: nouveauFamille.suivi_stock ?? true,
       };
 
       if (familleSelectionnee) {
@@ -167,17 +168,20 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const reinitialiser = () => {
     if (enTrainDeSauvegarder) return;
     setFamilleSelectionnee(null);
-    setNouveauFamille({ nom_famille: '' });
+    setNouveauFamille({ nom_famille: '', suivi_stock: true });
   };
 
   const ouvrirFicheDetail = (famille) => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.modification) {
-      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les familles.');
+      alert('⛔ Action non autorisée : Vous n’avez le droit de modifier les familles.');
       return;
     }
     setFamilleSelectionnee(famille);
-    setNouveauFamille({ nom_famille: famille.nom_famille || '' });
+    setNouveauFamille({ 
+      nom_famille: famille.nom_famille || '', 
+      suivi_stock: famille.suivi_stock ?? true 
+    });
   };
 
   const supprimerFamille = async () => {
@@ -309,7 +313,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
           </div>
 
-          <div className="space-y-2 text-[11px]">
+          <div className="space-y-2.5 text-[11px]">
             <div>
               <label className="block font-black text-[9px] uppercase text-slate-700 mb-0.5">
                 Nom de la famille *
@@ -320,9 +324,27 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 disabled={enTrainDeSauvegarder}
                 value={nouveauFamille.nom_famille}
                 onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
-                placeholder="EX: BOISSONS, LAIT BEBE..."
+                placeholder="EX: BOISSONS, REPAS, SERVICES..."
                 className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
               />
+            </div>
+
+            {/* --- NOUVELLE ZONE : SUIVI DE STOCK PAR DÉFAUT POUR LA FAMILLE --- */}
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="block font-black text-slate-900 text-[10px] uppercase">Articles suivis en stock par défaut</span>
+                <span className="text-[9px] text-slate-500 font-bold">Décochez pour les repas ou services (pas de contrôle de stock).</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  disabled={enTrainDeSauvegarder}
+                  checked={nouveauFamille.suivi_stock}
+                  onChange={(e) => setNouveauFamille({ ...nouveauFamille, suivi_stock: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+              </label>
             </div>
           </div>
 
@@ -353,20 +375,21 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         <div className="space-y-2">
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs table-fixed">
+              <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-wider">
-                    <th className="p-2.5 w-full">Famille</th>
+                    <th className="p-2.5">Famille</th>
+                    <th className="p-2.5 text-center">Suivi de stock</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-[10.5px]">
                   {chargement && familles.length === 0 ? (
                     <tr>
-                      <td className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
+                      <td colSpan="2" className="p-4 text-center text-slate-500 font-bold">Chargement...</td>
                     </tr>
                   ) : famillesAffichees.length === 0 ? (
                     <tr>
-                      <td className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
+                      <td colSpan="2" className="p-4 text-center text-slate-500 font-bold">Aucune famille d'articles enregistrée.</td>
                     </tr>
                   ) : (
                     famillesAffichees.map((fam) => (
@@ -377,6 +400,17 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                       >
                         <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate">
                           🏷️ {fam.nom_famille}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          {fam.suivi_stock !== false ? (
+                            <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[9px]">
+                              Oui (Suivi)
+                            </span>
+                          ) : (
+                            <span className="bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full text-[9px]">
+                              Non (Libre)
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -421,6 +455,24 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
                 />
+              </div>
+
+              {/* --- ZONE DE MODIFICATION DU SUIVI DE STOCK --- */}
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="block font-black text-slate-900 text-[10px] uppercase">Articles suivis en stock</span>
+                  <span className="text-[9px] text-slate-500 font-bold">Par défaut pour cette famille.</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    disabled={enTrainDeSauvegarder || !permissions.modification}
+                    checked={nouveauFamille.suivi_stock}
+                    onChange={(e) => setNouveauFamille({ ...nouveauFamille, suivi_stock: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
               </div>
             </div>
 

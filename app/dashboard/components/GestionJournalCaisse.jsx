@@ -273,7 +273,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     setNumeroPieceCloture(prochainNum);
   }, [dateControle, etatsCaisseList, cloturesCaissesList]);
 
-  // Si on est en mode LIVRAISON, mettre à jour automatiquement le montant versé avec la somme des frais de livraison
   useEffect(() => {
     if (moduleActuel === 'LIVRAISON' && livreurControle) {
       const totalFraisLivraisonLivreur = commandesLivraison
@@ -702,6 +701,27 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const mouvementsJournalAffiches = mouvementsJournalTries.slice(0, limiteJournal);
 
+  // --- CALCUL DU REPORT ANTÉRIEUR GLOBAL POUR LE JOURNAL DE CAISSE (MOUVEMENTS + VENTES) ---
+  const reportAnterieurMouvements = mouvements.filter(m => {
+    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
+    if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
+    const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
+    return dateDebutJournal && dateMvt < dateDebutJournal;
+  }).reduce((acc, m) => {
+    return m.type_mouvement === 'ENTREE' ? acc + Number(m.montant) : acc - Number(m.montant);
+  }, 0);
+
+  const reportAnterieurVentes = ventes.filter(v => {
+    if (v.id_caisse && !idsCaissesModuleActuel.has(String(v.id_caisse))) return false;
+    if (caisseSelectionneeJournal && String(v.id_caisse) !== String(caisseSelectionneeJournal)) return false;
+    const dateVente = v.created_at ? v.created_at.split('T')[0] : '';
+    return dateDebutJournal && dateVente < dateDebutJournal;
+  }).reduce((acc, v) => {
+    return acc + Number(v.montant_regle ?? v.total_montant ?? 0);
+  }, 0);
+
+  const reportAntérieur = reportAnterieurMouvements + reportAnterieurVentes;
+
   const totalEntreesJournal = mouvementsJournalTries
     .filter(m => m.type_mouvement === 'ENTREE')
     .reduce((acc, m) => acc + Number(m.montant || 0), 0);
@@ -710,7 +730,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     .filter(m => m.type_mouvement === 'SORTIE')
     .reduce((acc, m) => acc + Number(m.montant || 0), 0);
 
-  const soldeJournal = totalEntreesJournal - totalSortiesJournal;
+  const soldeJournal = reportAntérieur + totalEntreesJournal - totalSortiesJournal;
 
   const mouvementsManuelsFiltres = mouvements.filter(m => {
     if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
@@ -730,17 +750,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   });
 
   const mouvementsManuelsAffiches = mouvementsManuelsFiltres.slice(0, limiteHistorique);
-
-  const reportAntérieur = mouvements.filter(m => {
-    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
-    if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
-    const lib = (m.libelle || '').toUpperCase();
-    if (lib === 'VERSEMENT' || lib.includes('VERSEMENT ÉTAT') || lib.includes('CLÔTURE')) return false;
-    const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
-    return dateDebutJournal && dateMvt < dateDebutJournal;
-  }).reduce((acc, m) => {
-    return m.type_mouvement === 'ENTREE' ? acc + Number(m.montant) : acc - Number(m.montant);
-  }, 0);
 
   const montantTotalFacture = moduleActuel === 'LIVRAISON'
     ? (livreurControle
@@ -1220,18 +1229,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
-                    {reportAntérieur !== 0 && (
-                      <tr className="bg-slate-50 italic text-[9px]">
-                        <td className="p-1.5 font-bold text-slate-600">-</td>
-                        <td className="p-1.5 font-mono font-bold text-slate-600">REPORT</td>
-                        <td className="p-1.5 font-bold text-slate-600">Report Antérieur</td>
-                        <td className="p-1.5 font-bold text-slate-600">Avant {dateDebutJournal}</td>
-                        <td className={`p-1.5 font-black text-right ${reportAntérieur >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {reportAntérieur >= 0 ? `+ ${reportAntérieur.toLocaleString('fr-FR')}` : `${reportAntérieur.toLocaleString('fr-FR')}`}
-                        </td>
-                      </tr>
-                    )}
-                    {mouvementsManuelsAffiches.length === 0 && reportAntérieur === 0 ? (
+                    {mouvementsManuelsAffiches.length === 0 ? (
                       <tr>
                         <td colSpan="5" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucune opération.</td>
                       </tr>
@@ -1451,7 +1449,21 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
-                    {mouvementsJournalAffiches.length === 0 ? (
+                    {reportAntérieur !== 0 && (
+                      <tr className="bg-slate-50 italic text-[10px]">
+                        <td className="p-1.5 font-bold text-slate-600">-</td>
+                        <td className="p-1.5 font-mono font-bold text-slate-600">REPORT</td>
+                        <td className="p-1.5 font-bold text-slate-600">Report Antérieur</td>
+                        <td className="p-1.5 font-bold text-slate-600">Solde avant {dateDebutJournal}</td>
+                        <td className={`p-1.5 font-black text-right ${reportAntérieur >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {reportAntérieur >= 0 ? `${reportAntérieur.toLocaleString('fr-FR')}` : '-'}
+                        </td>
+                        <td className={`p-1.5 font-black text-right ${reportAntérieur >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {reportAntérieur < 0 ? `${Math.abs(reportAntérieur).toLocaleString('fr-FR')}` : '-'}
+                        </td>
+                      </tr>
+                    )}
+                    {mouvementsJournalAffiches.length === 0 && reportAntérieur === 0 ? (
                       <tr>
                         <td colSpan="6" className="p-3 text-center text-slate-500 font-bold">Aucun mouvement de caisse.</td>
                       </tr>
@@ -1478,21 +1490,21 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       })
                     )}
                   </tbody>
-                  {mouvementsJournalTries.length > 0 && (
+                  {mouvementsJournalTries.length > 0 || reportAntérieur !== 0 ? (
                     <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
                       <tr>
-                        <td colSpan="4" className="p-2 uppercase text-[9px]">Totaux :</td>
+                        <td colSpan="4" className="p-2 uppercase text-[9px]">Totaux de la période :</td>
                         <td className="p-2 text-right font-black text-emerald-800">{totalEntreesJournal.toLocaleString('fr-FR')}</td>
                         <td className="p-2 text-right font-black text-red-700">{totalSortiesJournal.toLocaleString('fr-FR')}</td>
                       </tr>
                       <tr className="bg-orange-50 border-t border-slate-200">
-                        <td colSpan="4" className="p-2 uppercase text-[9px] text-orange-900 font-black">Solde Net :</td>
+                        <td colSpan="4" className="p-2 uppercase text-[9px] text-orange-900 font-black">Solde Net (Report inclus) :</td>
                         <td colSpan="2" className={`p-2 text-right font-black ${soldeJournal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {soldeJournal.toLocaleString('fr-FR')}
+                          {soldeJournal.toLocaleString('fr-FR')} CFA
                         </td>
                       </tr>
                     </tfoot>
-                  )}
+                  ) : null}
                 </table>
               </div>
             </div>

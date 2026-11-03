@@ -118,6 +118,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     Photo: '',
     Disponible_Menu_QR: true,
     date_peremption: '',
+    suivi_stock: true, // Géré dynamiquement par la famille ou personnalisé
   });
 
   const toutesLesSuggestionsArticles = Array.from(
@@ -147,10 +148,15 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       // Définir TOUJOURS la première famille créée comme famille par défaut au chargement si elle existe
       if (listeFam.length > 0) {
         const premiereFamilleId = String(listeFam[0].id);
+        const premierSuiviStockFamille = listeFam[0].suivi_stock ?? true;
         if (familleFiltre === 'TOUTES' || !familleFiltre) {
           setFamilleFiltre(premiereFamilleId);
         }
-        setNouveauArticle(prev => ({ ...prev, Famille: prev.Famille || premiereFamilleId }));
+        setNouveauArticle(prev => ({ 
+          ...prev, 
+          Famille: prev.Famille || premiereFamilleId,
+          suivi_stock: prev.Famille ? prev.suivi_stock : premierSuiviStockFamille 
+        }));
       }
 
       const { data: dataDep } = await supabase
@@ -569,7 +575,8 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte) || 5,
         Photo: nouveauArticle.Photo,
         Disponible_Menu_QR: nouveauArticle.Disponible_Menu_QR,
-        date_peremption: isGestionPerissablesActive() && nouveauArticle.date_peremption ? nouveauArticle.date_peremption : null
+        date_peremption: isGestionPerissablesActive() && nouveauArticle.date_peremption ? nouveauArticle.date_peremption : null,
+        suivi_stock: nouveauArticle.suivi_stock ?? true
       };
 
       if (articleEnEdition) {
@@ -616,6 +623,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       Photo: article.Photo || article.photo || '',
       Disponible_Menu_QR: article.Disponible_Menu_QR ?? true,
       date_peremption: article.date_peremption || '',
+      suivi_stock: article.suivi_stock ?? true,
     });
     setAfficherForm(true);
     // Focus et sélection automatique du texte à l'ouverture de l'édition
@@ -630,16 +638,18 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const annulerForm = () => {
     if (enTrainDeSauvegarder) return;
     setArticleEnEdition(null);
+    const premiereFamille = familles.length > 0 ? familles[0] : null;
     setNouveauArticle({
       Code_Barre: '',
       Designation: '',
-      Famille: familles.length > 0 ? familles[0].id : '',
+      Famille: premiereFamille ? premiereFamille.id : '',
       Prix_Achat: 0,
       Prix_Vente: 0,
       Seuil_Alerte: 5,
       Photo: '',
       Disponible_Menu_QR: true,
       date_peremption: '',
+      suivi_stock: premiereFamille ? (premiereFamille.suivi_stock ?? true) : true,
     });
     setAfficherForm(false);
   };
@@ -924,9 +934,14 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               } else {
                 setModeVue('catalogue');
                 annulerForm();
-                // Assigner automatiquement la première famille créée lors de l'ouverture du formulaire de création
+                // Assigner automatiquement la première famille créée ainsi que son statut de suivi de stock par défaut
                 if (familles.length > 0) {
-                  setNouveauArticle(prev => ({ ...prev, Famille: familles[0].id }));
+                  const premiereFam = familles[0];
+                  setNouveauArticle(prev => ({ 
+                    ...prev, 
+                    Famille: premiereFam.id,
+                    suivi_stock: premiereFam.suivi_stock ?? true 
+                  }));
                 }
                 setAfficherForm(true);
                 // Donner le focus et sélectionner le texte de la désignation à l'ouverture
@@ -1015,7 +1030,14 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.Famille || (familles.length > 0 ? familles[0].id : '')}
                     onChange={(e) => {
-                      setNouveauArticle({ ...nouveauArticle, Famille: e.target.value });
+                      const famIdChoisie = e.target.value;
+                      const famObjTrouvee = familles.find(f => String(f.id) === String(famIdChoisie));
+                      setNouveauArticle({ 
+                        ...nouveauArticle, 
+                        Famille: famIdChoisie,
+                        // Héritage automatique du suivi de stock de la famille si c'est un nouvel article
+                        suivi_stock: articleEnEdition ? nouveauArticle.suivi_stock : (famObjTrouvee ? (famObjTrouvee.suivi_stock ?? true) : true)
+                      });
                       setTimeout(() => {
                         if (designationInputRef.current) {
                           designationInputRef.current.focus();
@@ -1142,6 +1164,24 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   />
                 </div>
               )}
+
+              {/* --- ZONE DE CONFIGURATION DU SUIVI DE STOCK DE L'ARTICLE --- */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between">
+                <div>
+                  <span className="block font-black text-slate-900 text-[10px] uppercase">Suivi de stock (Article)</span>
+                  <span className="text-[9px] text-slate-500 font-bold">Hérité de la famille, modifiable pour cet article.</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    disabled={enTrainDeSauvegarder}
+                    checked={nouveauArticle.suivi_stock}
+                    onChange={(e) => setNouveauArticle({ ...nouveauArticle, suivi_stock: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
 
               <div className="pt-2 border-t border-slate-100 space-y-1">
                 <label className="block font-black text-[10px] text-slate-700 uppercase">Photo de l'article</label>
@@ -1399,6 +1439,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                         const artId = art.id_article || art.id;
                         const stockCalculé = calculerStockReelDirect(artId, depotFiltre, emplacementFiltre);
                         const prixAchatValeur = art.Prix_Achat || art.prix_achat || 0;
+                        const suiviStockActif = art.suivi_stock ?? true;
 
                         return (
                           <tr 
@@ -1413,22 +1454,37 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                             }}
                             className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
                           >
-                            <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900">
-                              {art.Designation || art.designation}
+                            <td className="p-2.5 font-black text-[10px] whitespace-nowrap uppercase text-slate-900 flex items-center gap-1.5">
+                              <span>{art.Designation || art.designation}</span>
+                              {!suiviStockActif && (
+                                <span className="bg-slate-100 text-slate-600 text-[8px] font-bold px-1.5 py-0.2 rounded border border-slate-200">
+                                  Non suivi
+                                </span>
+                              )}
                             </td>
                             <td className="p-2.5 text-center whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                {stockCalculé}
-                              </span>
+                              {suiviStockActif ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  {stockCalculé}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500 italic">
+                                  Libre (Non suivi)
+                                </span>
+                              )}
                             </td>
 
                             {emplacementsTableau.map((emp) => {
                               const stockEmp = calculerStockReelDirect(artId, depotFiltre, emp.id);
                               return (
                                 <td key={emp.id} className="p-2.5 text-center whitespace-nowrap">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
-                                    {stockEmp}
-                                  </span>
+                                  {suiviStockActif ? (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black ${stockEmp > 0 ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'text-slate-400 font-bold'}`}>
+                                      {stockEmp}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 text-[9px]">-</span>
+                                  )}
                                 </td>
                               );
                             })}

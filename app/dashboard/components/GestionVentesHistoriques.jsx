@@ -7,6 +7,7 @@ import { localSync } from '../../lib/localSync';
 export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }) {
   const [ventes, setVentes] = useState([]);
   const [articlesStock, setArticlesStock] = useState([]);
+  const [famillesArticles, setFamillesArticles] = useState([]); // Ajouté pour la gestion des familles
   const [clientsList, setClientsList] = useState([]);
   const [categoriesList, setCategoriesList] = useState([]);
   const [caissesList, setCaissesList] = useState([]);
@@ -136,6 +137,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         setVentes(cacheBrut.ventes || []);
         setVentesHistoriques(cacheBrut.ventes || []);
         setArticlesStock(cacheBrut.articlesStock || []);
+        setFamillesArticles(cacheBrut.famillesArticles || []);
         setClientsList(cacheBrut.clientsList || []);
         setCategoriesList(cacheBrut.categoriesList || []);
         setCaissesList(cacheBrut.caissesList || []);
@@ -215,8 +217,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         ventesData = ventesRpc || [];
       }
 
-      const [resArticles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro, resUsers, resClotures] = await Promise.all([
+      const [resArticles, resFamilles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro, resUsers, resClotures] = await Promise.all([
         supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
+        supabase.from('familles_articles').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('categories_clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -228,6 +231,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       ]);
 
       const dataArticles = resArticles.data || [];
+      const dataFamilles = resFamilles.data || [];
       const dataClients = resClients.data || [];
       const dataCategories = resCategories.data || [];
       const dataCaisses = resCaisses.data || [];
@@ -240,6 +244,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setVentes(ventesData);
       setVentesHistoriques(ventesData);
       setArticlesStock(dataArticles);
+      setFamillesArticles(dataFamilles);
       setClientsList(dataClients);
       setCategoriesList(dataCategories);
       setCaissesList(dataCaisses);
@@ -289,6 +294,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       sauvegarderCacheLocal({
         ventes: ventesData,
         articlesStock: dataArticles,
+        famillesArticles: dataFamilles,
         clientsList: dataClients,
         categoriesList: dataCategories,
         caissesList: dataCaisses,
@@ -410,6 +416,19 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return Math.max(0, stockDepot);
   };
 
+  // --- VÉRIFICATION DU SUIVI DE STOCK (ARTICLE OU FAMILLE) ---
+  const articleEstSuiviEnStock = (article) => {
+    if (article.suivi_stock !== undefined && article.suivi_stock !== null) {
+      return Boolean(article.suivi_stock);
+    }
+    const idFamilleArt = String(article.Famille || article.famille || '');
+    const familleAssociee = famillesArticles.find(f => String(f.id) === idFamilleArt);
+    if (familleAssociee && familleAssociee.suivi_stock !== undefined) {
+      return Boolean(familleAssociee.suivi_stock);
+    }
+    return true; // Par défaut, suivi activé
+  };
+
   const annulerVenteEnCours = () => {
     if (enTrainDeSauvegarder) return;
     if (confirm('Voulez-vous vraiment annuler cette vente en cours ? Le panier sera vidé.')) {
@@ -515,12 +534,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     const designation = (article.Designation || article.nom || '').toUpperCase();
     const prixU = Number(article.Prix_Vente || article.prix_vente || article.prix || 0);
     const prixAchatU = Number(article.Prix_Achat || article.prix_achat || article.prix_revient || 0);
-    const stockDispo = getStockReelArticle(article);
+    
+    // --- VÉRIFICATION DU SUIVI DE STOCK ---
+    const estSuivi = articleEstSuiviEnStock(article);
+    const stockDispo = estSuivi ? getStockReelArticle(article) : 999999;
 
     const existant = panier.find((item) => item.id === articleId);
     const quantiteActuelleDansPanier = existant ? existant.quantite : 0;
 
-    if (quantiteActuelleDansPanier + 1 > stockDispo) {
+    // AUCUN CONTRÔLE DE STOCK SI L'ARTICLE N'EST PAS SUIVI
+    if (estSuivi && quantiteActuelleDansPanier + 1 > stockDispo) {
       alert(`❌ Stock insuffisant dans ce dépôt pour "${designation}" ! Stock réel : ${stockDispo}`);
       return;
     }
@@ -528,7 +551,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     if (existant) {
       setPanier(panier.map((item) => (item.id === articleId ? { ...item, quantite: item.quantite + 1 } : item)));
     } else {
-      setPanier([...panier, { id: articleId, designation, prix_unitaire: prixU, prix_achat: prixAchatU, quantite: 1, stockMax: stockDispo }]);
+      setPanier([...panier, { id: articleId, designation, prix_unitaire: prixU, prix_achat: prixAchatU, quantite: 1, stockMax: stockDispo, est_suivi_stock: estSuivi }]);
     }
     setAfficherModalArticle(false);
   };
@@ -541,9 +564,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     }
 
     const articleAssocie = articlesStock.find(a => (a.id_article || a.id) === id);
-    const stockDispo = articleAssocie ? getStockReelArticle(articleAssocie) : 999999;
+    const estSuivi = articleAssocie ? articleEstSuiviEnStock(articleAssocie) : true;
+    const stockDispo = estSuivi ? (articleAssocie ? getStockReelArticle(articleAssocie) : 999999) : 999999;
 
-    if (qte > stockDispo) {
+    if (estSuivi && qte > stockDispo) {
       alert(`❌ Quantité demandée supérieure au stock réel de ce dépôt (${stockDispo}) !`);
       return;
     }
@@ -605,12 +629,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       return;
     }
 
+    // --- VÉRIFICATION DU STOCK UNIQUEMENT POUR LES ARTICLES SUIVIS ---
     for (const item of panier) {
       const artRef = articlesStock.find(a => (a.id_article || a.id) === item.id);
-      const stockActuelReel = artRef ? getStockReelArticle(artRef) : 0;
-      if (item.quantite > stockActuelReel) {
-        alert(`❌ Vente bloquée : L'article "${item.designation}" dépasse le stock réel du dépôt (${stockActuelReel}).`);
-        return;
+      const estSuivi = artRef ? articleEstSuiviEnStock(artRef) : true;
+      if (estSuivi) {
+        const stockActuelReel = artRef ? getStockReelArticle(artRef) : 0;
+        if (item.quantite > stockActuelReel) {
+          alert(`❌ Vente bloquée : L'article "${item.designation}" dépasse le stock réel du dépôt (${stockActuelReel}).`);
+          return;
+        }
       }
     }
 
@@ -667,21 +695,27 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       }
 
+      // --- CRÉATION DE MOUVEMENTS DE STOCK UNIQUEMENT POUR LES ARTICLES SUIVIS ---
       for (const item of panier) {
-        const payloadMouvement = {
-          id_entreprise: entrepriseId,
-          module: moduleActuel,
-          type_mouvement: 'SORTIE',
-          id_depot_source: depotId,
-          id_depot_destination: null,
-          id_article: parseInt(item.id),
-          quantite: item.quantite,
-          motif_remarque: `VENTE TICKET ${numeroTicket} (${nomClientFacture}) - ${typeReglementVente}`
-        };
+        const artRef = articlesStock.find(a => (a.id_article || a.id) === item.id);
+        const estSuivi = artRef ? articleEstSuiviEnStock(artRef) : true;
 
-        const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-        if (errMvt) {
-          localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+        if (estSuivi) {
+          const payloadMouvement = {
+            id_entreprise: entrepriseId,
+            module: moduleActuel,
+            type_mouvement: 'SORTIE',
+            id_depot_source: depotId,
+            id_depot_destination: null,
+            id_article: parseInt(item.id),
+            quantite: item.quantite,
+            motif_remarque: `VENTE TICKET ${numeroTicket} (${nomClientFacture}) - ${typeReglementVente}`
+          };
+
+          const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
+          if (errMvt) {
+            localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+          }
         }
       }
 
@@ -1263,8 +1297,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     const artId = art.id_article || art.id;
                     const artDes = (art.Designation || art.nom || '').toUpperCase();
                     const artPrix = Number(art.Prix_Vente || art.prix_vente || 0);
-                    const artStock = getStockReelArticle(art);
-                    const estEpuise = artStock <= 0;
+                    
+                    const estSuivi = articleEstSuiviEnStock(art);
+                    const artStock = estSuivi ? getStockReelArticle(art) : 999999;
+                    const estEpuise = estSuivi && artStock <= 0;
 
                     return (
                       <div
@@ -1277,7 +1313,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                         <div className="min-w-0 flex-1">
                           <p className={`font-black text-xs truncate ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
                           <p className={`text-[10px] font-mono mt-0.5 ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
-                            Stock : {artStock} {estEpuise ? '(Épuisé)' : ''}
+                            {estSuivi ? `Stock : ${artStock} ${estEpuise ? '(Épuisé)' : ''}` : <span className="text-slate-400 italic">Non suivi en stock</span>}
                           </p>
                         </div>
                         <span className={`font-black font-mono text-sm whitespace-nowrap ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
@@ -2082,8 +2118,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     const artId = art.id_article || art.id;
                     const artDes = (art.Designation || art.nom || '').toUpperCase();
                     const artPrix = Number(art.Prix_Vente || art.prix_vente || 0);
-                    const artStock = getStockReelArticle(art);
-                    const estEpuise = artStock <= 0;
+                    
+                    const estSuivi = articleEstSuiviEnStock(art);
+                    const artStock = estSuivi ? getStockReelArticle(art) : 999999;
+                    const estEpuise = estSuivi && artStock <= 0;
 
                     return (
                       <div
@@ -2096,7 +2134,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                         <div>
                           <p className={`font-extrabold uppercase text-[10px] ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
                           <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
-                            Stock : {artStock} {estEpuise ? '(Épuisé)' : ''}
+                            {estSuivi ? `Stock : ${artStock} ${estEpuise ? '(Épuisé)' : ''}` : <span className="text-slate-400 italic">Non suivi en stock</span>}
                           </p>
                         </div>
                         <span className={`font-black font-mono text-[10px] ${estEpuise ? 'text-slate-400' : 'text-orange-600'}`}>
