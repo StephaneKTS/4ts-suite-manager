@@ -44,6 +44,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [limiteCommandes, setLimiteCommandes] = useState(20);
   const [commandesAppelees, setCommandesAppelees] = useState({});
 
+  // État pour le menu déroulant du statut rapide par commande
+  const [menuStatutOuvertId, setMenuStatutOuvertId] = useState(null);
+
   const [vueActive, setVueActive] = useState('LISTE');
   const [sousOngletCloture, setSousOngletCloture] = useState('nouveau');
   const [commandeEnEdition, setCommandeEnEdition] = useState(null);
@@ -78,11 +81,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const [partenaireSansStockage, setPartenaireSansStockage] = useState(false);
 
-  // --- NOUVEAUX ÉTATS POUR LA SEGMENTATION DU DOUBLE VERSEMENT ---
   const [totalVerseRecetteGlobal, setTotalVerseRecetteGlobal] = useState('');
   const [totalVerseFraisLivraison, setTotalVerseFraisLivraison] = useState('');
   const [modalCaisseClotureOuverte, setModalCaisseClotureOuverte] = useState(false);
   const [caisseSelectionneeCloture, setCaisseSelectionneeCloture] = useState('');
+
+  const dateDuJourStr = new Date().toISOString().split('T')[0];
 
   const obtenirPremierJourDuMois = () => {
     const d = new Date();
@@ -110,8 +114,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [modalFiltreLivreurOuverte, setModalFiltreLivreurOuverte] = useState(false);
   const [rechercheFiltreLivreurInput, setRechercheFiltreLivreurInput] = useState('');
 
-  const [filtreDateDebut, setFiltreDateDebut] = useState(premierJourMoisStr);
-  const [filtreDateFin, setFiltreDateFin] = useState(dernierJourMoisStr);
+  const [filtreDateDebut, setFiltreDateDebut] = useState(dateDuJourStr);
+  const [filtreDateFin, setFiltreDateFin] = useState(dateDuJourStr);
   const [filtreStatut, setFiltreStatut] = useState('');
 
   const [rapportDateDebut, setRapportDateDebut] = useState(premierJourMoisStr);
@@ -448,17 +452,18 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     return Math.max(0, totalEntrees - totalSorties);
   };
 
-  const recupererStockReelRPC = async (articleId) => {
+  const recupererStockReelRPC = async (articleId, livreurNomParam = '') => {
     let emplacementCible = null;
+    const livreurCibleNom = livreurNomParam || livreurAssigne;
 
-    if (livreurAssigne.trim() !== '') {
-      const nomLivreurSaisi = livreurAssigne.trim().toUpperCase();
+    if (livreurCibleNom.trim() !== '') {
+      const nomLivreurSaisi = livreurCibleNom.trim().toUpperCase();
 
       let empTrouve = emplacements.find(e => {
         if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
         const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
         const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
-        return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || livreurAssigne.includes(nomEmp);
+        return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || livreurCibleNom.includes(nomEmp);
       });
 
       if (!empTrouve) {
@@ -515,6 +520,92 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     return stockLocal;
+  };
+
+  // Fonction pour changer directement le statut d'une commande depuis l'écran de la liste
+  const changerStatutRapide = async (cmd, nouveauStatut) => {
+    setMenuStatutOuvertId(null);
+    const statutActuelBrut = cmd.statut || cmd.statut_commande || 'EN ATTENTE';
+    const statutActuelNorm = statutActuelBrut.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const nouveauStatutNorm = nouveauStatut.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    if (statutActuelNorm === nouveauStatutNorm) return;
+
+    if (!permissions.peut_modifier) {
+      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      return;
+    }
+
+    setSauvegardeEnCours(true);
+    try {
+      const estLivreVerif = nouveauStatutNorm === 'LIVRE' || nouveauStatutNorm === 'LIVRÉ';
+      const etaitDejaLivre = statutActuelNorm === 'LIVRE' || statutActuelNorm === 'LIVRÉ';
+
+      const lignesCmd = lignesCommandesMap[cmd.id] || [];
+      const partObj = partenaires.find(p => String(p.id) === String(cmd.id_partenaire));
+      const estSansStockage = !partObj || (partObj.statut_stockage || partObj.statut || '').toString().trim().toUpperCase() === 'SANS_STOCKAGE';
+
+      // Si on passe à LIVRÉ et que ce n'était pas déjà livré et qu'il y a des articles en stock
+      if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
+        for (const item of lignesCmd) {
+          const stockEmp = await recupererStockReelRPC(item.id_article, cmd.vendeur_livreur);
+          if (stockEmp < item.quantite) {
+            alert(
+              `🚫 ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`
+            );
+            setSauvegardeEnCours(false);
+            return;
+          }
+        }
+      }
+
+      // Mise à jour en base de données
+      const { error: errUp } = await supabase
+        .from('commandes_livraison_en_tete')
+        .update({
+          statut: nouveauStatut,
+          statut_commande: nouveauStatut
+        })
+        .eq('id', cmd.id);
+
+      if (errUp) throw errUp;
+
+      // Si passage à LIVRÉ (et non livré auparavant), générer les mouvements de sortie de stock
+      if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
+        let empIdTrouve = null;
+        const livreurCmd = (cmd.vendeur_livreur || '').trim().toUpperCase();
+        if (livreurCmd) {
+          let empObj = emplacements.find(e => {
+            if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
+            const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
+            const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
+            return nomEmp === livreurCmd || respEmp === livreurCmd || nomEmp.includes(livreurCmd);
+          });
+          if (empObj) empIdTrouve = empObj.id;
+        }
+
+        for (const item of lignesCmd) {
+          const payloadMouvement = {
+            id_entreprise: entrepriseId,
+            module: moduleActuel,
+            type_mouvement: 'SORTIE',
+            id_depot_source: depotId !== 'AUCUN_DEPOT' ? depotId : null,
+            id_emplacement_source: empIdTrouve,
+            id_depot_destination: null,
+            id_article: parseInt(item.id_article),
+            quantite: item.quantite,
+            motif_remarque: `LIVRAISON EFFECTIVE ${cmd.numero_commande} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
+          };
+          await supabase.from('mouvements_stock').insert([payloadMouvement]);
+        }
+      }
+
+      await chargerDonnees();
+    } catch (err) {
+      alert('Erreur lors du changement de statut : ' + err.message);
+    } finally {
+      setSauvegardeEnCours(false);
+    }
   };
 
   const handleChangementPartenaire = (partenaireId) => {
@@ -1017,14 +1108,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         if (errLignes) throw errLignes;
       }
 
-      const [anneeCmd, moisCmd] = dateNormalisee.split('-');
-      const premierJourCmd = `${anneeCmd}-${moisCmd}-01`;
-      const dernierJourCmd = new Date(parseInt(anneeCmd), parseInt(moisCmd), 0).toISOString().split('T')[0];
-      
-      setFiltreDateDebut(premierJourCmd);
-      setFiltreDateFin(dernierJourCmd);
-      setFiltreStatut('');
-
       alert(commandeEnEdition ? 'Commande mise à jour avec succès !' : 'Commande enregistrée avec succès !');
       setNumeroCommande('1');
       setIdPartenaire('');
@@ -1197,15 +1280,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const totalEncaisseGlobalCloture = listeResumeCloture.reduce((acc, item) => acc + item.montantTotalEncaisse, 0);
   const totalFraisLivraisonGlobalCloture = listeResumeCloture.reduce((acc, item) => acc + item.totalFraisLivraison, 0);
   
-  // Calculs séparés pour les deux versements et leurs écarts
   const numericVerseRecette = parseFloat(totalVerseRecetteGlobal) || 0;
   const numericVerseFrais = parseFloat(totalVerseFraisLivraison) || 0;
 
   const ecartRecetteGlobale = numericVerseRecette - totalEncaisseGlobalCloture;
   const ecartFraisLivraison = numericVerseFrais - totalFraisLivraisonGlobalCloture;
 
-  // --- VALIDATION ET VERSEMENT AVEC INJECTION UNIQUE DES FRAIS DE LIVRAISON DANS LE JOURNAL DE CAISSE ---
   const validerEtVerserCloture = async (caisseId, nomCaisse) => {
+    if (sauvegardeEnCours) return;
     const montantFraisVerséNum = parseFloat(totalVerseFraisLivraison) || 0;
     if (montantFraisVerséNum <= 0 && totalVerseRecetteGlobal === '') {
       alert('⚠️ Veuillez renseigner au moins un montant versé.');
@@ -1237,7 +1319,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const prefixLivreur = clotureLivreur ? `${clotureLivreur.trim().toUpperCase()} - ` : '';
       const codePieceCloture = `${prefixLivreur}${baseCodePiece}`;
 
-      // Seuls les frais de livraison entrent dans le journal de caisse
       const libelleCloture = `VERS. CLÔTURE LIVRAISON ${clotureLivreur ? `- ${clotureLivreur}` : ''} (${clotureDateDebut === clotureDateFin ? clotureDateDebut : `Du ${clotureDateDebut} au ${clotureDateFin}`})`;
 
       const payloadCloture = {
@@ -1257,7 +1338,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const { error: errCloture } = await supabase.from('clotures_caisses').insert([payloadCloture]);
       if (errCloture) throw errCloture;
 
-      // Injection dans le journal de caisse (uniquement des frais de livraison de l'entreprise)
       const payloadMvt = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -1650,7 +1730,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     );
                   })}
 
-                  {/* --- BLOC CLÔTURE & VERSEMENT GLOBAL ÉPURÉ (UNE SEULE LIGNE PAR SECTION) --- */}
                   <div className="bg-slate-100 text-slate-900 p-3 rounded-xl border border-slate-300 space-y-2 shadow-sm">
                     <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
                       <span className="font-black text-[10px] uppercase tracking-wider text-slate-900 flex items-center gap-1">
@@ -1663,7 +1742,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       )}
                     </div>
 
-                    {/* LIGNE 1 : RECETTE GLOBALE (PARTENAIRE) SUR UNE SEULE LIGNE */}
                     <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <span className="block font-black text-[9px] text-slate-800 uppercase truncate">1. Recette Globale (Partenaire)</span>
@@ -1687,7 +1765,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    {/* LIGNE 2 : FRAIS DE LIVRAISON (ENTREPRISE) SUR UNE SEULE LIGNE */}
                     <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <span className="block font-black text-[9px] text-slate-800 uppercase truncate">2. Frais de Livraison (Entreprise)</span>
@@ -1714,12 +1791,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     <div>
                       <button
                         type="button"
+                        disabled={sauvegardeEnCours}
                         onClick={() => setModalCaisseClotureOuverte(true)}
-                        className="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm border border-slate-900"
+                        className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm border border-slate-900"
                       >
-                        {caisseSelectionneeCloture 
+                        {sauvegardeEnCours ? 'Enregistrement en cours...' : (caisseSelectionneeCloture 
                           ? `Valider et clôturer vers : ${caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || 'Caisse sélectionnée'}` 
-                          : 'Valider et clôturer (Choisir la caisse) ➔'}
+                          : 'Valider et clôturer (Choisir la caisse) ➔')}
                       </button>
                     </div>
                   </div>
@@ -2097,20 +2175,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </div>
             </div>
 
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut *</label>
-              <select
-                value={statutCommandeSaisi}
-                onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs cursor-pointer"
-              >
-                <option value="EN ATTENTE">EN ATTENTE</option>
-                <option value="LIVRÉ">LIVRÉ</option>
-                <option value="REPORTÉ">REPORTÉ</option>
-                <option value="ANNULÉ">ANNULÉ</option>
-              </select>
-            </div>
-
             {partenaireSansStockage && (
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
@@ -2148,7 +2212,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            {/* GRID À 3 COLONNES : FRAIS | LIVREUR | STATUT */}
+            <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
                 <input
@@ -2172,6 +2237,20 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <span className="truncate">{livreurAssigne || '-- Choisir --'}</span>
                   <span className="text-slate-400 shrink-0">🔍</span>
                 </button>
+              </div>
+
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Statut *</label>
+                <select
+                  value={statutCommandeSaisi}
+                  onChange={(e) => setStatutCommandeSaisi(e.target.value)}
+                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-[10px] shadow-xs cursor-pointer"
+                >
+                  <option value="EN ATTENTE">EN ATTENTE</option>
+                  <option value="LIVRÉ">LIVRÉ</option>
+                  <option value="REPORTÉ">REPORTÉ</option>
+                  <option value="ANNULÉ">ANNULÉ</option>
+                </select>
               </div>
             </div>
           </div>
@@ -2293,7 +2372,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         type="button"
                         disabled={sauvegardeEnCours}
                         onClick={supprimerCommandeActuelle}
-                        className="bg-red-600 hover:bg-red-700 text-white font-black p-1.5 rounded-md text-[9px] transition shrink-0"
+                        className="bg-red-600 hover:bg-red-700 text-white font-black p-1.5 rounded-md text-[9px] transition shrink-0 disabled:opacity-50"
                         title="Supprimer"
                       >
                         🗑️
@@ -2307,7 +2386,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         onClick={sauvegarderCommande}
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-1 rounded-md text-[9px] transition text-center shadow-xs"
                       >
-                        {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
+                        {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
                       </button>
                     )}
                   </div>
@@ -2378,7 +2457,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     onClick={sauvegarderCommande}
                     className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
                   >
-                    {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
+                    {sauvegardeEnCours ? 'Enregistrement en cours...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
                   </button>
                 )}
               </div>
@@ -2504,14 +2583,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <span className="font-black text-slate-900 uppercase text-[10px] flex items-center gap-1">
                 🔍 FILTRER LES COMMANDES
               </span>
-              {(filtrePartenaire || filtreLivreur || filtreDateDebut !== premierJourMoisStr || filtreDateFin !== dernierJourMoisStr || filtreStatut) && (
+              {(filtrePartenaire || filtreLivreur || filtreDateDebut !== dateDuJourStr || filtreDateFin !== dateDuJourStr || filtreStatut) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFiltrePartenaire('');
                     setFiltreLivreur('');
-                    setFiltreDateDebut(premierJourMoisStr);
-                    setFiltreDateFin(dernierJourMoisStr);
+                    setFiltreDateDebut(dateDuJourStr);
+                    setFiltreDateFin(dateDuJourStr);
                     setFiltreStatut('');
                   }}
                   className="text-orange-600 hover:text-orange-700 font-bold text-[10px] underline"
@@ -2671,18 +2750,52 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         <span className="font-mono font-black text-orange-600 text-[10px] shrink-0">{cmd.numero_commande}</span>
                         <span className="text-slate-300 text-[9px]">•</span>
                         <span className="font-extrabold text-slate-900 text-[9px] uppercase truncate max-w-[85px]">{cmd.nom_partenaire}</span>
+                        <span className="text-slate-300 text-[9px]">•</span>
+                        <span className="text-slate-600 text-[9px] font-bold whitespace-nowrap">📅 {formaterDateCourte(cmd.date_commande)}</span>
                       </div>
                       
                       <div className="flex items-center gap-1 shrink-0">
                         <span className="font-extrabold text-blue-700 uppercase text-[9px] truncate max-w-[90px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
                           🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
                         </span>
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full border truncate ${badgeColor}`}>
-                          {statut}
-                        </span>
+
+                        {/* BOUTON DE STATUT INTERACTIF AVEC MENU DÉROULANT */}
+                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setMenuStatutOuvertId(menuStatutOuvertId === cmd.id ? null : cmd.id)}
+                            className={`text-[7px] font-black px-1.5 py-0.5 rounded-full border truncate whitespace-nowrap flex items-center gap-0.5 shadow-2xs cursor-pointer hover:opacity-80 transition ${badgeColor}`}
+                            title="Changer le statut"
+                          >
+                            <span>{statut}</span>
+                            <span className="text-[6px]">▼</span>
+                          </button>
+
+                          {menuStatutOuvertId === cmd.id && (
+                            <div className="absolute right-0 mt-1 w-32 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden py-1 text-[9px]">
+                              <div className="px-2 py-1 text-[8px] font-bold text-slate-400 uppercase border-b border-slate-100">
+                                Changer le statut
+                              </div>
+                              {['EN ATTENTE', 'LIVRÉ', 'REPORTÉ', 'ANNULÉ'].map((st) => (
+                                <button
+                                  key={st}
+                                  type="button"
+                                  onClick={() => changerStatutRapide(cmd, st)}
+                                  className={`w-full text-left px-3 py-1.5 font-black uppercase hover:bg-slate-100 transition flex items-center justify-between ${
+                                    (statut === st || (statut === 'LIVRE' && st === 'LIVRÉ')) ? 'text-orange-600 bg-orange-50/50' : 'text-slate-700'
+                                  }`}
+                                >
+                                  <span>{st}</span>
+                                  {(statut === st || (statut === 'LIVRE' && st === 'LIVRÉ')) && <span>✓</span>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
+                    {/* FRAIS DE LIVRAISON ALIGNÉS SUR LA MÊME LIGNE QUE LE MONTANT DE LA COMMANDE */}
                     <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center gap-2 text-[10px]">
                       <div className="text-slate-800 font-bold truncate">
                         {cmd.point_a ? (
@@ -2700,16 +2813,19 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         )}
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="bg-slate-100 text-slate-700 text-[8px] font-bold px-1 py-0.5 rounded border">
-                          📅 {formaterDateCourte(cmd.date_commande)}
-                        </span>
-                        <div className="font-black text-emerald-700 text-[10px] font-mono mt-0.5">
+                      <div className="text-right shrink-0 flex items-baseline gap-1.5">
+                        {Number(cmd.frais_livraison || 0) > 0 && (
+                          <span className="font-bold text-slate-400 text-[9px] font-mono">
+                            Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F
+                          </span>
+                        )}
+                        <span className="font-black text-emerald-700 text-[10px] font-mono">
                           {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F
-                        </div>
+                        </span>
                       </div>
                     </div>
 
+                    {/* LOGO WHATSAPP ET NUMÉRO CLIENT */}
                     <div className="flex justify-between items-center gap-2 pt-0.5 text-[9px]">
                       <div className="text-slate-600 font-medium truncate">
                         {lignesCmd.length > 0 ? (
@@ -2733,17 +2849,18 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="bg-green-100 hover:bg-green-200 text-green-800 border border-green-300 p-0.5 rounded text-[9px] font-black transition flex items-center justify-center shadow-2xs"
-                            title={`Message WhatsApp ${cmd.numero_client}`}
+                            className="bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 px-1 py-0.5 rounded text-[10px] font-black transition flex items-center gap-0.5 shadow-2xs"
+                            title={`WhatsApp ${cmd.numero_client}`}
                           >
-                            💬
+                            <span>💬</span>
+                            <span className="text-[9px]">WhatsApp</span>
                           </a>
                           <a
                             href={`tel:${cmd.numero_client}`}
                             onClick={() => {
                               setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
                             }}
-                            className={`font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition shadow-sm text-[9px] font-black ${styleNumero} ${
+                            className={`font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition shadow-sm text-[10px] font-black ${styleNumero} ${
                               estEnAttente 
                                 ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
                                 : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
@@ -2786,7 +2903,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <button type="button" onClick={() => setModalCaisseClotureOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
             </div>
             
-            <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1">
+            <div className={`max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1 ${sauvegardeEnCours ? 'pointer-events-none opacity-50' : ''}`}>
               {caisses.filter(c => !c.module || c.module.toUpperCase() === moduleActuel).length === 0 ? (
                 <div className="p-6 text-center text-slate-500 font-bold text-xs">Aucune caisse enregistrée pour le module livraison. Veuillez en créer une.</div>
               ) : (
@@ -2795,11 +2912,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   .map((c) => (
                     <div 
                       key={c.id} 
-                      onClick={() => validerEtVerserCloture(c.id, c.nom_caisse)} 
+                      onClick={() => {
+                        if (!sauvegardeEnCours) {
+                          validerEtVerserCloture(c.id, c.nom_caisse);
+                        }
+                      }} 
                       className="p-3 rounded-xl border border-slate-200 hover:border-slate-900 hover:bg-slate-50 cursor-pointer flex justify-between items-center shadow-2xs transition"
                     >
                       <div>
-                        <span className="font-mono font-black text-slate-700 text-xs block">{c.code_caisse}</span>
                         <span className="font-black text-slate-900 text-xs uppercase">{c.nom_caisse}</span>
                       </div>
                       <span className="text-[9px] bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded border">{c.nature || 'CAISSE'}</span>

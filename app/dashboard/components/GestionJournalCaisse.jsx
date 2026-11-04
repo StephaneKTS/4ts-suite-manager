@@ -18,7 +18,17 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const [afficherModaleTiers, setAfficherModaleTiers] = useState(false);
   const [rechercheTiersInput, setRechercheTiersInput] = useState('');
 
-  // --- FILTRES DE DATES (MOIS EN COURS) ---
+  // --- DATE DU JOUR PAR DÉFAUT ---
+  const obtenirDateDuJour = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = String(d.getMonth() + 1).padStart(2, '0');
+    const jour = String(d.getDate()).padStart(2, '0');
+    return `${annee}-${mois}-${jour}`;
+  };
+
+  const dateDuJourStr = obtenirDateDuJour();
+
   const obtenirPremierJourDuMois = () => {
     const d = new Date();
     const annee = d.getFullYear();
@@ -37,8 +47,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const premierJourMoisStr = obtenirPremierJourDuMois();
   const dernierJourMoisStr = obtenirDernierJourDuMois();
 
-  const [dateDebutJournal, setDateDebutJournal] = useState(premierJourMoisStr);
-  const [dateFinJournal, setDateFinJournal] = useState(dernierJourMoisStr);
+  // Dates par défaut réglées sur la date du jour
+  const [dateDebutJournal, setDateDebutJournal] = useState(dateDuJourStr);
+  const [dateFinJournal, setDateFinJournal] = useState(dateDuJourStr);
   const [caisseSelectionneeJournal, setCaisseSelectionneeJournal] = useState('');
 
   const [colonneTriJournal, setColonneTriJournal] = useState('created_at');
@@ -161,6 +172,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('module', moduleActuel);
 
       setCaisses(dataCaisses || []);
+
+      if (dataCaisses && dataCaisses.length > 0 && !caisseSelectionneeJournal) {
+        setCaisseSelectionneeJournal(dataCaisses[0].id);
+      }
 
       const caisseEntrepriseObj = (dataCaisses || []).find(c => (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE')) || 
                                   (dataCaisses || []).find(c => (c.nature || '').toUpperCase() === 'PRINCIPALE');
@@ -782,7 +797,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
               if (livreurControle && (cmd.vendeur_livreur || '').trim().toUpperCase() !== livreurControle.trim().toUpperCase()) return false;
               return true;
             })
-            .reduce((sum, cmd) => sum + (Number(cmd.montant_commande) || 0), 0)
+            .reduce((sum, cmd) => sum + (Number(cmd.frais_livraison) || 0), 0)
         : 0)
     : montantTotalFacture;
 
@@ -1056,8 +1071,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
               </div>
 
               <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <div className={`grid ${moduleActuel === 'LIVRAISON' ? 'grid-cols-2' : 'grid-cols-3'} gap-1.5`}>
-                  <div>
+                {/* LIGNE 1 : Date, Compte, Tiers (et Caisse si hors livraison) sur la même ligne */}
+                <div className={`grid ${moduleActuel === 'LIVRAISON' ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5`}>
+                  <div className="col-span-1">
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Date *</label>
                     <input
                       type="date"
@@ -1077,7 +1093,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         onChange={(e) => setEnteteSaisie({ ...enteteSaisie, id_caisse: e.target.value })}
                         className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[11px] truncate shadow-2xs"
                       >
-                        <option value="">-- Caisse Entreprise / Autre --</option>
+                        <option value="">-- Caisse --</option>
                         {caisses.map((c) => (
                           <option key={c.id} value={c.id}>💵 {c.nom_caisse || c.code_caisse}</option>
                         ))}
@@ -1086,20 +1102,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   )}
 
                   <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Type (Auto) *</label>
-                    <select
-                      disabled
-                      value={enteteSaisie.type_mouvement}
-                      className="w-full bg-slate-100 border border-slate-300 rounded-lg p-1.5 font-black text-slate-700 text-[11px] shadow-2xs cursor-not-allowed"
-                    >
-                      <option value="ENTREE">🟢 Entrée (Produit)</option>
-                      <option value="SORTIE">🔴 Sortie (Charge)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1.5">
-                  <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Compte *</label>
                     <select
                       required
@@ -1107,7 +1109,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       onChange={gererChangementCompte}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 shadow-2xs truncate uppercase"
                     >
-                      <option value="">-- Sélectionner un compte --</option>
+                      <option value="">-- Compte --</option>
                       {comptes.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.numero_compte ? `${c.numero_compte} - ` : ''}{c.intitule_compte}
@@ -1124,7 +1126,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       onChange={gererChangementTiers}
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 shadow-2xs truncate uppercase"
                     >
-                      <option value="">-- Aucun (Interne) --</option>
+                      <option value="">-- Aucun --</option>
                       {utilisateurs.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.nom_complet || u.email || `Utilisateur #${u.id}`}
@@ -1132,7 +1134,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       ))}
                     </select>
                   </div>
+                </div>
 
+                {/* LIGNE 2 : N° pièce, Motif et Montant sur la même ligne */}
+                <div className="grid grid-cols-3 gap-1.5">
                   <div>
                     <label className="block font-black text-slate-700 text-[9px] mb-0.5">N° pièce</label>
                     <input
@@ -1143,9 +1148,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-mono font-bold text-slate-900 uppercase shadow-2xs"
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-1.5">
                   <div>
                     <label className="block font-black text-slate-700 text-[9px] mb-0.5">Motif</label>
                     <input
@@ -1399,8 +1402,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                 </button>
               </div>
 
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-                <div className="grid grid-cols-2 gap-1.5">
+              {/* FILTRES SUR LA MÊME LIGNE (Date Début, Date Fin, Caisse obligatoire) */}
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <div className="grid grid-cols-3 gap-1.5">
                   <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Date Début :</label>
                     <input
@@ -1419,20 +1423,20 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-bold text-slate-900 text-[10px]"
                     />
                   </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 w-full">
-                  <label className="font-black text-slate-800 text-[9px] whitespace-nowrap">Caisse :</label>
-                  <select
-                    value={caisseSelectionneeJournal}
-                    onChange={(e) => setCaisseSelectionneeJournal(e.target.value)}
-                    className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs w-full truncate"
-                  >
-                    <option value="">-- Toutes les caisses --</option>
-                    {caisses.map((c) => (
-                      <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
-                    ))}
-                  </select>
+                  <div>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Caisse * :</label>
+                    <select
+                      required
+                      value={caisseSelectionneeJournal}
+                      onChange={(e) => setCaisseSelectionneeJournal(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs truncate"
+                    >
+                      <option value="">-- Sélectionnez --</option>
+                      {caisses.map((c) => (
+                        <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -1473,10 +1477,26 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         const estEntree = m.type_mouvement === 'ENTREE';
                         const montantNum = Number(m.montant) || 0;
 
+                        // Ajout du nom du livreur/tiers devant le numéro de pièce si disponible
+                        let pieceAffichee = m.piece_physique || `PC-${idx + 1}`;
+                        if (moduleActuel === 'LIVRAISON' && m.libelle && m.libelle !== 'Frais Livr.') {
+                          // Si le libellé contient des informations sur le livreur ou si on peut l'extraire
+                        }
+                        // Formatage dynamique demandé : Livr.-13 - Nom du livreur (ou similaire)
+                        let nomLivreurAssocie = '';
+                        if (moduleActuel === 'LIVRAISON') {
+                          // Recherche dans les commandes de livraison correspondantes à cette pièce
+                          const cmdAssociee = commandesLivraison.find(cmd => (cmd.frais_livraison && Number(cmd.frais_livraison) === montantNum) || (m.piece_physique && m.piece_physique.includes(cmd.id)));
+                          if (cmdAssociee && cmdAssociee.vendeur_livreur) {
+                            nomLivreurAssocie = cmdAssociee.vendeur_livreur;
+                          }
+                        }
+                        const pieceFinale = nomLivreurAssocie ? `${pieceAffichee} - ${nomLivreurAssocie}` : pieceAffichee;
+
                         return (
                           <tr key={m.id} className="hover:bg-slate-50">
                             <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{m.piece_physique || `PC-${idx + 1}`}</td>
+                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{pieceFinale}</td>
                             <td className="p-1.5 font-bold text-slate-900 truncate max-w-[80px] uppercase">{compteObj ? compteObj.intitule_compte : '-'}</td>
                             <td className="p-1.5 font-black text-slate-900 uppercase truncate max-w-[140px]">{m.libelle}</td>
                             <td className="p-1.5 font-black text-emerald-700 text-right whitespace-nowrap">
