@@ -126,7 +126,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   ).sort();
 
   const chargerDonneesReference = async () => {
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Offline-first)
     const familleLocale = localSync.recupererDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`);
     const depotsLocaux = localSync.recupererDonneesLocales(`depots_stock_${entrepriseId}_${moduleActuel}`);
     const emplacementsLocaux = localSync.recupererDonneesLocales(`emplacements_stock_${entrepriseId}_${moduleActuel}`);
@@ -148,14 +147,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     }
     if (depotsLocaux && depotsLocaux.length > 0) {
       setDepots(depotsLocaux);
-      if (depotRapportFiltre === 'TOUS') setDepotRapportFiltre(String(depotsLocaux[0].id));
     }
     if (emplacementsLocaux) setEmplacements(emplacementsLocaux);
     if (mouvementsLocaux) setMouvements(mouvementsLocaux);
     if (approvisionnementsLocaux) setApprovisionnements(approvisionnementsLocaux);
     if (entrepriseLocale) setInfosEntreprise(entrepriseLocale);
 
-    // Si hors-ligne, on s'arrête là
     if (typeof window !== 'undefined' && !navigator.onLine) {
       return;
     }
@@ -204,9 +201,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
       localSync.sauvegarderDonneesLocales(`depots_stock_${entrepriseId}_${moduleActuel}`, listeDepots);
-      if (listeDepots.length > 0) {
-        if (depotRapportFiltre === 'TOUS') setDepotRapportFiltre(String(listeDepots[0].id));
-      }
 
       const { data: dataEmp } = await supabase
         .from('emplacements_stock')
@@ -534,12 +528,12 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     let lignesResultat = [];
 
     evenements.forEach(ev => {
-      const dateEv = ev.date.split('T')[0];
-      const estAvantPeriode = dateDebutStat && dateEv < dateDebutStat;
+      const dateEv = (ev.date || '').split('T')[0];
+      const estAvantPeriode = dateDebutStat && dateEv && dateEv < dateDebutStat;
 
       if (estAvantPeriode) {
         stockCourant += ev.impactStock;
-      } else if ((!dateDebutStat || dateEv >= dateDebutStat) && (!dateFinStat || dateEv <= dateFinStat)) {
+      } else if ((!dateDebutStat || !dateEv || dateEv >= dateDebutStat) && (!dateFinStat || !dateEv || dateEv <= dateFinStat)) {
         stockCourant += ev.impactStock;
         lignesResultat.push({
           ...ev,
@@ -649,7 +643,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      // Mise à jour optimiste locale
       const artIdFinal = articleEnEdition ? (articleEnEdition.id_article || articleEnEdition.id) : ('local_' + Date.now());
       const articleMajItem = { ...payloadArticle, id: artIdFinal, id_article: artIdFinal };
       const articlesMaj = articleEnEdition
@@ -842,6 +835,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const colSpanTotal = 2 + emplacementsTableau.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
 
+  // RAPPORT DE STOCK RIGOUREUSEMENT SYNCHRONISÉ AVEC LA PLAGE DE DATES SÉLECTIONNÉE
   const calculerLigneRapportStock = (articleId) => {
     const dCible = depotRapportFiltre;
     
@@ -855,41 +849,60 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       const qte = parseInt(m.quantite || 0);
       const typeMvt = (m.type_mouvement || '').toUpperCase();
 
-      const estSource = String(m.id_depot_source) === String(dCible);
-      const estDestination = String(m.id_depot_destination) === String(dCible);
+      const estSource = String(m.id_depot_source || '') === String(dCible);
+      const estDestination = String(m.id_depot_destination || '') === String(dCible);
 
       if (dCible !== 'TOUS' && !estSource && !estDestination) return;
 
-      if (dateMvt < dateDebutRapport) {
-        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
-          stockInitial += qte;
-        } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
-          if (dCible === 'TOUS' || estSource) stockInitial -= qte;
-        } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
-          const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
-          if (!memeDepot && dCible !== 'TOUS') {
-            if (estSource) stockInitial -= qte;
-            if (estDestination) stockInitial += qte;
+      let netImpact = 0;
+      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+        netImpact = qte;
+      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+        netImpact = -qte;
+      } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+        const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
+        if (memeDepot) {
+          netImpact = 0;
+        } else {
+          if (dCible === 'TOUS') {
+            netImpact = 0;
+          } else {
+            if (estSource) netImpact = -qte;
+            if (estDestination) netImpact = qte;
           }
         }
-      } else if (dateMvt >= dateDebutRapport && dateMvt <= dateFinRapport) {
-        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+      } else {
+        netImpact = qte;
+      }
+
+      // 1. Avant la période : alimente le stock initial (report de la veille)
+      if (dateDebutRapport && dateMvt && dateMvt < dateDebutRapport) {
+        stockInitial += netImpact;
+      } 
+      // 2. Pendant la période sélectionnée (entre dateDebutRapport et dateFinRapport incluses)
+      else if ((!dateDebutRapport || !dateMvt || dateMvt >= dateDebutRapport) && (!dateFinRapport || !dateMvt || dateMvt <= dateFinRapport)) {
+        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || typeMvt === 'INVENTAIRE') {
           entrees += qte;
         } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
           if (dCible === 'TOUS' || estSource) sorties += qte;
         } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
           const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
-          if (!memeDepot && dCible !== 'TOUS') {
+          if (memeDepot) {
+            entrees += qte;
+          } else if (dCible !== 'TOUS') {
             if (estSource) sorties += qte;
             if (estDestination) entrees += qte;
           }
+        } else {
+          entrees += qte;
         }
       }
+      // 3. Après la période : ignoré pour le calcul des flux de la période courante
     });
 
     approvisionnements.forEach(app => {
       const dateApp = (app.created_at || '').split('T')[0];
-      const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
+      const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot || '') === String(dCible);
       if (!matchDepot) return;
 
       let listArt = [];
@@ -902,8 +915,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       listArt.forEach(item => {
         if (String(item.id_article || item.article_id) !== String(articleId)) return;
         const qte = parseInt(item.quantite || 0);
-        if (dateApp < dateDebutRapport) stockInitial += qte;
-        else if (dateApp >= dateDebutRapport && dateApp <= dateFinRapport) entrees += qte;
+        if (dateDebutRapport && dateApp && dateApp < dateDebutRapport) {
+          stockInitial += qte;
+        } else if ((!dateDebutRapport || !dateApp || dateApp >= dateDebutRapport) && (!dateFinRapport || !dateApp || dateApp <= dateFinRapport)) {
+          entrees += qte;
+        }
       });
     });
 

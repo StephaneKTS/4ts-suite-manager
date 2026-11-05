@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
+export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -18,6 +18,53 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
   const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
   const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
+
+  // --- RÉCUPÉRATION ROBUSTE ET ÉTENDUE DE L'UTILISATEUR CONNECTÉ ---
+  const obtenirNomOperateurConnecte = () => {
+    if (typeof window === 'undefined') return 'DC KTS';
+    
+    try {
+      const clesObjets = ['utilisateur_connecte', 'utilisateurConnecte'];
+      for (const cleObj of clesObjets) {
+        const strVal = localStorage.getItem(cleObj);
+        if (strVal) {
+          try {
+            const userObj = JSON.parse(strVal);
+            if (userObj) {
+              const nomTrouve = userObj.nom_complet || userObj.nom_utilisateur || userObj.nom || userObj.prenom || userObj.name || userObj.username;
+              if (nomTrouve && String(nomTrouve).trim() !== '' && String(nomTrouve).trim().toLowerCase() !== 'utilisateur') {
+                return String(nomTrouve).trim().toUpperCase();
+              }
+            }
+          } catch (errJson) {
+            if (strVal.trim() !== '' && strVal.trim().toLowerCase() !== 'utilisateur') {
+              return strVal.trim().toUpperCase();
+            }
+          }
+        }
+      }
+
+      const clesPossibles = [
+        'nom_complet',
+        'nom_utilisateur_connecte', 
+        'nom_utilisateur', 
+        'utilisateur_connecte_nom', 
+        'current_user_name',
+        'user_name',
+        'operateur'
+      ];
+      for (const cle of clesPossibles) {
+        const val = localStorage.getItem(cle);
+        if (val && val.trim() !== '' && val.trim().toLowerCase() !== 'utilisateur' && val !== 'Utilisateur Inconnu') {
+          return val.trim().toUpperCase();
+        }
+      }
+    } catch (e) {
+      console.error('Erreur lecture utilisateur connecté:', e);
+    }
+
+    return 'ZOA ABATE KATY';
+  };
 
   // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
   const [mouvements, setMouvements] = useState(() => {
@@ -66,11 +113,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
 
   // --- GESTION DES DROITS ET AUTORISATIONS ---
   const [roleNom, setRoleNom] = useState('');
-  const [nomUtilisateurConnecte, setNomUtilisateurConnecte] = useState('DAVID');
+  const [emailConnecteUser, setEmailConnecteUser] = useState('');
+  const [nomUtilisateurConnecte, setNomUtilisateurConnecte] = useState(obtenirNomOperateurConnecte);
   const [permissions, setPermissions] = useState({
     peut_creer: true,
     peut_modifier: true,
-    peut_supprimer: false,
+    peut_supprimer: true,
     peut_valider: true
   });
 
@@ -90,11 +138,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     referenceDoc: '',
     motif: '',
     famille_filtre: 'TOUTES',
-    operateur: 'DAVID',
+    operateur: obtenirNomOperateurConnecte(),
   });
 
-  const [modalPartageOuverte, setModalPartageOuverte] = useState(false);
-  const [formatPartage, setFormatPartage] = useState('PDF');
   const [modalArticleOuvert, setModalArticleOuvert] = useState(false);
   const [recherchePopup, setRecherchePopup] = useState('');
   const [articleSelectionneTemp, setArticleSelectionneTemp] = useState(null);
@@ -135,28 +181,54 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     }
 
     try {
-      let nomConnecteEffectif = 'DAVID';
-      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
-      if (utilisateurConnecteStr) {
-        try {
-          const userObj = JSON.parse(utilisateurConnecteStr);
-          nomConnecteEffectif = (userObj.nom_complet || userObj.nom_utilisateur || userObj.nom || userObj.prenom || userObj.name || userObj.email?.split('@')[0] || 'DAVID').trim().toUpperCase();
-          const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-          setRoleNom(nomRoleUser);
+      const nomConnecteEffectif = obtenirNomOperateurConnecte();
+      
+      if (typeof window !== 'undefined') {
+        const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+        if (utilisateurConnecteStr) {
+          try {
+            const userObj = JSON.parse(utilisateurConnecteStr);
+            const emailConnecte = (userObj.email || '').trim().toLowerCase();
+            setEmailConnecteUser(emailConnecte);
 
-          if (nomRoleUser && nomRoleUser !== 'ADMINISTRATEUR' && nomRoleUser !== 'SUPER_ADMIN') {
-            const permMouv = userObj.permissions?.['mouvements_stock'] || userObj.permissions?.['mouvements'] || userObj.permissions?.['stock'];
+            const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+            setRoleNom(nomRoleUser);
+
+            const estSuperAdmin = emailConnecte === 'stephs7352@gmail.com' || nomRoleUser.includes('ADMIN') || nomRoleUser.includes('SUPER');
             
-            if (permMouv) {
+            if (estSuperAdmin) {
               setPermissions({
-                peut_creer: permMouv.creation ?? permMouv.creer ?? true,
-                peut_modifier: permMouv.modification ?? permMouv.modifier ?? true,
-                peut_supprimer: permMouv.suppression ?? true,
-                peut_valider: permMouv.validation ?? permMouv.valider ?? true
+                peut_creer: true,
+                peut_modifier: true,
+                peut_supprimer: true,
+                peut_valider: true
               });
+            } else if (nomRoleUser) {
+              // Vérification des droits depuis la table des rôles en base si ce n'est pas admin
+              const { data: roleData } = await supabase
+                .from('roles')
+                .select('permissions')
+                .eq('id_entreprise', entrepriseId)
+                .eq('module', moduleActuel)
+                .ilike('nom_role', nomRoleUser)
+                .maybeSingle();
+
+              if (roleData && roleData.permissions) {
+                const permsMod = roleData.permissions['mouvements_stock'] || roleData.permissions[moduleActuel.toLowerCase()];
+                if (roleData.permissions._plein_acces) {
+                  setPermissions({ peut_creer: true, peut_modifier: true, peut_supprimer: true, peut_valider: true });
+                } else if (permsMod) {
+                  setPermissions({
+                    peut_creer: !!permsMod.creation,
+                    peut_modifier: !!permsMod.modification,
+                    peut_supprimer: !!permsMod.suppression,
+                    peut_valider: !!permsMod.modification || !!permsMod.creation
+                  });
+                }
+              }
             }
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
       }
 
       setNomUtilisateurConnecte(nomConnecteEffectif);
@@ -262,6 +334,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     const depotObj = depots.find((d) => String(d.id) === String(depotCibleId));
     if (depotObj && depotObj.nom_depot && String(valeurDepotFlux).trim().toUpperCase() === String(depotObj.nom_depot).trim().toUpperCase()) return true;
     return false;
+  };
+
+  const obtenirNomDepotParId = (depotId) => {
+    if (!depotId) return '-';
+    const depotTrouve = depots.find(d => String(d.id) === String(depotId));
+    if (depotTrouve) return depotTrouve.nom_depot || depotTrouve.nom || depotId;
+    return depotId;
   };
 
   const obtenirTousLesFluxArticle = (articleId) => {
@@ -443,10 +522,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     }
   };
 
+  // --- BOUTON ANNULER : Rôle exclusif d'annulation de saisie en cours / réinitialisation formulaire ---
   const annulerOperation = () => {
     if (enTrainDeSauvegarder) return;
-    if (lignesPanier.length > 0 || enTeteDoc.referenceDoc) {
-      if (!confirm('Voulez-vous vraiment annuler cette opération en cours ?')) return;
+    if (lignesPanier.length > 0 || enTeteDoc.referenceDoc || mouvementEnEditionId) {
+      if (!confirm('Voulez-vous vraiment annuler cette opération en cours de saisie ?')) return;
     }
     setLignesPanier([]);
     setMouvementEnEditionId(null);
@@ -455,27 +535,62 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     setEnTeteDoc(prev => ({
       ...prev,
       referenceDoc: '',
-      numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements)
+      numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements),
+      operateur: obtenirNomOperateurConnecte()
     }));
   };
 
-  // --- NOUVELLE FONCTION : SUPPRIMER/RÉINITIALISER L'INVENTAIRE EN COURS DE SAISIE ---
-  const supprimerInventaireEnCours = async () => {
+  // --- BOUTON SUPPRIMER : Rôle exclusif de suppression d'un document déjà saisi ou en cours d'édition ---
+  const verifierDroitSuppressionEffectif = () => {
+    const estSuperAdmin = emailConnecteUser === 'stephs7352@gmail.com' || roleNom.includes('ADMIN');
+    return estSuperAdmin || permissions.peut_supprimer;
+  };
+
+  const supprimerDocumentActuel = async () => {
     if (enTrainDeSauvegarder) return;
-    if (lignesPanier.length === 0 && !mouvementEnEditionId) {
-      alert('Aucun article ou inventaire en cours à supprimer.');
+
+    if (!verifierDroitSuppressionEffectif()) {
+      alert('⛔ Action non autorisée : Seuls l’Administrateur et le Super Administrateur (ou les profils disposant du droit de suppression) peuvent supprimer une opération.');
       return;
     }
 
-    if (!confirm('Voulez-vous vraiment supprimer et vider cet inventaire en cours de saisie ?')) return;
+    if (lignesPanier.length === 0 && !mouvementEnEditionId) {
+      alert('Aucune opération active ou document en cours à supprimer.');
+      return;
+    }
 
-    if (mouvementEnEditionId) {
-      await supprimerDocumentComplet(enTeteDoc.numeroDoc);
-    } else {
+    if (!confirm(`Voulez-vous vraiment supprimer définitivement ce document (${enTeteDoc.numeroDoc}) ?`)) return;
+
+    setEnTrainDeSauvegarder(true);
+    try {
+      if (mouvementEnEditionId) {
+        const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
+        if (error) {
+          localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: enTeteDoc.numeroDoc });
+        }
+
+        const listeMaj = mouvements.filter(m => m.motif_remarque !== enTeteDoc.numeroDoc);
+        setMouvements(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+        localStorage.removeItem(cleCacheMouvements);
+      }
+
+      alert('Document supprimé avec succès.');
       setLignesPanier([]);
+      setMouvementEnEditionId(null);
       setArticleSelectionneTemp(null);
       setQuantiteSaisie(1);
-      alert('Inventaire en cours réinitialisé avec succès.');
+      setEnTeteDoc(prev => ({
+        ...prev,
+        referenceDoc: '',
+        numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements),
+        operateur: obtenirNomOperateurConnecte()
+      }));
+      await chargerDonnees(true);
+    } catch (err) { 
+      alert('Erreur : ' + err.message); 
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -506,6 +621,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
         }
       }
       
+      const operateurActuel = obtenirNomOperateurConnecte();
       let nouveauxMouvementsAjoutes = [];
       for (const ligne of lignesPanier) {
         const payload = {
@@ -519,7 +635,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
           id_article: parseInt(ligne.id_article),
           quantite: ligne.quantite,
           motif_remarque: enTeteDoc.numeroDoc,
-          operateur: nomUtilisateurConnecte,
+          operateur: operateurActuel,
         };
 
         const idTemp = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7);
@@ -538,10 +654,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
       localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
       localStorage.removeItem(cleCacheMouvements);
 
-      alert(`Document validé avec succès dans le module ${moduleActuel} !`);
+      alert(`Document validé avec succès par ${operateurActuel} dans le module ${moduleActuel} !`);
       setLignesPanier([]);
       setMouvementEnEditionId(null);
-      setEnTeteDoc((prev) => ({ ...prev, referenceDoc: '' }));
+      setEnTeteDoc((prev) => ({ ...prev, referenceDoc: '', operateur: obtenirNomOperateurConnecte() }));
       await chargerDonnees(true);
       setModeAffichage('LISTE_DOCS');
     } catch (err) { 
@@ -562,6 +678,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     if (lignesAssociees.length === 0) return;
     const premier = lignesAssociees[0];
     setTypeOperation(premier.type_mouvement || 'TRANSFERT');
+    
+    const operateurDoc = premier.operateur && String(premier.operateur).trim() !== '' && String(premier.operateur).trim().toLowerCase() !== 'utilisateur' && String(premier.operateur).trim() !== 'Utilisateur Inconnu' 
+      ? String(premier.operateur).trim().toUpperCase() 
+      : obtenirNomOperateurConnecte();
+
     setEnTeteDoc({ 
       ...enTeteDoc, 
       numeroDoc: numeroDocUnique, 
@@ -570,7 +691,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
       id_emplacement_destination: premier.id_emplacement_destination || '',
-      operateur: premier.operateur || nomUtilisateurConnecte 
+      operateur: operateurDoc
     });
     setLignesPanier(lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
@@ -578,37 +699,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     }));
     setMouvementEnEditionId(premier.id);
     setModeAffichage('SAISIE');
-  };
-
-  const supprimerDocumentComplet = async (numeroDocUnique) => {
-    if (enTrainDeSauvegarder) return;
-    if (!permissions.peut_supprimer) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de supprimer des mouvements.');
-      return;
-    }
-    if (!confirm(`Supprimer le document ${numeroDocUnique} ?`)) return;
-
-    setEnTrainDeSauvegarder(true);
-    try {
-      const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', numeroDocUnique);
-      if (error) {
-        localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: numeroDocUnique });
-      }
-
-      const listeMaj = mouvements.filter(m => m.motif_remarque !== numeroDocUnique);
-      setMouvements(listeMaj);
-      localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
-      localStorage.removeItem(cleCacheMouvements);
-
-      alert('Supprimé.');
-      setLignesPanier([]);
-      setMouvementEnEditionId(null);
-      await chargerDonnees(true);
-    } catch (err) { 
-      alert('Erreur : ' + err.message); 
-    } finally {
-      setEnTrainDeSauvegarder(false);
-    }
   };
 
   const formaterNumeroDocAffichage = (motifBrut) => {
@@ -627,7 +717,20 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     const numDocCle = formaterNumeroDocAffichage(numDocBrut);
     
     if (!acc[numDocCle]) { 
-      acc[numDocCle] = { numeroDoc: numDocCle, numeroDocBrut: numDocBrut, date: mvt.created_at || '', type: mvt.type_mouvement || '', operateur: mvt.operateur || nomUtilisateurConnecte, lignesCount: 0 }; 
+      const operateurEnBase = mvt.operateur;
+      const operateurAffiche = (operateurEnBase && String(operateurEnBase).trim() !== '' && String(operateurEnBase).trim().toLowerCase() !== 'utilisateur' && String(operateurEnBase).trim() !== 'Utilisateur Inconnu') 
+        ? String(operateurEnBase).trim().toUpperCase() 
+        : obtenirNomOperateurConnecte();
+
+      acc[numDocCle] = { 
+        numeroDoc: numDocCle, 
+        numeroDocBrut: numDocBrut, 
+        date: mvt.created_at || '', 
+        type: mvt.type_mouvement || '', 
+        depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
+        operateur: operateurAffiche, 
+        lignesCount: 0 
+      }; 
     }
     acc[numDocCle].lignesCount += 1;
     return acc;
@@ -673,7 +776,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
             setModeAffichage('SAISIE'); 
             setMouvementEnEditionId(null); 
             setLignesPanier([]); 
-            setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements) })); 
+            setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), operateur: obtenirNomOperateurConnecte() })); 
           }} 
           className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
         >
@@ -699,7 +802,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
               onChange={(e) => { 
                 const nt = e.target.value; 
                 setTypeOperation(nt); 
-                if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements) })); 
+                if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements), operateur: obtenirNomOperateurConnecte() })); 
               }} 
               className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]"
             >
@@ -718,7 +821,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
                   {libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}
                 </span>
                 <span className="text-[8px] text-slate-500 font-bold uppercase mt-0.5">
-                  Opérateur : <strong className="text-slate-800">{enTeteDoc.operateur || nomUtilisateurConnecte}</strong>
+                  OPÉRATEUR CONNECTÉ : <strong className="text-slate-800">{mouvementEnEditionId ? enTeteDoc.operateur : obtenirNomOperateurConnecte()}</strong>
                 </span>
               </div>
               <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span>
@@ -861,15 +964,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
 
             <div className="pt-1.5 flex items-center justify-between gap-1 flex-wrap">
               <div className="flex items-center gap-1">
-                {/* BOUTON SUPPRIMER INVENTAIRE / MOUVEMENT EN COURS */}
                 {(lignesPanier.length > 0 || mouvementEnEditionId) && (
                   <button 
                     type="button" 
                     disabled={enTrainDeSauvegarder} 
-                    onClick={supprimerInventaireEnCours} 
+                    onClick={supprimerDocumentActuel} 
                     className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2 py-1 rounded text-[9px] shadow-2xs"
+                    title="Supprimer définitivement ce document"
                   >
-                    🗑️ Supprimer inventaire
+                    🗑️ Supprimer
                   </button>
                 )}
               </div>
@@ -877,7 +980,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
               <div className="flex items-center gap-1 flex-wrap">
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2 py-1 rounded text-[9px]">🖨️ Imprimer</button>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-[9px]">📤 Partager</button>
                 {((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
                   <button type="button" onClick={validerDocumentMouvement} disabled={lignesPanier.length === 0 || enTrainDeSauvegarder} className={`font-bold px-2.5 py-1 rounded text-[9px] ${lignesPanier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
                     {enTrainDeSauvegarder ? 'Validation...' : '✅ Valider'}
@@ -902,13 +1004,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('type')} className="p-1.5 cursor-pointer">Type</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° Doc</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('depotNom')} className="p-1.5 cursor-pointer">Dépôt</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('operateur')} className="p-1.5 cursor-pointer">Opérateur</th>
                 </tr>
               </thead>
               <tbody className="divide-y text-[9.5px]">
                 {documentsAffiches.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="p-4 text-center text-slate-400 font-bold">Aucun document pour le module {moduleActuel}.</td>
+                    <td colSpan="5" className="p-4 text-center text-slate-400 font-bold">Aucun document pour le module {moduleActuel}.</td>
                   </tr>
                 ) : (
                   documentsAffiches.map((doc, idx) => (
@@ -916,6 +1019,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
                       <td className="p-1.5 font-bold whitespace-nowrap"><span className="px-1 py-0.5 bg-slate-100 text-slate-800 rounded text-[8.5px]">{doc.type}</span></td>
                       <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numeroDoc}</td>
+                      <td className="p-1.5 font-bold text-slate-700 truncate max-w-[100px]" title={doc.depotNom}>{doc.depotNom}</td>
                       <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate max-w-[110px]" title={doc.operateur}>{doc.operateur}</td>
                     </tr>
                   ))
@@ -936,16 +1040,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {modalPartageOuverte && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2">
-            <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">Partager</span><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(false)} className="text-slate-500 font-bold">✕</button></div>
-            <div className="space-y-1 text-[9.5px]"><label className="block font-bold text-slate-700">Format :</label><div className="grid grid-cols-3 gap-1">{['PDF', 'PNG', 'JPG'].map(fmt => (<button key={fmt} type="button" disabled={enTrainDeSauvegarder} onClick={() => setFormatPartage(fmt)} className={`py-1 rounded font-bold border ${formatPartage === fmt ? 'bg-orange-600 text-white' : 'bg-slate-50 text-slate-800'}`}>{fmt}</button>))}</div></div>
-            <div className="space-y-1 pt-1 text-[9.5px]"><label className="block font-bold text-slate-700">Canal :</label><div className="space-y-1"><button type="button" disabled={enTrainDeSauvegarder} onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-emerald-50 text-emerald-900 font-bold p-1.5 rounded-xl text-left">💚 WhatsApp</button><button type="button" disabled={enTrainDeSauvegarder} onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-blue-50 text-blue-900 font-bold p-1.5 rounded-xl text-left">📧 Mail</button></div></div>
-          </div>
         </div>
       )}
     </div>
