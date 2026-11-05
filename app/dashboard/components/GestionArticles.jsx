@@ -118,7 +118,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     Photo: '',
     Disponible_Menu_QR: true,
     date_peremption: '',
-    suivi_stock: true, // Géré dynamiquement par la famille ou personnalisé
+    suivi_stock: true,
   });
 
   const toutesLesSuggestionsArticles = Array.from(
@@ -126,6 +126,40 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   ).sort();
 
   const chargerDonneesReference = async () => {
+    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Offline-first)
+    const familleLocale = localSync.recupererDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`);
+    const depotsLocaux = localSync.recupererDonneesLocales(`depots_stock_${entrepriseId}_${moduleActuel}`);
+    const emplacementsLocaux = localSync.recupererDonneesLocales(`emplacements_stock_${entrepriseId}_${moduleActuel}`);
+    const mouvementsLocaux = localSync.recupererDonneesLocales(`mouvements_stock_${entrepriseId}_${moduleActuel}`);
+    const approvisionnementsLocaux = localSync.recupererDonneesLocales(`approvisionnements_${entrepriseId}_${moduleActuel}`);
+    const entrepriseLocale = localSync.recupererDonneesLocales(`entreprise_info_${entrepriseId}`);
+
+    if (familleLocale && familleLocale.length > 0) {
+      setFamilles(familleLocale);
+      const premiereFamilleId = String(familleLocale[0].id);
+      if (familleFiltre === 'TOUTES' || !familleFiltre) {
+        setFamilleFiltre(premiereFamilleId);
+      }
+      setNouveauArticle(prev => ({ 
+        ...prev, 
+        Famille: prev.Famille || premiereFamilleId,
+        suivi_stock: prev.Famille ? prev.suivi_stock : (familleLocale[0].suivi_stock ?? true) 
+      }));
+    }
+    if (depotsLocaux && depotsLocaux.length > 0) {
+      setDepots(depotsLocaux);
+      if (depotRapportFiltre === 'TOUS') setDepotRapportFiltre(String(depotsLocaux[0].id));
+    }
+    if (emplacementsLocaux) setEmplacements(emplacementsLocaux);
+    if (mouvementsLocaux) setMouvements(mouvementsLocaux);
+    if (approvisionnementsLocaux) setApprovisionnements(approvisionnementsLocaux);
+    if (entrepriseLocale) setInfosEntreprise(entrepriseLocale);
+
+    // Si hors-ligne, on s'arrête là
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      return;
+    }
+
     try {
       const { data: dataEnt } = await supabase
         .from('entreprises')
@@ -133,19 +167,22 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .or(`id.eq.${entrepriseId},id_entreprise.eq.${entrepriseId},code_entreprise.eq.${entrepriseId}`)
         .single();
       
-      if (dataEnt) setInfosEntreprise(dataEnt);
+      if (dataEnt) {
+        setInfosEntreprise(dataEnt);
+        localSync.sauvegarderDonneesLocales(`entreprise_info_${entrepriseId}`, dataEnt);
+      }
 
       const { data: dataFam } = await supabase
         .from('familles_articles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
-        .order('created_at', { ascending: true }); // Tri par date de création pour garantir que la première créée est en premier
+        .order('created_at', { ascending: true });
       
       const listeFam = dataFam || [];
       setFamilles(listeFam);
+      localSync.sauvegarderDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`, listeFam);
 
-      // Définir TOUJOURS la première famille créée comme famille par défaut au chargement si elle existe
       if (listeFam.length > 0) {
         const premiereFamilleId = String(listeFam[0].id);
         const premierSuiviStockFamille = listeFam[0].suivi_stock ?? true;
@@ -166,6 +203,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       const listeDepots = dataDep || [];
       setDepots(listeDepots);
+      localSync.sauvegarderDonneesLocales(`depots_stock_${entrepriseId}_${moduleActuel}`, listeDepots);
       if (listeDepots.length > 0) {
         if (depotRapportFiltre === 'TOUS') setDepotRapportFiltre(String(listeDepots[0].id));
       }
@@ -175,21 +213,27 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setEmplacements(dataEmp || []);
+      const listeEmp = dataEmp || [];
+      setEmplacements(listeEmp);
+      localSync.sauvegarderDonneesLocales(`emplacements_stock_${entrepriseId}_${moduleActuel}`, listeEmp);
 
       const { data: dataMouv } = await supabase
         .from('mouvements_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setMouvements(dataMouv || []);
+      const listeMouv = dataMouv || [];
+      setMouvements(listeMouv);
+      localSync.sauvegarderDonneesLocales(`mouvements_stock_${entrepriseId}_${moduleActuel}`, listeMouv);
 
       const { data: dataAppro } = await supabase
         .from('approvisionnements')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
-      setApprovisionnements(dataAppro || []);
+      const listeAppro = dataAppro || [];
+      setApprovisionnements(listeAppro);
+      localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}_${moduleActuel}`, listeAppro);
 
     } catch (err) {
       console.error('Erreur chargement références :', err.message);
@@ -203,6 +247,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       setArticles(articlesLocaux);
       setArticleSelectionneStatId(String(articlesLocaux[0].id_article || articlesLocaux[0].id));
       setChargement(false);
+    }
+
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setChargement(false);
+      return;
     }
 
     try {
@@ -236,6 +285,9 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   useEffect(() => {
     chargerDonneesReference();
     chargerArticles();
+    if (typeof window !== 'undefined') {
+      localSync.synchroniserVersCloud(supabase);
+    }
   }, [entrepriseId, moduleActuel]);
 
   const isGestionPerissablesActive = () => {
@@ -556,7 +608,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    // Gestion automatique de la famille par défaut (la première créée si non renseignée)
     let familleIdFinale = nouveauArticle.Famille;
     if (!familleIdFinale && familles.length > 0) {
       familleIdFinale = familles[0].id;
@@ -587,20 +638,32 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           .eq(articleEnEdition.id_article ? 'id_article' : 'id', targetId)
           .eq('id_entreprise', entrepriseId);
 
-        if (error) throw error;
+        if (error) {
+          localSync.ajouterFileAttente('UPDATE', 'articles_stock', { ...payloadArticle, id: targetId });
+        }
       } else {
         payloadArticle.Quantite_Stock = 0;
         const { error } = await supabase.from('articles_stock').insert([payloadArticle]);
-        if (error) throw error;
+        if (error) {
+          localSync.ajouterFileAttente('INSERT', 'articles_stock', payloadArticle);
+        }
       }
 
-      localStorage.removeItem(cleCacheArticles);
+      // Mise à jour optimiste locale
+      const artIdFinal = articleEnEdition ? (articleEnEdition.id_article || articleEnEdition.id) : ('local_' + Date.now());
+      const articleMajItem = { ...payloadArticle, id: artIdFinal, id_article: artIdFinal };
+      const articlesMaj = articleEnEdition
+        ? articles.map(a => String(a.id_article || a.id) === String(artIdFinal) ? articleMajItem : a)
+        : [articleMajItem, ...articles];
+
+      setArticles(articlesMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheArticles, articlesMaj);
 
       alert(`Article enregistré avec succès !`);
       annulerForm();
       await chargerArticles();
     } catch (err) {
-      alert('⚠️ Erreur lors de l’enregistrement dans la base de données : ' + err.message);
+      alert('⚠️ Erreur lors de l’enregistrement : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -626,7 +689,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       suivi_stock: article.suivi_stock ?? true,
     });
     setAfficherForm(true);
-    // Focus et sélection automatique du texte à l'ouverture de l'édition
     setTimeout(() => {
       if (designationInputRef.current) {
         designationInputRef.current.focus();
@@ -684,9 +746,14 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         .eq(articleEnEdition.id_article ? 'id_article' : 'id', artId)
         .eq('id_entreprise', entrepriseId);
 
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('DELETE', 'articles_stock', { id: artId });
+      }
 
-      localStorage.removeItem(cleCacheArticles);
+      const articlesMaj = articles.filter(a => String(a.id_article || a.id) !== String(artId));
+      setArticles(articlesMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheArticles, articlesMaj);
+
       alert('Article supprimé.');
       annulerForm();
       chargerArticles();
@@ -700,13 +767,11 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const articlesFiltres = articles.filter((art) => {
     const artId = art.id_article || art.id;
 
-    // Filtre par nom / désignation avec la barre de recherche
     const designationArt = (art.Designation || art.designation || '').toLowerCase();
     if (rechercheArticleInput.trim() !== '' && !designationArt.includes(rechercheArticleInput.trim().toLowerCase())) {
       return false;
     }
 
-    // Utilisation de la première famille par défaut si aucun filtre spécifique n'est appliqué
     const familleEffective = (familleFiltre === 'TOUTES' && familles.length > 0) ? familles[0].id : familleFiltre;
     const matchFamille = familleEffective === 'TOUTES' || !familleEffective || String(art.Famille || art.famille) === String(familleEffective);
     if (!matchFamille) return false;
@@ -934,7 +999,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
               } else {
                 setModeVue('catalogue');
                 annulerForm();
-                // Assigner automatiquement la première famille créée ainsi que son statut de suivi de stock par défaut
                 if (familles.length > 0) {
                   const premiereFam = familles[0];
                   setNouveauArticle(prev => ({ 
@@ -944,7 +1008,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   }));
                 }
                 setAfficherForm(true);
-                // Donner le focus et sélectionner le texte de la désignation à l'ouverture
                 setTimeout(() => {
                   if (designationInputRef.current) {
                     designationInputRef.current.focus();
@@ -1035,7 +1098,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                       setNouveauArticle({ 
                         ...nouveauArticle, 
                         Famille: famIdChoisie,
-                        // Héritage automatique du suivi de stock de la famille si c'est un nouvel article
                         suivi_stock: articleEnEdition ? nouveauArticle.suivi_stock : (famObjTrouvee ? (famObjTrouvee.suivi_stock ?? true) : true)
                       });
                       setTimeout(() => {
@@ -1165,7 +1227,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                 </div>
               )}
 
-              {/* --- ZONE DE CONFIGURATION DU SUIVI DE STOCK DE L'ARTICLE --- */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between">
                 <div>
                   <span className="block font-black text-slate-900 text-[10px] uppercase">Suivi de stock (Article)</span>
@@ -1295,7 +1356,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
           ) : (
             <>
               <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
-                {/* BARRE DE RECHERCHE */}
                 <div>
                   <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Rechercher un article</label>
                   <div className="relative">

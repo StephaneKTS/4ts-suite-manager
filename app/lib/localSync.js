@@ -33,7 +33,7 @@ export const localSync = {
       queue.push({ action, table, payload, timestamp: Date.now() });
       localStorage.setItem('4ts_offline_queue', JSON.stringify(queue));
     } catch (e) {
-      console.error('Erreur file dote hors-ligne', e);
+      console.error('Erreur file d\'attente hors-ligne', e);
     }
   },
 
@@ -51,37 +51,54 @@ export const localSync = {
       for (const item of queue) {
         const { table, action, payload } = item;
         
-        // Nettoyage global de TOUTES les propriétés commençant par "temp_" (id, id_commande, etc.)
-        let payloadPropre = { ...payload };
-        Object.keys(payloadPropre).forEach(key => {
-          if (payloadPropre[key] && String(payloadPropre[key]).startsWith('temp_')) {
-            delete payloadPropre[key];
-          }
-        });
-
         let error = null;
 
+        // Fonction de nettoyage approfondi des IDs temporaires (local_ ou temp_)
+        const nettoyerPayload = (obj) => {
+          if (!obj || typeof obj !== 'object') return obj;
+          const propre = { ...obj };
+          
+          Object.keys(propre).forEach(key => {
+            const val = propre[key];
+            // Si une valeur commence par local_ ou temp_ (ex: id_commande ou id), on la supprime 
+            // pour éviter les erreurs de type UUID invalide dans Supabase
+            if (val && (String(val).startsWith('local_') || String(val).startsWith('temp_'))) {
+              if (key === 'id') {
+                delete propre[key]; // Laisse Supabase générer un nouvel ID distant
+              } else {
+                // Pour les clés étrangères temporaires (ex: id_commande), on peut mettre null ou supprimer
+                delete propre[key];
+              }
+            }
+          });
+          return propre;
+        };
+
         if (action === 'DELETE') {
-          // Si c'était une suppression avec un ID temp, inutile de l'envoyer au cloud
-          if (payload.id && String(payload.id).startsWith('temp_')) {
-            continue;
+          if (payload.id && (String(payload.id).startsWith('local_') || String(payload.id).startsWith('temp_'))) {
+            continue; // Ignore les suppressions d'éléments purement locaux
           }
+          const payloadPropre = nettoyerPayload(payload);
           const res = await supabaseClient.from(table).delete().match(payloadPropre);
           error = res.error;
         } else {
-          // Par défaut : UPSERT / INSERT
-          const res = await supabaseClient.from(table).upsert(payloadPropre);
+          let payloadFinal;
+          if (Array.isArray(payload)) {
+            payloadFinal = payload.map(itemTab => nettoyerPayload(itemTab));
+          } else {
+            payloadFinal = nettoyerPayload(payload);
+          }
+
+          const res = await supabaseClient.from(table).upsert(payloadFinal);
           error = res.error;
         }
 
         if (error) {
           console.error(`Erreur sync table ${table}:`, error.message);
-          // On garde l'élément dans la file pour réessayer plus tard s'il s'agit d'une vraie erreur réseau
           nouvelleQueue.push(item);
         }
       }
 
-      // On met à jour la file d'attente (en retirant les éléments réussis, en gardant les bloqués)
       if (nouvelleQueue.length > 0) {
         localStorage.setItem('4ts_offline_queue', JSON.stringify(nouvelleQueue));
       } else {

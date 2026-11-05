@@ -13,9 +13,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const entParam = params.get('entreprise');
       if (entParam) {
         setEntrepriseId(entParam);
+      } else if (!entrepriseId && propEntrepriseId) {
+        setEntrepriseId(propEntrepriseId);
       }
     }
-  }, []);
+  }, [propEntrepriseId]);
 
   const [commandes, setCommandes] = useState([]);
   const [lignesCommandesMap, setLignesCommandesMap] = useState({});
@@ -44,7 +46,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [limiteCommandes, setLimiteCommandes] = useState(20);
   const [commandesAppelees, setCommandesAppelees] = useState({});
 
-  // État pour le menu déroulant du statut rapide par commande
   const [menuStatutOuvertId, setMenuStatutOuvertId] = useState(null);
 
   const [vueActive, setVueActive] = useState('LISTE');
@@ -182,13 +183,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const chargerDroitsUtilisateur = async () => {
     try {
+      const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
       const emailConnecte = localStorage.getItem('utilisateur_email') || '';
       if (!emailConnecte) return;
 
       const { data: userRecord } = await supabase
         .from('utilisateurs')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
+        .eq('id_entreprise', currentEntId)
         .eq('email', emailConnecte)
         .single();
 
@@ -215,16 +217,24 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const chargerDonnees = async () => {
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
+    if (!entrepriseId && currentEntId) {
+      setEntrepriseId(currentEntId);
+    }
+
     setChargement(true);
-    const commandesLocales = localSync.recupererDonneesLocales(`commandes_livraison_${entrepriseId}`);
-    const lignesLocales = localSync.recupererDonneesLocales(`lignes_commandes_${entrepriseId}`);
-    const partenairesLocaux = localSync.recupererDonneesLocales(`partenaires_livraison_${entrepriseId}`);
-    const articlesLocaux = localSync.recupererDonneesLocales(`articles_livraison_${entrepriseId}`);
-    const depotsLocaux = localSync.recupererDonneesLocales(`depots_livraison_${entrepriseId}`);
-    const emplacementsLocaux = localSync.recupererDonneesLocales(`emplacements_livraison_${entrepriseId}`);
-    const grilleLocale = localSync.recupererDonneesLocales(`grille_tarifaire_${entrepriseId}`);
-    const caissesLocales = localSync.recupererDonneesLocales(`caisses_${entrepriseId}_${moduleActuel}`);
-    const cloturesLocales = localSync.recupererDonneesLocales(`clotures_livraison_${entrepriseId}`);
+    
+    const commandesLocales = localSync.recupererDonneesLocales(`commandes_livraison_${currentEntId}`);
+    const lignesLocales = localSync.recupererDonneesLocales(`lignes_commandes_${currentEntId}`);
+    const partenairesLocaux = localSync.recupererDonneesLocales(`partenaires_livraison_${currentEntId}`);
+    const articlesLocaux = localSync.recupererDonneesLocales(`articles_livraison_${currentEntId}`) || localSync.recupererDonneesLocales(`4ts_local_cache_articles_${currentEntId}_BOUTIQUE`) || localSync.recupererDonneesLocales(`4ts_local_cache_articles_livraison_${currentEntId}`);
+    const depotsLocaux = localSync.recupererDonneesLocales(`depots_livraison_${currentEntId}`);
+    const emplacementsLocaux = localSync.recupererDonneesLocales(`emplacements_livraison_${currentEntId}`);
+    const grilleLocale = localSync.recupererDonneesLocales(`grille_tarifaire_${currentEntId}`);
+    const mouvementsLocaux = localSync.recupererDonneesLocales(`mouvements_stock_${currentEntId}`);
+    const approLocaux = localSync.recupererDonneesLocales(`approvisionnements_${currentEntId}`);
+    const caissesLocales = localSync.recupererDonneesLocales(`caisses_${currentEntId}_${moduleActuel}`);
+    const cloturesLocales = localSync.recupererDonneesLocales(`clotures_livraison_${currentEntId}`);
 
     if (commandesLocales && commandesLocales.length > 0) setCommandes(commandesLocales);
     if (lignesLocales) setLignesCommandesMap(lignesLocales);
@@ -233,6 +243,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     if (depotsLocaux && depotsLocaux.length > 0) setDepots(depotsLocaux);
     if (emplacementsLocaux && emplacementsLocaux.length > 0) setEmplacements(emplacementsLocaux);
     if (grilleLocale && grilleLocale.length > 0) setGrilleTarifaire(grilleLocale);
+    if (mouvementsLocaux) setMouvements(mouvementsLocaux);
+    if (approLocaux) setApprovisionnements(approLocaux);
     if (caissesLocales && caissesLocales.length > 0) setCaisses(caissesLocales);
     if (cloturesLocales && cloturesLocales.length > 0) setCloturesEffectuees(cloturesLocales);
 
@@ -240,23 +252,25 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       await chargerDroitsUtilisateur();
 
       const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resTarif, resMouv, resAppro, resCaisses, resClotures] = await Promise.all([
-        supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
+        supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('commandes_livraison_lignes').select('*'),
-        supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).order('created_at', { ascending: false }),
-        supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('emplacements_stock').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('utilisateurs').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('grille_tarifaire_livraison').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
-        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('caisses').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('clotures_caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false })
+        supabase.from('fournisseurs').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel),
+        supabase.from('articles_stock').select('*').eq('id_entreprise', currentEntId).order('created_at', { ascending: false }),
+        supabase.from('depots_stock').select('*').eq('id_entreprise', currentEntId),
+        supabase.from('emplacements_stock').select('*').eq('id_entreprise', currentEntId),
+        supabase.from('utilisateurs').select('*').eq('id_entreprise', currentEntId),
+        supabase.from('grille_tarifaire_livraison').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel),
+        supabase.from('mouvements_stock').select('*').eq('id_entreprise', currentEntId),
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', currentEntId),
+        supabase.from('caisses').select('*').eq('id_entreprise', currentEntId),
+        supabase.from('clotures_caisses').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false })
       ]);
 
       const commandesData = resCmd.data || [];
-      setCommandes(commandesData);
-      localSync.sauvegarderDonneesLocales(`commandes_livraison_${entrepriseId}`, commandesData);
+      if (commandesData.length > 0) {
+        setCommandes(commandesData);
+        localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesData);
+      }
 
       const mapLignes = {};
       if (resLignesAll.data) {
@@ -266,47 +280,53 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           }
           mapLignes[l.id_commande].push(l);
         });
+        setLignesCommandesMap(mapLignes);
+        localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignes);
       }
-      setLignesCommandesMap(mapLignes);
-      localSync.sauvegarderDonneesLocales(`lignes_commandes_${entrepriseId}`, mapLignes);
 
-      if (resPart.data) {
+      if (resPart.data && resPart.data.length > 0) {
         setPartenaires(resPart.data);
-        localSync.sauvegarderDonneesLocales(`partenaires_livraison_${entrepriseId}`, resPart.data);
+        localSync.sauvegarderDonneesLocales(`partenaires_livraison_${currentEntId}`, resPart.data);
       }
-      if (resArt.data) {
+      if (resArt.data && resArt.data.length > 0) {
         setArticles(resArt.data);
-        localSync.sauvegarderDonneesLocales(`articles_livraison_${entrepriseId}`, resArt.data);
+        localSync.sauvegarderDonneesLocales(`articles_livraison_${currentEntId}`, resArt.data);
       }
-      if (resDep.data) {
+      if (resDep.data && resDep.data.length > 0) {
         setDepots(resDep.data);
-        localSync.sauvegarderDonneesLocales(`depots_livraison_${entrepriseId}`, resDep.data);
+        localSync.sauvegarderDonneesLocales(`depots_livraison_${currentEntId}`, resDep.data);
       }
-      if (resEmp.data) {
+      if (resEmp.data && resEmp.data.length > 0) {
         setEmplacements(resEmp.data);
-        localSync.sauvegarderDonneesLocales(`emplacements_livraison_${entrepriseId}`, resEmp.data);
+        localSync.sauvegarderDonneesLocales(`emplacements_livraison_${currentEntId}`, resEmp.data);
       }
       if (resUser.data) setUtilisateurs(resUser.data);
-      if (resTarif.data) {
+      if (resTarif.data && resTarif.data.length > 0) {
         setGrilleTarifaire(resTarif.data);
-        localSync.sauvegarderDonneesLocales(`grille_tarifaire_${entrepriseId}`, resTarif.data);
+        localSync.sauvegarderDonneesLocales(`grille_tarifaire_${currentEntId}`, resTarif.data);
       }
-      if (resMouv.data) setMouvements(resMouv.data);
-      if (resAppro.data) setApprovisionnements(resAppro.data);
+      if (resMouv.data) {
+        setMouvements(resMouv.data);
+        localSync.sauvegarderDonneesLocales(`mouvements_stock_${currentEntId}`, resMouv.data);
+      }
+      if (resAppro.data) {
+        setApprovisionnements(resAppro.data);
+        localSync.sauvegarderDonneesLocales(`approvisionnements_${currentEntId}`, resAppro.data);
+      }
       if (resCaisses.data) {
         setCaisses(resCaisses.data);
-        localSync.sauvegarderDonneesLocales(`caisses_${entrepriseId}_${moduleActuel}`, resCaisses.data);
+        localSync.sauvegarderDonneesLocales(`caisses_${currentEntId}_${moduleActuel}`, resCaisses.data);
       }
       if (resClotures.data) {
         setCloturesEffectuees(resClotures.data);
-        localSync.sauvegarderDonneesLocales(`clotures_livraison_${entrepriseId}`, resClotures.data);
+        localSync.sauvegarderDonneesLocales(`clotures_livraison_${currentEntId}`, resClotures.data);
       }
 
       setStocksArticlesCache({});
       calculerNumeroAutomatique(commandesData, idPartenaire, dateCommande);
 
     } catch (err) {
-      console.error('Erreur chargement données livraison :', err.message);
+      console.error('Mode hors-ligne actif ou erreur réseau :', err.message);
     } finally {
       setChargement(false);
     }
@@ -338,104 +358,75 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   useEffect(() => {
-    if (entrepriseId) {
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
+    if (currentEntId) {
+      if (!entrepriseId) setEntrepriseId(currentEntId);
       chargerDonnees();
       localSync.synchroniserVersCloud(supabase);
     }
-  }, [entrepriseId]);
+  }, [entrepriseId, propEntrepriseId]);
 
-  const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
-    if (emplacementCible && emplacementCible !== 'TOUS') {
-      let stockEmp = 0;
-      mouvements.forEach(m => {
-        if (String(m.id_article) !== String(articleId)) return;
+  const trouverIdEmplacementLivreur = (nomLivreur) => {
+    if (!nomLivreur) return null;
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
+    const nomLivreurNorm = nomLivreur.trim().toUpperCase();
+    const empObj = emplacements.find(e => {
+      if (String(e.id_entreprise || '').trim() !== String(currentEntId || '').trim()) return false;
+      const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
+      const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
+      return nomEmp === nomLivreurNorm || respEmp === nomLivreurNorm || nomEmp.includes(nomLivreurNorm) || nomLivreurNorm.includes(nomEmp);
+    });
+    return empObj ? empObj.id : null;
+  };
 
-        if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
-          const matchDepSource = String(m.id_depot_source || '') === String(depotCible);
-          const matchDepDest = String(m.id_depot_destination || '') === String(depotCible);
-          if (!matchDepSource && !matchDepDest) return;
-        }
-
-        const qte = parseInt(m.quantite || 0);
-        const typeMvt = (m.type_mouvement || '').toUpperCase();
-        
-        const empSource = String(m.id_emplacement_source || '');
-        const empDest = String(m.id_emplacement_destination || '');
-
-        const matchSource = empSource === String(emplacementCible);
-        const matchDest = empDest === String(emplacementCible);
-
-        if (typeMvt === 'INVENTAIRE' && matchSource) {
-          stockEmp = qte;
-          return;
-        }
-        if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
-          if (matchDest) stockEmp += qte;
-          if (matchSource) stockEmp -= qte;
-          return;
-        }
-        if (matchDest) stockEmp += qte;
-        if (matchSource) stockEmp -= qte;
-      });
-      return Math.max(0, stockEmp);
+  const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = null) => {
+    const artObj = articles.find(a => String(a.id_article) === String(articleId));
+    let stockBaseDirect = 0;
+    if (artObj) {
+      stockBaseDirect = Number(artObj.Quantite_Stock ?? artObj.quantite_stock ?? artObj.stock_actuel ?? artObj.stock ?? 0);
     }
 
-    if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
-      let stockDepot = 0;
-      mouvements.forEach(m => {
-        if (String(m.id_article) !== String(articleId)) return;
-        const qte = parseInt(m.quantite || 0);
-        const typeMvt = (m.type_mouvement || '').toUpperCase();
-
-        const depSource = String(m.id_depot_source || '');
-        const depDest = String(m.id_depot_destination || '');
-
-        const matchSource = depSource === String(depotCible);
-        const matchDest = depDest === String(depotCible);
-
-        if (matchSource && matchDest) return;
-
-        if (typeMvt === 'INVENTAIRE' && matchSource) {
-          stockDepot = qte;
-          return;
-        }
-        if (matchDest) stockDepot += qte;
-        if (matchSource) stockDepot -= qte;
-      });
-
-      approvisionnements.forEach(app => {
-        const depApp = String(app.id_depot_destination || app.id_depot || '');
-        if (depApp !== String(depotCible)) return;
-
-        let listArt = [];
-        if (typeof app.details_articles === 'string') {
-          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-        } else if (Array.isArray(app.details_articles)) {
-          listArt = app.details_articles;
-        }
-        listArt.forEach(item => {
-          if (String(item.id_article || item.article_id) === String(articleId)) {
-            stockDepot += parseInt(item.quantite || 0);
-          }
-        });
-      });
-
-      return Math.max(0, stockDepot);
+    if (mouvements.length === 0 && approvisionnements.length === 0) {
+      return stockBaseDirect;
     }
 
-    let totalEntrees = 0;
+    let totalEntrees = stockBaseDirect;
     let totalSorties = 0;
 
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
+      
       const qte = parseInt(m.quantite || 0);
       const typeMvt = (m.type_mouvement || '').toUpperCase();
+      const mDepotSrc = String(m.id_depot_source || '');
+      const mDepotDest = String(m.id_depot_destination || '');
+      const mEmpSrc = String(m.id_emplacement_source || '');
+      const mEmpDest = String(m.id_emplacement_destination || '');
 
-      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') totalEntrees += qte;
-      else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') totalSorties += qte;
+      if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
+        const matchDepot = mDepotDest === String(depotCible) || mDepotSrc === String(depotCible);
+        if (!matchDepot) return;
+      }
+
+      if (emplacementCible && emplacementCible !== 'TOUS') {
+        const matchEmp = mEmpDest === String(emplacementCible) || mEmpSrc === String(emplacementCible);
+        if (!matchEmp) return;
+      }
+
+      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || (mDepotDest === String(depotCible) && depotCible !== 'TOUS')) {
+        totalEntrees += qte;
+      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES' || (mDepotSrc === String(depotCible) && depotCible !== 'TOUS')) {
+        totalSorties += qte;
+      } else {
+        if (typeMvt === 'ENTREE') totalEntrees += qte;
+        if (typeMvt === 'SORTIE') totalSorties += qte;
+      }
     });
 
     approvisionnements.forEach(app => {
+      if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT' && String(app.id_depot || '') !== String(depotCible)) {
+        return;
+      }
       let listArt = [];
       if (typeof app.details_articles === 'string') {
         try { listArt = JSON.parse(app.details_articles); } catch (e) {}
@@ -453,78 +444,35 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const recupererStockReelRPC = async (articleId, livreurNomParam = '') => {
-    let emplacementCible = null;
-    const livreurCibleNom = livreurNomParam || livreurAssigne;
+    const empIdCible = trouverIdEmplacementLivreur(livreurNomParam || livreurAssigne);
+    const stockLocal = calculerStockReelDirect(articleId, depotId, empIdCible);
 
-    if (livreurCibleNom.trim() !== '') {
-      const nomLivreurSaisi = livreurCibleNom.trim().toUpperCase();
-
-      let empTrouve = emplacements.find(e => {
-        if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
-        const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
-        const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
-        return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || livreurCibleNom.includes(nomEmp);
-      });
-
-      if (!empTrouve) {
-        const userTrouve = utilisateurs.find(u => {
-          if (String(u.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
-          let nomU = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
-          if (!nomU && u.email) nomU = u.email.split('@')[0].toUpperCase();
-          return nomU === nomLivreurSaisi || nomU.includes(nomLivreurSaisi);
-        });
-
-        if (userTrouve) {
-          empTrouve = emplacements.find(e => 
-            String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
-            (String(e.responsable_id || '') === String(userTrouve.id) ||
-             String(e.id_utilisateur || '') === String(userTrouve.id) ||
-             String(e.utilisateur_id || '') === String(userTrouve.id))
-          );
-        }
-      }
-
-      if (empTrouve) {
-        emplacementCible = empTrouve.id;
-      } else {
-        emplacementCible = 'AUCUN_EMPLACEMENT';
-      }
-    }
-
-    const cacheKey = `${articleId}_${depotId}_${emplacementCible || 'none'}`;
-    if (stocksArticlesCache[cacheKey] !== undefined) {
-      return stocksArticlesCache[cacheKey];
-    }
-
-    const stockLocal = calculerStockReelDirect(articleId, depotId, emplacementCible === 'AUCUN_EMPLACEMENT' ? null : emplacementCible);
-    if (stockLocal > 0 || emplacementCible === 'AUCUN_EMPLACEMENT') {
-      setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockLocal }));
+    if (typeof window !== 'undefined' && !navigator.onLine) {
       return stockLocal;
     }
 
     try {
+      const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
       const { data, error } = await supabase.rpc('calculer_stock_reel', {
         p_article_id: parseInt(articleId),
-        p_entreprise_id: entrepriseId,
-        p_depot_id: depotId || 'AUCUN_DEPOT',
-        p_emplacement_id: emplacementCible === 'AUCUN_EMPLACEMENT' ? null : emplacementCible
+        p_entreprise_id: currentEntId,
+        p_depot_id: depotId && depotId !== 'AUCUN_DEPOT' ? depotId : null,
+        p_emplacement_id: empIdCible
       });
 
       if (!error && data !== null) {
-        const stockVal = parseInt(data, 10);
-        setStocksArticlesCache(prev => ({ ...prev, [cacheKey]: stockVal }));
-        return stockVal;
+        return parseInt(data, 10);
       }
     } catch (err) {
-      console.error('Erreur RPC stock :', err.message);
+      // Bascule automatique sur le calcul local filtré
     }
 
     return stockLocal;
   };
 
-  // Fonction pour changer directement le statut d'une commande depuis l'écran de la liste
   const changerStatutRapide = async (cmd, nouveauStatut) => {
     setMenuStatutOuvertId(null);
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     const statutActuelBrut = cmd.statut || cmd.statut_commande || 'EN ATTENTE';
     const statutActuelNorm = statutActuelBrut.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const nouveauStatutNorm = nouveauStatut.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -545,7 +493,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const partObj = partenaires.find(p => String(p.id) === String(cmd.id_partenaire));
       const estSansStockage = !partObj || (partObj.statut_stockage || partObj.statut || '').toString().trim().toUpperCase() === 'SANS_STOCKAGE';
 
-      // Si on passe à LIVRÉ et que ce n'était pas déjà livré et qu'il y a des articles en stock
       if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
         for (const item of lignesCmd) {
           const stockEmp = await recupererStockReelRPC(item.id_article, cmd.vendeur_livreur);
@@ -559,7 +506,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       }
 
-      // Mise à jour en base de données
       const { error: errUp } = await supabase
         .from('commandes_livraison_en_tete')
         .update({
@@ -568,25 +514,20 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         })
         .eq('id', cmd.id);
 
-      if (errUp) throw errUp;
+      if (errUp) {
+        localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { id: cmd.id, id_entreprise: currentEntId, statut: nouveauStatut, statut_commande: nouveauStatut });
+      }
 
-      // Si passage à LIVRÉ (et non livré auparavant), générer les mouvements de sortie de stock
+      const commandesMaj = commandes.map(c => c.id === cmd.id ? { ...c, statut: nouveauStatut, statut_commande: nouveauStatut } : c);
+      setCommandes(commandesMaj);
+      localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
+
       if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
-        let empIdTrouve = null;
-        const livreurCmd = (cmd.vendeur_livreur || '').trim().toUpperCase();
-        if (livreurCmd) {
-          let empObj = emplacements.find(e => {
-            if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
-            const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
-            const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
-            return nomEmp === livreurCmd || respEmp === livreurCmd || nomEmp.includes(livreurCmd);
-          });
-          if (empObj) empIdTrouve = empObj.id;
-        }
+        const empIdTrouve = trouverIdEmplacementLivreur(cmd.vendeur_livreur);
 
         for (const item of lignesCmd) {
           const payloadMouvement = {
-            id_entreprise: entrepriseId,
+            id_entreprise: currentEntId,
             module: moduleActuel,
             type_mouvement: 'SORTIE',
             id_depot_source: depotId !== 'AUCUN_DEPOT' ? depotId : null,
@@ -596,7 +537,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             quantite: item.quantite,
             motif_remarque: `LIVRAISON EFFECTIVE ${cmd.numero_commande} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
           };
-          await supabase.from('mouvements_stock').insert([payloadMouvement]);
+          const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
+          if (errMvt) {
+            localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+          }
         }
       }
 
@@ -680,9 +624,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const listeLivreursUniques = () => {
     const setLivreurs = new Set();
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     
     utilisateurs
-      .filter(u => String(u.id_entreprise || '').trim() === String(entrepriseId || '').trim())
+      .filter(u => String(u.id_entreprise || '').trim() === String(currentEntId || '').trim())
       .forEach(u => {
         let nom = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
         if (!nom && u.email) nom = u.email.split('@')[0].toUpperCase();
@@ -690,7 +635,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       });
 
     emplacements
-      .filter(e => String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim())
+      .filter(e => String(e.id_entreprise || '').trim() === String(currentEntId || '').trim())
       .forEach(e => {
         let nomEmp = (e.nom_emplacement || e.responsable_emplacement || '').trim().toUpperCase();
         if (nomEmp) setLivreurs.add(nomEmp);
@@ -743,16 +688,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       return;
     }
 
-    const idArt = artObj.id_article || artObj.id;
-    const stockDisp = await recupererStockReelRPC(idArt);
+    const idArt = artObj.id_article;
+    const stockDisp = await recupererStockReelRPC(idArt, livreurAssigne);
 
     if (stockDisp <= 0) {
-      alert(`❌ Cet article est épuisé ou indisponible.`);
+      alert(`❌ Cet article est épuisé ou indisponible pour ce livreur/dépôt.`);
       return;
     }
 
     const designation = (artObj.Designation || artObj.designation || artObj.nom || '').toUpperCase();
-    const prixVente = Number(artObj.P_V || artObj.prix_vente || artObj.prix_unitaire || artObj.prix || 0);
+    const prixVente = Number(artObj.Prix_Vente || artObj.prix_vente || artObj.p_v || artObj.prix_unitaire || 0);
 
     const ligneExistante = lignesSaisies.find(l => String(l.id_article) === String(idArt));
     if (ligneExistante) {
@@ -786,7 +731,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setLignesSaisies(nouvellesLignes.filter((_, i) => i !== index));
     } else {
       const artId = nouvellesLignes[index].id_article;
-      const stockDisp = await recupererStockReelRPC(artId);
+      const stockDisp = await recupererStockReelRPC(artId, livreurAssigne);
       if (nouvelleQte > stockDisp) {
         alert(`❌ Quantité supérieure au stock disponible (${stockDisp}) !`);
         return;
@@ -836,11 +781,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           prix_unitaire: l.prix_unitaire
         })));
       } else {
-        setLignesSaisies([]);
+        setLignesSaisies(lignesCommandesMap[cmd.id] || []);
       }
     } catch (err) {
-      console.error('Erreur chargement lignes commande :', err);
-      setLignesSaisies([]);
+      setLignesSaisies(lignesCommandesMap[cmd.id] || []);
     }
 
     setVueActive('CREATION');
@@ -848,6 +792,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const supprimerCommandeActuelle = async () => {
     if (!commandeEnEdition || sauvegardeEnCours) return;
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     if (!permissions.peut_supprimer) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
       return;
@@ -865,6 +810,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (error) {
         localSync.ajouterFileAttente('DELETE', 'commandes_livraison_en_tete', { id: commandeEnEdition.id });
       }
+
+      const commandesMaj = commandes.filter(c => c.id !== commandeEnEdition.id);
+      setCommandes(commandesMaj);
+      localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
 
       alert('Commande supprimée avec succès.');
       setNumeroCommande('1');
@@ -896,6 +845,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     if (e) e.preventDefault();
     if (sauvegardeEnCours) return;
     
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
+
     if (commandeEnEdition && !permissions.peut_modifier) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
       return;
@@ -959,41 +910,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       }
 
-      let empIdTrouve = null;
-      if (livreurAssigne.trim() !== '') {
-        const nomLivreurSaisi = livreurAssigne.trim().toUpperCase();
-        let empObj = emplacements.find(e => {
-          if (String(e.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
-          const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
-          const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
-          return nomEmp === nomLivreurSaisi || respEmp === nomLivreurSaisi || nomEmp.includes(nomLivreurSaisi) || livreurAssigne.includes(nomEmp);
-        });
-
-        if (!empObj) {
-          const userObj = utilisateurs.find(u => {
-            if (String(u.id_entreprise || '').trim() !== String(entrepriseId || '').trim()) return false;
-            let nomU = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
-            if (!nomU && u.email) nomU = u.email.split('@')[0].toUpperCase();
-            return nomU === nomLivreurSaisi || nomU.includes(nomLivreurSaisi);
-          });
-          if (userObj) {
-            empObj = emplacements.find(e => 
-              String(e.id_entreprise || '').trim() === String(entrepriseId || '').trim() &&
-              (String(e.responsable_id || '') === String(userObj.id) || 
-               String(e.id_utilisateur || '') === String(userObj.id) ||
-               String(e.utilisateur_id || '') === String(userObj.id))
-            );
-          }
-        }
-        if (empObj) empIdTrouve = empObj.id;
-      }
+      const empIdTrouve = trouverIdEmplacementLivreur(livreurAssigne);
 
       const statutNormVerif = (statutCommandeSaisi || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const estLivreVerif = statutNormVerif === 'LIVRE' || statutNormVerif === 'LIVRÉ';
 
       if (!partenaireSansStockage && estLivreVerif) {
         for (const item of lignesSaisies) {
-          const stockEmp = await recupererStockReelRPC(item.id_article);
+          const stockEmp = await recupererStockReelRPC(item.id_article, livreurAssigne);
           if (stockEmp < item.quantite) {
             alert(
               `🚫 ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`
@@ -1007,7 +931,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
 
       let payload = {
-        id_entreprise: entrepriseId,
+        id_entreprise: currentEntId,
         module: moduleActuel,
         numero_commande: numeroComplet,
         date_commande: dateNormalisee,
@@ -1038,15 +962,19 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           .update(payload)
           .eq('id', commandeEnEdition.id);
 
-        if (errUp) throw errUp;
+        if (errUp) {
+          localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { ...payload, id: commandeEnEdition.id });
+        }
 
         const { error: errDel } = await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
-        if (errDel) throw errDel;
+        if (errDel) {
+          localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
+        }
 
         if (!partenaireSansStockage && estLivreVerif && !etaitDejaLivre) {
           for (const item of lignesSaisies) {
             const payloadMouvement = {
-              id_entreprise: entrepriseId,
+              id_entreprise: currentEntId,
               module: moduleActuel,
               type_mouvement: 'SORTIE',
               id_depot_source: depotId !== 'AUCUN_DEPOT' ? depotId : null,
@@ -1057,7 +985,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
             };
             const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-            if (errMvt) console.error("Erreur mouvement:", errMvt.message);
+            if (errMvt) {
+              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+            }
           }
         }
 
@@ -1068,15 +998,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           .select()
           .single();
 
-        if (errCmd) throw errCmd;
-        if (cmdInseree) {
+        if (errCmd) {
+          const idLocal = 'local_' + Date.now();
+          idCmdCourante = idLocal;
+          const cmdLocale = { ...payload, id: idLocal, created_at: new Date().toISOString() };
+          const nouvelleListeCmd = [cmdLocale, ...commandes];
+          setCommandes(nouvelleListeCmd);
+          localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
+          localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', payload);
+        } else if (cmdInseree) {
           idCmdCourante = cmdInseree.id;
         }
 
         if (!partenaireSansStockage && estLivreVerif) {
           for (const item of lignesSaisies) {
             const payloadMouvement = {
-              id_entreprise: entrepriseId,
+              id_entreprise: currentEntId,
               module: moduleActuel,
               type_mouvement: 'SORTIE',
               id_depot_source: depotId !== 'AUCUN_DEPOT' ? depotId : null,
@@ -1087,7 +1024,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
             };
             const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-            if (errMvt) console.error("Erreur mouvement:", errMvt.message);
+            if (errMvt) {
+              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+            }
           }
         }
       }
@@ -1105,7 +1044,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           .from('commandes_livraison_lignes')
           .insert(payloadLignes);
 
-        if (errLignes) throw errLignes;
+        if (errLignes) {
+          localSync.ajouterFileAttente('INSERT', 'commandes_livraison_lignes', payloadLignes);
+        }
+
+        const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
+        setLignesCommandesMap(mapLignesMaj);
+        localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignesMaj);
       }
 
       alert(commandeEnEdition ? 'Commande mise à jour avec succès !' : 'Commande enregistrée avec succès !');
@@ -1288,6 +1233,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const validerEtVerserCloture = async (caisseId, nomCaisse) => {
     if (sauvegardeEnCours) return;
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     const montantFraisVerséNum = parseFloat(totalVerseFraisLivraison) || 0;
     if (montantFraisVerséNum <= 0 && totalVerseRecetteGlobal === '') {
       alert('⚠️ Veuillez renseigner au moins un montant versé.');
@@ -1322,7 +1268,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const libelleCloture = `VERS. CLÔTURE LIVRAISON ${clotureLivreur ? `- ${clotureLivreur}` : ''} (${clotureDateDebut === clotureDateFin ? clotureDateDebut : `Du ${clotureDateDebut} au ${clotureDateFin}`})`;
 
       const payloadCloture = {
-        id_entreprise: entrepriseId,
+        id_entreprise: currentEntId,
         module: moduleActuel,
         code_cloture: codePieceCloture,
         date_debut: clotureDateDebut,
@@ -1336,10 +1282,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       };
 
       const { error: errCloture } = await supabase.from('clotures_caisses').insert([payloadCloture]);
-      if (errCloture) throw errCloture;
+      if (errCloture) {
+        localSync.ajouterFileAttente('INSERT', 'clotures_caisses', payloadCloture);
+      }
 
       const payloadMvt = {
-        id_entreprise: entrepriseId,
+        id_entreprise: currentEntId,
         module: moduleActuel,
         id_caisse: finalCaisseId,
         type_mouvement: 'ENTREE',
@@ -1350,7 +1298,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       };
 
       const { error } = await supabase.from('mouvements_caisse').insert([payloadMvt]);
-      if (error) throw error;
+      if (error) {
+        localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payloadMvt);
+      }
 
       alert(`✅ Clôture enregistrée sous le numéro ${codePieceCloture}. Versement des frais de livraison de ${montantFraisVerséNum.toLocaleString('fr-FR')} CFA injecté dans le journal de caisse "${nomCaisse}" !`);
       
@@ -2212,7 +2162,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </span>
             </div>
 
-            {/* GRID À 3 COLONNES : FRAIS | LIVREUR | STATUT */}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
@@ -2283,14 +2232,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 ) : (
                   <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
                     {articlesFiltres.map((art) => {
-                      const idArt = art.id_article || art.id;
+                      const idArt = art.id_article;
 
                       return (
                         <ArticleItemStockCard 
                           key={`${idArt}_${livreurAssigne}`} 
                           art={art} 
                           onSelect={() => ajouterArticleAuPanier(art)} 
-                          chargerStock={async () => await recupererStockReelRPC(idArt)}
+                          chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
                         />
                       );
                     })}
@@ -2557,14 +2506,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
                   ) : (
                     articlesFiltres.map((art) => {
-                      const idArt = art.id_article || art.id;
+                      const idArt = art.id_article;
 
                       return (
                         <ArticleModalItemCard 
                           key={`${idArt}_${livreurAssigne}`} 
                           art={art} 
                           onSelect={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} 
-                          chargerStock={async () => await recupererStockReelRPC(idArt)}
+                          chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
                         />
                       );
                     })
@@ -2759,7 +2708,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                           🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
                         </span>
 
-                        {/* BOUTON DE STATUT INTERACTIF AVEC MENU DÉROULANT */}
                         <div className="relative" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
@@ -2795,7 +2743,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    {/* FRAIS DE LIVRAISON ALIGNÉS SUR LA MÊME LIGNE QUE LE MONTANT DE LA COMMANDE */}
                     <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center gap-2 text-[10px]">
                       <div className="text-slate-800 font-bold truncate">
                         {cmd.point_a ? (
@@ -2825,7 +2772,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    {/* LOGO WHATSAPP ET NUMÉRO CLIENT */}
                     <div className="flex justify-between items-center gap-2 pt-0.5 text-[9px]">
                       <div className="text-slate-600 font-medium truncate">
                         {lignesCmd.length > 0 ? (
@@ -3061,7 +3007,7 @@ function ArticleItemStockCard({ art, onSelect, chargerStock }) {
   );
 }
 
-function ArticleModalItemCard({ art, onSelect, chargerStock }) {
+function ArticleModalItemCard({ art, onResultSelect, onSelect, chargerStock }) {
   const [stock, setStock] = useState(0);
   const [chargementStock, setChargementStock] = useState(true);
 
