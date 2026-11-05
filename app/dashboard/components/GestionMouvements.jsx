@@ -151,7 +151,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
               setPermissions({
                 peut_creer: permMouv.creation ?? permMouv.creer ?? true,
                 peut_modifier: permMouv.modification ?? permMouv.modifier ?? true,
-                peut_supprimer: permMouv.suppression ?? false,
+                peut_supprimer: permMouv.suppression ?? true,
                 peut_valider: permMouv.validation ?? permMouv.valider ?? true
               });
             }
@@ -459,6 +459,26 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
     }));
   };
 
+  // --- NOUVELLE FONCTION : SUPPRIMER/RÉINITIALISER L'INVENTAIRE EN COURS DE SAISIE ---
+  const supprimerInventaireEnCours = async () => {
+    if (enTrainDeSauvegarder) return;
+    if (lignesPanier.length === 0 && !mouvementEnEditionId) {
+      alert('Aucun article ou inventaire en cours à supprimer.');
+      return;
+    }
+
+    if (!confirm('Voulez-vous vraiment supprimer et vider cet inventaire en cours de saisie ?')) return;
+
+    if (mouvementEnEditionId) {
+      await supprimerDocumentComplet(enTeteDoc.numeroDoc);
+    } else {
+      setLignesPanier([]);
+      setArticleSelectionneTemp(null);
+      setQuantiteSaisie(1);
+      alert('Inventaire en cours réinitialisé avec succès.');
+    }
+  };
+
   const validerDocumentMouvement = async () => {
     if (enTrainDeSauvegarder) return;
 
@@ -581,6 +601,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
       localStorage.removeItem(cleCacheMouvements);
 
       alert('Supprimé.');
+      setLignesPanier([]);
+      setMouvementEnEditionId(null);
       await chargerDonnees(true);
     } catch (err) { 
       alert('Erreur : ' + err.message); 
@@ -838,11 +860,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-234321' }) {
             )}
 
             <div className="pt-1.5 flex items-center justify-between gap-1 flex-wrap">
-              {mouvementEnEditionId ? (
-                permissions.peut_supprimer ? (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => supprimerDocumentComplet(enTeteDoc.numeroDoc)} className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2 py-1 rounded text-[9px]">🗑️ Supprimer</button>
-                ) : <div />
-              ) : <div />}
+              <div className="flex items-center gap-1">
+                {/* BOUTON SUPPRIMER INVENTAIRE / MOUVEMENT EN COURS */}
+                {(lignesPanier.length > 0 || mouvementEnEditionId) && (
+                  <button 
+                    type="button" 
+                    disabled={enTrainDeSauvegarder} 
+                    onClick={supprimerInventaireEnCours} 
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2 py-1 rounded text-[9px] shadow-2xs"
+                  >
+                    🗑️ Supprimer inventaire
+                  </button>
+                )}
+              </div>
               
               <div className="flex items-center gap-1 flex-wrap">
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
