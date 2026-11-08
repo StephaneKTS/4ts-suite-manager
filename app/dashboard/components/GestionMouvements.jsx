@@ -20,6 +20,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
   const cleCacheReferencesDocs = `references_documents_${entrepriseId}_${moduleActuel}`;
 
+  const dateDuJourStr = new Date().toISOString().split('T')[0];
+
   const obtenirNomOperateurConnecte = () => {
     if (typeof window === 'undefined') return 'DC KTS';
     
@@ -132,8 +134,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
-  const [filtreDateDebut, setFiltreDateDebut] = useState('');
-  const [filtreDateFin, setFiltreDateFin] = useState('');
+  // MODIFICATION : Initialisation des filtres de date à la date du jour
+  const [filtreDateDebut, setFiltreDateDebut] = useState(dateDuJourStr);
+  const [filtreDateFin, setFiltreDateFin] = useState(dateDuJourStr);
 
   const [enTeteDoc, setEnTeteDoc] = useState({
     numeroDoc: '',
@@ -403,7 +406,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           flux.push({ 
             date: app.created_at || app.date_approvisionnement || '', 
             depot_source: null, 
-            depot_destination: app.id_depot_destination || app.id_depot, // 👈 CORRECTION APPLIQUÉE ICI
+            depot_destination: app.id_depot_destination || app.id_depot,
             emplacement_source: null,
             emplacement_destination: null,
             quantite: parseInt(ligne.quantite || 0), 
@@ -811,33 +814,41 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return motifBrut;
   };
 
-  const documentsGroupes = Object.values(mouvements.reduce((acc, mvt) => {
-    const numDocBrut = mvt.motif_remarque || 'SANS-REF';
-    const numDocCle = formaterNumeroDocAffichage(numDocBrut);
-    
-    if (!acc[numDocCle]) { 
-      const operateurEnBase = mvt.operateur;
-      const operateurAffiche = (operateurEnBase && String(operateurEnBase).trim() !== '' && String(operateurEnBase).trim().toLowerCase() !== 'utilisateur' && String(operateurEnBase).trim() !== 'Utilisateur Inconnu') 
-        ? String(operateurEnBase).trim().toUpperCase() 
-        : obtenirNomOperateurConnecte();
+  // 🛡️ EXCLUSION DES MOUVEMENTS DE COMMANDES ET LIVRAISONS DE L'AFFICHAGE VISUEL UNIQUEMENT
+  const documentsGroupes = Object.values(
+    mouvements
+      .filter((mvt) => {
+        const motif = (mvt.motif_remarque || '').trim().toUpperCase();
+        return !motif.includes('CMD-') && !motif.includes('LIVRAISON') && !motif.includes('RESTITUTION');
+      })
+      .reduce((acc, mvt) => {
+        const numDocBrut = mvt.motif_remarque || 'SANS-REF';
+        const numDocCle = formaterNumeroDocAffichage(numDocBrut);
+        
+        if (!acc[numDocCle]) { 
+          const operateurEnBase = mvt.operateur;
+          const operateurAffiche = (operateurEnBase && String(operateurEnBase).trim() !== '' && String(operateurEnBase).trim().toLowerCase() !== 'utilisateur' && String(operateurEnBase).trim() !== 'Utilisateur Inconnu') 
+            ? String(operateurEnBase).trim().toUpperCase() 
+            : obtenirNomOperateurConnecte();
 
-      const refDocAssociee = referencesDocsMap[numDocBrut] || '';
+          const refDocAssociee = referencesDocsMap[numDocBrut] || '';
 
-      acc[numDocCle] = { 
-        numeroDoc: numDocCle, 
-        numeroDocBrut: numDocBrut, 
-        referenceDoc: refDocAssociee,
-        date: mvt.created_at || '', 
-        type: mvt.type_mouvement || '', 
-        depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
-        depotDestNom: obtenirNomDestinationParMvt(mvt),
-        operateur: operateurAffiche, 
-        lignesCount: 0 
-      }; 
-    }
-    acc[numDocCle].lignesCount += 1;
-    return acc;
-  }, {}));
+          acc[numDocCle] = { 
+            numeroDoc: numDocCle, 
+            numeroDocBrut: numDocBrut, 
+            referenceDoc: refDocAssociee,
+            date: mvt.created_at || '', 
+            type: mvt.type_mouvement || '', 
+            depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
+            depotDestNom: obtenirNomDestinationParMvt(mvt),
+            operateur: operateurAffiche, 
+            lignesCount: 0 
+          }; 
+        }
+        acc[numDocCle].lignesCount += 1;
+        return acc;
+      }, {})
+  );
 
   const documentsFiltresParDate = documentsGroupes.filter((doc) => {
     if (!doc.date) return true;
