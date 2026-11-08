@@ -32,6 +32,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   // État pour la recherche textuelle d'un article
   const [rechercheArticleInput, setRechercheArticleInput] = useState('');
+  
+  // État pour la recherche textuelle spécifique du rapport de stock
+  const [rechercheRapportInput, setRechercheRapportInput] = useState('');
 
   // Récupération propre de la session locale au montage
   useEffect(() => {
@@ -114,6 +117,10 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const [colonneTri, setColonneTri] = useState('Designation');
   const [ordreTri, setOrdreTri] = useState('asc');
+
+  // État spécifique pour le tri du rapport de stock sur la colonne Désignation
+  const [colonneTriRapport, setColonneTriRapport] = useState('Designation');
+  const [ordreTriRapport, setOrdreTriRapport] = useState('asc');
 
   const [nouveauArticle, setNouveauArticle] = useState({
     Code_Barre: '',
@@ -321,7 +328,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     return aAppro;
   };
 
-  // MOTEUR UNIFIÉ GLOBAL : CALCUL EXACT DU STOCK RÉEL (CORRIGÉ AVEC NEUTRALITÉ DES TRANSFERTS INTERNES)
   const calculerLigneRapportStockPourDepot = (articleId, dCible) => {
     let stockInitial = 0;
     let entrees = 0;
@@ -347,7 +353,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
           entrees += qte;
         } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
           if (memeDepotInterne) {
-            // Transfert interne au même dépôt : neutre (pas d'impact sur le stock global du dépôt)
+            // Transfert interne au même dépôt : neutre
           } else if (dCible !== 'TOUS') {
             if (estSource) sorties += qte;
             if (estDestination) entrees += qte;
@@ -772,6 +778,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const articlesRapportFiltres = articles.filter((art) => {
     const artId = art.id_article || art.id;
+
+    const designationArt = (art.Designation || art.designation || '').toLowerCase();
+    if (rechercheRapportInput.trim() !== '' && !designationArt.includes(rechercheRapportInput.trim().toLowerCase())) {
+      return false;
+    }
+
     return articleAeuMouvementChezPartenaire(artId, depotRapportFiltre);
   });
 
@@ -782,6 +794,16 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     } else {
       setColonneTri(colonne);
       setOrdreTri('asc');
+    }
+  };
+
+  const gererTriRapport = (colonne) => {
+    if (enTrainDeSauvegarder) return;
+    if (colonneTriRapport === colonne) {
+      setOrdreTriRapport(ordreTriRapport === 'asc' ? 'desc' : 'asc');
+    } else {
+      setColonneTriRapport(colonne);
+      setOrdreTriRapport('asc');
     }
   };
 
@@ -801,6 +823,17 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
     if (valA < valB) return ordreTri === 'asc' ? -1 : 1;
     if (valA > valB) return ordreTri === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const articlesRapportTries = [...articlesRapportFiltres].sort((a, b) => {
+    let valA, valB;
+    if (colonneTriRapport === 'Designation') {
+      valA = String(a.Designation || a.designation || '').toLowerCase();
+      valB = String(b.Designation || b.designation || '').toLowerCase();
+    }
+    if (valA < valB) return ordreTriRapport === 'asc' ? -1 : 1;
+    if (valA > valB) return ordreTriRapport === 'asc' ? 1 : -1;
     return 0;
   });
 
@@ -830,7 +863,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const colSpanTotal = 2 + emplacementsTableau.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
 
-  // RAPPORT DE STOCK CORRIGÉ : Calcul dynamique et continu (Stock Initial, Entrées, Total, Sorties, Réel)
   const calculerLigneRapportStock = (articleId) => {
     const dCible = depotRapportFiltre;
     
@@ -838,7 +870,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     let entrees = 0;
     let sorties = 0;
 
-    // 1. Analyse chronologique des mouvements
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
       const dateMvt = (m.created_at || '').split('T')[0];
@@ -847,14 +878,11 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
       const estSource = String(m.id_depot_source || '') === String(dCible);
       const estDestination = String(m.id_depot_destination || '') === String(dCible);
-      
-      // Vérification si c'est un transfert interne au même dépôt
       const memeDepotInterne = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
 
       if (dCible !== 'TOUS' && !estSource && !estDestination) return;
 
       if (dateDebutRapport && dateMvt && dateMvt < dateDebutRapport) {
-        // Mouvements antérieurs : impactent le stock initial
         if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
           if (dCible === 'TOUS' || estSource) stockInitial -= qte;
         } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
@@ -868,19 +896,16 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
           stockInitial += qte;
         }
       } else if ((!dateDebutRapport || !dateMvt || dateMvt >= dateDebutRapport) && (!dateFinRapport || !dateMvt || dateMvt <= dateFinRapport)) {
-        // Mouvements pendant la période
         if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
           if (dCible === 'TOUS' || estSource) sorties += qte;
         } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
           entrees += qte;
         } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
           if (memeDepotInterne) {
-            // Un transfert interne au même dépôt ne modifie pas les entrées globales du dépôt (neutre)
+            // Neutre
           } else if (dCible !== 'TOUS') {
             if (estSource) sorties += qte;
             if (estDestination) entrees += qte;
-          } else {
-            // En vue globale "TOUS", un transfert interne est neutre
           }
         } else {
           entrees += qte;
@@ -888,7 +913,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       }
     });
 
-    // 2. Intégration des approvisionnements (entrées et stock initial)
     approvisionnements.forEach(app => {
       const dateApp = (app.created_at || '').split('T')[0];
       const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot || '') === String(dCible);
@@ -930,17 +954,56 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     const nomEntreprise = entrepriseInfo?.nom_entreprise || entrepriseInfo?.nom || '4TS Suite manager';
     const dateImpression = new Date().toLocaleDateString('fr-FR');
     
+    const formatIsoDateFr = (isoStr) => {
+      if (!isoStr) return '';
+      const parts = isoStr.split('-');
+      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      return isoStr;
+    };
+
     let infosFiltresHtml = '';
+    const libelleDepotRapport = moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt';
+
     if (modeVue === 'catalogue') {
       const famObj = familles.find(f => String(f.id) === String(familleFiltre));
       const depObj = depots.find(d => String(d.id) === String(depotFiltre));
       const empObj = emplacements.find(e => String(e.id) === String(emplacementFiltre));
-      const libelleDepotRapport = moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt';
+      
+      const nomDepotPartenaire = depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous';
+
       infosFiltresHtml = `
         <div class="meta-info">
           <span><strong>Famille :</strong> ${famObj ? (famObj.nom_famille || famObj.Nom_Famille) : 'Toutes'}</span>
-          <span><strong>${libelleDepotRapport} :</strong> ${depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous'}</span>
+          <span><strong>${libelleDepotRapport} :</strong> ${nomDepotPartenaire}</span>
           <span><strong>Livreur :</strong> ${empObj ? empObj.nom_emplacement : 'Tous'}</span>
+        </div>
+      `;
+    } else if (modeVue === 'statistiques') {
+      const depObj = depots.find(d => String(d.id) === String(depotStatFiltre));
+      const nomDepotPartenaire = depObj ? (depObj.nom_depot || depObj.Nom_Depot) : (moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts');
+      
+      const periodeTexte = (dateDebutStat && dateFinStat)
+        ? `Du ${formatIsoDateFr(dateDebutStat)} au ${formatIsoDateFr(dateFinStat)}`
+        : 'Période globale';
+
+      infosFiltresHtml = `
+        <div class="meta-info">
+          <span><strong>${libelleDepotRapport} :</strong> ${nomDepotPartenaire}</span>
+          <span><strong>Période :</strong> ${periodeTexte}</span>
+        </div>
+      `;
+    } else if (modeVue === 'rapport') {
+      const depObj = depots.find(d => String(d.id) === String(depotRapportFiltre));
+      const nomDepotPartenaire = depObj ? (depObj.nom_depot || depObj.Nom_Depot) : (moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts');
+      
+      const periodeTexte = (dateDebutRapport && dateFinRapport)
+        ? `Du ${formatIsoDateFr(dateDebutRapport)} au ${formatIsoDateFr(dateFinRapport)}`
+        : 'Période globale';
+
+      infosFiltresHtml = `
+        <div class="meta-info">
+          <span><strong>${libelleDepotRapport} :</strong> ${nomDepotPartenaire}</span>
+          <span><strong>Période :</strong> ${periodeTexte}</span>
         </div>
       `;
     }
@@ -990,7 +1053,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
           <span className="text-sm shrink-0">📦</span>
           <h3 className="font-extrabold text-slate-900 uppercase text-[11px] truncate">
-            GESTION DES ARTICLES [{moduleActuel}] ({articlesAffiches.length} / {articlesFiltres.length})
+            GESTION DES ARTICLES ({articlesAffiches.length} / {articlesFiltres.length})
           </h3>
           {isGestionPerissablesActive() && <span className="text-[8px] bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200 shrink-0">Périssables</span>}
         </div>
@@ -1772,10 +1835,36 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 </select>
               </div>
             </div>
+
+            <div>
+              <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5">Rechercher un article</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  disabled={enTrainDeSauvegarder}
+                  value={rechercheRapportInput}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setRechercheRapportInput(e.target.value)}
+                  placeholder="🔍 Saisir le nom d'un article..."
+                  style={{ textTransform: 'uppercase' }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 pl-7 font-extrabold text-slate-900 text-[10px] shadow-xs uppercase focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+                <span className="absolute left-2 top-2 text-slate-400 text-[10px]">🔍</span>
+                {rechercheRapportInput && (
+                  <button
+                    type="button"
+                    onClick={() => setRechercheRapportInput('')}
+                    className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 font-black text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex justify-between items-center bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-xs">
-            <h4 className="font-black uppercase text-[9.5px]">📊 RAPPORT DE STOCK PAR ARTICLE [{moduleActuel}]</h4>
+            <h4 className="font-black uppercase text-[9.5px]">📊 RAPPORT DE STOCK PAR ARTICLE</h4>
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
@@ -1790,7 +1879,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
-                  <th className="p-2.5">Désignation</th>
+                  <th 
+                    onClick={() => !enTrainDeSauvegarder && gererTriRapport('Designation')}
+                    className="p-2.5 cursor-pointer hover:bg-slate-200 select-none whitespace-nowrap"
+                  >
+                    Désignation {colonneTriRapport === 'Designation' && (ordreTriRapport === 'asc' ? '▲' : '▼')}
+                  </th>
                   <th className="p-2.5 text-center">Stock Initial</th>
                   <th className="p-2.5 text-center text-emerald-700">Entrées</th>
                   <th className="p-2.5 text-center">Stock Total</th>
@@ -1799,12 +1893,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                {articlesRapportFiltres.length === 0 ? (
+                {articlesRapportTries.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article n'a fait de mouvement pour ce partenaire.</td>
+                    <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun article ne correspond à votre recherche.</td>
                   </tr>
                 ) : (
-                  articlesRapportFiltres.map((art) => {
+                  articlesRapportTries.map((art) => {
                     const artId = art.id_article || art.id;
                     const rep = calculerLigneRapportStock(artId);
 
