@@ -36,14 +36,10 @@ export default function RootLayout({ children }) {
           defer
         ></script>
       </head>
-      {/* Fond global extérieur en gris clair */}
-      <body className="min-h-full flex flex-col p-2 sm:p-4 bg-slate-200 m-0">
-        {/* Conteneur principal qui remplace le bleu nuit par le fond gris clair/blanc des tableaux */}
-        <div className="flex-1 w-full max-w-full flex flex-col bg-slate-50 rounded-2xl shadow-xl border border-slate-300 overflow-hidden">
-          <main className="flex-1 w-full flex flex-col p-3 sm:p-5">
-            {children}
-          </main>
-        </div>
+      <body className="min-h-full flex flex-col p-0 bg-slate-100 m-0">
+        <main className="flex-1 w-full max-w-full flex flex-col">
+          {children}
+        </main>
       </body>
     </html>
   );
