@@ -20,8 +20,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
   const cleCacheReferencesDocs = `references_documents_${entrepriseId}_${moduleActuel}`;
 
-  const dateDuJourStr = new Date().toISOString().split('T')[0];
-
   const obtenirNomOperateurConnecte = () => {
     if (typeof window === 'undefined') return 'DC KTS';
     
@@ -134,9 +132,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
-  // MODIFICATION : Initialisation des filtres de date à la date du jour
-  const [filtreDateDebut, setFiltreDateDebut] = useState(dateDuJourStr);
-  const [filtreDateFin, setFiltreDateFin] = useState(dateDuJourStr);
+  const [filtreDateDebut, setFiltreDateDebut] = useState('');
+  const [filtreDateFin, setFiltreDateFin] = useState('');
 
   const [enTeteDoc, setEnTeteDoc] = useState({
     numeroDoc: '',
@@ -494,16 +491,29 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const verifierEnTeteAvantSaisie = () => {
-    if (typeOperation === 'TRANSFERT') {
-      if (!enTeteDoc.id_depot_source) { alert('⚠️ Sélectionnez le dépôt source.'); return false; }
-      if (!enTeteDoc.id_depot_destination) { alert('⚠️ Sélectionnez le dépôt destination.'); return false; }
+    // 1. Vérification de la zone Référence obligatoire
+    if (!enTeteDoc.referenceDoc || String(enTeteDoc.referenceDoc).trim() === '') {
+      alert('⚠️ La zone Référence est obligatoire pour pouvoir ajouter des articles.');
+      return false;
+    }
 
-      const memeDepot = String(enTeteDoc.id_depot_source) === String(enTeteDoc.id_depot_destination);
-      if (memeDepot && enTeteDoc.id_emplacement_source) {
-        if (!enTeteDoc.id_emplacement_destination) { alert('⚠️ Veuillez sélectionner l’emplacement / livreur de destination.'); return false; }
+    if (typeOperation === 'TRANSFERT') {
+      // 2. Dépôt d'origine obligatoire
+      if (!enTeteDoc.id_depot_source) { 
+        alert('⚠️ Sélectionnez le dépôt source (origine).'); 
+        return false; 
+      }
+      // 3. Dépôt de destination obligatoire
+      if (!enTeteDoc.id_depot_destination) { 
+        alert('⚠️ Sélectionnez le dépôt destination.'); 
+        return false; 
       }
     } else {
-      if (!enTeteDoc.id_depot_source) { alert('⚠️ Sélectionnez le dépôt.'); return false; }
+      // Dépôt d'origine obligatoire pour les autres types
+      if (!enTeteDoc.id_depot_source) { 
+        alert('⚠️ Sélectionnez le dépôt.'); 
+        return false; 
+      }
     }
     return true;
   };
@@ -903,7 +913,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           }} 
           className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
         >
-          ✍️ {mouvementEnEditionId ? 'Modifier' : 'Saisie mouvement'}
+          ✍️ {mouvementEnEditionId ? 'Modifier' : 'Nouveau mouvement'}
         </button>
         <button 
           type="button" 
@@ -958,7 +968,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   <input type="date" value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
                 </div>
                 <div>
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. (Optionnel)</label>
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. * (Obligatoire)</label>
                   <input type="text" value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: VENTE DJOMO" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
                 </div>
               </div>
@@ -966,7 +976,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               {typeOperation === 'TRANSFERT' ? (
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <div className="space-y-1 bg-orange-50/40 p-1.5 rounded-lg border border-orange-200">
-                    <label className="block font-black text-[8px] text-orange-800 uppercase">🏢 Origine (Source)</label>
+                    <label className="block font-black text-[8px] text-orange-800 uppercase">🏢 Origine (Source) *</label>
                     <select required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-700 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
@@ -977,12 +987,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </div>
 
                   <div className="space-y-1 bg-blue-50/40 p-1.5 rounded-lg border border-blue-200">
-                    <label className="block font-black text-[8px] text-blue-800 uppercase">🎯 Destination</label>
+                    <label className="block font-black text-[8px] text-blue-800 uppercase">🎯 Destination *</label>
                     <select required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-blue-700 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
                     <select value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
-                      <option value="">-- Emplacement --</option>
+                      <option value="">-- Emplacement (Optionnel) --</option>
                       {emplacementsDestinationFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                     </select>
                   </div>
@@ -990,7 +1000,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               ) : (
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-                    <label className="block font-black text-[8px] text-slate-700 uppercase">🏢 Dépôt</label>
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">🏢 Dépôt *</label>
                     <select required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-600 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
