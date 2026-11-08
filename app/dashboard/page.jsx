@@ -308,7 +308,7 @@ function DashboardContent() {
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-slate-100 text-slate-800 flex items-center justify-center font-sans text-xs">
+      <div className="h-screen bg-slate-100 text-slate-800 flex items-center justify-center font-sans text-xs">
         Chargement instantané de la suite 4TS...
       </div>
     );
@@ -326,10 +326,10 @@ function DashboardContent() {
     : 'bg-white hover:bg-blue-50/50 border-blue-600/30 hover:border-blue-500 text-slate-900 shadow-2xs';
 
   const contenuApp = (
-    <div className={`min-h-screen ${bgPrincipal} flex flex-col font-sans relative overflow-y-auto w-full max-w-full text-xs`}>
+    <div className={`h-full ${bgPrincipal} flex flex-col font-sans relative overflow-hidden w-full max-w-full text-xs`}>
       
-      {/* BARRE SUPÉRIEURE */}
-      <div className={`sticky top-0 z-20 ${bgHeaderNav} border-b px-3 py-2.5 shrink-0 flex items-center justify-between w-full`}>
+      {/* 1. BARRE SUPÉRIEURE (FIGÉE) */}
+      <div className={`top-0 z-20 ${bgHeaderNav} border-b px-3 py-2.5 shrink-0 flex items-center justify-between w-full`}>
         <div className="flex items-center space-x-2.5">
           <div className={`w-8 h-8 flex items-center justify-center shrink-0 rounded-lg border p-1 ${logoBoxClass}`}>
             <img 
@@ -386,7 +386,8 @@ function DashboardContent() {
         </div>
       </div>
 
-      <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 pb-20 w-full max-w-7xl mx-auto">
+      {/* 2. ZONE CENTRALE (DÉFILEMENT INDÉPENDANT) */}
+      <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 overflow-y-auto w-full max-w-7xl mx-auto">
         {ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
@@ -424,7 +425,6 @@ function DashboardContent() {
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
           <div className="space-y-3 w-full">
-            {/* BOUTON SUPER-ADMIN PLACÉ ICI UNIQUEMENT POUR LE SUPER-ADMIN */}
             {estSuperAdmin && (
               <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60' : 'bg-white border-blue-600/30'} p-3 rounded-xl border shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3`}>
                 <div>
@@ -618,8 +618,8 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* BARRE DE NAVIGATION INFÉRIEURE */}
-      <div className={`sticky bottom-0 left-0 right-0 z-30 ${bgHeaderNav} border-t py-2.5 px-6 flex justify-around items-center shadow-2xl shrink-0 w-full`}>
+      {/* 3. BARRE DE NAVIGATION INFÉRIEURE (FIGÉE) */}
+      <div className={`bottom-0 left-0 right-0 z-30 ${bgHeaderNav} border-t py-2.5 px-6 flex justify-around items-center shadow-2xl shrink-0 w-full`}>
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
           className={`flex flex-col items-center space-y-0.5 transition ${
@@ -661,13 +661,13 @@ function DashboardContent() {
   );
 
   return (
-    <div className={`w-full min-h-screen ${isDarkMode ? 'bg-[#02050b]' : 'bg-slate-200'} flex justify-center items-center`}>
-      <div className="hidden md:block w-full max-w-[1400px]">
+    <div className={`w-full h-screen ${isDarkMode ? 'bg-[#02050b]' : 'bg-slate-200'} flex justify-center items-center overflow-hidden`}>
+      <div className="hidden md:block w-full h-full max-w-[1400px]">
         <SimulateurCadre>
           {contenuApp}
         </SimulateurCadre>
       </div>
-      <div className="block md:hidden w-full">
+      <div className="block md:hidden w-full h-full">
         {contenuApp}
       </div>
     </div>
