@@ -543,7 +543,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       if (!estSansStockage && etaitDejaLivre && !estLivreVerif) {
         const empIdTrouve = trouverIdEmplacementLivreur(cmd.vendeur_livreur);
-        const depotRestitution = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+        const depotRestitution = cmd.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || null));
 
         for (const item of lignesCmd) {
           const payloadRestitution = {
@@ -568,7 +568,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
         const empIdTrouve = trouverIdEmplacementLivreur(cmd.vendeur_livreur);
-        const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+        const depotSourceMvt = cmd.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || (depots[0]?.id || null)));
 
         for (const item of lignesCmd) {
           const payloadMouvement = {
@@ -598,6 +598,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   };
 
+  // --- MISE À JOUR CLE : Sélection automatique du dépôt source lié au partenaire ---
   const handleChangementPartenaire = (partenaireId) => {
     setIdPartenaire(partenaireId);
     if (!commandeEnEdition) setLignesSaisies([]);
@@ -606,8 +607,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     calculerNumeroAutomatique(commandes, partenaireId, dateCommande);
 
     if (!partenaireId) {
-      setDepotId('AUCUN_DEPOT');
       setPartenaireSansStockage(false);
+      setDepotId('AUCUN_DEPOT');
       return;
     }
 
@@ -622,26 +623,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         setPointADepart(partObj.adresse);
       }
 
-      if (partObj.id_depot) {
-        setDepotId(partObj.id_depot);
-      } else {
-        const nomPart = (partObj.nom_fournisseur || partObj.nom || '').trim().toUpperCase();
-        const depotTrouve = depots.find(d => {
-          const nomDepot = (d.nom_depot || d.nom || d.libelle || '').trim().toUpperCase();
-          return nomDepot === nomPart || nomDepot.includes(nomPart) || nomPart.includes(nomDepot);
-        });
+      // Remplissage automatique du Dépôt Source basé sur le nom du partenaire ou son id_depot
+      const nomPartenaireClean = (partObj.nom_fournisseur || partObj.nom || '').trim().toUpperCase();
+      const depotAssocie = depots.find(d => {
+        const nomDep = (d.nom_depot || d.Nom_Depot || d.nom || '').trim().toUpperCase();
+        return nomDep === nomPartenaireClean || String(d.id) === String(partObj.id_depot);
+      });
 
-        if (depotTrouve) {
-          setDepotId(depotTrouve.id);
-        } else if (depots.length === 1) {
-          setDepotId(depots[0].id);
-        } else {
-          setDepotId('AUCUN_DEPOT');
-        }
+      if (depotAssocie) {
+        setDepotId(depotAssocie.id || depotAssocie.ID);
+      } else {
+        // Fallback s'il n'est pas encore chargé dans la liste
+        setDepotId(partObj.id_depot || 'AUCUN_DEPOT');
       }
     } else {
-      setDepotId('AUCUN_DEPOT');
       setPartenaireSansStockage(false);
+      setDepotId('AUCUN_DEPOT');
     }
 
     setTimeout(() => {
@@ -716,8 +713,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   });
 
   const enteteValide = partenaireSansStockage 
-    ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '')
-    : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '');
+    ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '' && (depotId && depotId !== 'AUCUN_DEPOT'))
+    : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && (depotId && depotId !== 'AUCUN_DEPOT'));
 
   const ajouterArticleAuPanier = async (artObj) => {
     if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
@@ -730,7 +727,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     if (!enteteValide) {
-      alert('⚠️ Veuillez d\'abord remplir tous les champs obligatoires (Partenaire, N° Client à 9 chiffres, N° CMD, Montant, Point A et Point B) avant d\'ajouter des articles.');
+      alert('⚠️ Veuillez d\'abord remplir tous les champs obligatoires, y compris le Dépôt source, avant d\'ajouter des articles.');
       return;
     }
 
@@ -738,7 +735,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const stockDisp = await recupererStockReelRPC(idArt, livreurAssigne);
 
     if (stockDisp <= 0) {
-      alert(`❌ Cet article est épuisé ou indisponible pour ce livreur/dépôt.`);
+      alert(`❌ Cet article est épuisé ou indisponible pour ce dépôt/livreur.`);
       return;
     }
 
@@ -798,6 +795,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1');
     setDateCommande(cmd.date_commande || new Date().toISOString().split('T')[0]);
     setIdPartenaire(cmd.id_partenaire || '');
+    setDepotId(cmd.id_depot || 'AUCUN_DEPOT');
     setMontantSaisi(cmd.montant_commande !== undefined && cmd.montant_commande !== null ? String(cmd.montant_commande) : '0');
     setPointADepart(cmd.point_a || '');
     setAdresseLivraison(cmd.adresse_livraison || '');
@@ -811,6 +809,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     
     if (cmd.id_partenaire) {
       handleChangementPartenaire(cmd.id_partenaire);
+      if (cmd.id_depot) setDepotId(cmd.id_depot);
     }
 
     try {
@@ -857,7 +856,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         const empIdTrouve = trouverIdEmplacementLivreur(commandeEnEdition.vendeur_livreur);
         const lignesCmd = lignesCommandesMap[commandeEnEdition.id] || [];
         
-        const depotRestitution = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+        const depotRestitution = commandeEnEdition.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || null));
 
         for (const item of lignesCmd) {
           const payloadRestitution = {
@@ -949,6 +948,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       return;
     }
 
+    if (!partenaireSansStockage && (!depotId || depotId === 'AUCUN_DEPOT')) {
+      alert('🚫 ACTION BLOQUÉE : Veuillez sélectionner obligatoirement un dépôt d’origine.');
+      setSauvegardeEnCours(false);
+      return;
+    }
+
     if (partenaireSansStockage && !pointADepart.trim()) {
       alert('⚠️ Pour un partenaire sans stockage, veuillez préciser le Point A (point de départ).');
       return;
@@ -1008,8 +1013,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       }
 
       const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
+      const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
 
-      // PAYLOAD PROPRE SANS id_depot (absent de la table Supabase)
       let payload = {
         id_entreprise: currentEntId,
         module: moduleActuel,
@@ -1017,6 +1022,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         date_commande: dateNormalisee,
         id_partenaire: idPartenaire,
         nom_partenaire: partObj ? (partObj.nom_fournisseur || partObj.nom) : '',
+        id_depot: depotSourceMvt,
         montant_commande: napGlobal,
         point_a: partenaireSansStockage ? pointADepart : null,
         adresse_livraison: adresseLivraison,
@@ -1053,7 +1059,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
         if (!partenaireSansStockage && etaitDejaLivre && !estLivreVerif) {
           const lignesCmdPrecedentes = lignesCommandesMap[commandeEnEdition.id] || [];
-          const depotRestitution = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+          const depotRestitution = depotSourceMvt;
 
           for (const item of lignesCmdPrecedentes) {
             const payloadRestitution = {
@@ -1077,7 +1083,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
 
         if (!partenaireSansStockage && estLivreVerif && !etaitDejaLivre) {
-          const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: currentEntId,
@@ -1118,7 +1123,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
 
         if (!partenaireSansStockage && estLivreVerif) {
-          const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: currentEntId,
@@ -1607,6 +1611,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 setCommandeEnEdition(null);
                 setNumeroCommande('1');
                 setIdPartenaire('');
+                setDepotId('AUCUN_DEPOT');
                 setPartenaireSansStockage(false);
                 setPointADepart('');
                 setNumeroClient('');
@@ -2120,7 +2125,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
           <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-2.5">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
                 <input
@@ -2145,6 +2150,24 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   </span>
                   <span className="text-slate-400 shrink-0">🔍</span>
                 </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Dépôt Source (Auto) *</label>
+                <select
+                  disabled
+                  value={depotId}
+                  className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs cursor-not-allowed"
+                >
+                  <option value="AUCUN_DEPOT">-- Sélection automatique via le partenaire --</option>
+                  {depots.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.nom_depot || d.nom || d.libelle}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -2334,7 +2357,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                 {!enteteValide ? (
                   <div className="p-2 text-center text-amber-700 font-bold text-[10px] bg-amber-50 rounded-lg border border-amber-200">
-                    ⚠️ Remplir l'en-tête et un N° client à 9 chiffres d'abord.
+                    ⚠️ Remplir l'en-tête, le Dépôt et un N° client à 9 chiffres d'abord.
                   </div>
                 ) : articlesFiltres.length === 0 ? (
                   <div className="p-2 text-center text-slate-500 font-bold text-[10px] bg-slate-50 rounded-lg border border-slate-200">
@@ -2347,7 +2370,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                       return (
                         <ArticleItemStockCard 
-                          key={`${idArt}_${livreurAssigne}_${idPartenaire}`} 
+                          key={`${idArt}_${livreurAssigne}_${depotId}`} 
                           art={art} 
                           onSelect={() => ajouterArticleAuPanier(art)} 
                           chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
@@ -2621,7 +2644,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                       return (
                         <ArticleModalItemCard 
-                          key={`${idArt}_${livreurAssigne}_${idPartenaire}`} 
+                          key={`${idArt}_${livreurAssigne}_${depotId}`} 
                           art={art} 
                           onSelect={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} 
                           chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}

@@ -68,6 +68,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const [fournisseurs, setFournisseurs] = useState([]);
   const [depots, setDepots] = useState([]);
+  const [entrepriseInfo, setInfosEntreprise] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
@@ -159,6 +160,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     if (!silencieux && approvisionnements.length === 0) setChargement(true);
     try {
       await chargerDroitsUtilisateur();
+
+      const { data: dataEnt } = await supabase
+        .from('entreprises')
+        .select('*')
+        .or(`id.eq.${entrepriseId},id_entreprise.eq.${entrepriseId},code_entreprise.eq.${entrepriseId}`)
+        .single();
+      if (dataEnt) setInfosEntreprise(dataEnt);
 
       const { data: dataDepots } = await supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setDepots(dataDepots || []);
@@ -446,7 +454,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
           prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
           sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
         })),
-        created_at: `${dateDoc}T12:00:00` // 👈 Utilisation de la date sélectionnée (antidatée) pour préserver la date exacte
+        created_at: `${dateDoc}T12:00:00`
       };
 
       if (approEnEditionId) { 
@@ -517,7 +525,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
           prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
           sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
         })),
-        created_at: `${dateDoc}T12:00:00` // 👈 Utilisation de la date sélectionnée
+        created_at: `${dateDoc}T12:00:00`
       };
 
       if (approEnEditionId) { 
@@ -714,17 +722,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder;
   const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
-  // --- VALEURS DE SÉCURITÉ POUR L'IMPRESSION (ROBUSTE POUR ÉTAT FORMULAIRE ET HISTORIQUE) ---
+  // --- VARIABLES D'IMPRESSION HARMONISÉES EXACTEMENT COMME LE RAPPORT DE STOCK ---
   const fournisseurIdEffectif = idFournisseur || docEnEditionObjet?.id_fournisseur || '';
   const nomFournisseurImpression = obtenirNomFournisseur(fournisseurIdEffectif) || '-';
-
-  const referenceEffective = referenceFournisseur || docEnEditionObjet?.numero_commande || docEnEditionObjet?.reference || '-';
 
   const depotIdEffectif = idDepotDestination || docEnEditionObjet?.id_depot_destination || '';
   const nomDepotObjEffectif = depots.find(d => String(d.id) === String(depotIdEffectif));
   const depotTexteImpression = estPartenaireSansStockage ? 'SANS STOCK' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '-');
 
-  // Articles unifiés : priorité aux lignes en cours dans le formulaire, sinon aux articles du document en édition
+  // Extraction fiable des articles à imprimer depuis le formulaire actif ou le document sélectionné en édition
   let articlesImpression = lignesValidees.length > 0 ? lignesValidees : [];
   if (articlesImpression.length === 0 && docEnEditionObjet?.details_articles) {
     let details = docEnEditionObjet.details_articles;
@@ -743,10 +749,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const montantPayeEffectif = montantPaye || docEnEditionObjet?.montant_paye || 0;
   const soldeRestantImpression = statutPaiementEffectif === 'SOLDE' ? 0 : statutPaiementEffectif === 'CREDIT' ? montantTotalImpression : Math.max(0, montantTotalImpression - (parseFloat(montantPayeEffectif) || 0));
 
+  const nomEntrepriseImpression = entrepriseInfo?.nom_entreprise || entrepriseInfo?.nom || '4TS Suite manager';
+  const libelleDepotImpression = moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt';
+
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* 📄 MODÈLE D'IMPRESSION PROFESSIONNEL (UNE SEULE PAGE STRICTE, SANS DÉBORDEMENT, SANS MODULE LIVRAISON) */}
+      {/* 📄 MODÈLE D'IMPRESSION HARMONISÉ EXACTEMENT COMME LE RAPPORT DE STOCK (UNE SEULE PAGE STRICTE) */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           body * { visibility: hidden; }
@@ -759,72 +768,65 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
             height: 100vh;
             max-height: 275mm;
             margin: 0; 
-            padding: 5mm; 
+            padding: 15px; 
             background: white; 
             box-sizing: border-box;
             page-break-after: avoid;
             page-break-before: avoid;
             page-break-inside: avoid;
             overflow: hidden;
+            font-family: Arial, sans-serif;
+            color: #0f172a;
           }
           @page { size: A4 portrait; margin: 0; }
         }
       ` }} />
 
-      <div className="print-container hidden print:block bg-white text-slate-900 p-3 space-y-2 font-sans text-xs">
-        <div className="flex justify-between items-start border-b-2 border-orange-600 pb-2">
+      <div className="print-container hidden print:block bg-white text-slate-900 p-3 space-y-2.5 font-sans text-xs">
+        <div style={{ borderBottom: '3px solid #f97316', paddingBottom: '10px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-base">📦</span>
-              <h1 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">4TS : ISMA LOGISTIQUE</h1>
+            <h1 style={{ fontSize: '16px', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', margin: 0 }}>📦 {nomEntrepriseImpression}</h1>
+            <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', marginTop: '3px' }}>
+              {vueActive === 'formulaire_facture' ? "BON D'APPROVISIONNEMENT" : vueActive === 'formulaire_commande' ? "BON DE COMMANDE" : "BON D'APPROVISIONNEMENT"}
             </div>
           </div>
-          <div className="text-right">
-            <h2 className="font-black text-orange-600 text-xs uppercase">
-              {vueActive === 'formulaire_facture' ? "BON D'APPROVISIONNEMENT" : vueActive === 'formulaire_commande' ? "BON DE COMMANDE" : "BON D'APPROVISIONNEMENT"}
-            </h2>
-            <p className="text-[9px] font-bold text-slate-600 mt-0.5">Édité le : {new Date().toLocaleDateString('fr-FR')}</p>
+          <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#475569', textAlign: 'right' }}>
+            Édité le : {new Date().toLocaleDateString('fr-FR')}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200 text-[10px]">
-          <div>
-            <p><strong>N° Document :</strong> <span className="font-mono text-orange-600 font-bold">{numeroDoc}</span></p>
-            <p><strong>Date :</strong> {dateDoc ? new Date(dateDoc).toLocaleDateString('fr-FR') : '-'}</p>
-            <p><strong>Partenaire :</strong> <span className="uppercase font-extrabold text-slate-900">{nomFournisseurImpression}</span></p>
-          </div>
-          <div className="text-right">
-            <p><strong>Référence :</strong> {referenceEffective}</p>
-            <p><strong>Dépôt :</strong> <span className="uppercase font-extrabold text-slate-900">{depotTexteImpression}</span></p>
-            {vueActive === 'formulaire_facture' && <p><strong>Statut Paiement :</strong> {statutPaiementEffectif}</p>}
-          </div>
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '15px', fontSize: '10.5px' }}>
+          <span><strong>Partenaire :</strong> <span className="uppercase">{nomFournisseurImpression}</span></span>
+          <span><strong>{libelleDepotImpression} :</strong> <span className="uppercase">{depotTexteImpression}</span></span>
+          <span><strong>Date :</strong> {dateDoc ? new Date(dateDoc).toLocaleDateString('fr-FR') : '-'}</span>
+          <span><strong>Réf :</strong> {referenceFournisseur || docEnEditionObjet?.numero_commande || '-'}</span>
         </div>
 
-        <table className="w-full border-collapse border border-slate-300 text-[10px] mt-1.5">
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px', fontSize: '10px' }}>
           <thead>
-            <tr className="bg-slate-100 text-slate-800 uppercase text-[9px] font-black">
-              <th className="border border-slate-300 p-1.5 text-left">Désignation</th>
-              <th className="border border-slate-300 p-1.5 text-center w-16">Quantité</th>
+            <tr style={{ backgroundColor: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+              <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'left', textTransform: 'uppercase', fontWeight: 900, fontSize: '9px', color: '#334155' }}>Désignation</th>
+              <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'center', textTransform: 'uppercase', fontWeight: 900, fontSize: '9px', color: '#334155', width: '50px' }}>Qté</th>
               {!estModeLivraison && (
                 <>
-                  <th className="border border-slate-300 p-1.5 text-right w-24">P. Unitaire</th>
-                  <th className="border border-slate-300 p-1.5 text-right w-24">Total</th>
+                  <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'right', textTransform: 'uppercase', fontWeight: 900, fontSize: '9px', color: '#334155', width: '80px' }}>P. Unitaire</th>
+                  <th style={{ border: '1px solid #cbd5e1', padding: '6px 8px', textAlign: 'right', textTransform: 'uppercase', fontWeight: 900, fontSize: '9px', color: '#334155', width: '90px' }}>Total</th>
                 </>
               )}
             </tr>
           </thead>
           <tbody>
             {articlesImpression.length === 0 ? (
-              <tr><td colSpan={estModeLivraison ? 2 : 4} className="border border-slate-300 p-3 text-center text-slate-500 italic">Aucun article dans ce document.</td></tr>
+              <tr><td colSpan={estModeLivraison ? 2 : 4} style={{ border: '1px solid #cbd5e1', padding: '10px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>Aucun article dans ce document.</td></tr>
             ) : (
               articlesImpression.map((l, idx) => (
-                <tr key={idx} className="hover:bg-slate-50">
-                  <td className="border border-slate-300 p-1.5 font-bold uppercase">{l.designation}</td>
-                  <td className="border border-slate-300 p-1.5 text-center font-black">{l.quantite}</td>
+                <tr key={idx}>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '5px 8px', fontWeight: 'bold', textTransform: 'uppercase' }}>{l.designation}</td>
+                  <td style={{ border: '1px solid #cbd5e1', padding: '5px 8px', textAlign: 'center', fontWeight: 900 }}>{l.quantite}</td>
                   {!estModeLivraison && (
                     <>
-                      <td className="border border-slate-300 p-1.5 text-right">{Number(l.prix_achat || 0).toLocaleString('fr-FR')} F</td>
-                      <td className="border border-slate-300 p-1.5 text-right font-black">{(Number(l.quantite || 0) * Number(l.prix_achat || 0)).toLocaleString('fr-FR')} F</td>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 8px', textAlign: 'right' }}>{Number(l.prix_achat || 0).toLocaleString('fr-FR')} F</td>
+                      <td style={{ border: '1px solid #cbd5e1', padding: '5px 8px', textAlign: 'right', fontWeight: 900 }}>{(Number(l.quantite || 0) * Number(l.prix_achat || 0)).toLocaleString('fr-FR')} F</td>
                     </>
                   )}
                 </tr>
@@ -834,22 +836,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         </table>
 
         {!estModeLivraison && articlesImpression.length > 0 && (
-          <div className="flex justify-end pt-1">
-            <div className="w-56 bg-slate-50 p-2 rounded border border-slate-200 text-right space-y-0.5">
-              <p className="text-[10px] font-bold">Montant Total : <span className="font-black text-emerald-700 text-xs">{montantTotalImpression.toLocaleString('fr-FR')} F</span></p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+            <div style={{ width: '220px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '8px 10px', textAlign: 'right', fontSize: '10px' }}>
+              <p style={{ margin: '2px 0', fontWeight: 'bold' }}>Montant Total : <span style={{ fontWeight: 900, color: '#047857', fontSize: '11px' }}>{montantTotalImpression.toLocaleString('fr-FR')} F</span></p>
               {statutPaiementEffectif !== 'SOLDE' && (
                 <>
-                  <p className="text-[10px] font-bold">Montant Réglé : <span className="font-bold">{Number(montantPayeEffectif || 0).toLocaleString('fr-FR')} F</span></p>
-                  <p className="text-[10px] font-bold">Reste à payer : <span className="font-bold text-orange-600">{soldeRestantImpression.toLocaleString('fr-FR')} F</span></p>
+                  <p style={{ margin: '2px 0', fontWeight: 'bold' }}>Montant Réglé : <span>{Number(montantPayeEffectif || 0).toLocaleString('fr-FR')} F</span></p>
+                  <p style={{ margin: '2px 0', fontWeight: 'bold' }}>Reste à payer : <span style={{ color: '#ea580c', fontWeight: 900 }}>{soldeRestantImpression.toLocaleString('fr-FR')} F</span></p>
                 </>
               )}
             </div>
           </div>
         )}
 
-        <div className="pt-3 grid grid-cols-2 text-[10px] font-bold text-slate-700">
+        <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', color: '#334155' }}>
           <div><p>Signature & Cachet Partenaire :</p></div>
-          <div className="text-right"><p>Signature & Cachet Entreprise :</p></div>
+          <div style={{ textAlign: 'right' }}><p>Signature & Cachet Entreprise :</p></div>
         </div>
       </div>
 
@@ -884,7 +886,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               onClick={() => setVueActive('liste')}
               className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
             >
-              ✖ Fermer
+              ✕ Fermer
             </button>
           )}
         </div>

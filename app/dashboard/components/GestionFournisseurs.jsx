@@ -36,14 +36,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const estModeLivraison = moduleActuel === 'LIVRAISON';
   const libelleEntite = estModeLivraison ? 'PARTENAIRES' : 'FOURNISSEURS';
 
-  // États initialisés vides pour éviter les faux droits par défaut au démarrage
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
-
-  // Référence pour cibler le champ Nom / Raison Sociale
   const nomInputRef = useRef(null);
 
-  // Récupération propre de la session locale au montage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
@@ -64,7 +60,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const emailActuel = emailConnecte || '';
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
   const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
     entrepriseId,
     utilisateurConnecte,
@@ -79,7 +74,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     suppression: verifierSuppression('fournisseurs', estSuperAdmin),
   };
 
-  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
   const [partenaires, setPartenaires] = useState(() => {
     if (typeof window !== 'undefined') {
       return localSync.recupererDonneesLocales(cleCacheFournisseurs) || [];
@@ -94,13 +88,11 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [chargement, setChargement] = useState(false);
   
   const [ongletActif, setOngletActif] = useState('repertoire');
-
   const [limitePartenaires, setLimitePartenaires] = useState(20);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [triCol, setTriCol] = useState('nom_fournisseur');
   const [triOrdre, setTriOrdre] = useState('asc');
-
   const [triHistCol, setTriHistCol] = useState('date');
   const [triHistOrdre, setTriHistOrdre] = useState('asc');
 
@@ -191,7 +183,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       setDepots(dataDepots || []);
 
     } catch (err) {
-      console.error('Erreur chargement données (mode hors-ligne actif) :', err.message);
+      console.error('Erreur chargement données :', err.message);
     } finally {
       setChargement(false);
     }
@@ -256,7 +248,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
     const nomPartenaireClean = (nouveauPartenaire.nom_fournisseur || '').trim().toUpperCase();
-    const nomDepotAssocie = (nouveauPartenaire.id_depot || nomPartenaireClean).trim().toUpperCase();
+    
+    // En mode livraison, le dépôt est strictement lié au nom du partenaire
+    const nomDepotAssocie = estModeLivraison ? nomPartenaireClean : (nouveauPartenaire.id_depot || nomPartenaireClean).trim().toUpperCase();
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -302,7 +296,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         module: moduleActuel,
         nom_fournisseur: nomPartenaireClean,
         statut_stockage: nouveauPartenaire.statut_stockage,
-        id_depot: nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' ? depotIdFinal : null,
+        id_depot: nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' ? (estModeLivraison ? nomDepotAssocie : depotIdFinal) : null,
         pays: nouveauPartenaire.pays,
         telephone: numeroComplet,
         email: (nouveauPartenaire.email || '').trim().toLowerCase(),
@@ -355,7 +349,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const ouvrirEdition = (partenaire) => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.modification) {
-      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les éléments.');
+      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
       return;
     }
     setPartenaireEnEdition(partenaire);
@@ -375,11 +369,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       email: (partenaire.email || '').toLowerCase(),
       adresse: partenaire.adresse || '',
       solde_dette: soldeCalcule,
-      id_depot: partenaire.id_depot || '',
+      id_depot: estModeLivraison ? (partenaire.nom_fournisseur || partenaire.nom || '') : (partenaire.id_depot || ''),
     });
     setAfficherForm(true);
 
-    // Focus et sélection automatique du champ Nom
     setTimeout(() => {
       if (nomInputRef.current) {
         nomInputRef.current.focus();
@@ -439,7 +432,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const totalOperations = approRattaches.length + bcRattaches.length;
 
       if (totalOperations > 0) {
-        alert(`❌ SUPPRESSION BLOQUÉE : Cet élément ("${partenaireNomStr}") possède déjà ${totalOperations} opération(s) enregistrée(s). Impossible de le supprimer.`);
+        alert(`❌ SUPPRESSION BLOQUÉE : Cet élément ("${partenaireNomStr}") possède déjà ${totalOperations} opération(s).`);
         setEnTrainDeSauvegarder(false);
         return;
       }
@@ -499,21 +492,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     return <span className="text-orange-600 ml-1 font-bold">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const gererTriHistorique = (colonne) => {
-    if (enTrainDeSauvegarder) return;
-    if (triHistCol === colonne) {
-      setTriHistOrdre(triHistOrdre === 'asc' ? 'desc' : 'asc');
-    } else {
-      setTriHistCol(colonne);
-      setTriHistOrdre('asc');
-    }
-  };
-
-  const rendreFlecheTriHistorique = (colonne) => {
-    if (triHistCol !== colonne) return <span className="text-slate-400 ml-1">↕</span>;
-    return <span className="text-orange-600 ml-1 font-bold">{triHistOrdre === 'asc' ? '↑' : '↓'}</span>;
-  };
-
   const partenairesFiltres = partenaires
     .filter((f) => {
       const nom = (f.nom_fournisseur || f.nom || '').toLowerCase();
@@ -539,146 +517,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     });
 
   const partenairesAffiches = partenairesFiltres.slice(0, limitePartenaires);
-
-  const obtenirHistoriquePartenaire = () => {
-    if (!partenaireHistoriqueId) return { lignes: [], soldeGlobal: 0 };
-    const partObj = partenaires.find(f => String(f.id) === String(partenaireHistoriqueId));
-    if (!partObj) return { lignes: [], soldeGlobal: 0 };
-
-    const partId = partObj.id;
-    const partNom = (partObj.nom_fournisseur || partObj.nom || '').trim().toUpperCase();
-
-    let operations = [];
-
-    approvisionnements.forEach((app) => {
-      const matchId = String(app.id_fournisseur) === String(partId);
-      const matchNom = String(app.nom_fournisseur || app.fournisseur || '').trim().toUpperCase() === partNom;
-
-      if (matchId || matchNom) {
-        const totaux = calculerTotauxFacture(app);
-
-        operations.push({
-          dataOrigine: app,
-          date: app.created_at || new Date().toISOString(),
-          numeroFacture: app.numero_bon || app.numero_commande || app.reference || 'FACTURE',
-          montant: totaux.montantTotal,
-          montantRegle: totaux.montantRegle,
-          reste: totaux.resteAPayer,
-          statut: totaux.statut,
-        });
-      }
-    });
-
-    if (dateDebut) operations = operations.filter(op => op.date.split('T')[0] >= dateDebut);
-    if (dateFin) operations = operations.filter(op => op.date.split('T')[0] <= dateFin);
-
-    operations.sort((a, b) => {
-      let valA = '';
-      let valB = '';
-
-      if (triHistCol === 'date') {
-        valA = a.date;
-        valB = b.date;
-      } else if (triHistCol === 'numeroFacture') {
-        valA = a.numeroFacture;
-        valB = b.numeroFacture;
-      } else if (triHistCol === 'montant') {
-        valA = a.montant;
-        valB = b.montant;
-      } else if (triHistCol === 'statut') {
-        valA = a.statut;
-        valB = b.statut;
-      }
-
-      if (valA < valB) return triHistOrdre === 'asc' ? -1 : 1;
-      if (valA > valB) return triHistOrdre === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    let cumulProgressif = 0;
-    const lignesAvecProgressif = operations.map(op => {
-      cumulProgressif += op.reste;
-      return { ...op, montantProgressif: cumulProgressif };
-    });
-
-    return { lignes: lignesAvecProgressif, soldeGlobal: cumulProgressif };
-  };
-
-  const partenaireSelectionneObj = partenaires.find(f => String(f.id) === String(partenaireHistoriqueId));
-  const resultatHistorique = obtenirHistoriquePartenaire();
-
-  const obtenirLignesFactureDetail = (factureObj) => {
-    if (!factureObj || !factureObj.details_articles) return [];
-    let details = [];
-    if (typeof factureObj.details_articles === 'string') {
-      try { details = JSON.parse(factureObj.details_articles); } catch (e) {}
-    } else if (Array.isArray(factureObj.details_articles)) {
-      details = factureObj.details_articles;
-    }
-
-    return details.map((item) => {
-      const artObj = articles.find(a => String(a.id_article || a.id) === String(item.id_article || item.article_id || item.id));
-      const designation = item.designation || item.Designation || artObj?.Designation || `Article #${item.id_article || item.article_id}`;
-      const qte = Number(item.quantite || item.Quantite || 0);
-      const prixUnitaire = Number(item.prix_achat_unitaire || item.prix_unitaire || item.Prix_Achat || 0);
-      const sousTotal = qte * prixUnitaire;
-
-      return { designation, qte, prixUnitaire, sousTotal };
-    });
-  };
-
-  const enregistrerReglementFacture = async (e) => {
-    e.preventDefault();
-    if (enTrainDeSauvegarder) return;
-    if (!permissions.modification) {
-      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
-      return;
-    }
-    if (!factureSelectionnee || !montantReglementSaisi) return;
-    const montantAvance = parseFloat(montantReglementSaisi);
-    if (isNaN(montantAvance) || montantAvance <= 0) {
-      alert('⚠️ Veuillez entrer un montant valide.');
-      return;
-    }
-
-    setEnTrainDeSauvegarder(true);
-    try {
-      const montantActuelRegle = Number(factureSelectionnee.montant_regle || factureSelectionnee.montant_paye || 0);
-      const nouveauRegle = montantActuelRegle + montantAvance;
-
-      const { error } = await supabase
-        .from('approvisionnements')
-        .update({
-          montant_regle: nouveauRegle,
-        })
-        .eq('id', factureSelectionnee.id);
-
-      if (error) {
-        localSync.ajouterFileAttente('UPDATE', 'approvisionnements', { id: factureSelectionnee.id, montant_regle: nouveauRegle });
-      }
-
-      alert('Règlement enregistré avec succès !');
-      setMontantReglementSaisi('');
-      setFactureSelectionnee(null);
-      await chargerPermissionsEtDonnees(true);
-    } catch (err) {
-      alert('Erreur : ' + err.message);
-    } finally {
-      setEnTrainDeSauvegarder(false);
-    }
-  };
-
-  const obtenirNomDepot = (depotId) => {
-    if (!depotId) return 'Aucun';
-    const d = depots.find(item => String(item.id) === String(depotId) || String(item.ID) === String(depotId));
-    return d ? d.nom_depot || d.Nom_Depot || d.code_depot : 'Non assigné';
-  };
-
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauPartenaire.pays) || LISTE_PAYS[0];
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
-      
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -703,7 +545,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 setPartenaireEnEdition(null);
                 setAfficherForm(true);
 
-                // Focus et sélection automatique du texte à l'ouverture du formulaire Nouveau
                 setTimeout(() => {
                   if (nomInputRef.current) {
                     nomInputRef.current.focus();
@@ -750,14 +591,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
                   {partenaireEnEdition ? `✏️ Fiche du ${estModeLivraison ? 'partenaire' : 'fournisseur'}` : `➕ Nouveau ${estModeLivraison ? 'partenaire' : 'fournisseur'}`}
                 </h4>
-                <button
-                  type="button"
-                  disabled={enTrainDeSauvegarder}
-                  onClick={annulerForm}
-                  className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5"
-                >
-                  ✖
-                </button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
               </div>
 
               <div className="space-y-2">
@@ -776,7 +610,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       setNouveauPartenaire({ 
                         ...nouveauPartenaire, 
                         nom_fournisseur: val, 
-                        id_depot: !nouveauPartenaire.id_depot || nouveauPartenaire.id_depot === nouveauPartenaire.nom_fournisseur ? val : nouveauPartenaire.id_depot 
+                        id_depot: estModeLivraison ? val : (!nouveauPartenaire.id_depot || nouveauPartenaire.id_depot === nouveauPartenaire.nom_fournisseur ? val : nouveauPartenaire.id_depot)
                       });
                     }}
                     placeholder="EX: SARL FESCO"
@@ -788,9 +622,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   <label className="block font-black mb-1 text-[9px] text-slate-700 uppercase">Statut (Gestion du stock) *</label>
                   <div className="grid grid-cols-2 gap-2">
                     <label className={`flex items-center gap-2 p-2 rounded border cursor-pointer font-extrabold text-xs transition ${
-                      nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' 
-                        ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-xs' 
-                        : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                      nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-xs' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                     }`}>
                       <input
                         type="radio"
@@ -805,9 +637,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                     </label>
 
                     <label className={`flex items-center gap-2 p-2 rounded border cursor-pointer font-extrabold text-xs transition ${
-                      nouveauPartenaire.statut_stockage === 'SANS_STOCKAGE' 
-                        ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-xs' 
-                        : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                      nouveauPartenaire.statut_stockage === 'SANS_STOCKAGE' ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-xs' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                     }`}>
                       <input
                         type="radio"
@@ -825,43 +655,15 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
                 {nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && estModeLivraison && (
                   <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">DÉPÔT ASSOCIÉ (Créé automatiquement)</label>
-                    <input
-                      type="text"
-                      disabled={enTrainDeSauvegarder}
-                      value={nouveauPartenaire.id_depot}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, id_depot: e.target.value.toUpperCase() })}
-                      placeholder="EX: NOM DU DEPOT"
-                      className="w-full bg-white border border-orange-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs uppercase"
-                    />
-                  </div>
-                )}
-
-                {partenaireEnEdition && (
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Solde Dette</label>
+                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">DÉPÔT ASSOCIÉ (Identique au partenaire)</label>
                     <input
                       type="text"
                       disabled
-                      value={`${Number(nouveauPartenaire.solde_dette || 0).toLocaleString('fr-FR')} F`}
-                      className="w-full bg-slate-100 text-red-700 border border-slate-300 rounded p-1.5 font-black text-xs cursor-not-allowed"
+                      value={nouveauPartenaire.nom_fournisseur}
+                      className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-slate-800 text-xs shadow-xs uppercase cursor-not-allowed"
                     />
                   </div>
                 )}
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse</label>
-                  <input
-                    type="text"
-                    disabled={enTrainDeSauvegarder}
-                    value={nouveauPartenaire.adresse}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, adresse: e.target.value.toUpperCase() })}
-                    placeholder="EX: DOUALA - AKWA"
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-200">
@@ -880,13 +682,9 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
-                    Tel ({paysActuelObj.longueur} chiffres) *
-                  </label>
+                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Tel *</label>
                   <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">
-                      {paysActuelObj.indicatif}
-                    </span>
+                    <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
                     <input
                       type="text"
                       required
@@ -902,56 +700,17 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-                <input
-                  type="email"
-                  disabled={enTrainDeSauvegarder}
-                  value={nouveauPartenaire.email}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, email: e.target.value.toLowerCase() })}
-                  placeholder="contact@email.com"
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400"
-                />
-              </div>
-
-              <div className="pt-2 border-t border-slate-200 flex flex-wrap justify-between items-center gap-1.5">
-                <div className="flex items-center gap-1 flex-wrap">
-                  {nouveauPartenaire.telephone && nouveauPartenaire.telephone.length === paysActuelObj.longueur && (
-                    <>
-                      <a href={`tel:${getTelephoneComplet()}`} className="bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="Appeler">📞 Appel</a>
-                      <a href={`sms:${getTelephoneComplet()}`} className="bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="SMS">💬 SMS</a>
-                      <a href={`https://wa.me/${obtenirNumWhatsapp(getTelephoneComplet())}`} target="_blank" rel="noopener noreferrer" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-bold px-2.5 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="WhatsApp">
-                        WhatsApp
-                      </a>
-                    </>
-                  )}
-                  {nouveauPartenaire.email && (
-                    <a href={`mailto:${nouveauPartenaire.email}`} className="bg-slate-100 text-slate-800 hover:bg-slate-200 border border-slate-300 font-bold px-2 py-1 rounded text-[9.5px] flex items-center gap-1 transition" title="Email">📧 Email</a>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  {partenaireEnEdition && permissions.suppression && (
-                    <button
-                      type="button"
-                      disabled={enTrainDeSauvegarder}
-                      onClick={supprimerPartenaire}
-                      className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs transition"
-                    >
-                      {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
-                    </button>
-                  )}
-                  {permissions.modification && (
-                    <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs transition">
-                      {enTrainDeSauvegarder ? 'Enregistrement...' : (partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                    </button>
-                  )}
-                </div>
+              <div className="pt-2 border-t border-slate-200 flex justify-end items-center gap-1.5">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 text-slate-800 font-black px-3 py-1.5 rounded text-[10px]">Annuler</button>
+                {permissions.modification && (
+                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                  </button>
+                )}
               </div>
             </form>
           ) : (
-            <>
+            <div className="space-y-2">
               <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
                 <input
                   type="text"
@@ -959,296 +718,41 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   value={recherche}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-                  placeholder="RECHERCHER PAR NOM OU TÉLÉPHONE..."
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs placeholder:text-slate-400"
+                  placeholder="RECHERCHER..."
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs shadow-xs"
                 />
               </div>
 
-              <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
-                <span>Répertoire : <strong>{partenairesAffiches.length} / {partenairesFiltres.length}</strong> affiché(s)</span>
-              </div>
-
-              {chargement && partenaires.length === 0 ? (
-                <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
-              ) : partenairesAffiches.length === 0 ? (
-                <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-                  Aucun élément enregistré.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-                    <table className="w-full text-left text-xs table-fixed">
-                      <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
-                        <tr>
-                          <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_fournisseur')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200 transition">
-                            Nom / Raison Sociale {rendreFlecheTri('nom_fournisseur')}
-                          </th>
-                          <th className="p-2.5 w-[30%]">Statut Stock</th>
-                          <th onClick={() => !enTrainDeSauvegarder && gererTri('solde_dette')} className="p-2.5 w-[30%] text-right cursor-pointer hover:bg-slate-200 transition whitespace-nowrap">
-                            Solde Dette {rendreFlecheTri('solde_dette')}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                        {partenairesAffiches.map((f) => {
-                          const nomP = f.nom_fournisseur || f.nom || '';
-                          const soldeDetteCalcule = calculerSoldeDettePartenaire(f);
-                          const estSansStock = f.statut_stockage === 'SANS_STOCKAGE';
-
-                          return (
-                            <tr 
-                              key={f.id} 
-                              onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirEdition(f)}
-                              className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
-                              title={permissions.modification ? "Cliquer pour modifier" : ""}
-                            >
-                              <td className="p-2.5 font-black uppercase text-slate-900 truncate">{nomP}</td>
-                              <td className="p-2.5 whitespace-nowrap">
-                                <span className={`px-1.5 py-0.5 rounded font-black text-[9px] ${estSansStock ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-                                  {estSansStock ? '🚚 SANS STOCK' : `📦 ${obtenirNomDepot(f.id_depot)}`}
-                                </span>
-                              </td>
-                              <td className="p-2.5 text-right font-black text-red-600 whitespace-nowrap">
-                                {soldeDetteCalcule.toLocaleString('fr-FR')} F
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {limitePartenaires < partenairesFiltres.length && (
-                    <div className="text-center pt-2 pb-2">
-                      <button
-                        type="button"
-                        disabled={enTrainDeSauvegarder}
-                        onClick={() => setLimitePartenaires(prev => prev + 20)}
-                        className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
-                      >
-                        📥 Charger 20 de plus ({partenairesFiltres.length - limitePartenaires} restants)
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      {ongletActif === 'historique' && (
-        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
-          <h4 className="font-black text-slate-900 text-xs uppercase flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
-            <span>🔍</span> HISTORIQUE
-          </h4>
-
-          <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-            <div>
-              <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Sélectionner *</label>
-              <select
-                disabled={enTrainDeSauvegarder}
-                value={partenaireHistoriqueId}
-                onChange={(e) => setPartenaireHistoriqueId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs"
-              >
-                {partenaires.map((f) => (
-                  <option key={f.id} value={f.id}>🏢 {f.nom_fournisseur || f.nom}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Date Début :</label>
-                <input
-                  type="date"
-                  disabled={enTrainDeSauvegarder}
-                  value={dateDebut}
-                  onChange={(e) => setDateDebut(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-black text-slate-700 mb-0.5 text-[9px] uppercase">Date Fin :</label>
-                <input
-                  type="date"
-                  disabled={enTrainDeSauvegarder}
-                  value={dateFin}
-                  onChange={(e) => setDateFin(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl flex justify-between items-center text-[10px]">
-            <span className="font-black text-slate-900 uppercase">
-              🏢 SÉLECTION : {partenaireSelectionneObj ? (partenaireSelectionneObj.nom_fournisseur || partenaireSelectionneObj.nom) : 'Aucun'}
-            </span>
-            <span className="font-extrabold text-slate-700">{resultatHistorique.lignes.length} facture(s)</span>
-          </div>
-
-          <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-            <table className="w-full text-left text-xs table-fixed">
-              <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
-                <tr>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('date')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
-                    Date {rendreFlecheTriHistorique('date')}
-                  </th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('numeroFacture')} className="p-2.5 w-[30%] cursor-pointer hover:bg-slate-200 transition font-mono">
-                    N° Facture {rendreFlecheTriHistorique('numeroFacture')}
-                  </th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('montant')} className="p-2.5 w-[25%] cursor-pointer hover:bg-slate-200 transition">
-                    Montant {rendreFlecheTriHistorique('montant')}
-                  </th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTriHistorique('statut')} className="p-2.5 w-[20%] text-center cursor-pointer hover:bg-slate-200 transition">
-                    Statut {rendreFlecheTriHistorique('statut')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[10px]">
-                {resultatHistorique.lignes.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun historique d'achat.</td>
-                  </tr>
-                ) : (
-                  resultatHistorique.lignes.map((ligne, idx) => (
-                    <tr 
-                      key={idx} 
-                      onClick={() => !enTrainDeSauvegarder && setFactureSelectionnee(ligne.dataOrigine)}
-                      className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                      title="Cliquer pour ouvrir la facture"
-                    >
-                      <td className="p-2.5 text-slate-800 font-mono font-bold">{new Date(ligne.date).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-2.5 font-mono font-black text-orange-600 truncate">{ligne.numeroFacture}</td>
-                      <td className="p-2.5 font-black text-slate-900">{ligne.montant.toLocaleString('fr-FR')} F</td>
-                      <td className="p-2.5 text-center">
-                        <span className={`px-2 py-0.5 rounded font-black text-[9px] ${
-                          ligne.statut === 'Soldé' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-red-100 text-red-800 border border-red-200'
-                        }`}>
-                          {ligne.statut}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="bg-emerald-700 text-white p-3 rounded-xl flex justify-between items-center shadow-xs">
-            <span className="font-black text-[10px] uppercase tracking-wider">SOLDE GLOBAL DU COMPTE :</span>
-            <span className="text-xs font-black text-white font-mono">
-              {resultatHistorique.soldeGlobal.toLocaleString('fr-FR')} F CFA
-            </span>
-          </div>
-        </div>
-      )}
-
-      {factureSelectionnee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
-              <div>
-                <h3 className="font-black text-xs uppercase">📄 FACTURE</h3>
-                <p className="text-[10px] text-orange-400 font-mono font-extrabold">
-                  N° {factureSelectionnee.numero_bon || factureSelectionnee.numero_commande || 'FACTURE'}
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={() => setFactureSelectionnee(null)}
-                className="text-slate-300 hover:text-white font-black text-xs p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-3 overflow-y-auto flex-1 space-y-2 text-[10.5px] bg-slate-50">
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                 <table className="w-full text-left text-xs table-fixed">
-                  <thead className="bg-slate-100 border-b border-slate-200 text-[9px] uppercase font-black text-slate-800">
+                  <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                     <tr>
-                      <th className="p-2 w-[45%]">Article</th>
-                      <th className="p-2 w-[15%] text-center">Qté</th>
-                      <th className="p-2 w-[20%] text-right">P.U</th>
-                      <th className="p-2 w-[20%] text-right">Total</th>
+                      <th onClick={() => gererTri('nom_fournisseur')} className="p-2.5 w-[50%] cursor-pointer hover:bg-slate-200 transition">Nom / Raison Sociale</th>
+                      <th className="p-2.5 w-[50%]">Dépôt Source / Statut</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-[10px]">
-                    {obtenirLignesFactureDetail(factureSelectionnee).map((line, i) => (
-                      <tr key={i}>
-                        <td className="p-2 font-black uppercase text-slate-900 truncate">{line.designation}</td>
-                        <td className="p-2 text-center font-black text-orange-600">{line.qte}</td>
-                        <td className="p-2 text-right font-bold text-slate-800">{line.prixUnitaire.toLocaleString('fr-FR')}</td>
-                        <td className="p-2 text-right font-black text-emerald-700">{line.sousTotal.toLocaleString('fr-FR')}</td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                    {partenairesAffiches.map((f) => {
+                      const nomP = f.nom_fournisseur || f.nom || '';
+                      const estSansStock = f.statut_stockage === 'SANS_STOCKAGE';
+
+                      return (
+                        <tr key={f.id} onClick={() => permissions.modification && ouvrirEdition(f)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                          <td className="p-2.5 font-black uppercase text-slate-900 truncate">{nomP}</td>
+                          <td className="p-2.5 whitespace-nowrap">
+                            <span className={`px-1.5 py-0.5 rounded font-black text-[9px] ${estSansStock ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                              {estSansStock ? '🚚 SANS STOCK' : `🏢 Dépôt : ${nomP}`}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-
-              {(() => {
-                const totauxFacture = calculerTotauxFacture(factureSelectionnee);
-
-                return (
-                  <div className="bg-white border border-slate-200 p-3 rounded-xl space-y-2 shadow-xs">
-                    <div className="flex justify-between text-[10px] font-black">
-                      <span className="text-slate-700">Total : {totauxFacture.montantTotal.toLocaleString('fr-FR')} F</span>
-                      <span className="text-emerald-700">Payé : {totauxFacture.montantRegle.toLocaleString('fr-FR')} F</span>
-                      <span className="text-red-700">Reste : {totauxFacture.resteAPayer.toLocaleString('fr-FR')} F</span>
-                    </div>
-
-                    {totauxFacture.resteAPayer > 0 && permissions.modification && (
-                      <form onSubmit={enregistrerReglementFacture} className="flex gap-2 pt-1 border-t border-slate-100">
-                        <input
-                          type="number"
-                          step="0.01"
-                          disabled={enTrainDeSauvegarder}
-                          placeholder="Montant règlement / avance"
-                          value={montantReglementSaisi}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => setMontantReglementSaisi(e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded p-1.5 text-[10px] font-extrabold text-slate-900 shadow-xs"
-                          required
-                        />
-                        <button
-                          type="submit"
-                          disabled={enTrainDeSauvegarder}
-                          className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-[10px] shrink-0 shadow-xs"
-                        >
-                          {enTrainDeSauvegarder ? 'Patientez...' : 'Valider Règlement'}
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                );
-              })()}
             </div>
-
-            <div className="p-3 bg-white border-t border-slate-200 flex justify-between items-center">
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={() => window.print()}
-                className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
-              >
-                🖨️ Imprimer
-              </button>
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={() => setFactureSelectionnee(null)}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
     </div>
   );
