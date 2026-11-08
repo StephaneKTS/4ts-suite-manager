@@ -344,118 +344,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     }
   };
 
-  const obtenirTarifModuleActuel = () => {
-    const key = Object.keys(TARIFS_MODULES).find(k => k.toUpperCase() === moduleActuel) || 'Boutique';
-    return TARIFS_MODULES[key].mensuelPerUser;
-  };
-
-  const obtenirTauxReduction = (mois, totalUsers) => {
-    let remiseDuree = 0;
-    if (mois >= 12) remiseDuree = 0.20;
-    else if (mois >= 9) remiseDuree = 0.15;
-    else if (mois >= 6) remiseDuree = 0.10;
-    else if (mois >= 3) remiseDuree = 0.05;
-
-    let remiseUsers = 0;
-    if (totalUsers >= 50) remiseUsers = 0.15;
-    else if (totalUsers >= 20) remiseUsers = 0.10;
-    else if (totalUsers >= 10) remiseUsers = 0.05;
-
-    return Math.min(0.35, remiseDuree + remiseUsers);
-  };
-
-  const calculerMontantReabonnement = () => {
-    const tarifUnitaire = obtenirTarifModuleActuel();
-    const totalUsersEstime = parseInt(entreprise?.limite_utilisateurs || 1) + parseInt(nombreUtilisateursChoisi);
-    const brut = nombreUtilisateursChoisi * nombreMoisChoisi * tarifUnitaire;
-    const taux = obtenirTauxReduction(nombreMoisChoisi, totalUsersEstime);
-    return {
-      montantNet: Math.round(brut * (1 - taux)),
-      tauxRemise: Math.round(taux * 100),
-      tarifUnitaire
-    };
-  };
-
-  const detailsCalculReabonnement = calculerMontantReabonnement();
-  const modificationReabonnementEffectuee = nombreUtilisateursChoisi > 1 || nombreMoisChoisi > (entreprise?.duree_abonnement_mois || 1);
-
-  const souscrireSurMesure = async () => {
-    if (!modificationReabonnementEffectuee) return;
-
-    const ancienTotalUtilisateurs = parseInt(entreprise?.limite_utilisateurs || 1);
-    const nouveauTotalCumule = ancienTotalUtilisateurs + parseInt(nombreUtilisateursChoisi);
-
-    if (!confirm(`Valider le réabonnement pour ${nombreUtilisateursChoisi} utilisateur(s) supp. sur ${nombreMoisChoisi} mois (Total: ${detailsCalculReabonnement.montantNet.toLocaleString()} F) ?`)) return;
-
-    try {
-      const identifiantCible = entreprise?.id_entreprise || entreprise?.id;
-      const { error } = await supabase
-        .from('entreprises')
-        .update({
-          statut_licence: 'ACTIF',
-          duree_abonnement_mois: nombreMoisChoisi,
-          limite_utilisateurs: nouveauTotalCumule,
-        })
-        .eq(entreprise.id_entreprise ? 'id_entreprise' : 'id', identifiantCible);
-
-      if (error) throw error;
-
-      alert(`Réabonnement validé avec succès ! Nouvelle limite : ${nouveauTotalCumule} utilisateurs.`);
-      setModeAction(null);
-      chargerInfosUtilisateurEtEntreprise();
-    } catch (err) {
-      alert('Erreur lors du réabonnement : ' + err.message);
-    }
-  };
-
-  const validerActivationNouveauxModules = async () => {
-    const modulesSelectionnes = Object.keys(nouveauxModulesChoisis).filter(m => nouveauxModulesChoisis[m]);
-    if (modulesSelectionnes.length === 0) {
-      alert("Veuillez sélectionner au moins un module à souscrire.");
-      return;
-    }
-
-    const moduleNonDispo = modulesSelectionnes.find(m => {
-      const k = m.charAt(0) + m.slice(1).toLowerCase();
-      return TARIFS_MODULES[k] && !TARIFS_MODULES[k].disponible;
-    });
-
-    if (moduleNonDispo) {
-      setModuleSelectionneInfo(moduleNonDispo);
-      setModeAction('module_indisponible');
-      return;
-    }
-
-    if (!confirm(`Souscrire et activer les nouveaux modules [${modulesSelectionnes.join(', ')}] ?`)) return;
-
-    setActivationEnCours(true);
-    try {
-      const nouveauxUpper = modulesSelectionnes.map(m => m.toUpperCase());
-      const fusionEspaces = Array.from(new Set([...espacesSouscrits, ...nouveauxUpper]));
-      const identifiantCible = entreprise?.id_entreprise || entreprise?.id;
-
-      const { error } = await supabase
-        .from('entreprises')
-        .update({
-          espaces_souscrits: fusionEspaces,
-          statut_licence: 'ACTIF',
-        })
-        .eq(entreprise.id_entreprise ? 'id_entreprise' : 'id', identifiantCible);
-
-      if (error) throw error;
-
-      alert(`Succès ! Nouveaux modules souscrits : ${fusionEspaces.join(', ')} 🚀`);
-      setNouveauxModulesChoisis({ Boutique: false, Logistique: false, Livraison: false, Tontine: false });
-      setModeAction(null);
-      await chargerInfosUtilisateurEtEntreprise();
-      window.location.reload();
-    } catch (err) {
-      alert("Erreur critique lors de la souscription : " + err.message);
-    } finally {
-      setActivationEnCours(false);
-    }
-  };
-
   const seDeconnecter = () => {
     if (confirm('Voulez-vous vraiment vous déconnecter de l’application ?')) {
       if (typeof window !== 'undefined') {
@@ -464,6 +352,14 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       }
     }
   };
+
+  // Génération dynamique et universelle du lien QR code de la boutique
+  const identifiantEntrepriseActuelle = entreprise?.id_entreprise || entreprise?.id || '';
+  const domaineActuel = typeof window !== 'undefined' ? window.location.origin : 'https://4ts-suite-manager.vercel.app';
+  const lienQrCodeEntreprise = `${domaineActuel}/client?entrepriseId=${identifiantEntrepriseActuelle}`;
+  
+  // URL de l'API publique pour générer l'image du QR code directement en grand format
+  const imageUrlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(lienQrCodeEntreprise)}`;
 
   // Styles dynamiques selon isDarkMode
   const containerBg = isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900 shadow-sm';
@@ -524,7 +420,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 ENTREPRISE RATTACHÉE : <strong className="text-orange-400">{entreprise.nom_entreprise || 'N/A'}</strong>
               </span>
               <span className={`text-[9px] font-mono block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                ID : {entreprise.id_entreprise || 'N/A'}
+                ID : {identifiantEntrepriseActuelle || 'N/A'}
               </span>
               <h4 className={`font-extrabold uppercase text-sm truncate ${headerTitleText}`}>
                 {nomUtilisateurConnecte || entreprise.nom_entreprise || 'Stéphane KTS'}
@@ -532,9 +428,9 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
             </div>
           </div>
 
-          {/* MENU DES BOUTONS D'ACTION */}
+          {/* MENU DES BOUTONS D'ACTION (Bouton Mon QR Code) */}
           {estAdminEntreprise ? (
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-4 gap-1">
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'reabonnement' ? null : 'reabonnement')}
@@ -545,7 +441,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 }`}
               >
                 <span className="text-xs">🔄</span>
-                <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Se réabonner'}</span>
+                <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Réabonnement'}</span>
               </button>
 
               <button
@@ -558,7 +454,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 }`}
               >
                 <span className="text-xs">⚡</span>
-                <span className="text-center w-full">{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
+                <span className="text-center w-full">{modeAction === 'switcher_module' ? 'Fermer' : 'Modules'}</span>
               </button>
 
               <button
@@ -571,23 +467,106 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 }`}
               >
                 <span className="text-xs">➕</span>
-                <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Nouveau module'}</span>
+                <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Ajouter'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModeAction(modeAction === 'generateur_qr' ? null : 'generateur_qr')}
+                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
+                  modeAction === 'generateur_qr' 
+                    ? 'bg-orange-700 text-white border-orange-400' 
+                    : 'bg-amber-700 hover:bg-amber-600 text-white border-amber-500'
+                }`}
+              >
+                <span className="text-xs">📱</span>
+                <span className="text-center w-full">{modeAction === 'generateur_qr' ? 'Fermer' : 'Mon QR Code'}</span>
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1">
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-                className={`w-full font-black py-2.5 px-3 rounded-xl shadow transition uppercase text-[10px] flex items-center justify-center gap-1.5 border ${
+                className={`w-full font-black py-2.5 px-2 rounded-xl shadow transition uppercase text-[9px] flex items-center justify-center gap-1 border ${
                   modeAction === 'switcher_module' 
                     ? 'bg-orange-700 text-white border-orange-400' 
                     : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
                 }`}
               >
                 <span>⚡</span>
-                <span>{modeAction === 'switcher_module' ? 'Fermer le sélecteur de module' : 'Changer de module (Accès employé)'}</span>
+                <span>{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setModeAction(modeAction === 'generateur_qr' ? null : 'generateur_qr')}
+                className={`w-full font-black py-2.5 px-2 rounded-xl shadow transition uppercase text-[9px] flex items-center justify-center gap-1 border ${
+                  modeAction === 'generateur_qr' 
+                    ? 'bg-orange-700 text-white border-orange-400' 
+                    : 'bg-amber-700 hover:bg-amber-600 text-white border-amber-500'
+                }`}
+              >
+                <span>📱</span>
+                <span>{modeAction === 'generateur_qr' ? 'Fermer' : 'Mon QR Code'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* PANNEAU D'AFFICHAGE DIRECT DU QR CODE EN GRAND ÉCRAN */}
+          {modeAction === 'generateur_qr' && (
+            <div className={`${innerCardBg} border-2 border-amber-500/60 p-4 rounded-xl space-y-3 shadow-inner animate-fadeIn text-center transition-colors`}>
+              <h4 className="font-black text-amber-400 uppercase text-xs flex items-center justify-between">
+                <span>📱 CODE QR DE VOTRE BOUTIQUE</span>
+                <span className="text-orange-400 font-mono text-[10px]">ID : {identifiantEntrepriseActuelle}</span>
+              </h4>
+
+              <p className={`text-[10px] ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                Présentez cet écran directement à votre client. Il lui suffit de le scanner avec son téléphone pour accéder instantanément à votre menu.
+              </p>
+
+              {/* Conteneur du QR code en grand affichage */}
+              <div className="bg-white p-4 rounded-2xl inline-block shadow-md border-2 border-slate-200 mx-auto">
+                <img 
+                  src={imageUrlQrCode} 
+                  alt="Code QR de la boutique" 
+                  className="w-48 h-48 object-contain mx-auto"
+                />
+                <p className="mt-2 font-black text-slate-900 text-xs uppercase">{entreprise.nom_entreprise || 'BOUTIQUE'}</p>
+              </div>
+
+              <div className="flex justify-center gap-2 pt-2">
+                <a
+                  href={imageUrlQrCode}
+                  download={`QR-Code-${identifiantEntrepriseActuelle}.png`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-xl text-xs uppercase shadow transition flex items-center gap-1"
+                >
+                  <span>📥</span> Télécharger l'image
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fenetreImpression = window.open('', '_blank', 'width=500,height=600');
+                    fenetreImpression.document.write(`
+                      <html>
+                        <head><title>QR Code - ${entreprise.nom_entreprise}</title></head>
+                        <body style="text-align:center; font-family:Arial; padding-top:40px;">
+                          <h2 style="text-transform:uppercase;">${entreprise.nom_entreprise}</h2>
+                          <img src="${imageUrlQrCode}" style="width:300px; height:300px;" />
+                          <p style="font-weight:bold; margin-top:20px;">Scannez pour commander</p>
+                        </body>
+                      </html>
+                    `);
+                    fenetreImpression.document.close();
+                    fenetreImpression.print();
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-black px-4 py-2 rounded-xl text-xs uppercase shadow transition flex items-center gap-1"
+                >
+                  <span>🖨️</span> Imprimer
+                </button>
+              </div>
             </div>
           )}
 
