@@ -12,7 +12,7 @@ const TARIFS_MODULES = {
   Tontine: { installation: 25000, mensuelPerUser: 2500, disponible: false },
 };
 
-export default function MonProfil({ entrepriseId = '' }) {
+export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [entreprise, setEntreprise] = useState(null);
   const [chargement, setChargement] = useState(true);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
@@ -173,7 +173,6 @@ export default function MonProfil({ entrepriseId = '' }) {
 
       setModulesAutorisesUser(Array.from(new Set(modulesDisponiblesPourUser)));
 
-      // RÈGLE D'AFFICHAGE STRICTE : Si l'utilisateur connecté est un employé spécifique (ex: David), on affiche ses infos, sinon l'entreprise
       let nomFinal = utilisateurTrouve ? (`${utilisateurTrouve.nom || utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim()) : (entrepriseTrouvee?.nom_entreprise || 'STEPHANE KTS');
       let emailFinal = utilisateurTrouve?.email || emailConnecte || entrepriseTrouvee?.email || 'stephs7352@gmail.com';
       let telephoneFinal = utilisateurTrouve?.telephone || entrepriseTrouvee?.telephone || '655597099';
@@ -466,8 +465,16 @@ export default function MonProfil({ entrepriseId = '' }) {
     }
   };
 
+  // Styles dynamiques selon isDarkMode
+  const containerBg = isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900 shadow-sm';
+  const innerCardBg = isDarkMode ? 'bg-[#0d1b2a] border-blue-900/40' : 'bg-slate-50 border-slate-200';
+  const inputBg = isDarkMode ? 'bg-[#1b263b] text-white border-blue-900' : 'bg-white text-slate-900 border-slate-300';
+  const disabledInputBg = isDarkMode ? 'bg-slate-900/60 text-slate-300 border-blue-900/50' : 'bg-slate-100 text-slate-600 border-slate-200';
+  const labelText = isDarkMode ? 'text-blue-300' : 'text-slate-700 font-bold';
+  const headerTitleText = isDarkMode ? 'text-white' : 'text-slate-900';
+
   if (chargement && !entreprise) {
-    return <div className="p-6 text-center text-cyan-400 text-xs font-bold animate-pulse">Chargement instantané du profil...</div>;
+    return <div className={`p-6 text-center text-xs font-bold animate-pulse ${isDarkMode ? 'text-cyan-400' : 'text-blue-600'}`}>Chargement instantané du profil...</div>;
   }
 
   if (!entreprise) {
@@ -477,18 +484,18 @@ export default function MonProfil({ entrepriseId = '' }) {
   return (
     <div className="max-w-2xl mx-auto space-y-3 font-sans text-xs pb-6">
       
-      <div className="bg-[#1b263b] border border-blue-900/60 rounded-2xl p-4 shadow-xl text-slate-100 space-y-4">
+      <div className={`${containerBg} border rounded-2xl p-4 shadow-xl space-y-4 transition-colors`}>
         
-        <div className="border-b border-blue-900/60 pb-3 flex items-center space-x-2">
+        <div className={`border-b pb-3 flex items-center space-x-2 ${isDarkMode ? 'border-blue-900/60' : 'border-slate-200'}`}>
           <span className="text-base">👤</span>
-          <h3 className="font-black text-white uppercase text-xs tracking-wider">
+          <h3 className={`font-black uppercase text-xs tracking-wider ${headerTitleText}`}>
             MON PROFIL & INFORMATIONS PERSONNELLES
           </h3>
         </div>
 
         <form onSubmit={MettreAJourProfil} className="space-y-3">
           
-          <div className="bg-[#0d1b2a] p-3 rounded-xl border border-blue-900/40 flex items-center gap-4">
+          <div className={`${innerCardBg} p-3 rounded-xl border flex items-center gap-4 transition-colors`}>
             <input 
               type="file" 
               ref={fileInputLogoRef} 
@@ -513,19 +520,19 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
 
             <div className="space-y-1 overflow-hidden">
-              <span className="block text-[9px] uppercase font-bold text-blue-300">
+              <span className={`block text-[9px] uppercase font-bold ${labelText}`}>
                 ENTREPRISE RATTACHÉE : <strong className="text-orange-400">{entreprise.nom_entreprise || 'N/A'}</strong>
               </span>
-              <span className="text-[9px] font-mono text-slate-400 block">
+              <span className={`text-[9px] font-mono block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                 ID : {entreprise.id_entreprise || 'N/A'}
               </span>
-              <h4 className="font-extrabold text-white uppercase text-sm truncate">
+              <h4 className={`font-extrabold uppercase text-sm truncate ${headerTitleText}`}>
                 {nomUtilisateurConnecte || entreprise.nom_entreprise || 'Stéphane KTS'}
               </h4>
             </div>
           </div>
 
-          {/* MENU DES BOUTONS D'ACTION (ADMIN VS EMPLOYÉ) */}
+          {/* MENU DES BOUTONS D'ACTION */}
           {estAdminEntreprise ? (
             <div className="grid grid-cols-3 gap-1.5">
               <button
@@ -585,7 +592,7 @@ export default function MonProfil({ entrepriseId = '' }) {
           )}
 
           {estAdminEntreprise && modeAction === 'module_indisponible' && (
-            <div className="bg-[#0d1b2a] border-2 border-amber-500/80 p-4 rounded-xl space-y-3 shadow-2xl animate-fadeIn text-center">
+            <div className={`${innerCardBg} border-2 border-amber-500/80 p-4 rounded-xl space-y-3 shadow-2xl animate-fadeIn text-center transition-colors`}>
               <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-lg font-bold">
                 ⏳
               </div>
@@ -593,8 +600,8 @@ export default function MonProfil({ entrepriseId = '' }) {
                 <h4 className="font-black text-amber-400 uppercase text-xs tracking-wide">
                   Module [{moduleSelectionneInfo}] en cours de développement
                 </h4>
-                <p className="text-[10px] text-slate-300 leading-relaxed px-2">
-                  Notre équipe technique prépare une version ultra-performante du module <strong className="text-white">{moduleSelectionneInfo}</strong>.
+                <p className={`text-[10px] leading-relaxed px-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  Notre équipe technique prépare une version ultra-performante du module <strong className={headerTitleText}>{moduleSelectionneInfo}</strong>.
                 </p>
               </div>
               <button
@@ -609,10 +616,10 @@ export default function MonProfil({ entrepriseId = '' }) {
 
           {/* PANNEAU DE SWITCH RAPIDE DE MODULE */}
           {modeAction === 'switcher_module' && (
-            <div className="bg-[#0d1b2a] border-2 border-indigo-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
+            <div className={`${innerCardBg} border-2 border-indigo-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn transition-colors`}>
               <h4 className="font-black text-indigo-400 uppercase text-[10px] flex items-center justify-between">
                 <span>⚡ Choix & Basculement de Module</span>
-                <span className="text-slate-400 font-normal">Actif : <strong className="text-orange-400">{moduleActuel}</strong></span>
+                <span className={isDarkMode ? 'text-slate-400 font-normal' : 'text-slate-600 font-normal'}>Actif : <strong className="text-orange-400">{moduleActuel}</strong></span>
               </h4>
 
               <div className="grid grid-cols-2 gap-2">
@@ -662,7 +669,7 @@ export default function MonProfil({ entrepriseId = '' }) {
                         className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${
                           estActif 
                             ? 'bg-orange-600/40 border-orange-500 text-white font-black cursor-default shadow' 
-                            : 'bg-[#1b263b] hover:bg-indigo-950/60 border-indigo-500/50 text-indigo-200 cursor-pointer'
+                            : isDarkMode ? 'bg-[#1b263b] hover:bg-indigo-950/60 border-indigo-500/50 text-indigo-200' : 'bg-white hover:bg-indigo-50 border-indigo-500/50 text-indigo-700'
                         }`}
                       >
                         <span className="text-xs uppercase font-black">{mod}</span>
@@ -693,46 +700,46 @@ export default function MonProfil({ entrepriseId = '' }) {
           )}
 
           {estAdminEntreprise && modeAction === 'reabonnement' && (
-            <div className="bg-[#0d1b2a] border-2 border-cyan-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn">
+            <div className={`${innerCardBg} border-2 border-cyan-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn transition-colors`}>
               <h4 className="font-black text-cyan-400 uppercase text-[10px]">
                 🔄 Réabonnement & Extension — Module : <span className="text-orange-400">{moduleActuel}</span>
               </h4>
 
-              <div className="grid grid-cols-2 gap-2 bg-[#1b263b] p-2.5 rounded-xl border border-blue-900/50 text-center">
+              <div className={`grid grid-cols-2 gap-2 p-2.5 rounded-xl border text-center transition-colors ${isDarkMode ? 'bg-[#1b263b] border-blue-900/50' : 'bg-white border-slate-200'}`}>
                 <div>
-                  <span className="block text-[8px] uppercase font-bold text-slate-400">Utilisateurs Actuels</span>
+                  <span className={`block text-[8px] uppercase font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Utilisateurs Actuels</span>
                   <span className="text-xs font-black text-orange-400">{entreprise.limite_utilisateurs || 1} User(s)</span>
                 </div>
                 <div>
-                  <span className="block text-[8px] uppercase font-bold text-slate-400">Durée Restante</span>
+                  <span className={`block text-[8px] uppercase font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Durée Restante</span>
                   <span className="text-xs font-black text-emerald-400">{entreprise.duree_abonnement_mois || 1} Mois</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[8.5px] text-slate-300 mb-1 uppercase font-bold">Users Supplémentaires (+)</label>
+                  <label className={`block text-[8.5px] mb-1 uppercase font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Users Supplémentaires (+)</label>
                   <input
                     type="number"
                     min="1"
                     value={nombreUtilisateursChoisi}
                     onChange={(e) => setNombreUtilisateursChoisi(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full bg-[#1b263b] border border-blue-900 rounded-lg p-1.5 text-xs text-white font-bold text-center"
+                    className={`w-full border rounded-lg p-1.5 text-xs font-bold text-center ${inputBg}`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[8.5px] text-slate-300 mb-1 uppercase font-bold">Durée à ajouter (Mois)</label>
+                  <label className={`block text-[8.5px] mb-1 uppercase font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Durée à ajouter (Mois)</label>
                   <input
                     type="number"
                     min="1"
                     value={nombreMoisChoisi}
                     onChange={(e) => setNombreMoisChoisi(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full bg-[#1b263b] border border-blue-900 rounded-lg p-1.5 text-xs text-white font-bold text-center"
+                    className={`w-full border rounded-lg p-1.5 text-xs font-bold text-center ${inputBg}`}
                   />
                 </div>
               </div>
 
-              <div className="bg-[#1b263b] border border-orange-500/40 p-2.5 rounded-xl space-y-1 text-[10px]">
+              <div className={`border border-orange-500/40 p-2.5 rounded-xl space-y-1 text-[10px] ${isDarkMode ? 'bg-[#1b263b]' : 'bg-white'}`}>
                 <div className="flex justify-between font-black text-xs text-orange-400">
                   <span>MONTANT TOTAL À PAYER :</span>
                   <span>{detailsCalculReabonnement.montantNet.toLocaleString()} XAF</span>
@@ -755,7 +762,7 @@ export default function MonProfil({ entrepriseId = '' }) {
           )}
 
           {estAdminEntreprise && modeAction === 'nouveau_module' && (
-            <div className="bg-[#0d1b2a] border-2 border-emerald-500/60 p-3 rounded-xl space-y-2.5 shadow-inner animate-fadeIn">
+            <div className={`${innerCardBg} border-2 border-emerald-500/60 p-3 rounded-xl space-y-2.5 shadow-inner animate-fadeIn transition-colors`}>
               <h4 className="font-black text-emerald-400 uppercase text-[10px]">
                 ➕ Souscrire à un nouveau module :
               </h4>
@@ -781,7 +788,7 @@ export default function MonProfil({ entrepriseId = '' }) {
                             ? 'bg-amber-950/20 text-amber-300 border-amber-500/40'
                             : nouveauxModulesChoisis[mod] 
                               ? 'bg-orange-600 text-white border-orange-500 font-bold' 
-                              : 'bg-[#1b263b] text-slate-300 border-blue-900'
+                              : isDarkMode ? 'bg-[#1b263b] text-slate-300 border-blue-900' : 'bg-white text-slate-700 border-slate-300'
                       }`}
                     >
                       <span className="text-[10px]">
@@ -813,51 +820,51 @@ export default function MonProfil({ entrepriseId = '' }) {
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-2 text-center bg-[#0d1b2a] p-2.5 rounded-xl border border-blue-900/40">
+          <div className={`grid grid-cols-3 gap-2 text-center p-2.5 rounded-xl border transition-colors ${innerCardBg}`}>
             <div>
-              <span className="block text-[8.5px] uppercase font-bold text-blue-300">Rôle / Statut</span>
+              <span className={`block text-[8.5px] uppercase font-bold ${labelText}`}>Rôle / Statut</span>
               <span className="text-[10px] font-black text-emerald-400 uppercase">{roleUtilisateur || 'Administrateur'}</span>
             </div>
             <div>
-              <span className="block text-[8.5px] uppercase font-bold text-blue-300">Module actif</span>
+              <span className={`block text-[8.5px] uppercase font-bold ${labelText}`}>Module actif</span>
               <span className="text-[10px] font-black text-orange-400 uppercase">{moduleActuel}</span>
             </div>
             <div>
-              <span className="block text-[8.5px] uppercase font-bold text-blue-300">Statut session</span>
+              <span className={`block text-[8.5px] uppercase font-bold ${labelText}`}>Statut session</span>
               <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Actif
               </span>
             </div>
           </div>
 
-          <div className="space-y-2.5 bg-[#0d1b2a] p-3 rounded-xl border border-blue-900/40">
+          <div className={`space-y-2.5 p-3 rounded-xl border transition-colors ${innerCardBg}`}>
             <div>
-              <label className="block text-[9px] uppercase font-bold text-blue-300 mb-1">
+              <label className={`block text-[9px] uppercase font-bold mb-1 ${labelText}`}>
                 Adresse e-mail personnelle <span className="text-slate-500 font-normal">(Non modifiable)</span>
               </label>
               <input
                 type="email"
                 disabled
                 value={emailUtilisateurConnecte || 'stephs7352@gmail.com'}
-                className="w-full bg-slate-900/60 border border-blue-900/50 rounded-lg p-2 text-xs text-slate-300 cursor-not-allowed font-medium"
+                className={`w-full border rounded-lg p-2 text-xs cursor-not-allowed font-medium ${disabledInputBg}`}
               />
             </div>
 
             <div>
-              <label className="block text-[9px] uppercase font-bold text-blue-300 mb-1">
+              <label className={`block text-[9px] uppercase font-bold mb-1 ${labelText}`}>
                 Numéro de téléphone personnel <span className="text-slate-500 font-normal">(Non modifiable)</span>
               </label>
               <input
                 type="text"
                 disabled
                 value={telephoneUtilisateur || '655597099'}
-                className="w-full bg-slate-900/60 border border-blue-900/50 rounded-lg p-2 text-xs text-slate-300 cursor-not-allowed font-medium"
+                className={`w-full border rounded-lg p-2 text-xs cursor-not-allowed font-medium ${disabledInputBg}`}
               />
             </div>
 
-            <div className="space-y-2 pt-1 border-t border-blue-900/40">
+            <div className={`space-y-2 pt-1 border-t ${isDarkMode ? 'border-blue-900/40' : 'border-slate-200'}`}>
               <div className="flex justify-between items-center">
-                <label className="block text-[9px] uppercase font-bold text-blue-300">
+                <label className={`block text-[9px] uppercase font-bold ${labelText}`}>
                   Mot de passe / Code PIN personnel
                 </label>
                 <button
@@ -886,10 +893,10 @@ export default function MonProfil({ entrepriseId = '' }) {
                   value={nouveauMotDePasse}
                   onChange={(e) => setNouveauMotDePasse(e.target.value)}
                   placeholder={modeModificationMdp ? "Nouveau mot de passe" : "••••••"}
-                  className={`w-full border rounded-lg p-2 pr-16 text-xs font-bold text-white focus:ring-2 focus:ring-orange-500 focus:outline-none transition ${
+                  className={`w-full border rounded-lg p-2 pr-16 text-xs font-bold focus:ring-2 focus:ring-orange-500 focus:outline-none transition ${
                     modeModificationMdp 
-                      ? 'bg-[#1b263b] border-orange-500/60' 
-                      : 'bg-slate-900/80 border-blue-900/50 text-slate-400 cursor-not-allowed'
+                      ? isDarkMode ? 'bg-[#1b263b] border-orange-500/60 text-white' : 'bg-white border-orange-500/60 text-slate-900'
+                      : disabledInputBg
                   }`}
                 />
                 <button
@@ -909,7 +916,7 @@ export default function MonProfil({ entrepriseId = '' }) {
                     value={confirmerMotDePasse}
                     onChange={(e) => setConfirmerMotDePasse(e.target.value)}
                     placeholder="Confirmer le nouveau mot de passe"
-                    className="w-full bg-[#1b263b] border border-orange-500/60 rounded-lg p-2 text-xs font-bold text-white focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    className={`w-full border rounded-lg p-2 text-xs font-bold focus:ring-2 focus:ring-orange-500 focus:outline-none ${inputBg} border-orange-500/60`}
                   />
                 </div>
               )}

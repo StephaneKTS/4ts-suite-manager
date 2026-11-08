@@ -328,7 +328,7 @@ function DashboardContent() {
   const contenuApp = (
     <div className={`min-h-screen ${bgPrincipal} flex flex-col font-sans relative overflow-y-auto w-full max-w-full text-xs`}>
       
-      {/* BARRE SUPÉRIEURE (Bouton Super-Admin retiré d'ici) */}
+      {/* BARRE SUPÉRIEURE */}
       <div className={`sticky top-0 z-20 ${bgHeaderNav} border-b px-3 py-2.5 shrink-0 flex items-center justify-between w-full`}>
         <div className="flex items-center space-x-2.5">
           <div className={`w-8 h-8 flex items-center justify-center shrink-0 rounded-lg border p-1 ${logoBoxClass}`}>
@@ -439,7 +439,9 @@ function DashboardContent() {
                 </button>
               </div>
             )}
-            <MonProfil entrepriseId={entrepriseId} />
+            <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full`}>
+              <MonProfil entrepriseId={entrepriseId} isDarkMode={isDarkMode} />
+            </div>
           </div>
         ) : moduleActif === 'souscription' || moduleActif === 'super_admin_panel' ? (
           <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full`}>
