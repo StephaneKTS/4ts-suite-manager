@@ -328,7 +328,7 @@ function DashboardContent() {
   const contenuApp = (
     <div className={`min-h-screen ${bgPrincipal} flex flex-col font-sans relative overflow-y-auto w-full max-w-full text-xs`}>
       
-      {/* BARRE SUPÉRIEURE */}
+      {/* BARRE SUPÉRIEURE (Bouton Super-Admin retiré d'ici) */}
       <div className={`sticky top-0 z-20 ${bgHeaderNav} border-b px-3 py-2.5 shrink-0 flex items-center justify-between w-full`}>
         <div className="flex items-center space-x-2.5">
           <div className={`w-8 h-8 flex items-center justify-center shrink-0 rounded-lg border p-1 ${logoBoxClass}`}>
@@ -362,15 +362,6 @@ function DashboardContent() {
           >
             <span>{isDarkMode ? '☀️ Jour' : '🌙 Nuit'}</span>
           </button>
-
-          {estSuperAdmin && (
-            <button
-              onClick={() => setModuleActif(moduleActif === 'super_admin_panel' ? null : 'super_admin_panel')}
-              className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] transition shadow-2xs border border-amber-400/50 flex items-center gap-1"
-            >
-              <span>🛡️</span> {moduleActif === 'super_admin_panel' ? 'Fermer' : 'Super-Admin'}
-            </button>
-          )}
 
           {(moduleActif || ongletNavigation !== 'accueil') ? (
             <button
@@ -433,6 +424,21 @@ function DashboardContent() {
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
           <div className="space-y-3 w-full">
+            {/* BOUTON SUPER-ADMIN PLACÉ ICI UNIQUEMENT POUR LE SUPER-ADMIN */}
+            {estSuperAdmin && (
+              <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60' : 'bg-white border-blue-600/30'} p-3 rounded-xl border shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3`}>
+                <div>
+                  <h3 className={`font-black uppercase text-xs ${isDarkMode ? 'text-cyan-400' : 'text-blue-700'}`}>🛡️ Espace Super-Admin Global</h3>
+                  <p className={`text-[10px] ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Panneau d'administration centralisé de toutes les entreprises de la plateforme 4TS.</p>
+                </div>
+                <button
+                  onClick={() => setModuleActif(moduleActif === 'super_admin_panel' ? null : 'super_admin_panel')}
+                  className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[11px] transition shadow-md border border-amber-400/50 flex items-center gap-1.5 shrink-0"
+                >
+                  <span>🛡️</span> {moduleActif === 'super_admin_panel' ? 'Fermer le Panneau' : 'Ouvrir Super-Admin'}
+                </button>
+              </div>
+            )}
             <MonProfil entrepriseId={entrepriseId} />
           </div>
         ) : moduleActif === 'souscription' || moduleActif === 'super_admin_panel' ? (
