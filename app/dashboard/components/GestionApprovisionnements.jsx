@@ -20,7 +20,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const cleCacheMouvements = `mouvements_stock_${entrepriseId}_${moduleActuel}`;
   const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
 
-  // --- FILTRE INTELLIGENT : MOIS EN COURS PAR DÉFAUT ---
   const obtenirPremierJourDuMois = () => {
     const d = new Date();
     const annee = d.getFullYear();
@@ -39,7 +38,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [dateDebutFiltre, setDateDebutFiltre] = useState(obtenirPremierJourDuMois());
   const [dateFinFiltre, setDateFinFiltre] = useState(obtenirDernierJourDuMois());
 
-  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
   const [approvisionnements, setApprovisionnements] = useState(() => {
     if (typeof window !== 'undefined') {
       return localSync.recupererDonneesLocales(cleCacheAppro) || [];
@@ -73,7 +71,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
-  // --- GESTION DES DROITS ET AUTORISATIONS DES EMPLOYÉS ---
   const [utilisateurConnecte, setUtilisateurConnecte] = useState(null);
   const [roleUtilisateur, setRoleUtilisateur] = useState(null);
   const [permissions, setPermissions] = useState({
@@ -88,7 +85,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [approEnEditionId, setApproEnEditionId] = useState(null);
   const [docEnEditionObjet, setDocEnEditionObjet] = useState(null);
 
-  // --- PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteAppro, setLimiteAppro] = useState(20);
   const [limiteCommandes, setLimiteCommandes] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
@@ -108,8 +104,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [indexEnCoursModif, setIndexEnCoursModif] = useState(null);
 
   const [lignesValidees, setLignesValidees] = useState([]);
-  const [modalPartageOuverte, setModalPartageOuverte] = useState(false);
-  const [formatPartage, setFormatPartage] = useState('PDF');
 
   const [triCol, setTriCol] = useState('date');
   const [triOrdre, setTriOrdre] = useState('desc');
@@ -452,6 +446,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
           prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
           sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
         })),
+        created_at: `${dateDoc}T12:00:00` // 👈 Utilisation de la date sélectionnée (antidatée) pour préserver la date exacte
       };
 
       if (approEnEditionId) { 
@@ -466,7 +461,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
       } else { 
         const idTemp = 'temp_' + Date.now();
-        const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
+        const nouvelObjet = { ...payload, id: idTemp };
         const { error } = await supabase.from('approvisionnements').insert([payload]); 
         if (error) {
           localSync.ajouterFileAttente('INSERT', 'approvisionnements', payload);
@@ -522,6 +517,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
           prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
           sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
         })),
+        created_at: `${dateDoc}T12:00:00` // 👈 Utilisation de la date sélectionnée
       };
 
       if (approEnEditionId) { 
@@ -536,7 +532,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         localSync.sauvegarderDonneesLocales(cleCacheCommandes, listeMaj);
       } else { 
         const idTemp = 'temp_' + Date.now();
-        const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
+        const nouvelObjet = { ...payload, id: idTemp };
         const { error } = await supabase.from('bons_commande_fournisseurs').insert([payload]); 
         if (error) {
           localSync.ajouterFileAttente('INSERT', 'bons_commande_fournisseurs', payload);
@@ -587,7 +583,8 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
           quantite: Number(l.quantite), 
           prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
           sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
-        }))
+        })),
+        created_at: doc.created_at || `${dateDoc}T12:00:00`
       };
 
       const { error: rpcError } = await supabase.rpc('transformer_commande_en_appro', {
@@ -643,7 +640,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       if (typeof doc.details_articles === 'string') { try { articlesDetails = JSON.parse(doc.details_articles); } catch (e) {} }
       else if (Array.isArray(doc.details_articles)) { articlesDetails = doc.details_articles; }
     }
-    setLignesValidees(articlesDetails.map(l => ({ id_article: l.id_article, designation: (l.designation || '').toUpperCase(), quantite: String(l.quantite), prix_achat: String(l.prix_achat || l.prix_estime || '0') })));
+    setLignesValidees(articlesDetails.map(l => ({ id_article: l.id_article, designation: (l.designation || l.Designation || l.libelle || '').toUpperCase(), quantite: String(l.quantite || l.Quantite || 1), prix_achat: String(l.prix_achat || l.Prix_Achat || l.prix_estime || '0') })));
     setIndexEnCoursModif(null);
     setVueActive(type === 'APPRO' ? 'formulaire_facture' : 'formulaire_commande');
   };
@@ -701,7 +698,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       if (triCol === 'date') { valA = a.created_at || ''; valB = b.created_at || ''; }
       else if (triCol === 'numero') { valA = a.numero_bon || a.numero_commande || ''; valB = b.numero_bon || b.numero_commande || ''; }
       else if (triCol === 'fournisseur') { valA = obtenirNomFournisseur(a.id_fournisseur); valB = obtenirNomFournisseur(b.id_fournisseur); }
-      else if (triCol === 'statut') { valA = a.statut_paiement || a.statut_commande || ''; valB = b.statut_paiement || b.statut_commande || ''; }
+      else if (triCol === 'statut') { valA = a.statut_paiement || a.statut_commande || ''; valB = b.statut_commande || ''; }
       if (valA < valB) return triOrdre === 'asc' ? -1 : 1;
       if (valA > valB) return triOrdre === 'asc' ? 1 : -1;
       return 0;
@@ -717,514 +714,678 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder;
   const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
+  // --- VALEURS DE SÉCURITÉ POUR L'IMPRESSION (ROBUSTE POUR ÉTAT FORMULAIRE ET HISTORIQUE) ---
+  const fournisseurIdEffectif = idFournisseur || docEnEditionObjet?.id_fournisseur || '';
+  const nomFournisseurImpression = obtenirNomFournisseur(fournisseurIdEffectif) || '-';
+
+  const referenceEffective = referenceFournisseur || docEnEditionObjet?.numero_commande || docEnEditionObjet?.reference || '-';
+
+  const depotIdEffectif = idDepotDestination || docEnEditionObjet?.id_depot_destination || '';
+  const nomDepotObjEffectif = depots.find(d => String(d.id) === String(depotIdEffectif));
+  const depotTexteImpression = estPartenaireSansStockage ? 'SANS STOCK' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '-');
+
+  // Articles unifiés : priorité aux lignes en cours dans le formulaire, sinon aux articles du document en édition
+  let articlesImpression = lignesValidees.length > 0 ? lignesValidees : [];
+  if (articlesImpression.length === 0 && docEnEditionObjet?.details_articles) {
+    let details = docEnEditionObjet.details_articles;
+    if (typeof details === 'string') { try { details = JSON.parse(details); } catch(e) {} }
+    if (Array.isArray(details)) {
+      articlesImpression = details.map(l => ({
+        designation: l.designation || l.Designation || l.libelle || '',
+        quantite: l.quantite || l.Quantite || 1,
+        prix_achat: l.prix_achat || l.Prix_Achat || l.prix_estime || 0
+      }));
+    }
+  }
+
+  const montantTotalImpression = articlesImpression.reduce((sum, item) => sum + (Number(item.quantite || 0) * Number(item.prix_achat || 0)), 0);
+  const statutPaiementEffectif = statutPaiement || docEnEditionObjet?.statut_paiement || 'SOLDE';
+  const montantPayeEffectif = montantPaye || docEnEditionObjet?.montant_paye || 0;
+  const soldeRestantImpression = statutPaiementEffectif === 'SOLDE' ? 0 : statutPaiementEffectif === 'CREDIT' ? montantTotalImpression : Math.max(0, montantTotalImpression - (parseFloat(montantPayeEffectif) || 0));
+
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-2">
-          <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-            <span>📦</span> APPROVISIONNEMENTS
-          </h3>
-          {roleUtilisateur && (
-            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
-            </span>
-          )}
+      {/* 📄 MODÈLE D'IMPRESSION PROFESSIONNEL (UNE SEULE PAGE STRICTE, SANS DÉBORDEMENT, SANS MODULE LIVRAISON) */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body * { visibility: hidden; }
+          .print-container, .print-container * { visibility: visible; }
+          .print-container { 
+            position: fixed; 
+            left: 0; 
+            top: 0; 
+            width: 100vw; 
+            height: 100vh;
+            max-height: 275mm;
+            margin: 0; 
+            padding: 5mm; 
+            background: white; 
+            box-sizing: border-box;
+            page-break-after: avoid;
+            page-break-before: avoid;
+            page-break-inside: avoid;
+            overflow: hidden;
+          }
+          @page { size: A4 portrait; margin: 0; }
+        }
+      ` }} />
+
+      <div className="print-container hidden print:block bg-white text-slate-900 p-3 space-y-2 font-sans text-xs">
+        <div className="flex justify-between items-start border-b-2 border-orange-600 pb-2">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-base">📦</span>
+              <h1 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider">4TS : ISMA LOGISTIQUE</h1>
+            </div>
+          </div>
+          <div className="text-right">
+            <h2 className="font-black text-orange-600 text-xs uppercase">
+              {vueActive === 'formulaire_facture' ? "BON D'APPROVISIONNEMENT" : vueActive === 'formulaire_commande' ? "BON DE COMMANDE" : "BON D'APPROVISIONNEMENT"}
+            </h2>
+            <p className="text-[9px] font-bold text-slate-600 mt-0.5">Édité le : {new Date().toLocaleDateString('fr-FR')}</p>
+          </div>
         </div>
-        {vueActive === 'liste' ? (
-          permissions.peut_creer && (
+
+        <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200 text-[10px]">
+          <div>
+            <p><strong>N° Document :</strong> <span className="font-mono text-orange-600 font-bold">{numeroDoc}</span></p>
+            <p><strong>Date :</strong> {dateDoc ? new Date(dateDoc).toLocaleDateString('fr-FR') : '-'}</p>
+            <p><strong>Partenaire :</strong> <span className="uppercase font-extrabold text-slate-900">{nomFournisseurImpression}</span></p>
+          </div>
+          <div className="text-right">
+            <p><strong>Référence :</strong> {referenceEffective}</p>
+            <p><strong>Dépôt :</strong> <span className="uppercase font-extrabold text-slate-900">{depotTexteImpression}</span></p>
+            {vueActive === 'formulaire_facture' && <p><strong>Statut Paiement :</strong> {statutPaiementEffectif}</p>}
+          </div>
+        </div>
+
+        <table className="w-full border-collapse border border-slate-300 text-[10px] mt-1.5">
+          <thead>
+            <tr className="bg-slate-100 text-slate-800 uppercase text-[9px] font-black">
+              <th className="border border-slate-300 p-1.5 text-left">Désignation</th>
+              <th className="border border-slate-300 p-1.5 text-center w-16">Quantité</th>
+              {!estModeLivraison && (
+                <>
+                  <th className="border border-slate-300 p-1.5 text-right w-24">P. Unitaire</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-24">Total</th>
+                </>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {articlesImpression.length === 0 ? (
+              <tr><td colSpan={estModeLivraison ? 2 : 4} className="border border-slate-300 p-3 text-center text-slate-500 italic">Aucun article dans ce document.</td></tr>
+            ) : (
+              articlesImpression.map((l, idx) => (
+                <tr key={idx} className="hover:bg-slate-50">
+                  <td className="border border-slate-300 p-1.5 font-bold uppercase">{l.designation}</td>
+                  <td className="border border-slate-300 p-1.5 text-center font-black">{l.quantite}</td>
+                  {!estModeLivraison && (
+                    <>
+                      <td className="border border-slate-300 p-1.5 text-right">{Number(l.prix_achat || 0).toLocaleString('fr-FR')} F</td>
+                      <td className="border border-slate-300 p-1.5 text-right font-black">{(Number(l.quantite || 0) * Number(l.prix_achat || 0)).toLocaleString('fr-FR')} F</td>
+                    </>
+                  )}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        {!estModeLivraison && articlesImpression.length > 0 && (
+          <div className="flex justify-end pt-1">
+            <div className="w-56 bg-slate-50 p-2 rounded border border-slate-200 text-right space-y-0.5">
+              <p className="text-[10px] font-bold">Montant Total : <span className="font-black text-emerald-700 text-xs">{montantTotalImpression.toLocaleString('fr-FR')} F</span></p>
+              {statutPaiementEffectif !== 'SOLDE' && (
+                <>
+                  <p className="text-[10px] font-bold">Montant Réglé : <span className="font-bold">{Number(montantPayeEffectif || 0).toLocaleString('fr-FR')} F</span></p>
+                  <p className="text-[10px] font-bold">Reste à payer : <span className="font-bold text-orange-600">{soldeRestantImpression.toLocaleString('fr-FR')} F</span></p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="pt-3 grid grid-cols-2 text-[10px] font-bold text-slate-700">
+          <div><p>Signature & Cachet Partenaire :</p></div>
+          <div className="text-right"><p>Signature & Cachet Entreprise :</p></div>
+        </div>
+      </div>
+
+      {/* INTERFACE UTILISATEUR INTERACTIVE (MASQUÉE LORS DE L'IMPRESSION) */}
+      <div className="print:hidden space-y-2.5">
+        <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+              <span>📦</span> APPROVISIONNEMENTS
+            </h3>
+            {roleUtilisateur && (
+              <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+                Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
+              </span>
+            )}
+          </div>
+          {vueActive === 'liste' ? (
+            permissions.peut_creer && (
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setVueActive('choix_creation')}
+                className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+              >
+                Nouveau
+              </button>
+            )
+          ) : (
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
-              onClick={() => setVueActive('choix_creation')}
-              className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+              onClick={() => setVueActive('liste')}
+              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
             >
-              Nouveau
+              ✖ Fermer
             </button>
-          )
-        ) : (
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => setVueActive('liste')}
-            className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
-          >
-            ✖ Fermer
-          </button>
-        )}
-      </div>
-
-      {vueActive === 'liste' && (
-        <div className="space-y-2">
-          {/* FILTRE DE PÉRIODE SUR LE MOIS EN COURS */}
-          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
-            <div className="flex justify-between items-center text-[9px] font-black uppercase text-slate-600">
-              <span>📅 Période (Mois en cours)</span>
-              {(dateDebutFiltre !== obtenirPremierJourDuMois() || dateFinFiltre !== obtenirDernierJourDuMois()) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDateDebutFiltre(obtenirPremierJourDuMois());
-                    setDateFinFiltre(obtenirDernierJourDuMois());
-                  }}
-                  className="text-orange-600 hover:underline font-bold"
-                >
-                  Réinitialiser
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <div>
-                <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Du</label>
-                <input
-                  type="date"
-                  value={dateDebutFiltre}
-                  onChange={(e) => setDateDebutFiltre(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
-                />
-              </div>
-              <div>
-                <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Au</label>
-                <input
-                  type="date"
-                  value={dateFinFiltre}
-                  onChange={(e) => setDateFinFiltre(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center gap-1.5">
-            <button 
-              type="button" 
-              disabled={enTrainDeSauvegarder}
-              onClick={() => { setOngletActif('APPRO'); setVueActive('liste'); }} 
-              className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'APPRO' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
-            >
-              📥 Appro ({documentsHistoriqueAffiches.length} / {documentsHistorique.length})
-            </button>
-            <button 
-              type="button" 
-              disabled={enTrainDeSauvegarder}
-              onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
-              className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
-            >
-              📋 Commandes ({commandesHistoriqueAffiches.length} / {commandesHistorique.length})
-            </button>
-          </div>
+          )}
         </div>
-      )}
 
-      {vueActive === 'liste' && (
-        <div className="space-y-2.5">
-          {ongletActif === 'APPRO' && (
-            <div className="space-y-2">
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
-                      <th onClick={() => gererTri('date')} className="p-2 w-[18%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
-                      <th onClick={() => gererTri('numero')} className="p-2 w-[22%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° APPRO {rendreFlecheTri('numero')}</th>
-                      <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
-                      {!estModeLivraison && <th onClick={() => gererTri('statut')} className="p-2 w-[18%] text-right cursor-pointer hover:bg-slate-200 whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-[10px]">
-                    {documentsHistoriqueAffiches.length === 0 ? (<tr><td colSpan={estModeLivraison ? 3 : 4} className="p-4 text-center text-slate-500 font-bold">Aucun approvisionnement enregistré.</td></tr>) : (
-                      documentsHistoriqueAffiches.map((doc) => (
-                        <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                          <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
-                          <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numero_bon}</td>
-                          <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'PARTENAIRE'}</td>
-                          {!estModeLivraison && (
-                            <td className="p-2 text-right whitespace-nowrap">
-                              <span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>
-                                {doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}
-                              </span>
-                            </td>
-                          )}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {limiteAppro < documentsHistorique.length && (
-                <div className="text-center pt-1 pb-1">
+        {vueActive === 'liste' && (
+          <div className="space-y-2">
+            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+              <div className="flex justify-between items-center text-[9px] font-black uppercase text-slate-600">
+                <span>📅 Période (Mois en cours)</span>
+                {(dateDebutFiltre !== obtenirPremierJourDuMois() || dateFinFiltre !== obtenirDernierJourDuMois()) && (
                   <button
                     type="button"
-                    onClick={() => setLimiteAppro(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                    onClick={() => {
+                      setDateDebutFiltre(obtenirPremierJourDuMois());
+                      setDateFinFiltre(obtenirDernierJourDuMois());
+                    }}
+                    className="text-orange-600 hover:underline font-bold"
                   >
-                    📥 Charger 20 appros de plus ({documentsHistorique.length - limiteAppro} restants)
+                    Réinitialiser
                   </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {ongletActif === 'COMMANDE' && (
-            <div className="space-y-2">
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
-                      <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
-                      <th onClick={() => gererTri('numero')} className="p-2 w-[35%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
-                      <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-[10px]">
-                    {commandesHistoriqueAffiches.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande enregistré.</td></tr>) : (
-                      commandesHistoriqueAffiches.map((cmd) => (
-                        <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                          <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
-                          <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{cmd.numero_commande}</td>
-                          <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'PARTENAIRE'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                )}
               </div>
-
-              {limiteCommandes < commandesHistorique.length && (
-                <div className="text-center pt-1 pb-1">
-                  <button
-                    type="button"
-                    onClick={() => setLimiteCommandes(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
-                  >
-                    📥 Charger 20 commandes de plus ({commandesHistorique.length - limiteCommandes} restantes)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {vueActive === 'choix_creation' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-md space-y-3 max-w-sm mx-auto text-center">
-          <div className="border-b border-slate-200 pb-2 flex justify-between items-center">
-            <span className="font-black text-slate-900 text-xs uppercase">CHOISIR LE TYPE DE DOCUMENT</span>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
-          </div>
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
-              <span className="text-2xl">📋</span>
-              <span className="font-black text-[11px] text-slate-900">Bon de Commande</span>
-            </button>
-            <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('APPRO')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
-              <span className="text-2xl">📥</span>
-              <span className="font-black text-[11px] text-emerald-900">Approvisionnement</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {vueActive === 'formulaire_facture' && (
-        <form onSubmit={enregistrerFacture} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
-          <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
-            <div className="flex items-center gap-2">
-              <span className="font-black text-slate-900 text-xs uppercase">📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
-            </div>
-            <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-            <div>
-              <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label>
-              <input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
-            </div>
-            <div>
-              <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Partenaire *</label>
-              <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={gererChangementPartenaire} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
-                <option value="">-- Choisir --</option>
-                {fournisseursAvecStockage.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
-              </select>
-            </div>
-            <div>
-              <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-              <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
-            </div>
-            <div>
-              <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
-                {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
-              </label>
-              {estPartenaireSansStockage ? (
-                <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 font-extrabold text-xs text-amber-800 shadow-xs cursor-not-allowed" />
-              ) : estModeLivraison ? (
-                <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed">
-                  <option value="">-- Automatique --</option>
-                  {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                </select>
-              ) : (
-                <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
-                  <option value="">-- Choisir le dépôt --</option>
-                  {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                </select>
-              )}
-            </div>
-          </div>
-          <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
-            <span className="font-black uppercase text-slate-800 text-[9px] block">SAISIE DES ARTICLES</span>
-            <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
-              <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
-                <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">
-                  {articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}
-                </div>
-              </div>
-              <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label>
-                <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
-              </div>
-              {!estModeLivraison && (
-                <div className="col-span-3">
-                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A (F) *</label>
-                  <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
-                </div>
-              )}
-              <div className="col-span-1 text-center">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button>
-              </div>
-            </div>
-          </div>
-          {lignesValidees.length > 0 && (
-            <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
-                    <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
-                    <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
-                    {!estModeLivraison && <th className="p-2 w-[20%] text-right">P.A</th>}
-                    {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
-                    <th className="p-2 w-[5%] text-center">⚙️</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                  {lignesValidees.map((l, index) => (
-                    <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                      <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
-                      <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
-                      {!estModeLivraison && (
-                        <>
-                          <td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
-                          <td className="p-2 text-right font-black text-emerald-700">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
-                        </>
-                      )}
-                      <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {!estModeLivraison && (
-            <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1.5">
-              <div className="grid grid-cols-3 gap-2 text-[9px] uppercase text-slate-700 font-black">
-                <div>STATUT PAIEMENT</div><div>MONTANT RÉGLÉ</div><div>RESTE À PAYER</div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 items-center">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <select value={statutPaiement} disabled={enTrainDeSauvegarder} onChange={(e) => setStatutPaiement(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
-                    <option value="SOLDE">Soldé</option>
-                    <option value="PARTIEL">Avance</option>
-                    <option value="CREDIT">Crédit</option>
-                  </select>
-                </div>
-                <div>
-                  <input 
-                    type="number" 
-                    disabled={statutPaiement === 'SOLDE' || statutPaiement === 'CREDIT' || enTrainDeSauvegarder} 
-                    value={montantPaye} 
-                    onFocus={(e) => e.target.select()} 
-                    onChange={(e) => setMontantPaye(e.target.value)} 
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" 
+                  <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Du</label>
+                  <input
+                    type="date"
+                    value={dateDebutFiltre}
+                    onChange={(e) => setDateDebutFiltre(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
                   />
                 </div>
-                <div className="bg-white px-3 py-1.5 rounded border border-slate-300 text-right shadow-xs"><span className="text-xs font-black text-orange-600">{soldeRestant.toLocaleString('fr-FR')} F</span></div>
+                <div>
+                  <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Au</label>
+                  <input
+                    type="date"
+                    value={dateFinFiltre}
+                    onChange={(e) => setDateFinFiltre(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
+                  />
+                </div>
               </div>
             </div>
-          )}
-          <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-            {approEnEditionId ? (
-              permissions.peut_supprimer ? (
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
-              ) : <div/>
-            ) : (!estModeLivraison ? (<div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>) : <div/>)}
-            
-            <div className="flex items-center gap-1.5">
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
-              {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
-                  {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Valider')}
-                </button>
-              )}
-            </div>
-          </div>
-        </form>
-      )}
 
-      {vueActive === 'formulaire_commande' && (
-        <form onSubmit={enregistrerCommande} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
-          <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
-            <div className="flex items-center gap-2">
-              <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
-            </div>
-            <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
-            <div>
-              <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Partenaire *</label>
-              <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={gererChangementPartenaire} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
-                <option value="">-- Choisir --</option>
-                {fournisseursAvecStockage.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
-              </select>
-            </div>
-            <div>
-              <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-              <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs" />
-            </div>
-            <div>
-              <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
-                {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
-              </label>
-              {estPartenaireSansStockage ? (
-                <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 text-xs text-amber-800 font-extrabold shadow-xs cursor-not-allowed" />
-              ) : estModeLivraison ? (
-                <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed">
-                  <option value="">-- Automatique --</option>
-                  {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                </select>
-              ) : (
-                <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
-                  <option value="">-- Choisir le dépôt --</option>
-                  {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                </select>
-              )}
-            </div>
-            <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} placeholder="7 JOURS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
-          </div>
-          <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
-            <span className="font-black uppercase text-slate-800 text-[9px] block">ARTICLES À COMMANDER</span>
-            <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
-              <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">{articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}</div></div>
-              <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
-              {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
-              <div className="col-span-1 text-center"><button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
+            <div className="flex justify-between items-center gap-1.5">
+              <button 
+                type="button" 
+                disabled={enTrainDeSauvegarder}
+                onClick={() => { setOngletActif('APPRO'); setVueActive('liste'); }} 
+                className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'APPRO' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
+              >
+                📥 Appro ({documentsHistoriqueAffiches.length} / {documentsHistorique.length})
+              </button>
+              <button 
+                type="button" 
+                disabled={enTrainDeSauvegarder}
+                onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
+                className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
+              >
+                📋 Commandes ({commandesHistoriqueAffiches.length} / {commandesHistorique.length})
+              </button>
             </div>
           </div>
-          {lignesValidees.length > 0 && (
-            <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
-                    <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
-                    <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
-                    {!estModeLivraison && <th className="p-2 w-[20%] text-right">P. Estimé</th>}
-                    {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
-                    <th className="p-2 w-[5%] text-center">⚙️</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                  {lignesValidees.map((l, index) => (
-                    <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                      <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
-                      <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
-                      {!estModeLivraison && (
-                        <>
-                          <td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
-                          <td className="p-2 text-right font-black text-slate-900">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
-                        </>
+        )}
+
+        {vueActive === 'liste' && (
+          <div className="space-y-2.5">
+            {ongletActif === 'APPRO' && (
+              <div className="space-y-2">
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
+                        <th onClick={() => gererTri('date')} className="p-2 w-[18%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                        <th onClick={() => gererTri('numero')} className="p-2 w-[22%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° APPRO {rendreFlecheTri('numero')}</th>
+                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
+                        {!estModeLivraison && <th onClick={() => gererTri('statut')} className="p-2 w-[18%] text-right cursor-pointer hover:bg-slate-200 whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[10px]">
+                      {documentsHistoriqueAffiches.length === 0 ? (<tr><td colSpan={estModeLivraison ? 3 : 4} className="p-4 text-center text-slate-500 font-bold">Aucun approvisionnement enregistré.</td></tr>) : (
+                        documentsHistoriqueAffiches.map((doc) => (
+                          <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                            <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numero_bon}</td>
+                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'PARTENAIRE'}</td>
+                            {!estModeLivraison && (
+                              <td className="p-2 text-right whitespace-nowrap">
+                                <span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>
+                                  {doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}
+                                </span>
+                              </td>
+                            )}
+                          </tr>
+                        ))
                       )}
-                      <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-            {approEnEditionId ? (
-              <div className="flex gap-1.5">
-                {permissions.peut_supprimer && (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
-                )}
-                {permissions.peut_valider && (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">🔄 Transformer en Appro</button>
+                    </tbody>
+                  </table>
+                </div>
+
+                {limiteAppro < documentsHistorique.length && (
+                  <div className="text-center pt-1 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => setLimiteAppro(prev => prev + 20)}
+                      className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                    >
+                      📥 Charger 20 appros de plus ({documentsHistorique.length - limiteAppro} restants)
+                    </button>
+                  </div>
                 )}
               </div>
-            ) : (!estModeLivraison ? (
-              <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>
-            ) : <div/>)}
-            
-            <div className="flex items-center gap-1.5">
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalPartageOuverte(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">📤 Partager</button>
-              {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
-                  {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Enregistrer')}
-                </button>
-              )}
-            </div>
-          </div>
-        </form>
-      )}
+            )}
 
-      {modalArticleOuverte && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2.5 max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-              <span className="font-black text-xs uppercase text-slate-900">SÉLECTIONNER UN ARTICLE ({articlesFiltresModalAffiches.length} / {articlesFiltresModal.length})</span>
-              <button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button>
-            </div>
-            <input type="text" autoFocus placeholder="RECHERCHER..." value={rechercheArticle} onChange={(e) => setRechercheArticle(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
-            
-            <div className="overflow-y-auto space-y-1.5 flex-1 max-h-60">
-              {articlesFiltresModalAffiches.map((art) => {
-                const estGrise = art.estGrise;
-                return (
-                  <div key={art.idArticleFormate} onClick={() => { if (estGrise) return; setArticleCourant({ id_article: art.idArticleFormate, designation: (art.Designation || 'ARTICLE').toUpperCase(), quantite: '1', prix_achat: art.prixAchatDefaut || '0' }); setModalArticleOuverte(false); setRechercheArticle(''); setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50); }} className={`p-2.5 border rounded-xl flex justify-between items-center transition ${estGrise ? 'bg-slate-100 opacity-50 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 cursor-pointer border-slate-200'}`}>
-                    <div><span className={`font-extrabold uppercase block text-[11px] ${estGrise ? 'text-slate-500' : 'text-slate-900'}`}>{art.Designation}</span>{estGrise && <span className="bg-slate-200 text-slate-700 text-[8.5px] px-1.5 py-0.5 rounded font-black">Déjà ajouté</span>}<span className="text-[9.5px] text-slate-600 font-bold">Stock : <strong>{art.stockDepot}</strong></span></div>
-                    {!estModeLivraison && <span className="font-black text-[11px] text-orange-600">{art.prixAchatDefaut ? `${Number(art.prixAchatDefaut).toLocaleString('fr-FR')} F` : ''}</span>}
+            {ongletActif === 'COMMANDE' && (
+              <div className="space-y-2">
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
+                        <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                        <th onClick={() => gererTri('numero')} className="p-2 w-[35%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
+                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[10px]">
+                      {commandesHistoriqueAffiches.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande enregistré.</td></tr>) : (
+                        commandesHistoriqueAffiches.map((cmd) => (
+                          <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                            <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{cmd.numero_commande}</td>
+                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'PARTENAIRE'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {limiteCommandes < commandesHistorique.length && (
+                  <div className="text-center pt-1 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => setLimiteCommandes(prev => prev + 20)}
+                      className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                    >
+                      📥 Charger 20 commandes de plus ({commandesHistorique.length - limiteCommandes} restantes)
+                    </button>
                   </div>
-                );
-              })}
-            </div>
-
-            {limiteArticlesModal < articlesFiltresModal.length && (
-              <div className="text-center pt-1 pb-1">
-                <button
-                  type="button"
-                  onClick={() => setLimiteArticlesModal(prev => prev + 20)}
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
-                >
-                  📥 Charger 20 articles de plus ({articlesFiltresModal.length - limiteArticlesModal} restants)
-                </button>
+                )}
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
 
-      {modalPartageOuverte && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-          <div className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-4 space-y-3">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2"><span className="font-black text-xs uppercase text-slate-900">OPTIONS DE PARTAGE</span><button type="button" onClick={() => setModalPartageOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button></div>
-            <div className="space-y-1.5"><label className="block font-black text-slate-800 text-[10px] uppercase">Format :</label><div className="grid grid-cols-3 gap-1">{['PDF', 'PNG', 'JPG'].map(fmt => (<button key={fmt} type="button" onClick={() => setFormatPartage(fmt)} className={`py-1.5 rounded-lg font-black text-[10px] border shadow-xs ${formatPartage === fmt ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-slate-800 border-slate-300'}`}>{fmt}</button>))}</div></div>
-            <div className="space-y-1.5 pt-1"><label className="block font-black text-slate-800 text-[10px] uppercase">Canal :</label><div className="grid grid-cols-1 gap-1 text-[11px]"><button type="button" onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-black p-2 rounded-xl text-center border border-emerald-200 shadow-xs">💚 WhatsApp</button><button type="button" onClick={() => { alert('Partagé !'); setModalPartageOuverte(false); }} className="w-full bg-blue-50 hover:bg-blue-100 text-blue-900 font-black p-2 rounded-xl text-center border border-blue-200 shadow-xs">📧 Mail</button></div></div>
+        {vueActive === 'choix_creation' && (
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-md space-y-3 max-w-sm mx-auto text-center">
+            <div className="border-b border-slate-200 pb-2 flex justify-between items-center">
+              <span className="font-black text-slate-900 text-xs uppercase">CHOISIR LE TYPE DE DOCUMENT</span>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+                <span className="text-2xl">📋</span>
+                <span className="font-black text-[11px] text-slate-900">Bon de Commande</span>
+              </button>
+              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('APPRO')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+                <span className="text-2xl">📥</span>
+                <span className="font-black text-[11px] text-emerald-900">Approvisionnement</span>
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {vueActive === 'formulaire_facture' && (
+          <form onSubmit={enregistrerFacture} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-slate-900 text-xs uppercase">📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+              </div>
+              <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <div>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label>
+                <input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+              </div>
+              <div>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Partenaire *</label>
+                <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={gererChangementPartenaire} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
+                  <option value="">-- Choisir --</option>
+                  {fournisseursAvecStockage.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
+                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
+              </div>
+              <div>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
+                  {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
+                </label>
+                {estPartenaireSansStockage ? (
+                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 font-extrabold text-xs text-amber-800 shadow-xs cursor-not-allowed" />
+                ) : estModeLivraison ? (
+                  <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed">
+                    <option value="">-- Automatique --</option>
+                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
+                  </select>
+                ) : (
+                  <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
+                    <option value="">-- Choisir le dépôt --</option>
+                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
+                  </select>
+                )}
+              </div>
+            </div>
+            <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <span className="font-black uppercase text-slate-800 text-[9px] block">SAISIE DES ARTICLES</span>
+              <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
+                <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
+                  <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">
+                    {articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}
+                  </div>
+                </div>
+                <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
+                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label>
+                  <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                </div>
+                {!estModeLivraison && (
+                  <div className="col-span-3">
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A (F) *</label>
+                    <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                  </div>
+                )}
+                <div className="col-span-1 text-center">
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button>
+                </div>
+              </div>
+            </div>
+            {lignesValidees.length > 0 && (
+              <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
+                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
+                      <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
+                      {!estModeLivraison && <th className="p-2 w-[20%] text-right">P.A</th>}
+                      {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
+                      <th className="p-2 w-[5%] text-center">⚙️</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                    {lignesValidees.map((l, index) => (
+                      <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
+                        <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
+                        {!estModeLivraison && (
+                          <>
+                            <td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
+                            <td className="p-2 text-right font-black text-emerald-700">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
+                          </>
+                        )}
+                        <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {!estModeLivraison && (
+              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1.5">
+                <div className="grid grid-cols-3 gap-2 text-[9px] uppercase text-slate-700 font-black">
+                  <div>STATUT PAIEMENT</div><div>MONTANT RÉGLÉ</div><div>RESTE À PAYER</div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 items-center">
+                  <div>
+                    <select value={statutPaiement} disabled={enTrainDeSauvegarder} onChange={(e) => setStatutPaiement(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
+                      <option value="SOLDE">Soldé</option>
+                      <option value="PARTIEL">Avance</option>
+                      <option value="CREDIT">Crédit</option>
+                    </select>
+                  </div>
+                  <div>
+                    <input 
+                      type="number" 
+                      disabled={statutPaiement === 'SOLDE' || statutPaiement === 'CREDIT' || enTrainDeSauvegarder} 
+                      value={montantPaye} 
+                      onFocus={(e) => e.target.select()} 
+                      onChange={(e) => setMontantPaye(e.target.value)} 
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" 
+                    />
+                  </div>
+                  <div className="bg-white px-3 py-1.5 rounded border border-slate-300 text-right shadow-xs"><span className="text-xs font-black text-orange-600">{soldeRestant.toLocaleString('fr-FR')} F</span></div>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+              {approEnEditionId ? (
+                permissions.peut_supprimer ? (
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
+                ) : <div/>
+              ) : (!estModeLivraison ? (<div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>) : <div/>)}
+              
+              <div className="flex items-center gap-1.5">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
+                {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
+                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Valider')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </form>
+        )}
+
+        {vueActive === 'formulaire_commande' && (
+          <form onSubmit={enregistrerCommande} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+              </div>
+              <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
+              <div>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Partenaire *</label>
+                <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={gererChangementPartenaire} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
+                  <option value="">-- Choisir --</option>
+                  {fournisseursAvecStockage.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
+                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs" />
+              </div>
+              <div>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
+                  {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
+                </label>
+                {estPartenaireSansStockage ? (
+                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 text-xs text-amber-800 font-extrabold shadow-xs cursor-not-allowed" />
+                ) : estModeLivraison ? (
+                  <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed">
+                    <option value="">-- Automatique --</option>
+                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
+                  </select>
+                ) : (
+                  <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
+                    <option value="">-- Choisir le dépôt --</option>
+                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
+                  </select>
+                )}
+              </div>
+              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} placeholder="7 JOURS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
+            </div>
+            <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <span className="font-black uppercase text-slate-800 text-[9px] block">ARTICLES À COMMANDER</span>
+              <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
+                <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">{articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}</div></div>
+                <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
+                {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
+                <div className="col-span-1 text-center"><button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
+              </div>
+            </div>
+            {lignesValidees.length > 0 && (
+              <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
+                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
+                      <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
+                      {!estModeLivraison && <th className="p-2 w-[20%] text-right">P. Estimé</th>}
+                      {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
+                      <th className="p-2 w-[5%] text-center">⚙️</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                    {lignesValidees.map((l, index) => (
+                      <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
+                        <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
+                        {!estModeLivraison && (
+                          <>
+                            <td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
+                            <td className="p-2 text-right font-black text-slate-900">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
+                          </>
+                        )}
+                        <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+              {approEnEditionId ? (
+                <div className="flex gap-1.5">
+                  {permissions.peut_supprimer && (
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
+                  )}
+                  {permissions.peut_valider && (
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">🔄 Transformer en Appro</button>
+                  )}
+                </div>
+              ) : (!estModeLivraison ? (
+                <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>
+              ) : <div/>)}
+              
+              <div className="flex items-center gap-1.5">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
+                {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
+                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Enregistrer')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </form>
+        )}
+
+        {modalArticleOuverte && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                  <span>🔍</span> SÉLECTIONNER UN ARTICLE ({articlesFiltresModalAffiches.length} / {articlesFiltresModal.length})
+                </h4>
+                <button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+              </div>
+              <div>
+                <input
+                  type="text"
+                  value={rechercheArticle}
+                  onChange={(e) => setRechercheArticle(e.target.value.toUpperCase())}
+                  placeholder="RECHERCHER..."
+                  autoFocus
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                {articlesFiltresModalAffiches.length === 0 ? (
+                  <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+                ) : (
+                  articlesFiltresModalAffiches.map((art) => {
+                    const estGrise = art.estGrise;
+                    return (
+                      <div 
+                        key={art.idArticleFormate} 
+                        onClick={() => { 
+                          if (estGrise) return; 
+                          setArticleCourant({ id_article: art.idArticleFormate, designation: (art.Designation || 'ARTICLE').toUpperCase(), quantite: '1', prix_achat: art.prixAchatDefaut || '0' }); 
+                          setModalArticleOuverte(false); 
+                          setRechercheArticle(''); 
+                          setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50); 
+                        }} 
+                        className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
+                          estGrise ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-1">
+                          <span className={`font-black text-xs uppercase truncate ${estGrise ? 'text-slate-500' : 'text-slate-900'}`}>{art.Designation}</span>
+                          {!estModeLivraison && (
+                            <span className="font-black text-[10px] text-orange-600 shrink-0">{art.prixAchatDefaut ? `${Number(art.prixAchatDefaut).toLocaleString('fr-FR')} F` : ''}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          {estGrise ? (
+                            <span className="bg-slate-200 text-slate-700 text-[8.5px] px-1.5 py-0.5 rounded font-black">Déjà ajouté</span>
+                          ) : <span/>}
+                          <span className="font-black text-[10px] text-slate-700">
+                            Stock : <strong className="text-emerald-700">{art.stockDepot}</strong>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {limiteArticlesModal < articlesFiltresModal.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteArticlesModal(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                  >
+                    📥 Charger 20 articles de plus ({articlesFiltresModal.length - limiteArticlesModal} restants)
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

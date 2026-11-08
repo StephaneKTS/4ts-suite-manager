@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
+export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   const [articles, setArticles] = useState([]);
   const [depots, setDepots] = useState([]); 
   const [emplacements, setEmplacements] = useState([]);
@@ -17,7 +17,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
   const [limiteArticles, setLimiteArticles] = useState(20);
 
   // États initialisés vides pour éviter les faux droits par défaut au démarrage
-  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('Stephane KTS');
   const [emailConnecte, setEmailConnecte] = useState('');
 
   const obtenirModuleActuel = () => {
@@ -76,19 +76,26 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const designationInputRef = useRef(null);
 
-  const obtenirDateDuJour = () => {
+  const obtenirPremierJourDuMois = () => {
     const d = new Date();
     const annee = d.getFullYear();
     const mois = String(d.getMonth() + 1).padStart(2, '0');
-    const jour = String(d.getDate()).padStart(2, '0');
-    return `${annee}-${mois}-${jour}`;
+    return `${annee}-${mois}-01`;
   };
 
-  const [dateDebutRapport, setDateDebutRapport] = useState(obtenirDateDuJour());
-  const [dateFinRapport, setDateFinRapport] = useState(obtenirDateDuJour());
+  const obtenirDernierJourDuMois = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = d.getMonth() + 1;
+    const dernierJour = new Date(annee, mois, 0).getDate();
+    return `${annee}-${String(mois).padStart(2, '0')}-${String(dernierJour).padStart(2, '0')}`;
+  };
 
-  const [dateDebutStat, setDateDebutStat] = useState(obtenirDateDuJour());
-  const [dateFinStat, setDateFinStat] = useState(obtenirDateDuJour());
+  const [dateDebutRapport, setDateDebutRapport] = useState(obtenirPremierJourDuMois());
+  const [dateFinRapport, setDateFinRapport] = useState(obtenirDernierJourDuMois());
+
+  const [dateDebutStat, setDateDebutStat] = useState(obtenirPremierJourDuMois());
+  const [dateFinStat, setDateFinStat] = useState(obtenirDernierJourDuMois());
 
   const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
   const [rechercheModalArticle, setRechercheModalArticle] = useState('');
@@ -230,7 +237,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}_${moduleActuel}`, listeAppro);
 
     } catch (err) {
-      console.error('Erreur chargement références :', err.message);
+      console.warn('Mode hors-ligne ou échec réseau sur les références :', err.message);
     }
   };
 
@@ -240,12 +247,6 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     if (articlesLocaux && articlesLocaux.length > 0) {
       setArticles(articlesLocaux);
       setArticleSelectionneStatId(String(articlesLocaux[0].id_article || articlesLocaux[0].id));
-      setChargement(false);
-    }
-
-    if (typeof window !== 'undefined' && !navigator.onLine) {
-      setChargement(false);
-      return;
     }
 
     try {
@@ -270,7 +271,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         setArticleSelectionneStatId('');
       }
     } catch (err) {
-      console.error('Erreur chargement articles :', err.message);
+      console.warn('Mode hors-ligne ou échec réseau (utilisant le cache local) :', err.message);
     } finally {
       setChargement(false);
     }
@@ -320,6 +321,68 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     return aAppro;
   };
 
+  // MOTEUR UNIFIÉ GLOBAL : CALCUL EXACT DU STOCK RÉEL (CORRIGÉ AVEC NEUTRALITÉ DES TRANSFERTS INTERNES)
+  const calculerLigneRapportStockPourDepot = (articleId, dCible) => {
+    let stockInitial = 0;
+    let entrees = 0;
+    let sorties = 0;
+
+    mouvements.forEach(m => {
+      if (String(m.id_article) !== String(articleId)) return;
+      const qte = parseInt(m.quantite || 0);
+      const typeMvt = (m.type_mouvement || '').toUpperCase();
+
+      const estSource = String(m.id_depot_source || '') === String(dCible);
+      const estDestination = String(m.id_depot_destination || '') === String(dCible);
+      const memeDepotInterne = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
+
+      if (dCible !== 'TOUS' && !estSource && !estDestination) return;
+
+      if (typeMvt === 'INVENTAIRE') {
+        stockInitial = qte;
+      } else {
+        if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          if (dCible === 'TOUS' || estSource) sorties += qte;
+        } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          entrees += qte;
+        } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          if (memeDepotInterne) {
+            // Transfert interne au même dépôt : neutre (pas d'impact sur le stock global du dépôt)
+          } else if (dCible !== 'TOUS') {
+            if (estSource) sorties += qte;
+            if (estDestination) entrees += qte;
+          }
+        } else {
+          entrees += qte;
+        }
+      }
+    });
+
+    approvisionnements.forEach(app => {
+      const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot || '') === String(dCible);
+      if (!matchDepot) return;
+
+      let listArt = [];
+      if (typeof app.details_articles === 'string') {
+        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = app.details_articles;
+      }
+
+      listArt.forEach(item => {
+        if (String(item.id_article || item.article_id) !== String(articleId)) return;
+        const qte = parseInt(item.quantite || 0);
+        entrees += qte;
+      });
+    });
+
+    stockInitial = Math.max(0, stockInitial);
+    const stockTotal = stockInitial + entrees;
+    const stockReel = Math.max(0, stockTotal - sorties);
+
+    return stockReel;
+  };
+
   const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
     if (emplacementCible !== 'TOUS') {
       let stockEmp = 0;
@@ -356,76 +419,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       return Math.max(0, stockEmp);
     }
 
-    if (depotCible !== 'TOUS') {
-      let stockDepot = 0;
-      mouvements.forEach(m => {
-        if (String(m.id_article) !== String(articleId)) return;
-        const qte = parseInt(m.quantite || 0);
-        const typeMvt = (m.type_mouvement || '').toUpperCase();
-
-        const depSource = String(m.id_depot_source || '');
-        const depDest = String(m.id_depot_destination || '');
-
-        const matchSource = depSource === String(depotCible);
-        const matchDest = depDest === String(depotCible);
-
-        if (matchSource && matchDest) return;
-
-        if (typeMvt === 'INVENTAIRE' && matchSource) {
-          stockDepot = qte;
-          return;
-        }
-        if (matchDest) stockDepot += qte;
-        if (matchSource) stockDepot -= qte;
-      });
-
-      approvisionnements.forEach(app => {
-        const depApp = String(app.id_depot_destination || app.id_depot || '');
-        if (depApp !== String(depotCible)) return;
-
-        let listArt = [];
-        if (typeof app.details_articles === 'string') {
-          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-        } else if (Array.isArray(app.details_articles)) {
-          listArt = app.details_articles;
-        }
-        listArt.forEach(item => {
-          if (String(item.id_article || item.article_id) === String(articleId)) {
-            stockDepot += parseInt(item.quantite || 0);
-          }
-        });
-      });
-
-      return Math.max(0, stockDepot);
-    }
-
-    let totalEntrees = 0;
-    let totalSorties = 0;
-
-    mouvements.forEach(m => {
-      if (String(m.id_article) !== String(articleId)) return;
-      const qte = parseInt(m.quantite || 0);
-      const typeMvt = (m.type_mouvement || '').toUpperCase();
-
-      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') totalEntrees += qte;
-      else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') totalSorties += qte;
-    });
-
-    approvisionnements.forEach(app => {
-      let listArt = [];
-      if (typeof app.details_articles === 'string') {
-        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-      } else if (Array.isArray(app.details_articles)) {
-        listArt = app.details_articles;
-      }
-      listArt.forEach(item => {
-        if (String(item.id_article || item.article_id) === String(articleId)) {
-          totalEntrees += parseInt(item.quantite || 0);
-        }
-      });
-    });
-
-    return Math.max(0, totalEntrees - totalSorties);
+    return calculerLigneRapportStockPourDepot(articleId, depotCible);
   };
 
   const formaterTypeMouvementAffichage = (mvt) => {
@@ -537,6 +531,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
         stockCourant += ev.impactStock;
         lignesResultat.push({
           ...ev,
+          date: ev.date,
           stockProgressif: Math.max(0, stockCourant)
         });
       } else {
@@ -835,7 +830,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
   const colSpanTotal = 2 + emplacementsTableau.length + (moduleActuel !== 'LIVRAISON' ? 2 : 1);
 
-  // RAPPORT DE STOCK RIGOUREUSEMENT SYNCHRONISÉ AVEC LA PLAGE DE DATES SÉLECTIONNÉE
+  // RAPPORT DE STOCK CORRIGÉ : Calcul dynamique et continu (Stock Initial, Entrées, Total, Sorties, Réel)
   const calculerLigneRapportStock = (articleId) => {
     const dCible = depotRapportFiltre;
     
@@ -843,6 +838,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
     let entrees = 0;
     let sorties = 0;
 
+    // 1. Analyse chronologique des mouvements
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
       const dateMvt = (m.created_at || '').split('T')[0];
@@ -851,55 +847,48 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
 
       const estSource = String(m.id_depot_source || '') === String(dCible);
       const estDestination = String(m.id_depot_destination || '') === String(dCible);
+      
+      // Vérification si c'est un transfert interne au même dépôt
+      const memeDepotInterne = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
 
       if (dCible !== 'TOUS' && !estSource && !estDestination) return;
 
-      let netImpact = 0;
-      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
-        netImpact = qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
-        netImpact = -qte;
-      } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
-        const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
-        if (memeDepot) {
-          netImpact = 0;
-        } else {
-          if (dCible === 'TOUS') {
-            netImpact = 0;
-          } else {
-            if (estSource) netImpact = -qte;
-            if (estDestination) netImpact = qte;
-          }
-        }
-      } else {
-        netImpact = qte;
-      }
-
-      // 1. Avant la période : alimente le stock initial (report de la veille)
       if (dateDebutRapport && dateMvt && dateMvt < dateDebutRapport) {
-        stockInitial += netImpact;
-      } 
-      // 2. Pendant la période sélectionnée (entre dateDebutRapport et dateFinRapport incluses)
-      else if ((!dateDebutRapport || !dateMvt || dateMvt >= dateDebutRapport) && (!dateFinRapport || !dateMvt || dateMvt <= dateFinRapport)) {
-        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || typeMvt === 'INVENTAIRE') {
-          entrees += qte;
-        } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
-          if (dCible === 'TOUS' || estSource) sorties += qte;
+        // Mouvements antérieurs : impactent le stock initial
+        if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          if (dCible === 'TOUS' || estSource) stockInitial -= qte;
+        } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          stockInitial += qte;
         } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
-          const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
-          if (memeDepot) {
-            entrees += qte;
+          if (!memeDepotInterne && dCible !== 'TOUS') {
+            if (estSource) stockInitial -= qte;
+            if (estDestination) stockInitial += qte;
+          }
+        } else {
+          stockInitial += qte;
+        }
+      } else if ((!dateDebutRapport || !dateMvt || dateMvt >= dateDebutRapport) && (!dateFinRapport || !dateMvt || dateMvt <= dateFinRapport)) {
+        // Mouvements pendant la période
+        if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          if (dCible === 'TOUS' || estSource) sorties += qte;
+        } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          entrees += qte;
+        } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          if (memeDepotInterne) {
+            // Un transfert interne au même dépôt ne modifie pas les entrées globales du dépôt (neutre)
           } else if (dCible !== 'TOUS') {
             if (estSource) sorties += qte;
             if (estDestination) entrees += qte;
+          } else {
+            // En vue globale "TOUS", un transfert interne est neutre
           }
         } else {
           entrees += qte;
         }
       }
-      // 3. Après la période : ignoré pour le calcul des flux de la période courante
     });
 
+    // 2. Intégration des approvisionnements (entrées et stock initial)
     approvisionnements.forEach(app => {
       const dateApp = (app.created_at || '').split('T')[0];
       const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot || '') === String(dCible);
@@ -915,6 +904,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       listArt.forEach(item => {
         if (String(item.id_article || item.article_id) !== String(articleId)) return;
         const qte = parseInt(item.quantite || 0);
+
         if (dateDebutRapport && dateApp && dateApp < dateDebutRapport) {
           stockInitial += qte;
         } else if ((!dateDebutRapport || !dateApp || dateApp >= dateDebutRapport) && (!dateFinRapport || !dateApp || dateApp <= dateFinRapport)) {
@@ -937,7 +927,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    const nomEntreprise = entrepriseInfo?.nom_entreprise || entrepriseInfo?.nom || '4TS : ISMA LOGISTIQUE';
+    const nomEntreprise = entrepriseInfo?.nom_entreprise || entrepriseInfo?.nom || '4TS Suite manager';
     const dateImpression = new Date().toLocaleDateString('fr-FR');
     
     let infosFiltresHtml = '';
@@ -1687,6 +1677,7 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
+                        <th className="p-2.5">Date</th>
                         <th className="p-2.5">Nom de l'article</th>
                         <th className="p-2.5 text-center">Type Mvt</th>
                         <th className="p-2.5 text-center">Quantité</th>
@@ -1696,11 +1687,14 @@ export default function GestionArticles({ entrepriseId = '4TS-TEST' }) {
                     <tbody className="divide-y divide-slate-100 text-[10.5px]">
                       {stats.lignes.length === 0 ? (
                         <tr>
-                          <td colSpan="4" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré sur cette période.</td>
+                          <td colSpan="5" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré sur cette période.</td>
                         </tr>
                       ) : (
                         stats.lignes.map((ligne, idx) => (
                           <tr key={idx} className="hover:bg-slate-50 transition">
+                            <td className="p-2.5 font-mono font-bold text-slate-700 whitespace-nowrap">
+                              {ligne.date ? new Date(ligne.date).toLocaleDateString('fr-FR') : '-'}
+                            </td>
                             <td className="p-2.5 font-black uppercase text-slate-900">{nomArticle}</td>
                             <td className="p-2.5 text-center">
                               <span className={`px-2 py-0.5 rounded font-black text-[9.5px] ${

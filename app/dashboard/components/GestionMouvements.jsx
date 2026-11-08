@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
@@ -18,8 +18,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
   const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
+  const cleCacheReferencesDocs = `references_documents_${entrepriseId}_${moduleActuel}`;
 
-  // --- RÉCUPÉRATION ROBUSTE ET ÉTENDUE DE L'UTILISATEUR CONNECTÉ ---
   const obtenirNomOperateurConnecte = () => {
     if (typeof window === 'undefined') return 'DC KTS';
     
@@ -66,7 +66,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return 'ZOA ABATE KATY';
   };
 
-  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
   const [mouvements, setMouvements] = useState(() => {
     if (typeof window !== 'undefined') {
       const data = localSync.recupererDonneesLocales(cleCacheMouvements);
@@ -107,11 +106,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return [];
   });
 
+  const [referencesDocsMap, setReferencesDocsMap] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const data = localSync.recupererDonneesLocales(cleCacheReferencesDocs);
+      return data && typeof data === 'object' ? data : {};
+    }
+    return {};
+  });
+
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
-  // --- GESTION DES DROITS ET AUTORISATIONS ---
   const [roleNom, setRoleNom] = useState('');
   const [emailConnecteUser, setEmailConnecteUser] = useState('');
   const [nomUtilisateurConnecte, setNomUtilisateurConnecte] = useState(obtenirNomOperateurConnecte);
@@ -122,11 +128,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     peut_valider: true
   });
 
-  // --- PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteDocuments, setLimiteDocuments] = useState(20);
-
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
+
+  const [filtreDateDebut, setFiltreDateDebut] = useState('');
+  const [filtreDateFin, setFiltreDateFin] = useState('');
 
   const [enTeteDoc, setEnTeteDoc] = useState({
     numeroDoc: '',
@@ -148,6 +155,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [quantiteSaisie, setQuantiteSaisie] = useState(1);
   const [lignesPanier, setLignesPanier] = useState([]);
   const [mouvementEnEditionId, setMouvementEnEditionId] = useState(null);
+
+  const [etatInitialEdition, setEtatInitialEdition] = useState(null);
 
   const [colonneTri, setColonneTri] = useState('date');
   const [ordreTri, setOrdreTri] = useState('desc');
@@ -194,9 +203,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
             setRoleNom(nomRoleUser);
 
-            const estSuperAdmin = emailConnecte === 'stephs7352@gmail.com' || nomRoleUser.includes('ADMIN') || nomRoleUser.includes('SUPER');
+            const estSuperAdminOuAdmin = emailConnecte === 'stephs7352@gmail.com' || nomRoleUser.includes('ADMINISTRATEUR') || nomRoleUser === 'ADMINISTRATEUR' || nomRoleUser.includes('ADMIN');
             
-            if (estSuperAdmin) {
+            if (estSuperAdminOuAdmin) {
               setPermissions({
                 peut_creer: true,
                 peut_modifier: true,
@@ -204,7 +213,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 peut_valider: true
               });
             } else if (nomRoleUser) {
-              // Vérification des droits depuis la table des rôles en base si ce n'est pas admin
               const { data: roleData } = await supabase
                 .from('roles')
                 .select('permissions')
@@ -214,10 +222,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 .maybeSingle();
 
               if (roleData && roleData.permissions) {
-                const permsMod = roleData.permissions['mouvements_stock'] || roleData.permissions[moduleActuel.toLowerCase()];
                 if (roleData.permissions._plein_acces) {
                   setPermissions({ peut_creer: true, peut_modifier: true, peut_supprimer: true, peut_valider: true });
-                } else if (permsMod) {
+                } else {
+                  const permsMod = roleData.permissions['mouvements_stock'] || roleData.permissions[moduleActuel.toLowerCase()] || {};
                   setPermissions({
                     peut_creer: !!permsMod.creation,
                     peut_modifier: !!permsMod.modification,
@@ -243,7 +251,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       setDepots(depotsList);
       localSync.sauvegarderDonneesLocales(cleCacheDepots, depotsList);
 
-      if (depotsList.length > 0 && !enTeteDoc.id_depot_source) {
+      if (depotsList.length > 0 && !enTeteDoc.id_depot_source && !mouvementEnEditionId) {
         setEnTeteDoc((prev) => ({ 
           ...prev, 
           id_depot_source: depotsList[0].id,
@@ -343,6 +351,29 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return depotId;
   };
 
+  const obtenirNomEmplacementParId = (empId) => {
+    if (!empId) return '-';
+    const emp = emplacements.find(e => String(e.id) === String(empId));
+    if (emp) {
+      return emp.nom_emplacement || emp.code_emplacement || emp.responsable_emplacement || '-';
+    }
+    return '-';
+  };
+
+  const obtenirNomDestinationParMvt = (mvt) => {
+    if (!mvt) return '-';
+    if (mvt.id_emplacement_destination) {
+      return obtenirNomEmplacementParId(mvt.id_emplacement_destination);
+    }
+    if (mvt.id_depot_destination) {
+      return obtenirNomDepotParId(mvt.id_depot_destination);
+    }
+    if (mvt.id_emplacement_source) {
+      return obtenirNomEmplacementParId(mvt.id_emplacement_source);
+    }
+    return '-';
+  };
+
   const obtenirTousLesFluxArticle = (articleId) => {
     let flux = [];
     mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
@@ -356,18 +387,32 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         type: (m.type_mouvement || '').toUpperCase() 
       });
     });
+
     approvisionnements.forEach((app) => {
       let articlesAppro = [];
       if (app.details_articles) {
-        if (typeof app.details_articles === 'string') { try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} }
-        else if (Array.isArray(app.details_articles)) { articlesAppro = app.details_articles; }
+        if (typeof app.details_articles === 'string') { 
+          try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} 
+        } else if (Array.isArray(app.details_articles)) { 
+          articlesAppro = app.details_articles; 
+        }
       }
       articlesAppro.forEach((ligne) => {
-        if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
-          flux.push({ date: app.created_at || '', depot_source: app.id_depot_destination, depot_destination: null, quantite: parseInt(ligne.quantite || 0), type: 'APPROVISIONNEMENT' });
+        const idArtLigne = ligne.id_article || ligne.article_id;
+        if (String(idArtLigne) === String(articleId)) {
+          flux.push({ 
+            date: app.created_at || app.date_approvisionnement || '', 
+            depot_source: null, 
+            depot_destination: app.id_depot_destination || app.id_depot, // 👈 CORRECTION APPLIQUÉE ICI
+            emplacement_source: null,
+            emplacement_destination: null,
+            quantite: parseInt(ligne.quantite || 0), 
+            type: 'APPROVISIONNEMENT' 
+          });
         }
       });
     });
+
     flux.sort((a, b) => new Date(a.date) - new Date(b.date));
     return flux;
   };
@@ -429,7 +474,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         if (matchDepotSource) stockDepot -= qte; 
         return; 
       }
-      if (typeMvt === 'ENTREE' || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
+      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || typeMvt.includes('ACHAT') || typeMvt.includes('APPRO') || typeMvt.includes('FACTURE')) {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
       } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
         if (matchDepotSource) stockDepot -= qte;
@@ -522,7 +567,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
   };
 
-  // --- BOUTON ANNULER : Rôle exclusif d'annulation de saisie en cours / réinitialisation formulaire ---
   const annulerOperation = () => {
     if (enTrainDeSauvegarder) return;
     if (lignesPanier.length > 0 || enTeteDoc.referenceDoc || mouvementEnEditionId) {
@@ -530,6 +574,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
     setLignesPanier([]);
     setMouvementEnEditionId(null);
+    setEtatInitialEdition(null);
     setArticleSelectionneTemp(null);
     setQuantiteSaisie(1);
     setEnTeteDoc(prev => ({
@@ -540,17 +585,29 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }));
   };
 
-  // --- BOUTON SUPPRIMER : Rôle exclusif de suppression d'un document déjà saisi ou en cours d'édition ---
   const verifierDroitSuppressionEffectif = () => {
-    const estSuperAdmin = emailConnecteUser === 'stephs7352@gmail.com' || roleNom.includes('ADMIN');
-    return estSuperAdmin || permissions.peut_supprimer;
+    if (typeof window === 'undefined') return true;
+    try {
+      const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
+      if (utilisateurConnecteStr) {
+        const userObj = JSON.parse(utilisateurConnecteStr);
+        const email = (userObj.email || '').trim().toLowerCase();
+        const role = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
+        if (email === 'stephs7352@gmail.com' || role.includes('ADMIN') || role.includes('ADMINISTRATEUR')) {
+          return true;
+        }
+      }
+    } catch (e) {}
+
+    const estSuperAdminOuAdmin = emailConnecteUser === 'stephs7352@gmail.com' || roleNom.includes('ADMINISTRATEUR') || roleNom === 'ADMINISTRATEUR' || roleNom.includes('ADMIN');
+    return estSuperAdminOuAdmin || permissions.peut_supprimer;
   };
 
   const supprimerDocumentActuel = async () => {
     if (enTrainDeSauvegarder) return;
 
     if (!verifierDroitSuppressionEffectif()) {
-      alert('⛔ Action non autorisée : Seuls l’Administrateur et le Super Administrateur (ou les profils disposant du droit de suppression) peuvent supprimer une opération.');
+      alert('⛔ Action non autorisée : Seuls l’Administrateur et le Super Administrateur peuvent supprimer une opération.');
       return;
     }
 
@@ -573,11 +630,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         setMouvements(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
         localStorage.removeItem(cleCacheMouvements);
+
+        const nouvellesRefs = { ...referencesDocsMap };
+        delete nouvellesRefs[enTeteDoc.numeroDoc];
+        setReferencesDocsMap(nouvellesRefs);
+        localSync.sauvegarderDonneesLocales(cleCacheReferencesDocs, nouvellesRefs);
       }
 
       alert('Document supprimé avec succès.');
       setLignesPanier([]);
       setMouvementEnEditionId(null);
+      setEtatInitialEdition(null);
       setArticleSelectionneTemp(null);
       setQuantiteSaisie(1);
       setEnTeteDoc(prev => ({
@@ -587,6 +650,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         operateur: obtenirNomOperateurConnecte()
       }));
       await chargerDonnees(true);
+      setModeAffichage('LISTE_DOCS');
     } catch (err) { 
       alert('Erreur : ' + err.message); 
     } finally {
@@ -622,6 +686,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       }
       
       const operateurActuel = obtenirNomOperateurConnecte();
+      
+      let dateMvtIso = new Date().toISOString();
+      if (enTeteDoc.dateDoc) {
+        const dateSaisieObj = new Date(enTeteDoc.dateDoc);
+        if (!isNaN(dateSaisieObj.getTime())) {
+          const heureActuelle = new Date();
+          dateSaisieObj.setHours(heureActuelle.getHours(), heureActuelle.getMinutes(), heureActuelle.getSeconds(), heureActuelle.getMilliseconds());
+          dateMvtIso = dateSaisieObj.toISOString();
+        }
+      }
+
       let nouveauxMouvementsAjoutes = [];
       for (const ligne of lignesPanier) {
         const payload = {
@@ -636,10 +711,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           quantite: ligne.quantite,
           motif_remarque: enTeteDoc.numeroDoc,
           operateur: operateurActuel,
+          created_at: dateMvtIso,
         };
 
         const idTemp = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7);
-        const objetInsertion = { ...payload, id: idTemp, created_at: new Date().toISOString() };
+        const objetInsertion = { ...payload, id: idTemp };
         nouveauxMouvementsAjoutes.push(objetInsertion);
 
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
@@ -647,6 +723,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
         }
       }
+
+      const nouvellesRefs = { ...referencesDocsMap, [enTeteDoc.numeroDoc]: enTeteDoc.referenceDoc || '' };
+      setReferencesDocsMap(nouvellesRefs);
+      localSync.sauvegarderDonneesLocales(cleCacheReferencesDocs, nouvellesRefs);
 
       const mouvementsFiltres = mouvements.filter(m => m.motif_remarque !== enTeteDoc.numeroDoc);
       const listeMaj = [...nouveauxMouvementsAjoutes, ...mouvementsFiltres];
@@ -657,6 +737,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       alert(`Document validé avec succès par ${operateurActuel} dans le module ${moduleActuel} !`);
       setLignesPanier([]);
       setMouvementEnEditionId(null);
+      setEtatInitialEdition(null);
       setEnTeteDoc((prev) => ({ ...prev, referenceDoc: '', operateur: obtenirNomOperateurConnecte() }));
       await chargerDonnees(true);
       setModeAffichage('LISTE_DOCS');
@@ -669,10 +750,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const ouvrirDocumentDepuisListe = (numeroDocUnique) => {
     if (enTrainDeSauvegarder) return;
-    if (mouvementEnEditionId && !permissions.peut_modifier) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de modifier les mouvements.');
-      return;
-    }
 
     const lignesAssociees = mouvements.filter(m => m.motif_remarque === numeroDocUnique);
     if (lignesAssociees.length === 0) return;
@@ -683,7 +760,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       ? String(premier.operateur).trim().toUpperCase() 
       : obtenirNomOperateurConnecte();
 
-    setEnTeteDoc({ 
+    const refEnregistree = referencesDocsMap[numeroDocUnique] || premier.reference || premier.motif || '';
+
+    const nouvelEnTete = { 
       ...enTeteDoc, 
       numeroDoc: numeroDocUnique, 
       dateDoc: premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0], 
@@ -691,15 +770,35 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
       id_emplacement_destination: premier.id_emplacement_destination || '',
+      referenceDoc: refEnregistree,
       operateur: operateurDoc
-    });
-    setLignesPanier(lignesAssociees.map(mvt => {
+    };
+
+    const nouvellesLignes = lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
       return { id_article: mvt.id_article, designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, quantite: mvt.quantite, stockActuel: calculerStockPourDepotActuel(mvt.id_article), stockReel: mvt.quantite };
-    }));
+    });
+
+    setEnTeteDoc(nouvelEnTete);
+    setLignesPanier(nouvellesLignes);
     setMouvementEnEditionId(premier.id);
+    
+    setEtatInitialEdition({
+      enTete: JSON.parse(JSON.stringify(nouvelEnTete)),
+      lignes: JSON.parse(JSON.stringify(nouvellesLignes)),
+      typeOp: premier.type_mouvement || 'TRANSFERT'
+    });
+
     setModeAffichage('SAISIE');
   };
+
+  const documentModifie = useMemo(() => {
+    if (!mouvementEnEditionId || !etatInitialEdition) return true;
+    const enTeteModifie = JSON.stringify(enTeteDoc) !== JSON.stringify(etatInitialEdition.enTete);
+    const typeModifie = typeOperation !== etatInitialEdition.typeOp;
+    const lignesModifiees = JSON.stringify(lignesPanier) !== JSON.stringify(etatInitialEdition.lignes);
+    return enTeteModifie || typeModifie || lignesModifiees;
+  }, [mouvementEnEditionId, etatInitialEdition, enTeteDoc, typeOperation, lignesPanier]);
 
   const formaterNumeroDocAffichage = (motifBrut) => {
     if (!motifBrut) return 'SANS-REF';
@@ -722,12 +821,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         ? String(operateurEnBase).trim().toUpperCase() 
         : obtenirNomOperateurConnecte();
 
+      const refDocAssociee = referencesDocsMap[numDocBrut] || '';
+
       acc[numDocCle] = { 
         numeroDoc: numDocCle, 
         numeroDocBrut: numDocBrut, 
+        referenceDoc: refDocAssociee,
         date: mvt.created_at || '', 
         type: mvt.type_mouvement || '', 
         depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
+        depotDestNom: obtenirNomDestinationParMvt(mvt),
         operateur: operateurAffiche, 
         lignesCount: 0 
       }; 
@@ -736,13 +839,21 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return acc;
   }, {}));
 
+  const documentsFiltresParDate = documentsGroupes.filter((doc) => {
+    if (!doc.date) return true;
+    const dateDocStr = doc.date.split('T')[0];
+    if (filtreDateDebut && dateDocStr < filtreDateDebut) return false;
+    if (filtreDateFin && dateDocStr > filtreDateFin) return false;
+    return true;
+  });
+
   const gererTri = (colonne) => {
     if (enTrainDeSauvegarder) return;
     if (colonneTri === colonne) setOrdreTri(ordreTri === 'asc' ? 'desc' : 'asc');
     else { setColonneTri(colonne); setOrdreTri('asc'); }
   };
 
-  const documentsTries = [...documentsGroupes].sort((a, b) => {
+  const documentsTries = [...documentsFiltresParDate].sort((a, b) => {
     let valA = a[colonneTri]; let valB = b[colonneTri];
     if (colonneTri === 'date') { valA = new Date(valA); valB = new Date(valB); }
     else { valA = String(valA).toLowerCase(); valB = String(valB).toLowerCase(); }
@@ -775,8 +886,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             if (enTrainDeSauvegarder) return;
             setModeAffichage('SAISIE'); 
             setMouvementEnEditionId(null); 
+            setEtatInitialEdition(null);
             setLignesPanier([]); 
-            setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), operateur: obtenirNomOperateurConnecte() })); 
+            setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), operateur: obtenirNomOperateurConnecte() })); 
           }} 
           className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
         >
@@ -788,7 +900,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
           className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
         >
-          📋 Liste mouvement ({documentsGroupes.length})
+          📋 Liste mouvement ({documentsFiltresParDate.length})
         </button>
       </div>
 
@@ -797,9 +909,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
             <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
             <select 
-              disabled={enTeteVerrouille} 
+              disabled={enTeteVerrouille || !!mouvementEnEditionId} 
               value={typeOperation} 
               onChange={(e) => { 
+                if (mouvementEnEditionId) return;
                 const nt = e.target.value; 
                 setTypeOperation(nt); 
                 if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements), operateur: obtenirNomOperateurConnecte() })); 
@@ -831,11 +944,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label>
-                  <input type="date" disabled={enTeteVerrouille} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
+                  <input type="date" value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
                 </div>
                 <div>
                   <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. (Optionnel)</label>
-                  <input type="text" disabled={enTeteVerrouille} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: BL" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
+                  <input type="text" value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: VENTE DJOMO" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
                 </div>
               </div>
 
@@ -843,10 +956,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <div className="space-y-1 bg-orange-50/40 p-1.5 rounded-lg border border-orange-200">
                     <label className="block font-black text-[8px] text-orange-800 uppercase">🏢 Origine (Source)</label>
-                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-700 text-[9px]">
+                    <select required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-700 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
-                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
+                    <select value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
                       <option value="">-- Emplacement --</option>
                       {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                     </select>
@@ -854,10 +967,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
                   <div className="space-y-1 bg-blue-50/40 p-1.5 rounded-lg border border-blue-200">
                     <label className="block font-black text-[8px] text-blue-800 uppercase">🎯 Destination</label>
-                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-blue-700 text-[9px]">
+                    <select required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-blue-700 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
-                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
+                    <select value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
                       <option value="">-- Emplacement --</option>
                       {emplacementsDestinationFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                     </select>
@@ -867,13 +980,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
                     <label className="block font-black text-[8px] text-slate-700 uppercase">🏢 Dépôt</label>
-                    <select disabled={enTeteVerrouille} required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-600 text-[9px]">
+                    <select required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-600 text-[9px]">
                       <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
                     </select>
                   </div>
                   <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 Emplacement</label>
-                    <select disabled={enTeteVerrouille} value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 Emplacement / Livreur</label>
+                    <select value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
                       <option value="">-- Aucun --</option>
                       {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
                     </select>
@@ -918,20 +1031,44 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
 
             {modalArticleOuvert && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-                <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2 max-h-[80vh] flex flex-col">
-                  <div className="flex justify-between items-center border-b pb-1.5"><span className="font-extrabold text-[10px] uppercase text-slate-800">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalArticleOuvert(false)} className="text-slate-500 font-bold">✕</button></div>
-                  <input type="text" disabled={enTrainDeSauvegarder} value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." className="w-full bg-slate-50 border rounded-xl px-2.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400" autoFocus />
-                  <div className="overflow-y-auto space-y-1 flex-1 max-h-60">
+              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                    <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                      <span>🔍</span> ARTICLE
+                    </h4>
+                    <button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={recherchePopup}
+                      onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())}
+                      placeholder="RECHERCHER..."
+                      autoFocus
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
+                  <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                     {articlesPopupFiltres.length === 0 ? (
-                      <p className="text-center text-slate-400 py-4 text-[10px] font-bold">Aucun article trouvé.</p>
+                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
                     ) : (
                       articlesPopupFiltres.map((art) => {
                         const artId = art.id_article || art.id;
+                        const stockActuel = calculerStockPourDepotActuel(artId);
+                        const estEpuise = stockActuel <= 0;
                         return (
-                          <div key={artId} onClick={() => !enTrainDeSauvegarder && selectionnerArticleEtFocusQte(art)} className="p-2 rounded-xl border bg-slate-50 hover:bg-orange-50 cursor-pointer flex justify-between items-center">
-                            <span className="font-extrabold uppercase text-[10px] text-slate-900">{art.Designation || art.designation}</span>
-                            <span className="text-[9.5px] font-bold text-emerald-600">Stock: {calculerStockPourDepotActuel(artId)}</span>
+                          <div 
+                            key={artId} 
+                            onClick={() => !enTrainDeSauvegarder && selectionnerArticleEtFocusQte(art)} 
+                            className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
+                              estEpuise ? 'bg-slate-100 border-slate-200 opacity-60' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'
+                            }`}
+                          >
+                            <span className="font-black text-xs text-slate-900 uppercase truncate">{art.Designation || art.designation}</span>
+                            <span className="font-black text-[10px] mt-1 text-slate-700">
+                              Stock : <strong className={estEpuise ? 'text-rose-600' : 'text-emerald-700'}>{stockActuel}</strong>
+                            </span>
                           </div>
                         );
                       })
@@ -964,7 +1101,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
             <div className="pt-1.5 flex items-center justify-between gap-1 flex-wrap">
               <div className="flex items-center gap-1">
-                {(lignesPanier.length > 0 || mouvementEnEditionId) && (
+                {verifierDroitSuppressionEffectif() && (
                   <button 
                     type="button" 
                     disabled={enTrainDeSauvegarder} 
@@ -978,11 +1115,22 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               </div>
               
               <div className="flex items-center gap-1 flex-wrap">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
+                {!mouvementEnEditionId && (
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
+                )}
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2 py-1 rounded text-[9px]">🖨️ Imprimer</button>
                 {((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
-                  <button type="button" onClick={validerDocumentMouvement} disabled={lignesPanier.length === 0 || enTrainDeSauvegarder} className={`font-bold px-2.5 py-1 rounded text-[9px] ${lignesPanier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
-                    {enTrainDeSauvegarder ? 'Validation...' : '✅ Valider'}
+                  <button 
+                    type="button" 
+                    onClick={validerDocumentMouvement} 
+                    disabled={lignesPanier.length === 0 || enTrainDeSauvegarder || (mouvementEnEditionId && !documentModifie)} 
+                    className={`font-bold px-2.5 py-1 rounded text-[9px] ${
+                      lignesPanier.length > 0 && !enTrainDeSauvegarder && (!mouvementEnEditionId || documentModifie) 
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {enTrainDeSauvegarder ? 'Validation...' : (mouvementEnEditionId && !documentModifie ? '🔒 Aucun changement' : '✅ Valider')}
                   </button>
                 )}
               </div>
@@ -997,30 +1145,70 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <span className="font-extrabold uppercase text-slate-800">Documents Enregistrés [{moduleActuel}] ({documentsAffiches.length} / {documentsTries.length})</span>
             <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span>
           </div>
+
+          <div className="px-2 pt-1">
+            <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200 space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="font-black text-[8.5px] text-slate-700 uppercase">📅 Filtrer par plage de dates</span>
+                {(filtreDateDebut || filtreDateFin) && (
+                  <button 
+                    type="button" 
+                    onClick={() => { setFiltreDateDebut(''); setFiltreDateFin(''); }} 
+                    className="text-[8px] text-orange-600 font-bold underline hover:text-orange-700"
+                  >
+                    Effacer les filtres
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Date début</label>
+                  <input 
+                    type="date" 
+                    value={filtreDateDebut} 
+                    onChange={(e) => setFiltreDateDebut(e.target.value)} 
+                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Date fin</label>
+                  <input 
+                    type="date" 
+                    value={filtreDateFin} 
+                    onChange={(e) => setFiltreDateFin(e.target.value)} 
+                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]" 
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[9.5px]">
               <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
                 <tr>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('type')} className="p-1.5 cursor-pointer">Type</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° Doc</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('depotNom')} className="p-1.5 cursor-pointer">Dépôt</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('operateur')} className="p-1.5 cursor-pointer">Opérateur</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° DOC</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('referenceDoc')} className="p-1.5 cursor-pointer">RÉF.</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('depotNom')} className="p-1.5 cursor-pointer">DÉPÔT</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('depotDestNom')} className="p-1.5 cursor-pointer">DESTINATION</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('operateur')} className="p-1.5 cursor-pointer">OPÉRATEUR</th>
                 </tr>
               </thead>
               <tbody className="divide-y text-[9.5px]">
                 {documentsAffiches.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="p-4 text-center text-slate-400 font-bold">Aucun document pour le module {moduleActuel}.</td>
+                    <td colSpan="6" className="p-4 text-center text-slate-400 font-bold">Aucun document ne correspond à cette plage de dates.</td>
                   </tr>
                 ) : (
                   documentsAffiches.map((doc, idx) => (
-                    <tr key={idx} onClick={() => !enTrainDeSauvegarder && permissions.peut_modifier && ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
+                    <tr key={idx} onClick={() => !enTrainDeSauvegarder && ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-1.5 font-bold whitespace-nowrap"><span className="px-1 py-0.5 bg-slate-100 text-slate-800 rounded text-[8.5px]">{doc.type}</span></td>
                       <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numeroDoc}</td>
-                      <td className="p-1.5 font-bold text-slate-700 truncate max-w-[100px]" title={doc.depotNom}>{doc.depotNom}</td>
-                      <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate max-w-[110px]" title={doc.operateur}>{doc.operateur}</td>
+                      <td className="p-1.5 font-bold text-slate-700 uppercase truncate max-w-[90px]" title={doc.referenceDoc}>{doc.referenceDoc || '-'}</td>
+                      <td className="p-1.5 font-bold text-slate-700 truncate max-w-[90px]" title={doc.depotNom}>{doc.depotNom}</td>
+                      <td className="p-1.5 font-bold text-blue-700 truncate max-w-[90px]" title={doc.depotDestNom}>{doc.depotDestNom}</td>
+                      <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate max-w-[100px]" title={doc.operateur}>{doc.operateur}</td>
                     </tr>
                   ))
                 )}

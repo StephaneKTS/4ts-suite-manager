@@ -379,15 +379,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     return empObj ? empObj.id : null;
   };
 
-  const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = null) => {
+  const calculerStockStrictLivreurMagasin = (articleId, depotCible = 'TOUS', emplacementCible = null) => {
     const artObj = articles.find(a => String(a.id_article) === String(articleId));
     let stockBaseDirect = 0;
-    if (artObj) {
+    if (artObj && !emplacementCible) {
       stockBaseDirect = Number(artObj.Quantite_Stock ?? artObj.quantite_stock ?? artObj.stock_actuel ?? artObj.stock ?? 0);
-    }
-
-    if (mouvements.length === 0 && approvisionnements.length === 0) {
-      return stockBaseDirect;
     }
 
     let totalEntrees = stockBaseDirect;
@@ -404,48 +400,73 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const mEmpDest = String(m.id_emplacement_destination || '');
 
       if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
-        const matchDepot = mDepotDest === String(depotCible) || mDepotSrc === String(depotCible);
-        if (!matchDepot) return;
+        const matchDepotDest = mDepotDest === String(depotCible);
+        const matchDepotSrc = mDepotSrc === String(depotCible);
+        if (!matchDepotDest && !matchDepotSrc) return;
       }
 
-      if (emplacementCible && emplacementCible !== 'TOUS') {
-        const matchEmp = mEmpDest === String(emplacementCible) || mEmpSrc === String(emplacementCible);
-        if (!matchEmp) return;
-      }
+      if (emplacementCible) {
+        const matchEmpDest = mEmpDest === String(emplacementCible);
+        const matchEmpSrc = mEmpSrc === String(emplacementCible);
+        
+        if (!matchEmpDest && !matchEmpSrc) return;
 
-      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || (mDepotDest === String(depotCible) && depotCible !== 'TOUS')) {
-        totalEntrees += qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES' || (mDepotSrc === String(depotCible) && depotCible !== 'TOUS')) {
-        totalSorties += qte;
-      } else {
-        if (typeMvt === 'ENTREE') totalEntrees += qte;
-        if (typeMvt === 'SORTIE') totalSorties += qte;
-      }
-    });
-
-    approvisionnements.forEach(app => {
-      if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT' && String(app.id_depot || '') !== String(depotCible)) {
-        return;
-      }
-      let listArt = [];
-      if (typeof app.details_articles === 'string') {
-        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-      } else if (Array.isArray(app.details_articles)) {
-        listArt = app.details_articles;
-      }
-      listArt.forEach(item => {
-        if (String(item.id_article || item.article_id) === String(articleId)) {
-          totalEntrees += parseInt(item.quantite || 0);
+        if (typeMvt === 'INVENTAIRE' && matchEmpSrc) {
+          totalEntrees = qte;
+          totalSorties = 0;
+          return;
         }
-      });
+        if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          if (matchEmpDest) totalEntrees += qte;
+          if (matchEmpSrc) totalSorties += qte;
+          return;
+        }
+        if (matchEmpDest) totalEntrees += qte;
+        if (matchEmpSrc) totalSorties += qte;
+      } else {
+        if (typeMvt === 'INVENTAIRE' && mDepotSrc === String(depotCible)) {
+          totalEntrees = qte;
+          totalSorties = 0;
+          return;
+        }
+        if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          if (mDepotDest === String(depotCible)) totalEntrees += qte;
+          if (mDepotSrc === String(depotCible)) totalSorties += qte;
+          return;
+        }
+        if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          if (mDepotDest === String(depotCible) || !depotCible || depotCible === 'TOUS') totalEntrees += qte;
+        } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          if (mDepotSrc === String(depotCible) || !depotCible || depotCible === 'TOUS') totalSorties += qte;
+        }
+      }
     });
+
+    if (!emplacementCible) {
+      approvisionnements.forEach(app => {
+        if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT' && String(app.id_depot_destination || app.id_depot || '') !== String(depotCible)) {
+          return;
+        }
+        let listArt = [];
+        if (typeof app.details_articles === 'string') {
+          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+        } else if (Array.isArray(app.details_articles)) {
+          listArt = app.details_articles;
+        }
+        listArt.forEach(item => {
+          if (String(item.id_article || item.article_id) === String(articleId)) {
+            totalEntrees += parseInt(item.quantite || 0);
+          }
+        });
+      });
+    }
 
     return Math.max(0, totalEntrees - totalSorties);
   };
 
   const recupererStockReelRPC = async (articleId, livreurNomParam = '') => {
     const empIdCible = trouverIdEmplacementLivreur(livreurNomParam || livreurAssigne);
-    const stockLocal = calculerStockReelDirect(articleId, depotId, empIdCible);
+    const stockLocal = calculerStockStrictLivreurMagasin(articleId, depotId, empIdCible);
 
     if (typeof window !== 'undefined' && !navigator.onLine) {
       return stockLocal;
@@ -463,9 +484,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (!error && data !== null) {
         return parseInt(data, 10);
       }
-    } catch (err) {
-      // Bascule automatique sur le calcul local filtré
-    }
+    } catch (err) {}
 
     return stockLocal;
   };
@@ -522,20 +541,47 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setCommandes(commandesMaj);
       localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
 
+      if (!estSansStockage && etaitDejaLivre && !estLivreVerif) {
+        const empIdTrouve = trouverIdEmplacementLivreur(cmd.vendeur_livreur);
+        const depotRestitution = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+
+        for (const item of lignesCmd) {
+          const payloadRestitution = {
+            id_entreprise: currentEntId,
+            module: moduleActuel,
+            type_mouvement: 'ENTREE',
+            id_depot_source: null,
+            id_emplacement_source: null,
+            id_depot_destination: depotRestitution,
+            id_emplacement_destination: empIdTrouve,
+            id_article: parseInt(item.id_article),
+            quantite: item.quantite,
+            motif_remarque: `RESTITUTION STOCK CHANGEMENT STATUT ${cmd.numero_commande}`,
+            created_at: `${cmd.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
+          };
+          const { error: errRestit } = await supabase.from('mouvements_stock').insert([payloadRestitution]);
+          if (errRestit) {
+            localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
+          }
+        }
+      }
+
       if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
         const empIdTrouve = trouverIdEmplacementLivreur(cmd.vendeur_livreur);
+        const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
 
         for (const item of lignesCmd) {
           const payloadMouvement = {
             id_entreprise: currentEntId,
             module: moduleActuel,
             type_mouvement: 'SORTIE',
-            id_depot_source: depotId !== 'AUCUN_DEPOT' ? depotId : null,
+            id_depot_source: depotSourceMvt,
             id_emplacement_source: empIdTrouve,
             id_depot_destination: null,
             id_article: parseInt(item.id_article),
             quantite: item.quantite,
             motif_remarque: `LIVRAISON EFFECTIVE ${cmd.numero_commande} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
+            created_at: `${cmd.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
           };
           const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
           if (errMvt) {
@@ -801,6 +847,39 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     setSauvegardeEnCours(true);
     try {
+      const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'EN ATTENTE';
+      const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const etaitLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
+      const partObj = partenaires.find(p => String(p.id) === String(commandeEnEdition.id_partenaire));
+      const estSansStockage = !partObj || (partObj.statut_stockage || partObj.statut || '').toString().trim().toUpperCase() === 'SANS_STOCKAGE';
+
+      if (!estSansStockage && etaitLivre) {
+        const empIdTrouve = trouverIdEmplacementLivreur(commandeEnEdition.vendeur_livreur);
+        const lignesCmd = lignesCommandesMap[commandeEnEdition.id] || [];
+        
+        const depotRestitution = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+
+        for (const item of lignesCmd) {
+          const payloadRestitution = {
+            id_entreprise: currentEntId,
+            module: moduleActuel,
+            type_mouvement: 'ENTREE',
+            id_depot_source: null,
+            id_emplacement_source: null,
+            id_depot_destination: depotRestitution,
+            id_emplacement_destination: empIdTrouve,
+            id_article: parseInt(item.id_article),
+            quantite: item.quantite,
+            motif_remarque: `RESTITUTION STOCK SUPPRESSION ${commandeEnEdition.numero_commande}`,
+            created_at: `${commandeEnEdition.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
+          };
+          const { error: errRestit } = await supabase.from('mouvements_stock').insert([payloadRestitution]);
+          if (errRestit) {
+            localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
+          }
+        }
+      }
+
       const { error: errLignes } = await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
       if (errLignes) {
         localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
@@ -815,7 +894,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setCommandes(commandesMaj);
       localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
 
-      alert('Commande supprimée avec succès.');
+      alert('Commande supprimée avec succès (stock restitué dans son dépôt d\'origine si elle était livrée).');
       setNumeroCommande('1');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
@@ -930,6 +1009,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
 
+      // PAYLOAD PROPRE SANS id_depot (absent de la table Supabase)
       let payload = {
         id_entreprise: currentEntId,
         module: moduleActuel,
@@ -971,18 +1051,45 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
         }
 
+        if (!partenaireSansStockage && etaitDejaLivre && !estLivreVerif) {
+          const lignesCmdPrecedentes = lignesCommandesMap[commandeEnEdition.id] || [];
+          const depotRestitution = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+
+          for (const item of lignesCmdPrecedentes) {
+            const payloadRestitution = {
+              id_entreprise: currentEntId,
+              module: moduleActuel,
+              type_mouvement: 'ENTREE',
+              id_depot_source: null,
+              id_emplacement_source: null,
+              id_depot_destination: depotRestitution,
+              id_emplacement_destination: empIdTrouve,
+              id_article: parseInt(item.id_article),
+              quantite: item.quantite,
+              motif_remarque: `RESTITUTION STOCK MODIFICATION ${numeroComplet}`,
+              created_at: `${dateNormalisee}T12:00:00`,
+            };
+            const { error: errRestit } = await supabase.from('mouvements_stock').insert([payloadRestitution]);
+            if (errRestit) {
+              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
+            }
+          }
+        }
+
         if (!partenaireSansStockage && estLivreVerif && !etaitDejaLivre) {
+          const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: currentEntId,
               module: moduleActuel,
               type_mouvement: 'SORTIE',
-              id_depot_source: depotId !== 'AUCUN_DEPOT' ? depotId : null,
+              id_depot_source: depotSourceMvt,
               id_emplacement_source: empIdTrouve,
               id_depot_destination: null,
               id_article: parseInt(item.id_article),
               quantite: item.quantite,
               motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
+              created_at: `${dateNormalisee}T12:00:00`,
             };
             const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
             if (errMvt) {
@@ -1011,17 +1118,19 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
 
         if (!partenaireSansStockage && estLivreVerif) {
+          const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
           for (const item of lignesSaisies) {
             const payloadMouvement = {
               id_entreprise: currentEntId,
               module: moduleActuel,
               type_mouvement: 'SORTIE',
-              id_depot_source: depotId !== 'AUCUN_DEPOT' ? depotId : null,
+              id_depot_source: depotSourceMvt,
               id_emplacement_source: empIdTrouve,
               id_depot_destination: null,
               id_article: parseInt(item.id_article),
               quantite: item.quantite,
               motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
+              created_at: `${dateNormalisee}T12:00:00`,
             };
             const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
             if (errMvt) {
@@ -2039,16 +2148,18 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD (Auto) *</label>
-                <div className="flex items-center bg-slate-100 border border-slate-300 rounded overflow-hidden shadow-xs">
-                  <span className="bg-slate-200 px-1 py-1.5 text-[9px] font-black text-orange-600 border-r border-slate-300 shrink-0">
+                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
+                <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
+                  <span className="bg-slate-100 px-1 py-1.5 text-[9px] font-black text-orange-600 border-r border-slate-300 shrink-0">
                     CMD-
                   </span>
                   <input
                     type="text"
-                    readOnly
                     value={numeroCommande}
-                    className="w-full p-1.5 font-mono text-[10px] font-black text-slate-900 bg-slate-100 focus:outline-none cursor-not-allowed"
+                    onChange={(e) => setNumeroCommande(e.target.value.replace(/[^0-9]/g, ''))}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="1"
+                    className="w-full p-1.5 font-mono text-[10px] font-black text-slate-900 bg-white focus:outline-none"
                   />
                 </div>
               </div>
@@ -2215,9 +2326,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     type="button"
                     onClick={() => setModalArticleOuverte(true)}
                     disabled={!enteteValide}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center gap-0.5 shadow-2xs transition disabled:opacity-50 shrink-0"
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-2 py-1.5 rounded-md text-[10px] flex items-center justify-center gap-1 shadow-2xs transition disabled:opacity-50"
                   >
-                    <span>🔍</span> Rechercher
+                    <span>🔍</span> Rechercher un article
                   </button>
                 </div>
 
@@ -2236,7 +2347,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                       return (
                         <ArticleItemStockCard 
-                          key={`${idArt}_${livreurAssigne}`} 
+                          key={`${idArt}_${livreurAssigne}_${idPartenaire}`} 
                           art={art} 
                           onSelect={() => ajouterArticleAuPanier(art)} 
                           chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
@@ -2510,7 +2621,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                       return (
                         <ArticleModalItemCard 
-                          key={`${idArt}_${livreurAssigne}`} 
+                          key={`${idArt}_${livreurAssigne}_${idPartenaire}`} 
                           art={art} 
                           onSelect={() => { ajouterArticleAuPanier(art); setModalArticleOuverte(false); }} 
                           chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}

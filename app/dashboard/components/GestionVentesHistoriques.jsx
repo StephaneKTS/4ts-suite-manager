@@ -52,6 +52,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   const [ordreAlphabetique, setOrdreAlphabetique] = useState('ASC');
   const [limiteVentes, setLimiteVentes] = useState(20);
+  const [limiteArticlesModal, setLimiteArticlesModal] = useState(20); // Ajouté pour uniformiser la pagination du modal articles
 
   // --- TRI DES TICKETS ---
   const [triTicketCol, setTriTicketCol] = useState('created_at');
@@ -1116,6 +1117,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   });
 
   const articlesFiltres = articlesTries.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
+  const articlesFiltresModalAffiches = articlesFiltres.slice(0, limiteArticlesModal); // Ajouté pour la pagination du modal articles
 
   return (
     <div className="space-y-2 text-[10px] font-sans">
@@ -2093,59 +2095,73 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
+      {/* MODAL SÉLECTION ARTICLE UNIFORMISÉ (DEUX COLONNES, POSITIONNÉ HAUT ET TAILLE AUGMENTÉE) */}
       {afficherModalArticle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
-          <div className="bg-white w-full max-w-sm rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px] font-bold">
-              <span>SÉLECTIONNER UN ARTICLE</span>
-              <button onClick={() => setAfficherModalArticle(false)} className="text-slate-400 hover:text-white">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UN ARTICLE ({articlesFiltresModalAffiches.length} / {articlesFiltres.length})
+              </h4>
+              <button type="button" onClick={() => setAfficherModalArticle(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
             </div>
-            <div className="p-3 space-y-2 overflow-y-auto">
+            <div>
               <input
                 type="text"
-                autoFocus
-                disabled={enTrainDeSauvegarder}
                 value={rechercheArticleInput}
                 onChange={(e) => setSearchArticleInput(e.target.value.toUpperCase())}
                 placeholder="RECHERCHER UN ARTICLE..."
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
+                autoFocus
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
-              <div className="space-y-1 pt-1">
-                {articlesFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-6 text-[10px]">Aucun article trouvé.</p>
-                ) : (
-                  articlesFiltres.map((art) => {
-                    const artId = art.id_article || art.id;
-                    const artDes = (art.Designation || art.nom || '').toUpperCase();
-                    const artPrix = Number(art.Prix_Vente || art.prix_vente || 0);
-                    
-                    const estSuivi = articleEstSuiviEnStock(art);
-                    const artStock = estSuivi ? getStockReelArticle(art) : 999999;
-                    const estEpuise = estSuivi && artStock <= 0;
+            </div>
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {articlesFiltresModalAffiches.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+              ) : (
+                articlesFiltresModalAffiches.map((art) => {
+                  const artId = art.id_article || art.id;
+                  const artDes = (art.Designation || art.nom || '').toUpperCase();
+                  const artPrix = Number(art.Prix_Vente || art.prix_vente || 0);
+                  
+                  const estSuivi = articleEstSuiviEnStock(art);
+                  const artStock = estSuivi ? getStockReelArticle(art) : 999999;
+                  const estEpuise = estSuivi && artStock <= 0;
 
-                    return (
-                      <div
-                        key={artId}
-                        onClick={() => !enTrainDeSauvegarder && !estEpuise && ajouterAuPanier(art)}
-                        className={`p-2 border rounded flex justify-between items-center transition ${
-                          estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 border-slate-200 cursor-pointer'
-                        }`}
-                      >
-                        <div>
-                          <p className={`font-extrabold uppercase text-[10px] ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
-                          <p className={`text-[9px] font-mono ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
-                            {estSuivi ? `Stock : ${artStock} ${estEpuise ? '(Épuisé)' : ''}` : <span className="text-slate-400 italic">Non suivi en stock</span>}
-                          </p>
-                        </div>
-                        <span className={`font-black font-mono text-[10px] ${estEpuise ? 'text-slate-400' : 'text-orange-600'}`}>
-                          {artPrix.toLocaleString('fr-FR')}
+                  return (
+                    <div
+                      key={artId}
+                      onClick={() => !enTrainDeSauvegarder && !estEpuise && ajouterAuPanier(art)}
+                      className={`p-3 rounded-xl border transition flex flex-col justify-between shadow-2xs ${
+                        estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-1">
+                        <span className={`font-black text-xs uppercase truncate ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</span>
+                        <span className={`font-black text-[10px] shrink-0 ${estEpuise ? 'text-slate-400' : 'text-orange-600'}`}>{artPrix.toLocaleString('fr-FR')} F</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className={`text-[9px] font-mono font-bold ${estEpuise ? 'text-rose-500' : 'text-slate-600'}`}>
+                          {estSuivi ? `Stock : ${artStock} ${estEpuise ? '(Épuisé)' : ''}` : <span className="text-slate-400 italic">Non suivi</span>}
                         </span>
                       </div>
-                    );
-                  })
-                )}
-              </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
+
+            {limiteArticlesModal < articlesFiltres.length && (
+              <div className="text-center pt-1 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setLimiteArticlesModal(prev => prev + 20)}
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                >
+                  📥 Charger 20 articles de plus ({articlesFiltres.length - limiteArticlesModal} restants)
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

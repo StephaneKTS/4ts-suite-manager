@@ -451,7 +451,7 @@ export default function GrilleTarifaireLivraison({ entrepriseId = '4TS-TEST' }) 
       )}
 
       <div className="space-y-2">
-        <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center gap-2 text-[10px] font-black">
+        <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex justify-between items-center gap-2 text-[10px] font-black text-slate-800">
           <span>Zones enregistrées : <strong>{grilleTarifs.length}</strong></span>
           <div className="w-full sm:w-auto flex-1 max-w-[300px]">
             <input
