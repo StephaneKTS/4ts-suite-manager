@@ -598,7 +598,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   };
 
-  // --- MISE À JOUR CLE : Sélection automatique du dépôt source lié au partenaire ---
   const handleChangementPartenaire = (partenaireId) => {
     setIdPartenaire(partenaireId);
     if (!commandeEnEdition) setLignesSaisies([]);
@@ -623,7 +622,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         setPointADepart(partObj.adresse);
       }
 
-      // Remplissage automatique du Dépôt Source basé sur le nom du partenaire ou son id_depot
       const nomPartenaireClean = (partObj.nom_fournisseur || partObj.nom || '').trim().toUpperCase();
       const depotAssocie = depots.find(d => {
         const nomDep = (d.nom_depot || d.Nom_Depot || d.nom || '').trim().toUpperCase();
@@ -633,7 +631,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (depotAssocie) {
         setDepotId(depotAssocie.id || depotAssocie.ID);
       } else {
-        // Fallback s'il n'est pas encore chargé dans la liste
         setDepotId(partObj.id_depot || 'AUCUN_DEPOT');
       }
     } else {
@@ -727,7 +724,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     if (!enteteValide) {
-      alert('⚠️ Veuillez d\'abord remplir tous les champs obligatoires, y compris le Dépôt source, avant d\'ajouter des articles.');
+      alert('⚠️ Veuillez d\'abord remplir tous les champs obligatoires avant d\'ajouter des articles.');
       return;
     }
 
@@ -893,7 +890,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setCommandes(commandesMaj);
       localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
 
-      alert('Commande supprimée avec succès (stock restitué dans son dépôt d\'origine si elle était livrée).');
+      alert('Commande supprimée avec succès.');
       setNumeroCommande('1');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
@@ -944,7 +941,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     if (!numeroCommande.trim() || !idPartenaire || montantSaisi === '' || !adresseLivraison.trim()) {
-      alert('⚠️ Veuillez remplir tous les champs obligatoires (Partenaire, N° Client, N° CMD, Montant et Adresse).');
+      alert('⚠️ Veuillez remplir tous les champs obligatoires.');
       return;
     }
 
@@ -955,7 +952,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     if (partenaireSansStockage && !pointADepart.trim()) {
-      alert('⚠️ Pour un partenaire sans stockage, veuillez préciser le Point A (point de départ).');
+      alert('⚠️ Pour un partenaire sans stockage, veuillez préciser le Point A.');
       return;
     }
     
@@ -988,7 +985,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         );
 
         if (doublonTrouve) {
-          alert(`❌ Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}. Impossible de la dupliquer.`);
+          alert(`❌ Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
           setSauvegardeEnCours(false);
           return;
         }
@@ -1353,7 +1350,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       return;
     }
     if (!caisseId) {
-      alert('⚠️ Veuillez sélectionner une caisse de destination pour les frais de livraison.');
+      alert('⚠️ Veuillez sélectionner une caisse de destination.');
       return;
     }
 
@@ -1415,7 +1412,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payloadMvt);
       }
 
-      alert(`✅ Clôture enregistrée sous le numéro ${codePieceCloture}. Versement des frais de livraison de ${montantFraisVerséNum.toLocaleString('fr-FR')} CFA injecté dans le journal de caisse "${nomCaisse}" !`);
+      alert(`✅ Clôture enregistrée sous le numéro ${codePieceCloture}.`);
       
       setCaisseSelectionneeCloture(caisseId);
       setModalCaisseClotureOuverte(false);
@@ -1423,7 +1420,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setTotalVerseFraisLivraison('');
       await chargerDonnees();
     } catch (err) {
-      alert('Erreur lors du versement dans le journal de caisse : ' + err.message);
+      alert('Erreur lors du versement : ' + err.message);
     } finally {
       setSauvegardeEnCours(false);
     }
@@ -2125,8 +2122,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
           <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-2.5">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
+            {/* Ligne regroupant Date, Partenaire et N° CMD (réduit à droite) */}
+            <div className="grid grid-cols-12 gap-2">
+              <div className="col-span-3">
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
                 <input
                   type="date"
@@ -2138,7 +2136,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 />
               </div>
 
-              <div>
+              <div className="col-span-6">
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire *</label>
                 <button
                   type="button"
@@ -2151,26 +2149,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <span className="text-slate-400 shrink-0">🔍</span>
                 </button>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Dépôt Source (Auto) *</label>
-                <select
-                  disabled
-                  value={depotId}
-                  className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs cursor-not-allowed"
-                >
-                  <option value="AUCUN_DEPOT">-- Sélection automatique via le partenaire --</option>
-                  {depots.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.nom_depot || d.nom || d.libelle}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
+              <div className="col-span-3">
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
                 <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
                   <span className="bg-slate-100 px-1 py-1.5 text-[9px] font-black text-orange-600 border-r border-slate-300 shrink-0">
@@ -2186,6 +2166,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Dépôt source masqué en arrière-plan */}
+            <div className="hidden">
+              <select
+                disabled
+                value={depotId}
+                className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs cursor-not-allowed"
+              >
+                <option value="AUCUN_DEPOT">-- Sélection automatique via le partenaire --</option>
+                {depots.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nom_depot || d.nom || d.libelle}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -2357,7 +2353,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                 {!enteteValide ? (
                   <div className="p-2 text-center text-amber-700 font-bold text-[10px] bg-amber-50 rounded-lg border border-amber-200">
-                    ⚠️ Remplir l'en-tête, le Dépôt et un N° client à 9 chiffres d'abord.
+                    ⚠️ Remplir l'en-tête et un N° client à 9 chiffres d'abord.
                   </div>
                 ) : articlesFiltres.length === 0 ? (
                   <div className="p-2 text-center text-slate-500 font-bold text-[10px] bg-slate-50 rounded-lg border border-slate-200">
@@ -2985,7 +2981,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             
             <div className={`max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1 ${sauvegardeEnCours ? 'pointer-events-none opacity-50' : ''}`}>
               {caisses.filter(c => !c.module || c.module.toUpperCase() === moduleActuel).length === 0 ? (
-                <div className="p-6 text-center text-slate-500 font-bold text-xs">Aucune caisse enregistrée pour le module livraison. Veuillez en créer une.</div>
+                <div className="p-6 text-center text-slate-500 font-bold text-xs">Aucune caisse enregistrée.</div>
               ) : (
                 caisses
                   .filter(c => !c.module || c.module.toUpperCase() === moduleActuel)
@@ -3141,7 +3137,7 @@ function ArticleItemStockCard({ art, onSelect, chargerStock }) {
   );
 }
 
-function ArticleModalItemCard({ art, onResultSelect, onSelect, chargerStock }) {
+function ArticleModalItemCard({ art, onResultSelect, onSetSelect, chargerStock }) {
   const [stock, setStock] = useState(0);
   const [chargementStock, setChargementStock] = useState(true);
 
