@@ -238,28 +238,66 @@ export default function EspaceClientBoutique() {
         ) : articles.length === 0 ? (
           <p className="text-center text-slate-400 py-4 italic">Aucun article disponible pour le moment.</p>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {articles.map((art) => {
               const artId = art.id_article || art.id;
               const designation = art.Designation || art.designation;
               const prix = art.Prix_Vente || art.prix_vente || 0;
+              const photoUrl = art.Photo || art.photo || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
               const stockReel = calculerStockReel(artId);
 
               return (
-                <div key={artId} className="bg-white p-2.5 rounded-xl border border-slate-200 flex flex-col justify-between shadow-2xs">
-                  <div>
-                    <h3 className="font-black text-slate-900 uppercase text-xs truncate">{designation}</h3>
-                    <p className="text-[10px] text-emerald-600 font-extrabold mt-0.5">{prix} FCFA</p>
-                    <p className="text-[9px] text-slate-500 font-bold">Stock : {stockReel}</p>
+                <div 
+                  key={artId} 
+                  className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden flex flex-col justify-between transition hover:shadow-md"
+                >
+                  {/* 1. Image du produit en haut */}
+                  <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
+                    <img 
+                      src={photoUrl} 
+                      alt={designation} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.src = 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
+                      }}
+                    />
+                    {stockReel <= 0 && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <span className="bg-slate-900/80 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
+                          Épuisé
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    disabled={stockReel <= 0}
-                    onClick={() => ajouterAuPanier(art, stockReel)}
-                    className="mt-2 w-full bg-orange-600 hover:bg-orange-500 disabled:bg-slate-300 text-white font-bold py-1.5 rounded-lg text-[10px] transition shadow-2xs"
-                  >
-                    {stockReel > 0 ? '+ Ajouter' : 'Épuisé'}
-                  </button>
+
+                  {/* 2. Informations du produit (Prix en premier, puis désignation) */}
+                  <div className="p-2.5 flex flex-col flex-1 justify-between space-y-2">
+                    <div>
+                      <div className="font-black text-slate-900 text-xs tracking-tight text-emerald-600">
+                        {prix.toLocaleString()} FCFA
+                      </div>
+                      <div className="font-extrabold text-slate-700 text-[11px] uppercase line-clamp-2 mt-0.5">
+                        {designation}
+                      </div>
+                      <div className="text-[9px] text-slate-400 font-bold mt-0.5">
+                        Stock : {stockReel}
+                      </div>
+                    </div>
+
+                    {/* 3. Bouton d'action / Ajout au panier */}
+                    <button
+                      type="button"
+                      disabled={stockReel <= 0}
+                      onClick={() => ajouterAuPanier(art, stockReel)}
+                      className={`w-full py-1.5 rounded-xl font-black text-[10px] transition shadow-xs flex items-center justify-center gap-1 ${
+                        stockReel > 0 
+                          ? 'bg-orange-600 hover:bg-orange-500 text-white active:scale-95' 
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {stockReel > 0 ? '+ Ajouter' : 'Épuisé'}
+                    </button>
+                  </div>
                 </div>
               );
             })}

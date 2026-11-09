@@ -548,27 +548,74 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     return { lignes: lignesResultat, stockFinal: Math.max(0, stockCourant) };
   };
 
-  // MISE À JOUR : Upload d'image direct sur Supabase Storage (Bucket public 'articles-images')
+  // --- FONCTION DE COMPRESSION AUTOMATIQUE DES IMAGES ---
+  const compresserImage = (file, maxWidth = 800, quality = 0.7) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error("Erreur de compression de l'image"));
+                return;
+              }
+              const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            },
+            'image/jpeg',
+            quality
+          );
+        };
+        img.onerror = (error) => reject(error);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  // MISE À JOUR : Upload d'image optimisé et compressé vers Supabase Storage (Bucket 'articles-images')
   const gererUploadImage = async (e) => {
     try {
       const file = e.target.files[0];
       if (!file) return;
 
       setUploadingPhoto(true);
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      // Compression préalable pour éviter la lenteur réseau et les fichiers lourds
+      const fichierCompresse = await compresserImage(file, 800, 0.7);
+
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
       const filePath = `articles/${fileName}`;
 
-      // Upload vers Supabase Storage dans le bucket créé 'articles-images'
       const { error: uploadError } = await supabase.storage
         .from('articles-images')
-        .upload(filePath, file);
+        .upload(filePath, fichierCompresse);
 
       if (uploadError) {
         throw new Error(uploadError.message);
       }
 
-      // Récupération de l'URL publique de l'image
       const { data: urlData } = supabase.storage
         .from('articles-images')
         .getPublicUrl(filePath);
