@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -17,8 +17,8 @@ export default function EspaceClientBoutique() {
   const [valide, setValide] = useState(false);
   const [numeroCommande, setNumeroCommande] = useState('');
 
-  // Référence pour faire défiler directement vers le panier
-  const panierRef = useRef(null);
+  // État pour basculer entre le catalogue et la page dédiée du panier
+  const [vuePanier, setVuePanier] = useState(false);
 
   const [client, setClient] = useState({
     nom: '',
@@ -119,6 +119,7 @@ export default function EspaceClientBoutique() {
     const artId = article.id_article || article.id;
     const designation = article.Designation || article.designation;
     const prix = article.Prix_Vente || article.prix_vente || 0;
+    const photo = article.Photo || article.photo || '';
 
     const indexExistant = panier.findIndex(item => item.id_article === artId);
     if (indexExistant !== -1) {
@@ -130,7 +131,7 @@ export default function EspaceClientBoutique() {
       nouveauPanier[indexExistant].quantite += 1;
       setPanier(nouveauPanier);
     } else {
-      setPanier([...panier, { id_article: artId, designation, prix, quantite: 1 }]);
+      setPanier([...panier, { id_article: artId, designation, prix, photo, quantite: 1 }]);
     }
   };
 
@@ -152,12 +153,6 @@ export default function EspaceClientBoutique() {
 
   const totalPanier = panier.reduce((acc, item) => acc + (item.prix * item.quantite), 0);
   const nombreTotalArticlesPanier = panier.reduce((acc, item) => acc + item.quantite, 0);
-
-  const scrollToPanier = () => {
-    if (panierRef.current) {
-      panierRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
 
   const passerCommande = async (e) => {
     e.preventDefault();
@@ -214,21 +209,146 @@ export default function EspaceClientBoutique() {
 
   if (valide) {
     return (
-      <div className="p-6 text-center space-y-4 font-sans">
-        <div className="text-emerald-600 text-4xl">✅</div>
-        <h2 className="text-lg font-black uppercase text-slate-900">Commande validée avec succès !</h2>
-        <p className="text-xs text-slate-600">Votre numéro de commande est : <strong className="text-orange-600">{numeroCommande}</strong></p>
-        <p className="text-xs text-slate-500">Merci pour votre achat. Le commerçant va traiter votre demande.</p>
+      <div className="max-w-md mx-auto p-6 text-center space-y-4 font-sans min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-sm">✅</div>
+        <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
+        <p className="text-xs text-slate-600">Votre numéro de commande est : <strong className="text-orange-600 font-mono text-sm">{numeroCommande}</strong></p>
+        <p className="text-xs text-slate-500">Merci pour votre achat. Le commerçant va traiter votre demande immédiatement.</p>
         <button
-          onClick={() => { setValide(false); setClient({ nom: '', telephone: '', adresse: '' }); }}
-          className="bg-orange-600 text-white font-bold px-4 py-2 rounded-xl text-xs mt-4 shadow-md"
+          onClick={() => { setValide(false); setVuePanier(false); setClient({ nom: '', telephone: '', adresse: '' }); }}
+          className="bg-orange-600 hover:bg-orange-500 text-white font-black px-6 py-3 rounded-2xl text-xs mt-4 shadow-md transition w-full"
         >
-          Commander à nouveau
+          Commander à nouveau 🛒
         </button>
       </div>
     );
   }
 
+  // --- VUE 2 : PAGE INDÉPENDANTE DU PANIER ET VALIDATION ---
+  if (vuePanier) {
+    return (
+      <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-20">
+        {/* En-tête Panier */}
+        <div className="bg-white p-3 rounded-2xl border shadow-xs flex items-center justify-between sticky top-0 z-30">
+          <button
+            type="button"
+            onClick={() => setVuePanier(false)}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1 shadow-2xs"
+          >
+            <span>← Continuer mes achats</span>
+          </button>
+          <h1 className="font-black text-slate-900 uppercase text-xs">mon panier ({nombreTotalArticlesPanier})</h1>
+        </div>
+
+        {panier.length === 0 ? (
+          <div className="bg-white p-8 rounded-2xl text-center space-y-3 border border-slate-200 mt-10">
+            <div className="text-3xl">🛒</div>
+            <p className="font-bold text-slate-500 text-xs">Votre panier est vide.</p>
+            <button
+              onClick={() => setVuePanier(false)}
+              className="bg-orange-600 text-white font-black px-4 py-2 rounded-xl text-xs shadow-md"
+            >
+              Voir le catalogue
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Liste des articles dans le panier */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-3">
+              <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-1.5">Articles sélectionnés</h2>
+              
+              <div className="divide-y divide-slate-100 space-y-2.5">
+                {panier.map((item, idx) => {
+                  const articleCorrespondant = articles.find(a => String(a.id_article || a.id) === String(item.id_article));
+                  const stockReelItem = articleCorrespondant ? calculerStockReel(item.id_article) : 99;
+
+                  return (
+                    <div key={idx} className="flex items-center justify-between pt-2.5 gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {item.photo && (
+                          <img src={item.photo} alt="" className="w-11 h-11 object-cover rounded-xl border border-slate-200 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <h3 className="font-black text-slate-900 uppercase text-[11px] truncate">{item.designation}</h3>
+                          <p className="text-[10px] text-emerald-600 font-bold">{item.prix.toLocaleString()} FCFA l'unité</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="font-black text-slate-900 text-xs">{item.prix * item.quantite} F</span>
+                        <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
+                          <button type="button" onClick={() => modifierQuantite(idx, -1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">-</button>
+                          <span className="px-2 font-black text-slate-900">{item.quantite}</span>
+                          <button type="button" onClick={() => modifierQuantite(idx, 1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">+</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Total panier */}
+              <div className="border-t border-slate-200 pt-3 flex justify-between items-center bg-orange-50/50 p-2.5 rounded-xl">
+                <span className="font-black text-slate-900 text-xs uppercase">Total à payer :</span>
+                <span className="font-black text-emerald-600 text-sm">{totalPanier.toLocaleString()} FCFA</span>
+              </div>
+            </div>
+
+            {/* Formulaire de validation */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-3">
+              <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-1.5">Vos Coordonnées de Livraison</h2>
+              
+              <form onSubmit={passerCommande} className="space-y-2.5">
+                <div>
+                  <label className="block font-bold text-[9px] text-slate-600 uppercase mb-0.5">Nom complet *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="EX: JEAN DUPONT"
+                    value={client.nom}
+                    onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[9px] text-slate-600 uppercase mb-0.5">Numéro de téléphone *</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="EX: 690000000"
+                    value={client.telephone}
+                    onChange={(e) => setClient({ ...client, telephone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[9px] text-slate-600 uppercase mb-0.5">Adresse / Quartier</label>
+                  <input
+                    type="text"
+                    placeholder="EX: BASTOS, YAOUNDÉ"
+                    value={client.adresse}
+                    onChange={(e) => setClient({ ...client, adresse: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-md transition mt-2 flex items-center justify-center gap-1.5"
+                >
+                  <span>Valider la commande ({totalPanier.toLocaleString()} F)</span>
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- VUE 1 : CATALOGUE DES ARTICLES ---
   return (
     <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
       
@@ -238,11 +358,11 @@ export default function EspaceClientBoutique() {
         <p className="text-[10px] text-slate-500">Sélectionnez vos articles et validez votre panier</p>
       </div>
 
-      {/* BANDEAU FLOTTANT EN HAUT POUR ACCÈS RAPIDE AU PANIER */}
+      {/* BANDEAU FLOTTANT EN HAUT POUR ACCÈS À LA PAGE PANIER */}
       {panier.length > 0 && (
         <div className="sticky top-14 z-40 bg-orange-600 text-white p-3 rounded-2xl shadow-lg flex justify-between items-center animate-bounce-short">
           <div className="flex items-center gap-2">
-            <span className="bg-white text-orange-600 font-black px-2 py-0.5 rounded-full text-xs">
+            <span className="bg-white text-orange-600 font-black px-2.5 py-0.5 rounded-full text-xs shadow-xs">
               {nombreTotalArticlesPanier}
             </span>
             <div>
@@ -252,10 +372,10 @@ export default function EspaceClientBoutique() {
           </div>
           <button
             type="button"
-            onClick={scrollToPanier}
-            className="bg-white text-orange-600 hover:bg-orange-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition"
+            onClick={() => setVuePanier(true)}
+            className="bg-white text-orange-600 hover:bg-orange-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1"
           >
-            Voir le panier 🛒
+            <span>Voir le panier 🛒</span>
           </button>
         </div>
       )}
@@ -264,9 +384,9 @@ export default function EspaceClientBoutique() {
       <div className="space-y-2">
         <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Articles disponibles</h2>
         {chargement ? (
-          <p className="text-center text-slate-400 py-4">Chargement du menu...</p>
+          <p className="text-center text-slate-400 py-6 font-bold">Chargement du menu...</p>
         ) : articles.length === 0 ? (
-          <p className="text-center text-slate-400 py-4 italic">Aucun article disponible pour le moment.</p>
+          <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article disponible pour le moment.</p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {articles.map((art) => {
@@ -328,78 +448,6 @@ export default function EspaceClientBoutique() {
                 </div>
               );
             })}
-          </div>
-        )}
-      </div>
-
-      {/* SECTION DU PANIER (Ciblée par la référence panierRef) */}
-      <div ref={panierRef} className="pt-2">
-        {panier.length > 0 && (
-          <div className="bg-white border-2 border-orange-500/40 p-3 rounded-2xl shadow-md space-y-3">
-            <h2 className="font-black text-orange-600 uppercase text-xs border-b pb-1">📦 Votre Panier ({panier.length})</h2>
-            
-            <div className="divide-y space-y-1.5 max-h-40 overflow-y-auto">
-              {panier.map((item, idx) => {
-                const articleCorrespondant = articles.find(a => String(a.id_article || a.id) === String(item.id_article));
-                const stockReelItem = articleCorrespondant ? calculerStockReel(item.id_article) : 99;
-
-                return (
-                  <div key={idx} className="flex justify-between items-center pt-1.5 text-[11px]">
-                    <div>
-                      <span className="font-extrabold text-slate-900 uppercase">{item.designation}</span>
-                      <p className="text-[9px] text-slate-500">{item.prix} FCFA x {item.quantite}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center border rounded overflow-hidden">
-                        <button type="button" onClick={() => modifierQuantite(idx, -1, stockReelItem)} className="px-2 bg-slate-100 font-bold">-</button>
-                        <span className="px-2 font-black">{item.quantite}</span>
-                        <button type="button" onClick={() => modifierQuantite(idx, 1, stockReelItem)} className="px-2 bg-slate-100 font-bold">+</button>
-                      </div>
-                      <span className="font-black text-emerald-600 w-16 text-right">{item.prix * item.quantite} F</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="border-t pt-2 flex justify-between font-black text-xs text-slate-900">
-              <span>TOTAL À PAYER :</span>
-              <span className="text-emerald-600 text-sm">{totalPanier.toLocaleString()} FCFA</span>
-            </div>
-
-            <form onSubmit={passerCommande} className="space-y-2 pt-2 border-t">
-              <h3 className="font-bold text-[10px] text-slate-700 uppercase">Vos Coordonnées</h3>
-              <input
-                type="text"
-                required
-                placeholder="Votre Nom complet *"
-                value={client.nom}
-                onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
-                className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold uppercase text-slate-900"
-              />
-              <input
-                type="tel"
-                required
-                placeholder="Votre Téléphone *"
-                value={client.telephone}
-                onChange={(e) => setClient({ ...client, telephone: e.target.value })}
-                className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold text-slate-900"
-              />
-              <input
-                type="text"
-                placeholder="Adresse de livraison / Quartier"
-                value={client.adresse}
-                onChange={(e) => setClient({ ...client, adresse: e.target.value.toUpperCase() })}
-                className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold uppercase text-slate-900"
-              />
-
-              <button
-                type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow-md transition"
-              >
-                Valider la commande
-              </button>
-            </form>
           </div>
         )}
       </div>
