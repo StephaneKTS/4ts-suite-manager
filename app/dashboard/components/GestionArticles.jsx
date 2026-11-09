@@ -548,6 +548,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     return { lignes: lignesResultat, stockFinal: Math.max(0, stockCourant) };
   };
 
+  // MISE À JOUR : Upload d'image direct sur Supabase Storage (Bucket public 'articles-images')
   const gererUploadImage = async (e) => {
     try {
       const file = e.target.files[0];
@@ -558,22 +559,18 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `articles/${fileName}`;
 
+      // Upload vers Supabase Storage dans le bucket créé 'articles-images'
       const { error: uploadError } = await supabase.storage
-        .from('articles-photos')
+        .from('articles-images')
         .upload(filePath, file);
 
       if (uploadError) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setNouveauArticle(prev => ({ ...prev, Photo: reader.result }));
-          setUploadingPhoto(false);
-        };
-        reader.readAsDataURL(file);
-        return;
+        throw new Error(uploadError.message);
       }
 
+      // Récupération de l'URL publique de l'image
       const { data: urlData } = supabase.storage
-        .from('articles-photos')
+        .from('articles-images')
         .getPublicUrl(filePath);
 
       setNouveauArticle(prev => ({ ...prev, Photo: urlData.publicUrl }));
