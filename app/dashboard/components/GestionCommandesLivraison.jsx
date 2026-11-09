@@ -227,7 +227,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const commandesLocales = localSync.recupererDonneesLocales(`commandes_livraison_${currentEntId}`);
     const lignesLocales = localSync.recupererDonneesLocales(`lignes_commandes_${currentEntId}`);
     const partenairesLocaux = localSync.recupererDonneesLocales(`partenaires_livraison_${currentEntId}`);
-    const articlesLocaux = localSync.recupererDonneesLocales(`articles_livraison_${currentEntId}`) || localSync.recupererDonneesLocales(`4ts_local_cache_articles_${currentEntId}_BOUTIQUE`) || localSync.recupererDonneesLocales(`4ts_local_cache_articles_livraison_${currentEntId}`);
+    const articlesLocaux = localSync.recupererDonneesLocales(`articles_livraison_${currentEntId}`) || localSync.recupererDonneesLocales(`4ts_local_cache_articles_livraison_${currentEntId}`);
     const depotsLocaux = localSync.recupererDonneesLocales(`depots_livraison_${currentEntId}`);
     const emplacementsLocaux = localSync.recupererDonneesLocales(`emplacements_livraison_${currentEntId}`);
     const grilleLocale = localSync.recupererDonneesLocales(`grille_tarifaire_${currentEntId}`);
@@ -255,7 +255,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('commandes_livraison_lignes').select('*'),
         supabase.from('fournisseurs').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel),
-        supabase.from('articles_stock').select('*').eq('id_entreprise', currentEntId).order('created_at', { ascending: false }),
+        supabase.from('articles_stock').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }), // ➔ Filtre strict pour éviter le mélange avec la boutique
         supabase.from('depots_stock').select('*').eq('id_entreprise', currentEntId),
         supabase.from('emplacements_stock').select('*').eq('id_entreprise', currentEntId),
         supabase.from('utilisateurs').select('*').eq('id_entreprise', currentEntId),
@@ -2122,7 +2122,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
           <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-2.5">
-            {/* Ligne regroupant Date, Partenaire et N° CMD (réduit à droite) */}
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-3">
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
@@ -2168,7 +2167,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </div>
             </div>
 
-            {/* Dépôt source masqué en arrière-plan */}
             <div className="hidden">
               <select
                 disabled
@@ -3137,7 +3135,7 @@ function ArticleItemStockCard({ art, onSelect, chargerStock }) {
   );
 }
 
-function ArticleModalItemCard({ art, onResultSelect, onSetSelect, chargerStock }) {
+function ArticleModalItemCard({ art, onSelect, chargerStock }) {
   const [stock, setStock] = useState(0);
   const [chargementStock, setChargementStock] = useState(true);
 
