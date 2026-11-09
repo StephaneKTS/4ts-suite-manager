@@ -17,13 +17,12 @@ export default function EspaceClientBoutique() {
   const [valide, setValide] = useState(false);
   const [numeroCommande, setNumeroCommande] = useState('');
 
-  // État pour basculer entre le catalogue et la page dédiée du panier
   const [vuePanier, setVuePanier] = useState(false);
 
   const [client, setClient] = useState({
     nom: '',
     telephone: '',
-    adresse: ''
+    table: ''
   });
 
   useEffect(() => {
@@ -41,7 +40,7 @@ export default function EspaceClientBoutique() {
           .maybeSingle();
 
         if (dataEnt) {
-          setNomEntreprise(dataEnt.nom_entreprise || dataEnt.nom || 'BOUTIQUE');
+          setNomEntreprise(dataEnt.nom_entreprise || dataEnt.nom || 'RESTAURANT');
         }
 
         const { data: dataArt, error: errArt } = await supabase
@@ -157,7 +156,7 @@ export default function EspaceClientBoutique() {
   const passerCommande = async (e) => {
     e.preventDefault();
     if (!entrepriseId) {
-      alert('Erreur : Identifiant de boutique introuvable.');
+      alert('Erreur : Identifiant de restaurant introuvable.');
       return;
     }
     if (panier.length === 0) {
@@ -176,7 +175,7 @@ export default function EspaceClientBoutique() {
         id_entreprise: entrepriseId,
         module: 'BOUTIQUE',
         motif_remarque: numCmd,
-        reference: `CLIENT: ${client.nom} (${client.telephone}) - ${client.adresse}`,
+        reference: `CLIENT: ${client.nom} (${client.telephone}) - Table/Info: ${client.table || 'Non spécifiée'}`,
         details_articles: JSON.stringify(panier),
         montant_total: totalPanier,
         statut: 'EN_ATTENTE',
@@ -201,161 +200,165 @@ export default function EspaceClientBoutique() {
     return (
       <div className="p-8 text-center space-y-3 font-sans">
         <div className="text-red-500 text-3xl">⚠️</div>
-        <h2 className="text-sm font-black uppercase text-slate-900">Boutique non identifiée</h2>
-        <p className="text-xs text-slate-500">Veuillez scanner un QR code valide fourni par votre commerçant.</p>
+        <h2 className="text-sm font-black uppercase text-slate-900">Restaurant non identifié</h2>
+        <p className="text-xs text-slate-500">Veuillez scanner un QR code valide sur votre table.</p>
       </div>
     );
   }
 
   if (valide) {
     return (
-      <div className="max-w-md mx-auto p-6 text-center space-y-4 font-sans min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-sm">✅</div>
+      <div className="w-full min-h-screen bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center">
+        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-xs">✅</div>
         <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
         <p className="text-xs text-slate-600">Votre numéro de commande est : <strong className="text-orange-600 font-mono text-sm">{numeroCommande}</strong></p>
-        <p className="text-xs text-slate-500">Merci pour votre achat. Le commerçant va traiter votre demande immédiatement.</p>
+        <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise en cuisine pour un service sur place.</p>
         <button
-          onClick={() => { setValide(false); setVuePanier(false); setClient({ nom: '', telephone: '', adresse: '' }); }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-black px-6 py-3 rounded-2xl text-xs mt-4 shadow-md transition w-full"
+          onClick={() => { setValide(false); setVuePanier(false); setClient({ nom: '', telephone: '', table: '' }); }}
+          className="bg-orange-600 hover:bg-orange-500 text-white font-black px-6 py-3 rounded-2xl text-xs mt-4 shadow-md transition w-full max-w-xs"
         >
-          Commander à nouveau 🛒
+          Commander à nouveau 🍽️
         </button>
       </div>
     );
   }
 
-  // --- VUE 2 : PAGE INDÉPENDANTE DU PANIER ET VALIDATION ---
+  // --- VUE 2 : PAGE PLEIN ÉCRAN DU PANIER ET VALIDATION ---
   if (vuePanier) {
     return (
-      <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-20">
-        {/* En-tête Panier */}
-        <div className="bg-white p-3 rounded-2xl border shadow-xs flex items-center justify-between sticky top-0 z-30">
-          <button
-            type="button"
-            onClick={() => setVuePanier(false)}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1 shadow-2xs"
-          >
-            <span>← Continuer mes achats</span>
-          </button>
-          <h1 className="font-black text-slate-900 uppercase text-xs">mon panier ({nombreTotalArticlesPanier})</h1>
-        </div>
-
-        {panier.length === 0 ? (
-          <div className="bg-white p-8 rounded-2xl text-center space-y-3 border border-slate-200 mt-10">
-            <div className="text-3xl">🛒</div>
-            <p className="font-bold text-slate-500 text-xs">Votre panier est vide.</p>
+      <div className="w-full min-h-screen bg-white font-sans text-xs flex flex-col justify-between pb-10">
+        <div className="space-y-4">
+          {/* Barre de navigation supérieure */}
+          <div className="bg-white px-4 py-3 border-b border-slate-100 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
             <button
+              type="button"
               onClick={() => setVuePanier(false)}
-              className="bg-orange-600 text-white font-black px-4 py-2 rounded-xl text-xs shadow-md"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-3 py-2 rounded-xl text-xs transition flex items-center gap-1 shadow-2xs"
             >
-              Voir le catalogue
+              <span>← Continuer mes achats</span>
             </button>
+            <h1 className="font-black text-slate-900 uppercase text-xs">mon panier ({nombreTotalArticlesPanier})</h1>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {/* Liste des articles dans le panier */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-3">
-              <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-1.5">Articles sélectionnés</h2>
-              
-              <div className="divide-y divide-slate-100 space-y-2.5">
-                {panier.map((item, idx) => {
-                  const articleCorrespondant = articles.find(a => String(a.id_article || a.id) === String(item.id_article));
-                  const stockReelItem = articleCorrespondant ? calculerStockReel(item.id_article) : 99;
 
-                  return (
-                    <div key={idx} className="flex items-center justify-between pt-2.5 gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {item.photo && (
-                          <img src={item.photo} alt="" className="w-11 h-11 object-cover rounded-xl border border-slate-200 shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <h3 className="font-black text-slate-900 uppercase text-[11px] truncate">{item.designation}</h3>
-                          <p className="text-[10px] text-emerald-600 font-bold">{item.prix.toLocaleString()} FCFA l'unité</p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="font-black text-slate-900 text-xs">{item.prix * item.quantite} F</span>
-                        <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
-                          <button type="button" onClick={() => modifierQuantite(idx, -1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">-</button>
-                          <span className="px-2 font-black text-slate-900">{item.quantite}</span>
-                          <button type="button" onClick={() => modifierQuantite(idx, 1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">+</button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Total panier */}
-              <div className="border-t border-slate-200 pt-3 flex justify-between items-center bg-orange-50/50 p-2.5 rounded-xl">
-                <span className="font-black text-slate-900 text-xs uppercase">Total à payer :</span>
-                <span className="font-black text-emerald-600 text-sm">{totalPanier.toLocaleString()} FCFA</span>
-              </div>
-            </div>
-
-            {/* Formulaire de validation */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-3">
-              <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-1.5">Vos Coordonnées de Livraison</h2>
-              
-              <form onSubmit={passerCommande} className="space-y-2.5">
-                <div>
-                  <label className="block font-bold text-[9px] text-slate-600 uppercase mb-0.5">Nom complet *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="EX: JEAN DUPONT"
-                    value={client.nom}
-                    onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-[9px] text-slate-600 uppercase mb-0.5">Numéro de téléphone *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="EX: 690000000"
-                    value={client.telephone}
-                    onChange={(e) => setClient({ ...client, telephone: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-[9px] text-slate-600 uppercase mb-0.5">Adresse / Quartier</label>
-                  <input
-                    type="text"
-                    placeholder="EX: BASTOS, YAOUNDÉ"
-                    value={client.adresse}
-                    onChange={(e) => setClient({ ...client, adresse: e.target.value.toUpperCase() })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                  />
-                </div>
-
+          <div className="max-w-md mx-auto w-full p-4 space-y-4">
+            {panier.length === 0 ? (
+              <div className="bg-white p-10 rounded-2xl text-center space-y-3 border border-slate-200 mt-10">
+                <div className="text-3xl">🛒</div>
+                <p className="font-bold text-slate-500 text-xs">Votre panier est vide.</p>
                 <button
-                  type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-md transition mt-2 flex items-center justify-center gap-1.5"
+                  onClick={() => setVuePanier(false)}
+                  className="bg-orange-600 text-white font-black px-5 py-2.5 rounded-xl text-xs shadow-md"
                 >
-                  <span>Valider la commande ({totalPanier.toLocaleString()} F)</span>
+                  Voir le menu
                 </button>
-              </form>
-            </div>
+              </div>
+            ) : (
+              <>
+                {/* Liste des articles dans le panier */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                  <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-2">Articles sélectionnés</h2>
+                  
+                  <div className="divide-y divide-slate-100 space-y-2.5">
+                    {panier.map((item, idx) => {
+                      const articleCorrespondant = articles.find(a => String(a.id_article || a.id) === String(item.id_article));
+                      const stockReelItem = articleCorrespondant ? calculerStockReel(item.id_article) : 99;
+
+                      return (
+                        <div key={idx} className="flex items-center justify-between pt-2.5 gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {item.photo && (
+                              <img src={item.photo} alt="" className="w-12 h-12 object-cover rounded-xl border border-slate-200 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <h3 className="font-black text-slate-900 uppercase text-[11px] truncate">{item.designation}</h3>
+                              <p className="text-[10px] text-emerald-600 font-bold">{item.prix.toLocaleString()} FCFA</p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <span className="font-black text-slate-900 text-xs">{item.prix * item.quantite} F</span>
+                            <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
+                              <button type="button" onClick={() => modifierQuantite(idx, -1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">-</button>
+                              <span className="px-2 font-black text-slate-900">{item.quantite}</span>
+                              <button type="button" onClick={() => modifierQuantite(idx, 1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">+</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Total panier */}
+                  <div className="border-t border-slate-200 pt-3 flex justify-between items-center bg-orange-50/50 p-3 rounded-xl mt-2">
+                    <span className="font-black text-slate-900 text-xs uppercase">Total à payer :</span>
+                    <span className="font-black text-emerald-600 text-sm">{totalPanier.toLocaleString()} FCFA</span>
+                  </div>
+                </div>
+
+                {/* Formulaire de validation sur place */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                  <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-2">Informations de commande</h2>
+                  
+                  <form onSubmit={passerCommande} className="space-y-3">
+                    <div>
+                      <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Votre Nom complet *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="EX: JEAN DUPONT"
+                        value={client.nom}
+                        onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de téléphone *</label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="EX: 690000000"
+                        value={client.telephone}
+                        onChange={(e) => setClient({ ...client, telephone: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table / Remarque</label>
+                      <input
+                        type="text"
+                        placeholder="EX: TABLE 04 OU TERRASSE"
+                        value={client.table}
+                        onChange={(e) => setClient({ ...client, table: e.target.value.toUpperCase() })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition mt-3 flex items-center justify-center gap-1.5"
+                    >
+                      <span>Valider la commande ({totalPanier.toLocaleString()} F)</span>
+                    </button>
+                  </form>
+                </div>
+              </>
+            )}
           </div>
-        )}
+        </div>
       </div>
     );
   }
 
-  // --- VUE 1 : CATALOGUE DES ARTICLES ---
+  // --- VUE 1 : CATALOGUE DES ARTICLES (RESTO) ---
   return (
     <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
       
-      {/* EN-TÊTE DE LA BOUTIQUE */}
+      {/* EN-TÊTE DU RESTAURANT */}
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30">
-        <h1 className="font-black text-slate-900 uppercase text-sm">🛒 {nomEntreprise || 'BOUTIQUE'}</h1>
-        <p className="text-[10px] text-slate-500">Sélectionnez vos articles et validez votre panier</p>
+        <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
+        <p className="text-[10px] text-slate-500">Sélectionnez vos plats et validez votre commande sur place</p>
       </div>
 
       {/* BANDEAU FLOTTANT EN HAUT POUR ACCÈS À LA PAGE PANIER */}
@@ -382,7 +385,7 @@ export default function EspaceClientBoutique() {
 
       {/* LISTE DES ARTICLES */}
       <div className="space-y-2">
-        <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Articles disponibles</h2>
+        <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Plats & Articles disponibles</h2>
         {chargement ? (
           <p className="text-center text-slate-400 py-6 font-bold">Chargement du menu...</p>
         ) : articles.length === 0 ? (
