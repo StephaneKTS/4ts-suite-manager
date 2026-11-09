@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function EspaceClientBoutique() {
   const searchParams = useSearchParams();
-  // Récupération universelle de l'ID de l'entreprise depuis l'URL scannée
   const entrepriseId = searchParams.get('entrepriseId');
 
   const [articles, setArticles] = useState([]);
@@ -17,6 +16,9 @@ export default function EspaceClientBoutique() {
   const [chargement, setChargement] = useState(true);
   const [valide, setValide] = useState(false);
   const [numeroCommande, setNumeroCommande] = useState('');
+
+  // Référence pour faire défiler directement vers le panier
+  const panierRef = useRef(null);
 
   const [client, setClient] = useState({
     nom: '',
@@ -32,7 +34,6 @@ export default function EspaceClientBoutique() {
       }
       setChargement(true);
       try {
-        // 1. Récupérer le nom de l'entreprise
         const { data: dataEnt } = await supabase
           .from('entreprises')
           .select('*')
@@ -43,7 +44,6 @@ export default function EspaceClientBoutique() {
           setNomEntreprise(dataEnt.nom_entreprise || dataEnt.nom || 'BOUTIQUE');
         }
 
-        // 2. Charger les articles visibles au scan QR pour cette entreprise spécifique
         const { data: dataArt, error: errArt } = await supabase
           .from('articles_stock')
           .select('*')
@@ -54,7 +54,6 @@ export default function EspaceClientBoutique() {
         if (errArt) throw errArt;
         setArticles(Array.isArray(dataArt) ? dataArt : []);
 
-        // 3. Charger les mouvements pour calculer les stocks réels
         const { data: dataMouv } = await supabase
           .from('mouvements_stock')
           .select('*')
@@ -62,7 +61,6 @@ export default function EspaceClientBoutique() {
           .eq('module', 'BOUTIQUE');
         setMouvements(dataMouv || []);
 
-        // 4. Charger les approvisionnements
         const { data: dataAppro } = await supabase
           .from('approvisionnements')
           .select('*')
@@ -153,6 +151,13 @@ export default function EspaceClientBoutique() {
   };
 
   const totalPanier = panier.reduce((acc, item) => acc + (item.prix * item.quantite), 0);
+  const nombreTotalArticlesPanier = panier.reduce((acc, item) => acc + item.quantite, 0);
+
+  const scrollToPanier = () => {
+    if (panierRef.current) {
+      panierRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   const passerCommande = async (e) => {
     e.preventDefault();
@@ -225,12 +230,37 @@ export default function EspaceClientBoutique() {
   }
 
   return (
-    <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-20">
-      <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center">
+    <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
+      
+      {/* EN-TÊTE DE LA BOUTIQUE */}
+      <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30">
         <h1 className="font-black text-slate-900 uppercase text-sm">🛒 {nomEntreprise || 'BOUTIQUE'}</h1>
         <p className="text-[10px] text-slate-500">Sélectionnez vos articles et validez votre panier</p>
       </div>
 
+      {/* BANDEAU FLOTTANT EN HAUT POUR ACCÈS RAPIDE AU PANIER */}
+      {panier.length > 0 && (
+        <div className="sticky top-14 z-40 bg-orange-600 text-white p-3 rounded-2xl shadow-lg flex justify-between items-center animate-bounce-short">
+          <div className="flex items-center gap-2">
+            <span className="bg-white text-orange-600 font-black px-2 py-0.5 rounded-full text-xs">
+              {nombreTotalArticlesPanier}
+            </span>
+            <div>
+              <p className="font-black uppercase text-[11px]">Mon Panier</p>
+              <p className="font-extrabold text-xs text-orange-100">{totalPanier.toLocaleString()} FCFA</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={scrollToPanier}
+            className="bg-white text-orange-600 hover:bg-orange-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition"
+          >
+            Voir le panier 🛒
+          </button>
+        </div>
+      )}
+
+      {/* LISTE DES ARTICLES */}
       <div className="space-y-2">
         <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Articles disponibles</h2>
         {chargement ? (
@@ -251,7 +281,6 @@ export default function EspaceClientBoutique() {
                   key={artId} 
                   className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden flex flex-col justify-between transition hover:shadow-md"
                 >
-                  {/* 1. Image du produit en haut */}
                   <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
                     <img 
                       src={photoUrl} 
@@ -270,7 +299,6 @@ export default function EspaceClientBoutique() {
                     )}
                   </div>
 
-                  {/* 2. Informations du produit (Prix en premier, puis désignation) */}
                   <div className="p-2.5 flex flex-col flex-1 justify-between space-y-2">
                     <div>
                       <div className="font-black text-slate-900 text-xs tracking-tight text-emerald-600">
@@ -284,7 +312,6 @@ export default function EspaceClientBoutique() {
                       </div>
                     </div>
 
-                    {/* 3. Bouton d'action / Ajout au panier */}
                     <button
                       type="button"
                       disabled={stockReel <= 0}
@@ -305,74 +332,78 @@ export default function EspaceClientBoutique() {
         )}
       </div>
 
-      {panier.length > 0 && (
-        <div className="bg-white border-2 border-orange-500/40 p-3 rounded-2xl shadow-md space-y-3">
-          <h2 className="font-black text-orange-600 uppercase text-xs border-b pb-1">📦 Votre Panier ({panier.length})</h2>
-          
-          <div className="divide-y space-y-1.5 max-h-40 overflow-y-auto">
-            {panier.map((item, idx) => {
-              const articleCorrespondant = articles.find(a => String(a.id_article || a.id) === String(item.id_article));
-              const stockReelItem = articleCorrespondant ? calculerStockReel(item.id_article) : 99;
+      {/* SECTION DU PANIER (Ciblée par la référence panierRef) */}
+      <div ref={panierRef} className="pt-2">
+        {panier.length > 0 && (
+          <div className="bg-white border-2 border-orange-500/40 p-3 rounded-2xl shadow-md space-y-3">
+            <h2 className="font-black text-orange-600 uppercase text-xs border-b pb-1">📦 Votre Panier ({panier.length})</h2>
+            
+            <div className="divide-y space-y-1.5 max-h-40 overflow-y-auto">
+              {panier.map((item, idx) => {
+                const articleCorrespondant = articles.find(a => String(a.id_article || a.id) === String(item.id_article));
+                const stockReelItem = articleCorrespondant ? calculerStockReel(item.id_article) : 99;
 
-              return (
-                <div key={idx} className="flex justify-between items-center pt-1.5 text-[11px]">
-                  <div>
-                    <span className="font-extrabold text-slate-900 uppercase">{item.designation}</span>
-                    <p className="text-[9px] text-slate-500">{item.prix} FCFA x {item.quantite}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center border rounded overflow-hidden">
-                      <button type="button" onClick={() => modifierQuantite(idx, -1, stockReelItem)} className="px-2 bg-slate-100 font-bold">-</button>
-                      <span className="px-2 font-black">{item.quantite}</span>
-                      <button type="button" onClick={() => modifierQuantite(idx, 1, stockReelItem)} className="px-2 bg-slate-100 font-bold">+</button>
+                return (
+                  <div key={idx} className="flex justify-between items-center pt-1.5 text-[11px]">
+                    <div>
+                      <span className="font-extrabold text-slate-900 uppercase">{item.designation}</span>
+                      <p className="text-[9px] text-slate-500">{item.prix} FCFA x {item.quantite}</p>
                     </div>
-                    <span className="font-black text-emerald-600 w-16 text-right">{item.prix * item.quantite} F</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center border rounded overflow-hidden">
+                        <button type="button" onClick={() => modifierQuantite(idx, -1, stockReelItem)} className="px-2 bg-slate-100 font-bold">-</button>
+                        <span className="px-2 font-black">{item.quantite}</span>
+                        <button type="button" onClick={() => modifierQuantite(idx, 1, stockReelItem)} className="px-2 bg-slate-100 font-bold">+</button>
+                      </div>
+                      <span className="font-black text-emerald-600 w-16 text-right">{item.prix * item.quantite} F</span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            <div className="border-t pt-2 flex justify-between font-black text-xs text-slate-900">
+              <span>TOTAL À PAYER :</span>
+              <span className="text-emerald-600 text-sm">{totalPanier.toLocaleString()} FCFA</span>
+            </div>
+
+            <form onSubmit={passerCommande} className="space-y-2 pt-2 border-t">
+              <h3 className="font-bold text-[10px] text-slate-700 uppercase">Vos Coordonnées</h3>
+              <input
+                type="text"
+                required
+                placeholder="Votre Nom complet *"
+                value={client.nom}
+                onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
+                className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold uppercase text-slate-900"
+              />
+              <input
+                type="tel"
+                required
+                placeholder="Votre Téléphone *"
+                value={client.telephone}
+                onChange={(e) => setClient({ ...client, telephone: e.target.value })}
+                className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold text-slate-900"
+              />
+              <input
+                type="text"
+                placeholder="Adresse de livraison / Quartier"
+                value={client.adresse}
+                onChange={(e) => setClient({ ...client, adresse: e.target.value.toUpperCase() })}
+                className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold uppercase text-slate-900"
+              />
+
+              <button
+                type="submit"
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow-md transition"
+              >
+                Valider la commande
+              </button>
+            </form>
           </div>
+        )}
+      </div>
 
-          <div className="border-t pt-2 flex justify-between font-black text-xs text-slate-900">
-            <span>TOTAL À PAYER :</span>
-            <span className="text-emerald-600 text-sm">{totalPanier} FCFA</span>
-          </div>
-
-          <form onSubmit={passerCommande} className="space-y-2 pt-2 border-t">
-            <h3 className="font-bold text-[10px] text-slate-700 uppercase">Vos Coordonnées</h3>
-            <input
-              type="text"
-              required
-              placeholder="Votre Nom complet *"
-              value={client.nom}
-              onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
-              className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold uppercase text-slate-900"
-            />
-            <input
-              type="tel"
-              required
-              placeholder="Votre Téléphone *"
-              value={client.telephone}
-              onChange={(e) => setClient({ ...client, telephone: e.target.value })}
-              className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold text-slate-900"
-            />
-            <input
-              type="text"
-              placeholder="Adresse de livraison / Quartier"
-              value={client.adresse}
-              onChange={(e) => setClient({ ...client, adresse: e.target.value.toUpperCase() })}
-              className="w-full bg-slate-50 border rounded-lg p-2 text-xs font-bold uppercase text-slate-900"
-            />
-
-            <button
-              type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow-md transition"
-            >
-              Valider la commande
-            </button>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
