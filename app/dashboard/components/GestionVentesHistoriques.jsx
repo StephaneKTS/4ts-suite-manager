@@ -125,6 +125,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   // Clé de cache locale isolée par entreprise et par module
   const cacheKey = `4ts_cache_ventes_historiques_${entrepriseId}_${moduleActuel}`;
 
+  // 🛡️ Fonction utilitaire stricte pour fusionner des listes par ID unique (Évite écrasement multi-superviseur)
+  const fusionnerParId = (liste1 = [], liste2 = []) => {
+    const map = new Map();
+    [...liste2, ...liste1].forEach(item => {
+      if (item && item.id) {
+        map.set(String(item.id), item);
+      }
+    });
+    return Array.from(map.values());
+  };
+
   const genererNumeroTicket = (code, totalVentes) => {
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
@@ -200,7 +211,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       }
 
-      let ventesData = [];
+      let ventesCloud = [];
       const { data: ventesRpc, error: rpcError } = await supabase.rpc('recuperer_ventes_historiques', {
         p_entreprise_id: entrepriseId,
         p_module: moduleActuel
@@ -213,10 +224,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           .eq('id_entreprise', entrepriseId)
           .eq('module', moduleActuel)
           .order('created_at', { ascending: false });
-        ventesData = resVentes.data || [];
+        ventesCloud = resVentes.data || [];
       } else {
-        ventesData = ventesRpc || [];
+        ventesCloud = ventesRpc || [];
       }
+
+      const cacheActuel = localSync.recupererDonneesLocales(cacheKey);
+      const ventesLocales = cacheActuel?.ventes || [];
+      const ventesData = fusionnerParId(ventesCloud, ventesLocales);
 
       const [resArticles, resFamilles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro, resUsers, resClotures] = await Promise.all([
         supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -240,7 +255,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       const dataMouvements = resMouvements.data || [];
       const dataAppro = resAppro.data || [];
       const dataUsers = resUsers.data || [];
-      const dataClotures = resClotures.data || [];
+      const dataClotures = fusionnerParId(resClotures.data || [], cacheActuel?.cloturesList || []);
 
       setVentes(ventesData);
       setVentesHistoriques(ventesData);
@@ -417,7 +432,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return Math.max(0, stockDepot);
   };
 
-  // --- VÉRIFICATION DU SUIVI DE STOCK (ARTICLE OU FAMILLE) ---
   const articleEstSuiviEnStock = (article) => {
     if (article.suivi_stock !== undefined && article.suivi_stock !== null) {
       return Boolean(article.suivi_stock);
@@ -427,7 +441,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     if (familleAssociee && familleAssociee.suivi_stock !== undefined) {
       return Boolean(familleAssociee.suivi_stock);
     }
-    return true; // Par défaut, suivi activé
+    return true;
   };
 
   const annulerVenteEnCours = () => {
@@ -536,14 +550,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     const prixU = Number(article.Prix_Vente || article.prix_vente || article.prix || 0);
     const prixAchatU = Number(article.Prix_Achat || article.prix_achat || article.prix_revient || 0);
     
-    // --- VÉRIFICATION DU SUIVI DE STOCK ---
     const estSuivi = articleEstSuiviEnStock(article);
     const stockDispo = estSuivi ? getStockReelArticle(article) : 999999;
 
     const existant = panier.find((item) => item.id === articleId);
     const quantiteActuelleDansPanier = existant ? existant.quantite : 0;
 
-    // AUCUN CONTRÔLE DE STOCK SI L'ARTICLE N'EST PAS SUIVI
     if (estSuivi && quantiteActuelleDansPanier + 1 > stockDispo) {
       alert(`❌ Stock insuffisant dans ce dépôt pour "${designation}" ! Stock réel : ${stockDispo}`);
       return;
@@ -613,6 +625,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     montantCreditRestant = Math.max(0, totalFinal - montantRegleEffectif);
   }
 
+  // 🛡️ Enregistrement d'une vente avec protection anti-écrasement multi-superviseur
   const validerEtEnregistrerVente = async () => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.creation) {
@@ -630,7 +643,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       return;
     }
 
-    // --- VÉRIFICATION DU STOCK UNIQUEMENT POUR LES ARTICLES SUIVIS ---
     for (const item of panier) {
       const artRef = articlesStock.find(a => (a.id_article || a.id) === item.id);
       const estSuivi = artRef ? articleEstSuiviEnStock(artRef) : true;
@@ -657,6 +669,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
     setEnTrainDeSauvegarder(true);
     try {
+      const idLocalTemp = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       const payloadVente = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -671,17 +684,32 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         id_depot: depotId || null,
         nom_client: nomClientFacture,
         id_client: clientIdFinal,
+        caissier: caissierNomActuel,
         created_at: dateJour ? `${dateJour}T${new Date().toTimeString().split(' ')[0]}` : new Date().toISOString()
       };
 
-      const { error: errVente } = await supabase.from('ventes_historiques').insert([payloadVente]);
+      const { error: errVente, data: dataVenteInsert } = await supabase.from('ventes_historiques').insert([payloadVente]).select().single();
 
       if (errVente) {
-        if (errVente.code === '23505') {
-          localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
-        } else {
-          throw errVente;
-        }
+        // Enregistrement hors-ligne sécurisé avec ID temporaire unique
+        const payloadTemp = { ...payloadVente, id: idLocalTemp };
+        localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
+        
+        setVentes(prev => {
+          const listeMaj = fusionnerParId(prev, [payloadTemp]);
+          sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
+          return listeMaj;
+        });
+        setVentesHistoriques(prev => fusionnerParId(prev, [payloadTemp]));
+        alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré hors-ligne par ${caissierNomActuel} !`);
+      } else if (dataVenteInsert) {
+        setVentes(prev => {
+          const listeMaj = fusionnerParId(prev, [dataVenteInsert]);
+          sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
+          return listeMaj;
+        });
+        setVentesHistoriques(prev => fusionnerParId(prev, [dataVenteInsert]));
+        alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré avec succès (${typeReglementVente}) !`);
       }
 
       if (montantCreditRestant > 0 && clientIdFinal) {
@@ -696,7 +724,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       }
 
-      // --- CRÉATION DE MOUVEMENTS DE STOCK UNIQUEMENT POUR LES ARTICLES SUIVIS ---
       for (const item of panier) {
         const artRef = articlesStock.find(a => (a.id_article || a.id) === item.id);
         const estSuivi = artRef ? articleEstSuiviEnStock(artRef) : true;
@@ -720,9 +747,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       }
 
-      localStorage.removeItem(cacheKey);
-      alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré avec succès (${typeReglementVente}) !`);
-      
       setPanier([]);
       setNomClientLibre('');
       setValeurRemise(0);
@@ -803,7 +827,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         localSync.ajouterFileAttente('DELETE', 'ventes_historiques', { id: ticketEnCoursDeSuppression.id });
       }
 
-      localStorage.removeItem(cacheKey);
+      setVentes(prev => {
+        const listeMaj = prev.filter(v => v.id !== ticketEnCoursDeSuppression.id);
+        sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
+        return listeMaj;
+      });
+
       alert(`✅ Ticket #${ticketEnCoursDeSuppression.numero_ticket} supprimé avec succès par l'administrateur.`);
       setAfficherModalAuthSuppression(false);
       setTicketSelectionne(null);
@@ -1086,7 +1115,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         localSync.ajouterFileAttente('INSERT', 'journal_caisses', payloadJournalCaisse);
       }
 
-      localStorage.removeItem(cacheKey);
+      setCloturesList(prev => {
+        const listeMaj = fusionnerParId(prev, [payloadCloture]);
+        sauvegarderCacheLocal({ ventes, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList: listeMaj });
+        return listeMaj;
+      });
+
       alert(`✅ Clôture de caisse validée avec succès ! Montant de ${montantAttenduCloture.toLocaleString('fr-FR')} CFA versé dans la caisse "${nomCaisseDest}".`);
       
       setAfficherModalVersementCloture(false);
@@ -1117,7 +1151,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   });
 
   const articlesFiltres = articlesTries.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
-  const articlesFiltresModalAffiches = articlesFiltres.slice(0, limiteArticlesModal); // Ajouté pour la pagination du modal articles
+  const articlesFiltresModalAffiches = articlesFiltres.slice(0, limiteArticlesModal);
 
   return (
     <div className="space-y-2 text-[10px] font-sans">
@@ -1898,7 +1932,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
           </div>
 
-          {/* LISTE INTÉGRÉE DES CAISSES CLÔTURÉES */}
           <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1">
               <span className="font-extrabold text-slate-700 uppercase text-[9px]">
@@ -2050,7 +2083,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODAL DETAILS DE LA CAISSE CLÔTURÉE */}
       {clotureDetailSelectionnee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-lg rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -2095,7 +2127,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODAL SÉLECTION ARTICLE UNIFORMISÉ (DEUX COLONNES, POSITIONNÉ HAUT ET TAILLE AUGMENTÉE) */}
       {afficherModalArticle && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">

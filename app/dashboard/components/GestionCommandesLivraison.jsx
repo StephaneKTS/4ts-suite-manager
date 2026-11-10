@@ -61,6 +61,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const inputNumeroClientRef = useRef(null);
   const inputAdresseRef = useRef(null);
   const inputMontantRef = useRef(null);
+  const inputNumeroCmdRef = useRef(null); // 🎯 Référence pour cibler le champ N° CMD
 
   const [pointADepart, setPointADepart] = useState('');
   const [adresseLivraison, setAdresseLivraison] = useState('');
@@ -255,7 +256,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('commandes_livraison_lignes').select('*'),
         supabase.from('fournisseurs').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel),
-        supabase.from('articles_stock').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }), // ➔ Filtre strict pour éviter le mélange avec la boutique
+        supabase.from('articles_stock').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('depots_stock').select('*').eq('id_entreprise', currentEntId),
         supabase.from('emplacements_stock').select('*').eq('id_entreprise', currentEntId),
         supabase.from('utilisateurs').select('*').eq('id_entreprise', currentEntId),
@@ -638,10 +639,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setDepotId('AUCUN_DEPOT');
     }
 
+    // 🎯 Positionnement automatique du curseur dans le champ N° CMD après sélection du partenaire
     setTimeout(() => {
-      if (inputNumeroClientRef.current) {
-        inputNumeroClientRef.current.focus();
-        inputNumeroClientRef.current.select();
+      if (inputNumeroCmdRef.current) {
+        inputNumeroCmdRef.current.focus();
+        inputNumeroCmdRef.current.select();
       }
     }, 50);
   };
@@ -789,7 +791,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const ouvrirCommandePourModification = async (cmd) => {
     setCommandeEnEdition(cmd);
-    setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1');
+    setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace(/CMD-.*?-/, '').replace('CMD-', '') : '1');
     setDateCommande(cmd.date_commande || new Date().toISOString().split('T')[0]);
     setIdPartenaire(cmd.id_partenaire || '');
     setDepotId(cmd.id_depot || 'AUCUN_DEPOT');
@@ -963,7 +965,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     setSauvegardeEnCours(true);
     try {
-      const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
+      const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('utilisateur_email') || 'SUP') : 'SUP';
+      const sigSupervisor = emailConnecte.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+      const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}-${sigSupervisor}`;
 
       let dateNormalisee = dateCommande;
       if (dateNormalisee.includes('/')) {
@@ -1101,6 +1106,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
 
       } else {
+        const idLocal = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${sigSupervisor}`;
+
         const { data: cmdInseree, error: errCmd } = await supabase
           .from('commandes_livraison_en_tete')
           .insert([payload])
@@ -1108,7 +1115,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           .single();
 
         if (errCmd) {
-          const idLocal = 'local_' + Date.now();
           idCmdCourante = idLocal;
           const cmdLocale = { ...payload, id: idLocal, created_at: new Date().toISOString() };
           const nouvelleListeCmd = [cmdLocale, ...commandes];
@@ -2156,6 +2162,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     CMD-
                   </span>
                   <input
+                    ref={inputNumeroCmdRef} // 🎯 Référence rattachée au champ N° CMD
                     type="text"
                     value={numeroCommande}
                     onChange={(e) => setNumeroCommande(e.target.value.replace(/[^0-9]/g, ''))}

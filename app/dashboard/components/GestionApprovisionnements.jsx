@@ -112,11 +112,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const inputQuantiteRef = useRef(null);
   const selectArticleRef = useRef(null);
 
+  // --- GÉNÉRATION SÉCURISÉE ARRIÈRE-PLAN (Unique) + AFFICHAGE PROPRE (APP-001) ---
   const genererNumeroDoc = (type, listeDocs) => {
     const prefix = type === 'APPRO' ? 'APP-' : 'BC-';
-    const docsFiltres = (listeDocs || []).filter(d => ((d.numero_bon || d.numero_commande) || '').startsWith(prefix));
-    const seq = String(docsFiltres.length + 1).padStart(2, '0');
+    const seq = String((listeDocs || []).length + 1).padStart(3, '0');
     return `${prefix}${seq}`;
+  };
+
+  const formaterNumeroAffichage = (numeroBrut, type) => {
+    if (!numeroBrut) return '';
+    if (numeroBrut.includes('-')) {
+      const parts = numeroBrut.split('-');
+      if (parts.length >= 3) {
+        return `${parts[0]}-${parts[parts.length - 1]}`;
+      }
+    }
+    return numeroBrut;
   };
 
   const chargerDroitsUtilisateur = async () => {
@@ -437,10 +448,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
     setEnTrainDeSauvegarder(true);
     try {
+      // Génération de l'identifiant technique robuste unique en arrière-plan
+      const timestampUnique = Date.now().toString().slice(-6);
+      const numeroUniqueArrierePlan = `APP-${entrepriseId}-${timestampUnique}-${String(approvisionnements.length + 1).padStart(3, '0')}`;
+      const numeroAffichageFinal = formaterNumeroAffichage(numeroDoc, 'APPRO');
+
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        numero_bon: numeroDoc,
+        numero_bon: numeroUniqueArrierePlan, // Reste unique en arrière-plan
         id_fournisseur: idFournisseur,
         numero_commande: (referenceFournisseur || '').trim().toUpperCase(),
         id_depot_destination: estPartenaireSansStockage ? null : idDepotDestination,
@@ -459,7 +475,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
       if (approEnEditionId) { 
         payload.id = approEnEditionId;
-        const { error } = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId);
+        const { error } = await supabase.from('approvisionnements').update(payload).eq('id', approEnEditionId).eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
         if (error) {
           localSync.ajouterFileAttente('UPDATE', 'approvisionnements', payload);
         }
@@ -481,7 +497,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       }
 
       localStorage.removeItem(cleCacheAppro);
-      alert(`Approvisionnement ${numeroDoc} enregistré avec succès !`);
+      alert(`Approvisionnement ${numeroAffichageFinal} enregistré avec succès !`);
       setVueActive('liste');
       await chargerDonnees(true);
     } catch (err) { 
@@ -509,10 +525,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
     setEnTrainDeSauvegarder(true);
     try {
+      const timestampUnique = Date.now().toString().slice(-6);
+      const numeroUniqueArrierePlan = `BC-${entrepriseId}-${timestampUnique}-${String(bonsCommandes.length + 1).padStart(3, '0')}`;
+      const numeroAffichageFinal = formaterNumeroAffichage(numeroDoc, 'COMMANDE');
+
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        numero_commande: numeroDoc,
+        numero_commande: numeroUniqueArrierePlan, // Reste unique en arrière-plan
         id_fournisseur: idFournisseur,
         id_depot_destination: estPartenaireSansStockage ? null : idDepotDestination,
         montant_total: estModeLivraison ? 0 : montantTotalGlobal,
@@ -530,7 +550,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
       if (approEnEditionId) { 
         payload.id = approEnEditionId;
-        const { error } = await supabase.from('bons_commande_fournisseurs').update(payload).eq('id', approEnEditionId);
+        const { error } = await supabase.from('bons_commande_fournisseurs').update(payload).eq('id', approEnEditionId).eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
         if (error) {
           localSync.ajouterFileAttente('UPDATE', 'bons_commande_fournisseurs', payload);
         }
@@ -552,7 +572,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       }
 
       localStorage.removeItem(cleCacheCommandes);
-      alert(`Bon de commande ${numeroDoc} enregistré avec succès !`);
+      alert(`Bon de commande ${numeroAffichageFinal} enregistré avec succès !`);
       setVueActive('liste');
       await chargerDonnees(true);
     } catch (err) { 
@@ -573,12 +593,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
     setEnTrainDeSauvegarder(true);
     try {
-      const nouveauNumAppro = genererNumeroDoc('APPRO', approvisionnements);
+      const timestampUnique = Date.now().toString().slice(-6);
+      const nouveauNumApproArrierePlan = `APP-${entrepriseId}-${timestampUnique}-${String(approvisionnements.length + 1).padStart(3, '0')}`;
+      const nouveauNumAffichage = genererNumeroDoc('APPRO', approvisionnements);
       
       const payloadFacture = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        numero_bon: nouveauNumAppro,
+        numero_bon: nouveauNumApproArrierePlan,
         id_fournisseur: doc.id_fournisseur || idFournisseur,
         numero_commande: (doc.numero_commande || referenceFournisseur || '').trim().toUpperCase(),
         id_depot_destination: estPartenaireSansStockage ? null : (doc.id_depot_destination || idDepotDestination),
@@ -599,7 +621,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         p_entreprise_id: entrepriseId,
         p_module: moduleActuel,
         p_commande_id: doc.id,
-        p_nouveau_num_bon: nouveauNumAppro,
+        p_nouveau_num_bon: nouveauNumApproArrierePlan,
         p_payload_facture: payloadFacture
       });
 
@@ -610,7 +632,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         }
 
         if (doc.id) {
-          const { error: errDel } = await supabase.from('bons_commande_fournisseurs').delete().eq('id', doc.id);
+          const { error: errDel } = await supabase.from('bons_commande_fournisseurs').delete().eq('id', doc.id).eq('id_entreprise', entrepriseId);
           if (errDel) {
             localSync.ajouterFileAttente('DELETE', 'bons_commande_fournisseurs', { id: doc.id });
           }
@@ -619,7 +641,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
       localStorage.removeItem(cleCacheAppro);
       localStorage.removeItem(cleCacheCommandes);
-      alert(`Succès ! Le bon a été transformé en approvisionnement : ${nouveauNumAppro}`);
+      alert(`Succès ! Le bon a été transformé en approvisionnement : ${nouveauNumAffichage}`);
       setVueActive('liste');
       setOngletActif('APPRO');
       await chargerDonnees(true);
@@ -634,7 +656,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     if (enTrainDeSauvegarder) return;
     setApproEnEditionId(doc.id);
     setDocEnEditionObjet(doc);
-    setNumeroDoc(doc.numero_bon || doc.numero_commande || '');
+    setNumeroDoc(formaterNumeroAffichage(doc.numero_bon || doc.numero_commande || '', type));
     setReferenceFournisseur(doc.numero_commande || doc.reference || '');
     setDateDoc(doc.created_at ? doc.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
     setIdFournisseur(doc.id_fournisseur || '');
@@ -664,7 +686,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     setEnTrainDeSauvegarder(true);
     try {
       const table = type === 'APPRO' ? 'approvisionnements' : 'bons_commande_fournisseurs';
-      const { error } = await supabase.from(table).delete().eq('id', id);
+      const { error } = await supabase.from(table).delete().eq('id', id).eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       if (error) {
         localSync.ajouterFileAttente('DELETE', table, { id });
       }
@@ -722,7 +744,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder;
   const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
-  // --- VARIABLES D'IMPRESSION HARMONISÉES EXACTEMENT COMME LE RAPPORT DE STOCK ---
   const fournisseurIdEffectif = idFournisseur || docEnEditionObjet?.id_fournisseur || '';
   const nomFournisseurImpression = obtenirNomFournisseur(fournisseurIdEffectif) || '-';
 
@@ -730,7 +751,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const nomDepotObjEffectif = depots.find(d => String(d.id) === String(depotIdEffectif));
   const depotTexteImpression = estPartenaireSansStockage ? 'SANS STOCK' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '-');
 
-  // Extraction fiable des articles à imprimer depuis le formulaire actif ou le document sélectionné en édition
   let articlesImpression = lignesValidees.length > 0 ? lignesValidees : [];
   if (articlesImpression.length === 0 && docEnEditionObjet?.details_articles) {
     let details = docEnEditionObjet.details_articles;
@@ -755,7 +775,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* 📄 MODÈLE D'IMPRESSION HARMONISÉ EXACTEMENT COMME LE RAPPORT DE STOCK (UNE SEULE PAGE STRICTE) */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           body * { visibility: hidden; }
@@ -855,7 +874,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         </div>
       </div>
 
-      {/* INTERFACE UTILISATEUR INTERACTIVE (MASQUÉE LORS DE L'IMPRESSION) */}
       <div className="print:hidden space-y-2.5">
         <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
           <div className="flex items-center gap-2">
@@ -971,7 +989,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                         documentsHistoriqueAffiches.map((doc) => (
                           <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                             <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numero_bon}</td>
+                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{formaterNumeroAffichage(doc.numero_bon, 'APPRO')}</td>
                             <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'PARTENAIRE'}</td>
                             {!estModeLivraison && (
                               <td className="p-2 text-right whitespace-nowrap">
@@ -1017,7 +1035,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                         commandesHistoriqueAffiches.map((cmd) => (
                           <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE')} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                             <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{cmd.numero_commande}</td>
+                            <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{formaterNumeroAffichage(cmd.numero_commande, 'COMMANDE')}</td>
                             <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'PARTENAIRE'}</td>
                           </tr>
                         ))
@@ -1068,7 +1086,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 <span className="font-black text-slate-900 text-xs uppercase">📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
               </div>
-              <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
+              <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{formaterNumeroAffichage(numeroDoc, 'APPRO')}</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
               <div>
@@ -1214,7 +1232,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
               </div>
-              <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
+              <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{formaterNumeroAffichage(numeroDoc, 'COMMANDE')}</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
               <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>

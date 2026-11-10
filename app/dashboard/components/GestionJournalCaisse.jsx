@@ -125,6 +125,17 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const cleCacheEtatsCaisse = `etats_caisse_${entrepriseId}_${moduleActuel}`;
   const cleCacheClotures = `clotures_caisses_${entrepriseId}_${moduleActuel}`;
 
+  // 🛡️ Fonction utilitaire stricte pour fusionner des listes par ID unique (Évite écrasement multi-superviseur)
+  const fusionnerParId = (liste1 = [], liste2 = []) => {
+    const map = new Map();
+    [...liste2, ...liste1].forEach(item => {
+      if (item && item.id) {
+        map.set(String(item.id), item);
+      }
+    });
+    return Array.from(map.values());
+  };
+
   const genererCodePieceSequentiel = (dateStr, listeEtats, listeClotures) => {
     const dClean = (dateStr || new Date().toISOString().split('T')[0]).replace(/-/g, '');
     
@@ -150,19 +161,19 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   };
 
   const chargerDonneesGlobales = async () => {
-    const mouvementsLocaux = localSync.recupererDonneesLocales(cleCacheMouvements);
-    const etatsLocaux = localSync.recupererDonneesLocales(cleCacheEtatsCaisse);
-    const cloturesLocales = localSync.recupererDonneesLocales(cleCacheClotures);
+    const mouvementsLocaux = localSync.recupererDonneesLocales(cleCacheMouvements) || [];
+    const etatsLocaux = localSync.recupererDonneesLocales(cleCacheEtatsCaisse) || [];
+    const cloturesLocales = localSync.recupererDonneesLocales(cleCacheClotures) || [];
 
-    if (mouvementsLocaux && mouvementsLocaux.length > 0) {
+    if (mouvementsLocaux.length > 0) {
       setMouvements(mouvementsLocaux);
       setChargement(false);
     } else {
       setChargement(true);
     }
 
-    if (etatsLocaux && etatsLocaux.length > 0) setEtatsCaisseList(etatsLocaux);
-    if (cloturesLocales && cloturesLocales.length > 0) setCloturesCaissesList(cloturesLocales);
+    if (etatsLocaux.length > 0) setEtatsCaisseList(etatsLocaux);
+    if (cloturesLocales.length > 0) setCloturesCaissesList(cloturesLocales);
 
     try {
       const { data: dataCaisses } = await supabase
@@ -209,9 +220,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: true });
-      const listMvts = dataMvts || [];
-      setMouvements(listMvts);
-      localSync.sauvegarderDonneesLocales(cleCacheMouvements, listMvts);
+      
+      const listMvtsCloud = dataMvts || [];
+      const listMvtsFinal = fusionnerParId(listMvtsCloud, mouvementsLocaux);
+      setMouvements(listMvtsFinal);
+      localSync.sauvegarderDonneesLocales(cleCacheMouvements, listMvtsFinal);
 
       const { data: dataVentes } = await supabase
         .from('ventes_historiques')
@@ -254,9 +267,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
-      const listEtats = dataEtats || [];
-      setEtatsCaisseList(listEtats);
-      localSync.sauvegarderDonneesLocales(cleCacheEtatsCaisse, listEtats);
+      
+      const listEtatsCloud = dataEtats || [];
+      const listEtatsFinal = fusionnerParId(listEtatsCloud, etatsLocaux);
+      setEtatsCaisseList(listEtatsFinal);
+      localSync.sauvegarderDonneesLocales(cleCacheEtatsCaisse, listEtatsFinal);
 
       const { data: dataCloturesCaisses } = await supabase
         .from('clotures_caisses')
@@ -264,11 +279,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
-      const listClotures = dataCloturesCaisses || [];
-      setCloturesCaissesList(listClotures);
-      localSync.sauvegarderDonneesLocales(cleCacheClotures, listClotures);
+      
+      const listCloturesCloud = dataCloturesCaisses || [];
+      const listCloturesFinal = fusionnerParId(listCloturesCloud, cloturesLocales);
+      setCloturesCaissesList(listCloturesFinal);
+      localSync.sauvegarderDonneesLocales(cleCacheClotures, listCloturesFinal);
 
-      const prochainNum = genererCodePieceSequentiel(dateControle, listEtats, listClotures);
+      const prochainNum = genererCodePieceSequentiel(dateControle, listEtatsFinal, listCloturesFinal);
       setNumeroPieceCloture(prochainNum);
 
     } catch (err) {
@@ -345,6 +362,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return totalMvts;
   };
 
+  // 🛡️ Enregistrement d'une opération avec protection anti-écrasement multi-superviseur
   const enregistrerOperationUnique = async (e) => {
     if (e) e.preventDefault();
     if (moduleActuel !== 'LIVRAISON' && !enteteSaisie.id_caisse) {
@@ -353,12 +371,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     }
 
     try {
-      let libelleFinal = '';
-      if (utilisateurMotif) {
-        libelleFinal = utilisateurMotif.toUpperCase();
-      } else {
-        libelleFinal = 'MOUV. INT.';
-      }
+      let libelleFinal = utilisateurMotif ? utilisateurMotif.toUpperCase() : 'MOUV. INT.';
 
       const payload = {
         id_entreprise: entrepriseId,
@@ -370,6 +383,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         id_compte: ligneUnique.id_compte || null,
         piece_physique: ligneUnique.piece_physique || null,
         created_at: new Date(enteteSaisie.date).toISOString(),
+        utilisateur_saisie: utilisateurActif
       };
 
       if (idOperationEnCoursModif) {
@@ -384,16 +398,29 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         setIdOperationEnCoursModif(null);
         setNumeroPieceEnCoursModif('');
       } else {
+        const idLocalTemp = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const payloadTemp = { ...payload, id: idLocalTemp };
+
         const { error, data } = await supabase.from('mouvements_caisse').insert([payload]).select().single();
-        if (error) throw error;
-
-        if (data) {
-          setMouvements(prev => [...prev, data]);
+        
+        if (error) {
+          // Mode hors-ligne : Ajout sécurisé sans écraser les autres mouvements
+          localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payload);
+          setMouvements(prev => {
+            const listeMaj = fusionnerParId(prev, [payloadTemp]);
+            localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+            return listeMaj;
+          });
+          alert(`Opération enregistrée hors-ligne par ${utilisateurActif} (ID unique: ${idLocalTemp}).`);
+        } else if (data) {
+          setMouvements(prev => {
+            const listeMaj = fusionnerParId(prev, [data]);
+            localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+            return listeMaj;
+          });
+          alert(`Opération enregistrée avec succès par ${utilisateurActif}.`);
         }
-        alert(`Opération enregistrée avec succès par ${utilisateurActif}.`);
       }
-
-      localStorage.removeItem(cleCacheMouvements);
 
       setLigneUnique({ id_compte: '', montant: '', piece_physique: '', id_utilisateur_tiers: '' });
       setUtilisateurMotif('');
@@ -465,8 +492,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('id', id);
       if (error) throw error;
 
-      setMouvements(prev => prev.filter(m => m.id !== id));
-      localStorage.removeItem(cleCacheMouvements);
+      setMouvements(prev => {
+        const listeMaj = prev.filter(m => m.id !== id);
+        localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+        return listeMaj;
+      });
 
       alert('Opération supprimée avec succès !');
       setIdOperationEnCoursModif(null);
@@ -853,11 +883,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       if (error) throw error;
 
       if (data) {
-        setEtatsCaisseList(prev => [data, ...prev]);
+        setEtatsCaisseList(prev => {
+          const listeMaj = fusionnerParId(prev, [data]);
+          localSync.sauvegarderDonneesLocales(cleCacheEtatsCaisse, listeMaj);
+          return listeMaj;
+        });
         setDernierEtatIdValidé(data.id);
       }
-
-      localStorage.removeItem(cleCacheEtatsCaisse);
 
       alert(`✅ Clôture de caisse [${codePieceActuel}] validée avec succès ! Montant de ${montantV.toLocaleString('fr-FR')} CFA prêt à être versé dans la caisse principale.`);
       await chargerDonneesGlobales();
@@ -894,7 +926,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         montant: Number(etat.montant_verse),
         libelle: libelleMouvement, 
         piece_physique: numClotureAssocie,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        utilisateur_saisie: utilisateurActif
       };
 
       const { error: errMvt } = await supabase.from('mouvements_caisse').insert([payloadMvt]);
@@ -906,9 +939,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('id', etat.id);
 
       if (errUpdate) throw errUpdate;
-
-      localStorage.removeItem(cleCacheMouvements);
-      localStorage.removeItem(cleCacheEtatsCaisse);
 
       alert(`🚀 Versement de la clôture [${numClotureAssocie}] effectué avec succès !`);
       setAfficherModaleVersement(false);
@@ -1477,15 +1507,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         const estEntree = m.type_mouvement === 'ENTREE';
                         const montantNum = Number(m.montant) || 0;
 
-                        // Ajout du nom du livreur/tiers devant le numéro de pièce si disponible
                         let pieceAffichee = m.piece_physique || `PC-${idx + 1}`;
-                        if (moduleActuel === 'LIVRAISON' && m.libelle && m.libelle !== 'Frais Livr.') {
-                          // Si le libellé contient des informations sur le livreur ou si on peut l'extraire
-                        }
-                        // Formatage dynamique demandé : Livr.-13 - Nom du livreur (ou similaire)
                         let nomLivreurAssocie = '';
                         if (moduleActuel === 'LIVRAISON') {
-                          // Recherche dans les commandes de livraison correspondantes à cette pièce
                           const cmdAssociee = commandesLivraison.find(cmd => (cmd.frais_livraison && Number(cmd.frais_livraison) === montantNum) || (m.piece_physique && m.piece_physique.includes(cmd.id)));
                           if (cmdAssociee && cmdAssociee.vendeur_livreur) {
                             nomLivreurAssocie = cmdAssociee.vendeur_livreur;

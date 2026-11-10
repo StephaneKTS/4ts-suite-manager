@@ -163,7 +163,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
-  // 🛡️ Générateur de l'identifiant unique sécurisé en arrière-plan (anti-concurrence)
   const genererNumeroDocSecurise = (type) => {
     const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
     const prefix = prefixes[type] || 'TR';
@@ -477,9 +476,46 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return Math.max(0, stockDepot);
   };
 
+  // 🛡️ FILTRAGE STRICT DES ARTICLES (Entreprise, Module, Partenaire et Emplacement/Livreur)
   const articlesPopupFiltres = articles.filter((art) => {
-    const designation = art.Designation || art.designation || '';
-    return designation.toLowerCase().includes((recherchePopup || '').toLowerCase());
+    const designation = (art.Designation || art.designation || '').toLowerCase();
+    const matchRecherche = designation.includes((recherchePopup || '').toLowerCase());
+    if (!matchRecherche) return false;
+
+    // 1. Contrôle strict de l'entreprise et du module
+    const artEntreprise = String(art.id_entreprise || art.entreprise_id || entrepriseId);
+    const artModule = String(art.module || moduleActuel).toUpperCase();
+    if (artEntreprise !== String(entrepriseId)) return false;
+    if (artModule !== String(moduleActuel)) return false;
+
+    // 2. Contrôle du partenaire / fournisseur
+    const artPartenaire = String(art.partenaire || art.id_partenaire || art.fournisseur || '').trim().toUpperCase();
+    const emplacementSourceId = enTeteDoc.id_emplacement_source;
+
+    if (emplacementSourceId) {
+      const empObj = emplacements.find(e => String(e.id) === String(emplacementSourceId));
+      if (empObj) {
+        const empPartenaire = String(empObj.partenaire || empObj.id_partenaire || '').trim().toUpperCase();
+        // Si l'emplacement et l'article ont tous les deux un partenaire défini mais qu'ils diffèrent, on masque
+        if (empPartenaire && artPartenaire && empPartenaire !== artPartenaire) {
+          return false;
+        }
+      }
+    }
+
+    // 3. Filtrage par stock disponible sur l'emplacement du livreur / dépôt source (pour Sortie/Transfert/Avaries)
+    const artId = art.id_article || art.id;
+    if (typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') {
+      if (emplacementSourceId) {
+        const stockEmp = calculerStockPourEmplacement(artId, emplacementSourceId);
+        if (stockEmp <= 0) return false;
+      } else if (enTeteDoc.id_depot_source) {
+        const stockDep = calculerStockPourDepotActuel(artId);
+        if (stockDep <= 0) return false;
+      }
+    }
+
+    return true;
   });
 
   const verifierEnTeteAvantSaisie = () => {
@@ -703,7 +739,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           id_emplacement_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_emplacement_destination || null) : null,
           id_article: parseInt(ligne.id_article),
           quantite: ligne.quantite,
-          motif_remarque: enTeteDoc.numeroDoc, // ID technique sécurisé conservé en arrière-plan
+          motif_remarque: enTeteDoc.numeroDoc,
           reference: referenceSaisie,
           operateur: operateurActuel,
           created_at: dateMvtIso,
@@ -796,7 +832,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return enTeteModifie || typeModifie || lignesModifiees;
   }, [mouvementEnEditionId, etatInitialEdition, enTeteDoc, typeOperation, lignesPanier]);
 
-  // 🛡️ FORMATION DE LA LISTE AVEC NUMÉROTATION SÉQUENTIELLE PROPRE (MS-01, MS-02, TR-01...)
   const documentsGroupes = useMemo(() => {
     const documentsBruts = Object.values(
       mouvements
@@ -816,7 +851,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             const refDocAssociee = mvt.reference || '';
 
             acc[numDocBrut] = { 
-              numeroDocBrut: numDocBrut, // ID technique masqué conservé pour les actions (modification/suppression)
+              numeroDocBrut: numDocBrut,
               referenceDoc: refDocAssociee,
               date: mvt.created_at || '', 
               type: (mvt.type_mouvement || 'TRANSFERT').toUpperCase(), 
@@ -834,7 +869,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         }, {})
     );
 
-    // Tri chronologique croissant par date pour attribuer les numéros séquentiels dans l'ordre
     documentsBruts.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     const compteursParType = {};
@@ -851,7 +885,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
       return {
         ...doc,
-        numeroDoc: numeroSequentiel // Affichage visuel propre (MS-01, MS-02...)
+        numeroDoc: numeroSequentiel
       };
     });
   }, [mouvements, depots, emplacements]);
@@ -1068,7 +1102,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </div>
                   <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                     {articlesPopupFiltres.length === 0 ? (
-                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé pour ce partenaire / cet emplacement.</div>
                     ) : (
                       articlesPopupFiltres.map((art) => {
                         const artId = art.id_article || art.id;
