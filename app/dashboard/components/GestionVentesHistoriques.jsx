@@ -7,7 +7,7 @@ import { localSync } from '../../lib/localSync';
 export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }) {
   const [ventes, setVentes] = useState([]);
   const [articlesStock, setArticlesStock] = useState([]);
-  const [famillesArticles, setFamillesArticles] = useState([]); // Ajouté pour la gestion des familles
+  const [famillesArticles, setFamillesArticles] = useState([]);
   const [clientsList, setClientsList] = useState([]);
   const [categoriesList, setCategoriesList] = useState([]);
   const [caissesList, setCaissesList] = useState([]);
@@ -40,6 +40,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const [caisseDestinationVersementId, setCaisseDestinationVersementId] = useState('');
   const [clotureDetailSelectionnee, setClotureDetailSelectionnee] = useState(null);
 
+  // --- MODAL SUCCÈS VALIDATION TICKET & IMPRESSION ---
+  const [afficherModalSuccesTicket, setAfficherModalSuccesTicket] = useState(false);
+  const [ticketDernierValide, setTicketDernierValide] = useState(null);
+
   // --- DÉSACTIVATION TEMPORAIRE ---
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   
@@ -52,7 +56,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   const [ordreAlphabetique, setOrdreAlphabetique] = useState('ASC');
   const [limiteVentes, setLimiteVentes] = useState(20);
-  const [limiteArticlesModal, setLimiteArticlesModal] = useState(20); // Ajouté pour uniformiser la pagination du modal articles
+  const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
 
   // --- TRI DES TICKETS ---
   const [triTicketCol, setTriTicketCol] = useState('created_at');
@@ -62,14 +66,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const [triJournalCol, setTriJournalCol] = useState('date');
   const [triJournalOrdre, setTriJournalOrdre] = useState('desc');
 
-  // --- FILTRES DU JOURNAL DES VENTES (PRÉREMPLIS À LA DATE DU JOUR) ---
+  // --- FILTRES DU JOURNAL DES VENTES ---
   const dateDuJourStr = new Date().toISOString().split('T')[0];
   const [journalDateDebut, setJournalDateDebut] = useState(dateDuJourStr);
   const [journalDateFin, setJournalDateFin] = useState(dateDuJourStr);
   const [journalCaisseId, setJournalCaisseId] = useState('TOUTES');
   const [journalCaissierId, setJournalCaissierId] = useState('TOUS');
 
-  // --- FILTRES DE LA CLÔTURE CAISSE (PRÉREMPLIS À LA DATE DU JOUR) ---
+  // --- FILTRES DE LA CLÔTURE CAISSE ---
   const [clotureDateDebut, setClotureDateDebut] = useState(dateDuJourStr);
   const [clotureDateFin, setClotureDateFin] = useState(dateDuJourStr);
   const [clotureCaisseId, setClotureCaisseId] = useState('TOUTES');
@@ -121,11 +125,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   };
 
   const moduleActuel = obtenirModuleActuel();
-
-  // Clé de cache locale isolée par entreprise et par module
   const cacheKey = `4ts_cache_ventes_historiques_${entrepriseId}_${moduleActuel}`;
 
-  // 🛡️ Fonction utilitaire stricte pour fusionner des listes par ID unique (Évite écrasement multi-superviseur)
   const fusionnerParId = (liste1 = [], liste2 = []) => {
     const map = new Map();
     [...liste2, ...liste1].forEach(item => {
@@ -140,7 +141,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
 
-  // --- CHARGEMENT DU CACHE LOCAL INSTANTANÉ ---
   const chargerCacheLocal = () => {
     if (typeof window === 'undefined') return false;
     try {
@@ -690,18 +690,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       const { error: errVente, data: dataVenteInsert } = await supabase.from('ventes_historiques').insert([payloadVente]).select().single();
 
+      let ticketValideFinal = dataVenteInsert || { ...payloadVente, id: idLocalTemp };
+
       if (errVente) {
-        // Enregistrement hors-ligne sécurisé avec ID temporaire unique
-        const payloadTemp = { ...payloadVente, id: idLocalTemp };
         localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
-        
         setVentes(prev => {
-          const listeMaj = fusionnerParId(prev, [payloadTemp]);
+          const listeMaj = fusionnerParId(prev, [ticketValideFinal]);
           sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
           return listeMaj;
         });
-        setVentesHistoriques(prev => fusionnerParId(prev, [payloadTemp]));
-        alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré hors-ligne par ${caissierNomActuel} !`);
+        setVentesHistoriques(prev => fusionnerParId(prev, [ticketValideFinal]));
       } else if (dataVenteInsert) {
         setVentes(prev => {
           const listeMaj = fusionnerParId(prev, [dataVenteInsert]);
@@ -709,7 +707,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           return listeMaj;
         });
         setVentesHistoriques(prev => fusionnerParId(prev, [dataVenteInsert]));
-        alert(`✅ Ticket ${numeroTicket} (${nomClientFacture}) enregistré avec succès (${typeReglementVente}) !`);
       }
 
       if (montantCreditRestant > 0 && clientIdFinal) {
@@ -764,6 +761,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       }
 
       await chargerDonneesEtPermissions();
+
+      setTicketDernierValide(ticketValideFinal);
+      setAfficherModalSuccesTicket(true);
+
     } catch (err) {
       alert('Erreur enregistrement : ' + err.message);
     } finally {
@@ -1064,7 +1065,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     setEnTrainDeSauvegarder(true);
     try {
       const caisseDestObj = caissesList.find(c => String(c.id) === String(caisseDestinationVersementId));
-      const nomCaisseDest = caisseDestObj ? (caisseDestObj.nom_caisse || caisseDestObj.code_caisse || 'Caisse Principale') : 'Caisse Principale';
+      const nomCaisseDest = caisseDestObj ? (caissesList.nom_caisse || caisseDestObj.code_caisse || 'Caisse Principale') : 'Caisse Principale';
 
       const idsTicketsInclus = ventesClotureFiltrees.map(v => v.id);
       const codeClotureRef = `CLOTURE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
@@ -1153,15 +1154,148 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const articlesFiltres = articlesTries.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
   const articlesFiltresModalAffiches = articlesFiltres.slice(0, limiteArticlesModal);
 
+  // Ticket actif pour l'impression (si aucun n'est sélectionné, on prend le tout dernier ticket enregistré pour éviter la page blanche)
+  const ticketImpressionActif = ticketSelectionne || ticketDernierValide || ventes[0];
+
+  const declencherImpressionSecurisee = () => {
+    if (!ticketImpressionActif) {
+      alert("⚠️ Aucun ticket récent ou sélectionné à imprimer. Veuillez d'abord valider une vente ou en sélectionner un dans l'historique.");
+      return;
+    }
+    window.print();
+  };
+
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
-      <div className="flex justify-between items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+      {/* 🖨️ STYLE CSS D'IMPRESSION STRICTEMENT SUR UNE SEULE PAGE THERMIQUE SANS ESPACE BLANC (AUTO-CUT) */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          .ticket-impression-container, .ticket-impression-container * {
+            visibility: visible !important;
+          }
+          .ticket-impression-container {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 76mm !important;
+            height: auto !important;
+            max-height: none !important;
+            margin: 0 !important;
+            padding: 0 1mm 4mm 1mm !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            font-size: 9px !important;
+            line-height: 1.15 !important;
+            overflow: visible !important;
+            page-break-before: avoid !important;
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+            break-before: avoid !important;
+            break-after: avoid !important;
+            break-inside: avoid !important;
+            z-index: 999999 !important;
+          }
+          @page {
+            size: 80mm auto;
+            margin: 0mm;
+          }
+        }
+      ` }} />
+
+      {/* 📄 CONTENEUR DU TICKET THERMIQUE OPTIMISÉ POUR 1 PAGE SANS ESPACE BLANC */}
+      <div className="ticket-impression-container hidden">
+        {ticketImpressionActif ? (
+          <div style={{ width: '100%' }}>
+            <div style={{ textAlign: 'center', marginBottom: '4px', borderBottom: '1px dashed #000', paddingBottom: '3px' }}>
+              <h2 style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 1px 0' }}>4TS : ISMA LOGISTIQUE</h2>
+              <p style={{ fontSize: '8px', margin: '0' }}>Tél : +237 600 000 000</p>
+            </div>
+
+            <div style={{ marginBottom: '4px', fontSize: '9px', borderBottom: '1px dashed #000', paddingBottom: '3px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
+                <span><strong>Ticket :</strong> {ticketImpressionActif.numero_ticket}</span>
+                <span><strong>Date :</strong> {ticketImpressionActif.created_at ? new Date(ticketImpressionActif.created_at).toLocaleDateString('fr-FR') : '-'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
+                <span><strong>Client :</strong> {ticketImpressionActif.nom_client || 'CLIENTS DIVERS'}</span>
+                <span><strong>Caissier :</strong> {ticketImpressionActif.caissier || caissierNomActuel}</span>
+              </div>
+              <div><strong>Règlement :</strong> {ticketImpressionActif.type_reglement || 'COMPTANT'}</div>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '4px', fontSize: '8.5px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #000' }}>
+                  <th style={{ textAlign: 'left', paddingBottom: '2px' }}>ART</th>
+                  <th style={{ textAlign: 'center', paddingBottom: '2px' }}>QTE</th>
+                  <th style={{ textAlign: 'right', paddingBottom: '2px' }}>P.U</th>
+                  <th style={{ textAlign: 'right', paddingBottom: '2px' }}>TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.isArray(ticketImpressionActif.details_articles) && ticketImpressionActif.details_articles.map((item, idx) => {
+                  const qte = Number(item.quantite || 1);
+                  const pv = Number(item.prix_unitaire || item.prix_vente || 0);
+                  const pt = qte * pv;
+                  return (
+                    <tr key={idx} style={{ borderBottom: '1px dotted #ccc' }}>
+                      <td style={{ padding: '1px 0', textTransform: 'uppercase', maxWidth: '26mm', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.designation}</td>
+                      <td style={{ padding: '1px 0', textAlign: 'center' }}>{qte}</td>
+                      <td style={{ padding: '1px 0', textAlign: 'right' }}>{pv.toLocaleString('fr-FR')}</td>
+                      <td style={{ padding: '1px 0', textAlign: 'right', fontWeight: 'bold' }}>{pt.toLocaleString('fr-FR')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <div style={{ borderTop: '1px dashed #000', paddingTop: '3px', marginBottom: '4px', fontSize: '9.5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                <span>TOTAL À PAYER :</span>
+                <span>{Number(ticketImpressionActif.total_montant || 0).toLocaleString('fr-FR')} CFA</span>
+              </div>
+              {Number(ticketImpressionActif.montant_regle) < Number(ticketImpressionActif.total_montant) && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Montant versé :</span>
+                    <span>{Number(ticketImpressionActif.montant_regle || 0).toLocaleString('fr-FR')} CFA</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'red' }}>
+                    <span>Reste dû :</span>
+                    <span>{Math.max(0, Number(ticketImpressionActif.total_montant || 0) - Number(ticketImpressionActif.montant_regle || 0)).toLocaleString('fr-FR')} CFA</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={{ textAlign: 'center', fontSize: '8px', borderTop: '1px dashed #000', paddingTop: '3px' }}>
+              <p style={{ margin: '0 0 1px 0', fontWeight: 'bold' }}>MERCI POUR VOTRE ACHAT !</p>
+              <p style={{ margin: '0' }}>À bientôt chez ISMA LOGISTIQUE</p>
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '10px' }}>Aucun ticket à imprimer</div>
+        )}
+      </div>
+
+      {/* 🟡 ONGLETS DU HAUT AVEC CADRES ARRONDIS */}
+      <div className="flex justify-between items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
         <div className="flex flex-1 gap-1">
           <button
             disabled={enTrainDeSauvegarder}
             onClick={() => setOngletActif('vente')}
-            className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
+            className={`flex-1 py-1.5 text-center font-bold rounded-xl transition text-[10px] ${
               ongletActif === 'vente' ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -1170,7 +1304,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           <button
             disabled={enTrainDeSauvegarder}
             onClick={() => setOngletActif('tickets')}
-            className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
+            className={`flex-1 py-1.5 text-center font-bold rounded-xl transition text-[10px] ${
               ongletActif === 'tickets' ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -1179,7 +1313,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           <button
             disabled={enTrainDeSauvegarder}
             onClick={() => setOngletActif('journal')}
-            className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
+            className={`flex-1 py-1.5 text-center font-bold rounded-xl transition text-[10px] ${
               ongletActif === 'journal' ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -1188,7 +1322,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           <button
             disabled={enTrainDeSauvegarder}
             onClick={() => setOngletActif('cloture')}
-            className={`flex-1 py-1 text-center font-bold rounded-md transition text-[10px] ${
+            className={`flex-1 py-1.5 text-center font-bold rounded-xl transition text-[10px] ${
               ongletActif === 'cloture' ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -1196,7 +1330,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           </button>
         </div>
         {roleNom && (
-          <span className="ml-2 text-[9px] bg-white text-slate-700 px-2 py-0.5 rounded font-bold border border-slate-200 shrink-0">
+          <span className="ml-2 text-[9px] bg-white text-slate-700 px-2.5 py-1 rounded-xl font-bold border border-slate-200 shrink-0">
             Rôle : {roleNom}
           </span>
         )}
@@ -1204,7 +1338,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       {ongletActif === 'vente' && (
         <div className="space-y-2">
-          <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-2 relative shadow-2xs">
+          <div className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 relative shadow-2xs">
             <div className="absolute top-2 right-2 text-right">
               <span className="text-[7.5px] font-extrabold text-slate-400 uppercase block tracking-tighter">N° TICKET</span>
               <span className="font-mono font-black text-orange-600 text-[9.5px]">{numeroTicket}</span>
@@ -1218,7 +1352,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={dateJour}
                   onChange={(e) => setDateJour(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-mono font-bold text-[10px] text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-mono font-bold text-[10px] text-slate-900"
                 />
               </div>
 
@@ -1228,7 +1362,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={caisseId}
                   onChange={(e) => changerCaisseSelectionnee(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-[10px] text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900"
                 >
                   {caissesList.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -1244,7 +1378,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   type="text"
                   readOnly
                   value={caissierNomActuel}
-                  className="w-full bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-extrabold uppercase text-slate-800 text-[10px] truncate"
+                  className="w-full bg-slate-100 border border-slate-200 rounded-lg px-1.5 py-1 font-extrabold uppercase text-slate-800 text-[10px] truncate"
                 />
               </div>
             </div>
@@ -1256,7 +1390,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={depotId}
                   onChange={(e) => setDepotId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-bold text-[10px] text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900"
                 >
                   {depotsList.length === 0 ? (
                     <option value="">Aucun dépôt</option>
@@ -1276,7 +1410,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalClient(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[24px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
                 >
                   <span className="truncate">{clientNomSelectionne}</span>
                   <span className="text-[9px] text-slate-400">🔍</span>
@@ -1293,7 +1427,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   value={nomClientLibre}
                   onChange={(e) => setNomClientLibre(e.target.value.toUpperCase())}
                   placeholder={moduleActuel === 'LIVRAISON' ? 'LIVREUR LIBRE...' : 'NOM LIBRE...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
                 />
               </div>
             </div>
@@ -1302,7 +1436,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             
-            <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col h-[380px]">
+            <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col h-[380px]">
               <div className="flex justify-between items-center mb-2 gap-1">
                 <span className="font-extrabold text-slate-700 text-[11px] uppercase">Articles</span>
                 <div className="flex items-center gap-1">
@@ -1310,7 +1444,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     disabled={enTrainDeSauvegarder}
                     onClick={() => setOrdreAlphabetique(ordreAlphabetique === 'ASC' ? 'DESC' : 'ASC')}
                     title={ordreAlphabetique === 'ASC' ? 'Tri alphabétique A-Z' : 'Tri alphabétique Z-A'}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2 py-1 rounded text-[10px] transition border border-slate-200 shadow-2xs flex items-center gap-0.5"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1.5 rounded-xl text-[10px] transition border border-slate-200 shadow-2xs flex items-center gap-0.5"
                   >
                     <span>{ordreAlphabetique === 'ASC' ? 'A-Z' : 'Z-A'}</span>
                     <span>{ordreAlphabetique === 'ASC' ? '▲' : '▼'}</span>
@@ -1318,7 +1452,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   <button
                     disabled={enTrainDeSauvegarder}
                     onClick={() => setAfficherModalArticle(true)}
-                    className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-2.5 py-1 rounded text-[10px] shadow-2xs whitespace-nowrap"
+                    className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] shadow-2xs whitespace-nowrap"
                   >
                     🔍 recherche
                   </button>
@@ -1342,7 +1476,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       <div
                         key={artId}
                         onClick={() => !enTrainDeSauvegarder && !estEpuise && ajouterAuPanier(art)}
-                        className={`p-2.5 border rounded-lg flex justify-between items-center transition gap-2 shadow-2xs ${
+                        className={`p-2.5 border rounded-xl flex justify-between items-center transition gap-2 shadow-2xs ${
                           estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 border-slate-200 cursor-pointer'
                         }`}
                       >
@@ -1362,7 +1496,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col justify-between h-[380px]">
+            <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-[380px]">
               <div className="space-y-2">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-1">
                   <span className="font-extrabold text-slate-800 uppercase text-[10px]">Panier & Règlements</span>
@@ -1370,7 +1504,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     disabled={enTrainDeSauvegarder}
                     value={modePaiementTicket}
                     onChange={(e) => setModePaiementTicket(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-900"
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-900"
                   >
                     <option value="ESPECES">ESPECES</option>
                     <option value="MOBILE_MONEY">MOBILE MONEY</option>
@@ -1391,7 +1525,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                           </p>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">-</button>
+                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-5 h-5 bg-slate-100 rounded-lg font-bold text-slate-900">-</button>
                           <input
                             type="number"
                             disabled={enTrainDeSauvegarder}
@@ -1399,9 +1533,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                             onChange={(e) => modifierQuantite(item.id, Number(e.target.value))}
                             onFocus={(e) => e.target.select()}
                             onKeyDown={handleKeyDownQuantite}
-                            className="w-10 bg-slate-50 border border-slate-200 rounded text-center font-bold font-mono text-[10px] text-slate-900"
+                            className="w-10 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold font-mono text-[10px] text-slate-900"
                           />
-                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-4 h-4 bg-slate-100 rounded font-bold text-slate-900">+</button>
+                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-5 h-5 bg-slate-100 rounded-lg font-bold text-slate-900">+</button>
                           <span className="font-black text-emerald-700 font-mono ml-1 w-14 text-right">
                             {Number(item.quantite * item.prix_unitaire).toLocaleString('fr-FR')} F
                           </span>
@@ -1414,14 +1548,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
               <div className="pt-2 border-t border-slate-200 space-y-1.5">
                 
-                <div className="bg-slate-50 p-1.5 rounded border border-slate-200 space-y-1">
+                <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 space-y-1">
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-[8px] font-extrabold uppercase text-slate-600">Type de règlement :</span>
                     <select
                       disabled={enTrainDeSauvegarder}
                       value={typeReglementVente}
                       onChange={(e) => setTypeReglementVente(e.target.value)}
-                      className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-[9px] font-extrabold text-orange-600"
+                      className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[9px] font-extrabold text-orange-600"
                     >
                       <option value="COMPTANT">Paiement Comptant</option>
                       <option value="CREDIT">Vente 100% Crédit</option>
@@ -1439,7 +1573,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                         value={montantAvance}
                         onChange={(e) => setMontantAvance(e.target.value)}
                         onFocus={(e) => e.target.select()}
-                        className="w-24 bg-white border border-slate-300 rounded px-1.5 py-0.5 text-right font-mono font-bold text-[10px] text-slate-900"
+                        className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-bold text-[10px] text-slate-900"
                       />
                     </div>
                   )}
@@ -1458,7 +1592,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       disabled={enTrainDeSauvegarder}
                       value={typeRemise}
                       onChange={(e) => setTypeRemise(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[8px] font-bold text-slate-800"
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[8px] font-bold text-slate-800"
                     >
                       <option value="POURCENTAGE">Remise % :</option>
                       <option value="MONTANT">Remise (F) :</option>
@@ -1470,7 +1604,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       value={valeurRemise}
                       onChange={(e) => setValeurRemise(e.target.value)}
                       onFocus={(e) => e.target.select()}
-                      className="w-14 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-center text-[10px] font-mono font-bold text-slate-900"
+                      className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-center text-[10px] font-mono font-bold text-slate-900"
                     />
                   </div>
 
@@ -1480,7 +1614,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       disabled={enTrainDeSauvegarder}
                       value={appliquerTva}
                       onChange={(e) => setAppliquerTva(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold text-slate-900"
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold text-slate-900"
                     >
                       <option value="NON">Non</option>
                       <option value="OUI">Oui ({tauxTvaClient}%)</option>
@@ -1488,18 +1622,18 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     disabled={enTrainDeSauvegarder || panier.length === 0}
                     onClick={mettreTicketEnAttente}
-                    className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-2 py-1 rounded text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+                    className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-2.5 py-1.5 rounded-xl text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
                   >
                     ⏳ Mettre en attente
                   </button>
                   <button
                     disabled={enTrainDeSauvegarder}
                     onClick={() => setAfficherModalAttente(true)}
-                    className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-2 py-1 rounded text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+                    className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-2.5 py-1.5 rounded-xl text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
                   >
                     📂 Rappel ticket ({ticketsEnAttente.length})
                   </button>
@@ -1512,11 +1646,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       {totalFinal.toLocaleString('fr-FR')} CFA
                     </span>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5">
                     <button
                       disabled={enTrainDeSauvegarder}
                       onClick={annulerVenteEnCours}
-                      className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-2 py-1.5 rounded text-[10px] transition shadow-2xs"
+                      className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-3 py-1.5 rounded-xl text-[10px] transition shadow-2xs"
                     >
                       ❌ Annuler
                     </button>
@@ -1525,7 +1659,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       <button
                         onClick={validerEtEnregistrerVente}
                         disabled={panier.length === 0 || enTrainDeSauvegarder}
-                        className={`font-bold px-3 py-1.5 rounded text-[10px] transition shadow-2xs ${
+                        className={`font-bold px-4 py-1.5 rounded-xl text-[10px] transition shadow-2xs ${
                           panier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         }`}
                       >
@@ -1543,7 +1677,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       {ongletActif === 'tickets' && (
         <div className="space-y-2">
-          <div className="bg-white p-2 rounded-lg border border-slate-200 space-y-2 shadow-2xs">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1">
               <span className="font-extrabold text-slate-700 uppercase text-[9px]">🔍 FILTRER LES TICKETS</span>
               {(filtreDateDebut !== premierJourMoisStr || filtreDateFin !== dernierJourMoisStr || filtreModePaiement !== 'TOUS' || recherche) && (
@@ -1571,7 +1705,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={filtreDateDebut}
                   onChange={(e) => setFiltreDateDebut(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-900"
                 />
               </div>
               <div>
@@ -1581,7 +1715,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={filtreDateFin}
                   onChange={(e) => setFiltreDateFin(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-900"
                 />
               </div>
             </div>
@@ -1593,13 +1727,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 value={recherche}
                 onChange={(e) => setRecherche(e.target.value.toUpperCase())}
                 placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER TICKET OU LIVREUR..." : "RECHERCHER TICKET OU CLIENT..."}
-                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] w-full focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] w-full focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
               />
               <select
                 disabled={enTrainDeSauvegarder}
                 value={filtreModePaiement}
                 onChange={(e) => setFiltreModePaiement(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-900 shrink-0"
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900 shrink-0"
               >
                 <option value="TOUS">Tous modes</option>
                 <option value="ESPECES">Espèces</option>
@@ -1612,12 +1746,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           {chargement ? (
             <div className="p-4 text-center text-slate-400 text-[10px]">Chargement...</div>
           ) : ventesFiltrees.length === 0 ? (
-            <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-lg text-[10px]">
+            <div className="p-4 text-center text-slate-400 bg-white border border-slate-200 rounded-xl text-[10px]">
               Aucun ticket enregistré pour cette période.
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-2xs">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                 <table className="w-full text-left text-[9.5px] whitespace-nowrap">
                   <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 uppercase text-[8px] font-black select-none">
                     <tr>
@@ -1690,7 +1824,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       {ongletActif === 'journal' && (
         <div className="space-y-2">
-          <div className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-2 shadow-2xs">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
             <span className="font-extrabold text-slate-700 uppercase text-[9px] block border-b border-slate-100 pb-1">
               📊 PARAMÈTRES DU JOURNAL DES VENTES
             </span>
@@ -1703,7 +1837,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={journalDateDebut}
                   onChange={(e) => setJournalDateDebut(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 />
               </div>
 
@@ -1714,7 +1848,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={journalDateFin}
                   onChange={(e) => setJournalDateFin(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 />
               </div>
 
@@ -1724,7 +1858,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={journalCaisseId}
                   onChange={(e) => setJournalCaisseId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 >
                   <option value="TOUTES">Toutes les caisses</option>
                   {caissesList.map(c => (
@@ -1739,7 +1873,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={journalCaissierId}
                   onChange={(e) => setJournalCaissierId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 >
                   <option value="TOUS">Tous les caissiers</option>
                   {utilisateursList.map(u => (
@@ -1750,23 +1884,23 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-2xs">
+          <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
             <table className="w-full text-left text-[9.5px] whitespace-nowrap">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase text-[8px] font-black select-none">
                 <tr>
-                  <th onClick={() => gererTriJournal('date')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition">
+                  <th onClick={() => gererTriJournal('date')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
                     Date {rendreFlecheTriJournal('date')}
                   </th>
-                  <th onClick={() => gererTriJournal('numeroTicket')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition">
+                  <th onClick={() => gererTriJournal('numeroTicket')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
                     N° Ticket {rendreFlecheTriJournal('numeroTicket')}
                   </th>
-                  <th onClick={() => gererTriJournal('designation')} className="p-1.5 cursor-pointer hover:bg-slate-200 transition">
+                  <th onClick={() => gererTriJournal('designation')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
                     Articles {rendreFlecheTriJournal('designation')}
                   </th>
-                  <th className="p-1.5 text-center">Qté</th>
-                  <th className="p-1.5 text-right">P.Achat</th>
-                  <th className="p-1.5 text-right">P.Vente</th>
-                  <th className="p-1.5 text-right">Marge</th>
+                  <th className="p-2 text-center">Qté</th>
+                  <th className="p-2 text-right">P.Achat</th>
+                  <th className="p-2 text-right">P.Vente</th>
+                  <th className="p-2 text-right">Marge</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1777,13 +1911,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 ) : (
                   lignesJournalDetails.map((ligne, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition">
-                      <td className="p-1.5 font-mono text-[9px] text-slate-600">{ligne.date}</td>
-                      <td className="p-1.5 font-mono font-bold text-orange-600">{ligne.numeroTicket}</td>
-                      <td className="p-1.5 font-extrabold uppercase text-slate-900 max-w-[120px] truncate" title={ligne.designation}>{ligne.designation}</td>
-                      <td className="p-1.5 text-center font-bold text-slate-800">{ligne.quantite}</td>
-                      <td className="p-1.5 text-right font-mono text-slate-600">{ligne.prixAchat.toLocaleString('fr-FR')}</td>
-                      <td className="p-1.5 text-right font-mono font-bold text-slate-900">{ligne.prixVente.toLocaleString('fr-FR')}</td>
-                      <td className="p-1.5 text-right font-mono font-black text-emerald-700">{ligne.marge.toLocaleString('fr-FR')}</td>
+                      <td className="p-2 font-mono text-[9px] text-slate-600">{ligne.date}</td>
+                      <td className="p-2 font-mono font-bold text-orange-600">{ligne.numeroTicket}</td>
+                      <td className="p-2 font-extrabold uppercase text-slate-900 max-w-[120px] truncate" title={ligne.designation}>{ligne.designation}</td>
+                      <td className="p-2 text-center font-bold text-slate-800">{ligne.quantite}</td>
+                      <td className="p-2 text-right font-mono text-slate-600">{ligne.prixAchat.toLocaleString('fr-FR')}</td>
+                      <td className="p-2 text-right font-mono font-bold text-slate-900">{ligne.prixVente.toLocaleString('fr-FR')}</td>
+                      <td className="p-2 text-right font-mono font-black text-emerald-700">{ligne.marge.toLocaleString('fr-FR')}</td>
                     </tr>
                   ))
                 )}
@@ -1791,7 +1925,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </table>
           </div>
 
-          <div className="bg-slate-900 text-white p-2.5 rounded-lg flex justify-between items-center shadow-xs">
+          <div className="bg-slate-900 text-white p-3 rounded-xl flex justify-between items-center shadow-xs">
             <div className="space-y-0.5">
               <span className="text-[8.5px] text-slate-400 uppercase font-bold block">TOTAL DES VENTES :</span>
               <span className="text-xs font-black font-mono text-white">
@@ -1810,12 +1944,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       {ongletActif === 'cloture' && (
         <div className="space-y-2.5">
-          <div className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-2 shadow-2xs">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1">
               <span className="font-extrabold text-slate-700 uppercase text-[9px]">
                 🔐 PARAMÈTRES DE CLÔTURE DE CAISSE (RECETTES NON CLÔTURÉES)
               </span>
-              <span className="text-[9px] font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded">
+              <span className="text-[9px] font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded-lg">
                 Caisses clôturées ({cloturesList.length})
               </span>
             </div>
@@ -1828,7 +1962,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={clotureDateDebut}
                   onChange={(e) => setClotureDateDebut(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 />
               </div>
 
@@ -1839,7 +1973,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={clotureDateFin}
                   onChange={(e) => setClotureDateFin(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 />
               </div>
 
@@ -1849,7 +1983,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={clotureCaisseId}
                   onChange={(e) => setClotureCaisseId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 >
                   <option value="TOUTES">Toutes les caisses</option>
                   {caissesList.map(c => (
@@ -1864,7 +1998,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={clotureCaissierId}
                   onChange={(e) => setClotureCaissierId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 text-[10px] font-bold text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-slate-900"
                 >
                   <option value="TOUS">Tous les caissiers</option>
                   {utilisateursList.map(u => (
@@ -1876,28 +2010,28 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-1">
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1">
               <span className="text-[8.5px] text-slate-500 uppercase font-bold block">MONTANT TOTAL FACTURÉ :</span>
               <span className="text-sm font-black font-mono text-slate-900 block">
                 {totalFactureCloture.toLocaleString('fr-FR')} CFA
               </span>
             </div>
 
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-1">
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1">
               <span className="text-[8.5px] text-slate-500 uppercase font-bold block">MONTANT TOTAL ENCAISSÉ :</span>
               <span className="text-sm font-black font-mono text-emerald-700 block">
                 {totalEncaisseCloture.toLocaleString('fr-FR')} CFA
               </span>
             </div>
 
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-1">
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1">
               <span className="text-[8.5px] text-slate-500 uppercase font-bold block">MONTANT ATTENDU :</span>
               <span className="text-sm font-black font-mono text-blue-700 block">
                 {montantAttenduCloture.toLocaleString('fr-FR')} CFA
               </span>
             </div>
 
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-1">
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1">
               <span className="text-[8.5px] text-slate-500 uppercase font-bold block">ÉCART DE CAISSE :</span>
               <span className={`text-sm font-black font-mono block ${ecartCaisseCloture < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                 {ecartCaisseCloture.toLocaleString('fr-FR')} CFA
@@ -1905,7 +2039,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
           </div>
 
-          <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-3 shadow-2xs">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-3 shadow-2xs">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
               <div className="w-full sm:w-auto flex-1">
                 <label className="block text-[9px] font-black text-slate-700 uppercase mb-1">Montant réellement versé (Comptage physique) :</label>
@@ -1916,7 +2050,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   value={montantReelVerseCloture}
                   onChange={(e) => setMontantReelVerseCloture(e.target.value)}
                   placeholder="EX: 50000"
-                  className="w-full bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 font-mono font-bold text-xs text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-xs text-slate-900"
                 />
               </div>
               <div className="w-full sm:w-auto pt-4">
@@ -1924,7 +2058,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   type="button"
                   disabled={enTrainDeSauvegarder || montantAttenduCloture <= 0}
                   onClick={ouvrirModalCloture}
-                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black px-5 py-2 rounded-lg text-xs transition shadow-2xs"
+                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black px-5 py-2 rounded-xl text-xs transition shadow-2xs"
                 >
                   🔒 Valider la clôture & Verser
                 </button>
@@ -1932,7 +2066,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
           </div>
 
-          <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs space-y-2">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1">
               <span className="font-extrabold text-slate-700 uppercase text-[9px]">
                 📁 HISTORIQUE DES CAISSES CLÔTURÉES ({cloturesHistoriqueFiltrees.length})
@@ -1973,7 +2107,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                           </td>
                           <td className="p-2 text-center font-bold text-slate-900">{cl.ids_tickets?.length || 0} ticket(s)</td>
                           <td className="p-2 text-center">
-                            <button onClick={() => setClotureDetailSelectionnee(cl)} className="bg-slate-900 text-white px-2.5 py-1 rounded font-bold hover:bg-slate-800 transition">
+                            <button onClick={() => setClotureDetailSelectionnee(cl)} className="bg-slate-900 text-white px-2.5 py-1 rounded-lg font-bold hover:bg-slate-800 transition">
                               🔍 Voir détails
                             </button>
                           </td>
@@ -2003,7 +2137,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 value={rechercheClientInput}
                 onChange={(e) => setRechercheClientInput(e.target.value.toUpperCase())}
                 placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER UN LIVREUR..." : "RECHERCHER UN CLIENT..."}
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
               />
               <div className="space-y-1 pt-1">
                 {clientsFiltres.length === 0 ? (
@@ -2015,13 +2149,13 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       <div
                         key={c.id}
                         onClick={() => !enTrainDeSauvegarder && selectionnerClient(c)}
-                        className="p-2.5 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded-lg flex justify-between items-center cursor-pointer transition shadow-2xs"
+                        className="p-2.5 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded-xl flex justify-between items-center cursor-pointer transition shadow-2xs"
                       >
                         <div>
                           <p className="font-extrabold uppercase text-slate-900 text-[11px]">{nomC}</p>
                           <p className="text-[9.5px] text-slate-600 font-mono font-bold">{c.telephone || 'SANS TÉLÉPHONE'}</p>
                         </div>
-                        <span className="font-bold text-orange-600 text-[10px] bg-orange-100 px-2 py-0.5 rounded">Sélectionner</span>
+                        <span className="font-bold text-orange-600 text-[10px] bg-orange-100 px-2 py-0.5 rounded-lg">Sélectionner</span>
                       </div>
                     );
                   })
@@ -2052,7 +2186,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={caisseDestinationVersementId}
                   onChange={(e) => setCaisseDestinationVersementId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-2 font-bold text-slate-900 text-[11px] shadow-2xs"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-900 text-[11px] shadow-2xs"
                 >
                   <option value="">-- Sélectionner une caisse --</option>
                   {caissesList.map(c => (
@@ -2066,14 +2200,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   type="button"
                   disabled={enTrainDeSauvegarder}
                   onClick={() => setAfficherModalVersementCloture(false)}
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-xl text-[10px]"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={enTrainDeSauvegarder}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs"
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black px-4 py-1.5 rounded-xl text-[10px] shadow-xs"
                 >
                   {enTrainDeSauvegarder ? 'Validation...' : 'Confirmer le versement'}
                 </button>
@@ -2091,7 +2225,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <button onClick={() => setClotureDetailSelectionnee(null)} className="text-slate-400 hover:text-white font-bold">✕</button>
             </div>
             <div className="p-3 overflow-y-auto space-y-2.5 text-[10px]">
-              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1">
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1">
                 <p className="font-bold text-slate-700">Période : <span className="text-slate-900">{clotureDetailSelectionnee.date_debut} au {clotureDetailSelectionnee.date_fin}</span></p>
                 <p className="font-bold text-slate-700">Montant Attendu : <span className="font-mono text-blue-700 font-black">{Number(clotureDetailSelectionnee.montant_attendu || 0).toLocaleString('fr-FR')} CFA</span></p>
                 <p className="font-bold text-slate-700">Montant Versé : <span className="font-mono text-emerald-700 font-black">{Number(clotureDetailSelectionnee.montant_reel_verse || clotureDetailSelectionnee.montant_attendu || 0).toLocaleString('fr-FR')} CFA</span></p>
@@ -2099,7 +2233,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </div>
               
               <span className="font-extrabold uppercase text-slate-500 block pt-1 border-t">Liste des tickets inclus dans cette clôture :</span>
-              <div className="border rounded-lg overflow-hidden bg-white">
+              <div className="border rounded-xl overflow-hidden bg-white">
                 <table className="w-full text-left">
                   <thead className="bg-slate-100 text-[8px] font-black uppercase text-slate-700">
                     <tr>
@@ -2121,7 +2255,55 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </div>
             </div>
             <div className="p-2 bg-slate-100 text-right">
-              <button onClick={() => setClotureDetailSelectionnee(null)} className="bg-slate-900 text-white px-3 py-1 rounded font-bold">Fermer</button>
+              <button onClick={() => setClotureDetailSelectionnee(null)} className="bg-slate-900 text-white px-3 py-1.5 rounded-xl font-bold">Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOÎTE DE DIALOGUE SUCCÈS TICKET & CHOIX IMPRESSION */}
+      {afficherModalSuccesTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="p-4 bg-emerald-600 text-white text-center space-y-1">
+              <div className="text-3xl">✅</div>
+              <h3 className="font-black text-sm uppercase">Ticket validé avec succès !</h3>
+              <p className="text-[10px] text-emerald-100 font-bold font-mono">
+                Ticket N° {ticketDernierValide?.numero_ticket} ({ticketDernierValide?.nom_client})
+              </p>
+            </div>
+
+            <div className="p-4 space-y-3 text-center">
+              <p className="text-[11px] text-slate-700 font-bold">
+                Souhaitez-vous imprimer ce ticket maintenant ?
+              </p>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAfficherModalSuccesTicket(false);
+                    setTicketDernierValide(null);
+                  }}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2.5 rounded-xl text-xs transition shadow-2xs"
+                >
+                  Continuer sans imprimer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTicketDernierValide(ticketDernierValide);
+                    setTimeout(() => {
+                      window.print();
+                      setAfficherModalSuccesTicket(false);
+                      setTicketDernierValide(null);
+                    }, 100);
+                  }}
+                  className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl text-xs transition shadow-2xs flex items-center justify-center gap-1.5"
+                >
+                  <span>🖨️</span> Imprimer
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2211,7 +2393,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 ticketsEnAttente.map((t) => (
                   <div
                     key={t.idAttente}
-                    className="p-2 bg-slate-50 hover:bg-amber-50 border border-slate-200 rounded flex justify-between items-center transition"
+                    className="p-2.5 bg-slate-50 hover:bg-amber-50 border border-slate-200 rounded-xl flex justify-between items-center transition"
                   >
                     <div>
                       <p className="font-extrabold uppercase text-slate-900 text-[10px]">{t.numeroTicket} - {t.client}</p>
@@ -2220,7 +2402,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     <button
                       disabled={enTrainDeSauvegarder}
                       onClick={() => rappelerTicket(t)}
-                      className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold px-2.5 py-1 rounded text-[9px] shadow-2xs"
+                      className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold px-3 py-1.5 rounded-xl text-[9px] shadow-2xs"
                     >
                       Rappeler
                     </button>
@@ -2234,7 +2416,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       {ticketSelectionne && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
-          <div className="bg-white w-full max-w-md rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px]">
               <div className="flex flex-col">
                 <span className="font-bold font-mono text-orange-400">Ticket #{ticketSelectionne.numero_ticket} — {ticketSelectionne.nom_client || 'CLIENTS DIVERS'}</span>
@@ -2247,7 +2429,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <div className="space-y-1">
                 <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Détails des articles :</span>
                 {Array.isArray(ticketSelectionne.details_articles) && ticketSelectionne.details_articles.length > 0 ? (
-                  <div className="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
+                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-100 text-slate-700 uppercase text-[8px] font-black border-b border-slate-200">
@@ -2297,7 +2479,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 <button
                   disabled={enTrainDeSauvegarder}
                   onClick={() => declencherSuppressionTicket(ticketSelectionne)}
-                  className="w-full sm:w-auto bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-3 py-1.5 rounded text-[10px] transition shadow-2xs flex items-center justify-center gap-1"
+                  className="w-full sm:w-auto bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-3 py-1.5 rounded-xl text-[10px] transition shadow-2xs flex items-center justify-center gap-1"
                 >
                   🗑️ Supprimer (Admin requis)
                 </button>
@@ -2306,15 +2488,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <div className="flex gap-1.5 w-full sm:w-auto justify-end">
                 <button
                   disabled={enTrainDeSauvegarder}
-                  onClick={() => window.print()}
-                  className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] transition text-center disabled:opacity-50"
+                  onClick={declencherImpressionSecurisee}
+                  className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-xl text-[10px] transition text-center disabled:opacity-50"
                 >
                   🖨️ Imprimer
                 </button>
                 <button
                   disabled={enTrainDeSauvegarder}
                   onClick={() => setTicketSelectionne(null)}
-                  className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded text-[10px] transition text-center disabled:opacity-50"
+                  className="flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] transition text-center disabled:opacity-50"
                 >
                   Fermer
                 </button>
@@ -2327,7 +2509,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       {afficherModalAuthSuppression && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-          <div className="bg-white w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
             <div className="p-3 bg-red-600 text-white flex justify-between items-center text-[11px] font-black">
               <span>🔐 AUTORISATION ADMINISTRATEUR REQUISE</span>
               <button onClick={() => setAfficherModalAuthSuppression(false)} className="text-white hover:text-slate-200">✕</button>
@@ -2347,7 +2529,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   value={adminEmailAuth} 
                   onChange={(e) => setAdminEmailAuth(e.target.value)} 
                   placeholder="admin@entreprise.cm" 
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-2 font-bold text-slate-900 text-[11px] shadow-2xs" 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-900 text-[11px] shadow-2xs" 
                 />
               </div>
 
@@ -2360,7 +2542,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   value={adminPasswordAuth} 
                   onChange={(e) => setAdminPasswordAuth(e.target.value)} 
                   placeholder="••••••••" 
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-2 font-mono font-bold text-slate-900 text-[11px] shadow-2xs" 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-slate-900 text-[11px] shadow-2xs" 
                 />
               </div>
 
@@ -2369,14 +2551,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   type="button" 
                   disabled={enTrainDeSauvegarder}
                   onClick={() => setAfficherModalAuthSuppression(false)} 
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-xl text-[10px]"
                 >
                   Annuler
                 </button>
                 <button 
                   type="submit" 
                   disabled={enTrainDeSauvegarder}
-                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs"
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black px-4 py-1.5 rounded-xl text-[10px] shadow-xs"
                 >
                   {enTrainDeSauvegarder ? 'Vérification...' : 'Confirmer la suppression'}
                 </button>

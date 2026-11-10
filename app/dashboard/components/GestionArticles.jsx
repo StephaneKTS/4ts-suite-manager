@@ -16,7 +16,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const [limiteArticles, setLimiteArticles] = useState(20);
 
-  // États initialisés vides pour éviter les faux droits par défaut au démarrage
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('Stephane KTS');
   const [emailConnecte, setEmailConnecte] = useState('');
 
@@ -28,15 +27,14 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const estModeBoutique = moduleActuel === 'BOUTIQUE';
+  const libelleLivreurOuEmplacement = estModeBoutique ? 'Emplacement' : 'Livreur';
+
   const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
 
-  // État pour la recherche textuelle d'un article
   const [rechercheArticleInput, setRechercheArticleInput] = useState('');
-  
-  // État pour la recherche textuelle spécifique du rapport de stock
   const [rechercheRapportInput, setRechercheRapportInput] = useState('');
 
-  // Récupération propre de la session locale au montage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
@@ -57,7 +55,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   const emailActuel = emailConnecte || '';
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
   const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
     entrepriseId,
     utilisateurConnecte,
@@ -73,6 +70,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   };
 
   const [modeVue, setModeVue] = useState('catalogue');
+  // Initialisé à vide pour qu'aucun article ne soit sélectionné par défaut dans l'onglet Stat
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
   const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
@@ -105,7 +103,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const [chargement, setChargement] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   
   const [afficherForm, setAfficherForm] = useState(false);
@@ -118,7 +115,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   const [colonneTri, setColonneTri] = useState('Designation');
   const [ordreTri, setOrdreTri] = useState('asc');
 
-  // État spécifique pour le tri du rapport de stock sur la colonne Désignation
   const [colonneTriRapport, setColonneTriRapport] = useState('Designation');
   const [ordreTriRapport, setOrdreTriRapport] = useState('asc');
 
@@ -149,13 +145,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
     if (familleLocale && familleLocale.length > 0) {
       setFamilles(familleLocale);
-      const premiereFamilleId = String(familleLocale[0].id);
-      if (familleFiltre === 'TOUTES' || !familleFiltre) {
-        setFamilleFiltre(premiereFamilleId);
-      }
       setNouveauArticle(prev => ({ 
         ...prev, 
-        Famille: prev.Famille || premiereFamilleId,
+        Famille: prev.Famille || familleLocale[0].id,
         suivi_stock: prev.Famille ? prev.suivi_stock : (familleLocale[0].suivi_stock ?? true) 
       }));
     }
@@ -195,15 +187,10 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       localSync.sauvegarderDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`, listeFam);
 
       if (listeFam.length > 0) {
-        const premiereFamilleId = String(listeFam[0].id);
-        const premierSuiviStockFamille = listeFam[0].suivi_stock ?? true;
-        if (familleFiltre === 'TOUTES' || !familleFiltre) {
-          setFamilleFiltre(premiereFamilleId);
-        }
         setNouveauArticle(prev => ({ 
           ...prev, 
-          Famille: prev.Famille || premiereFamilleId,
-          suivi_stock: prev.Famille ? prev.suivi_stock : premierSuiviStockFamille 
+          Famille: prev.Famille || listeFam[0].id,
+          suivi_stock: prev.Famille ? prev.suivi_stock : (listeFam[0].suivi_stock ?? true) 
         }));
       }
 
@@ -253,7 +240,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     const articlesLocaux = localSync.recupererDonneesLocales(cleCacheArticles);
     if (articlesLocaux && articlesLocaux.length > 0) {
       setArticles(articlesLocaux);
-      setArticleSelectionneStatId(String(articlesLocaux[0].id_article || articlesLocaux[0].id));
     }
 
     try {
@@ -269,14 +255,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       
       setArticles(liste);
       localSync.sauvegarderDonneesLocales(cleCacheArticles, liste);
-      
-      if (liste.length > 0) {
-        if (!articleSelectionneStatId || !liste.some(a => String(a.id_article || a.id) === String(articleSelectionneStatId))) {
-          setArticleSelectionneStatId(String(liste[0].id_article || liste[0].id));
-        }
-      } else {
-        setArticleSelectionneStatId('');
-      }
     } catch (err) {
       console.warn('Mode hors-ligne ou échec réseau (utilisant le cache local) :', err.message);
     } finally {
@@ -548,7 +526,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     return { lignes: lignesResultat, stockFinal: Math.max(0, stockCourant) };
   };
 
-  // --- FONCTION DE COMPRESSION AUTOMATIQUE DES IMAGES ---
   const compresserImage = (file, maxWidth = 800, quality = 0.7) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -594,15 +571,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     });
   };
 
-  // MISE À JOUR : Upload d'image optimisé et compressé vers Supabase Storage (Bucket 'articles-images')
   const gererUploadImage = async (e) => {
     try {
       const file = e.target.files[0];
       if (!file) return;
 
       setUploadingPhoto(true);
-
-      // Compression préalable pour éviter la lenteur réseau et les fichiers lourds
       const fichierCompresse = await compresserImage(file, 800, 0.7);
 
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
@@ -810,8 +784,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       return false;
     }
 
-    const familleEffective = (familleFiltre === 'TOUTES' && familles.length > 0) ? familles[0].id : familleFiltre;
-    const matchFamille = familleEffective === 'TOUTES' || !familleEffective || String(art.Famille || art.famille) === String(familleEffective);
+    const matchFamille = familleFiltre === 'TOUTES' || !familleFiltre || String(art.Famille || art.famille) === String(familleFiltre);
     if (!matchFamille) return false;
 
     const matchDepotMouvement = articleAeuMouvementChezPartenaire(artId, depotFiltre);
@@ -859,7 +832,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       valB = String(b.Designation || b.designation || '').toLowerCase();
     } else if (colonneTri === 'Prix_Achat') {
       valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
-      valB = parseFloat(a.Prix_Achat || a.prix_vente || 0);
+      valB = parseFloat(b.Prix_Achat || b.prix_vente || 0);
     } else if (colonneTri === 'Prix_Vente') {
       valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
       valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
@@ -1019,7 +992,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         <div class="meta-info">
           <span><strong>Famille :</strong> ${famObj ? (famObj.nom_famille || famObj.Nom_Famille) : 'Toutes'}</span>
           <span><strong>${libelleDepotRapport} :</strong> ${nomDepotPartenaire}</span>
-          <span><strong>Livreur :</strong> ${empObj ? empObj.nom_emplacement : 'Tous'}</span>
+          <span><strong>${libelleLivreurOuEmplacement} :</strong> ${empObj ? empObj.nom_emplacement : 'Tous'}</span>
         </div>
       `;
     } else if (modeVue === 'statistiques') {
@@ -1478,7 +1451,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                       value={rechercheArticleInput}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setRechercheArticleInput(e.target.value)}
-                      placeholder="🔍 Saisir le nom d'un article..."
+                      placeholder=""
                       style={{ textTransform: 'uppercase' }}
                       className="w-full bg-slate-50 border border-slate-300 rounded-lg p-1.5 pl-7 font-extrabold text-slate-900 text-[10px] shadow-xs uppercase focus:ring-2 focus:ring-orange-500 focus:outline-none"
                     />
@@ -1533,7 +1506,10 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                   </div>
 
                   <div>
-                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Livreur</label>
+                    {/* Libellé dynamique : Emplacement en mode boutique, Livreur en mode livraison */}
+                    <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">
+                      {libelleLivreurOuEmplacement}
+                    </label>
                     <select
                       disabled={enTrainDeSauvegarder}
                       value={emplacementFiltre}
@@ -1758,7 +1734,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                     className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
                   >
                     <span className="truncate uppercase">
-                      {artObj ? nomArticle : '-- Sélectionner --'}
+                      {artObj ? nomArticle : '-- Sélectionner un article --'}
                     </span>
                     <span className="text-[10px] text-slate-400">🔍</span>
                   </div>
@@ -1828,7 +1804,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 </div>
               </div>
             ) : (
-              <div className="p-6 text-center text-slate-500 font-bold">Veuillez sélectionner un article.</div>
+              <div className="p-8 text-center text-slate-400 font-bold italic text-xs">
+                👆 Veuillez cliquer sur le champ ci-dessus pour sélectionner un article et afficher ses statistiques.
+              </div>
             )}
           </div>
         );
@@ -1889,7 +1867,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                   value={rechercheRapportInput}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setRechercheRapportInput(e.target.value)}
-                  placeholder="🔍 Saisir le nom d'un article..."
+                  placeholder=""
                   style={{ textTransform: 'uppercase' }}
                   className="w-full bg-white border border-slate-300 rounded-lg p-1.5 pl-7 font-extrabold text-slate-900 text-[10px] shadow-xs uppercase focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
@@ -1986,7 +1964,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 value={rechercheModalArticle}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => setRechercheModalArticle(e.target.value.toUpperCase())}
-                placeholder="Rechercher..."
+                placeholder=""
                 style={{ textTransform: 'uppercase' }}
                 className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
               />

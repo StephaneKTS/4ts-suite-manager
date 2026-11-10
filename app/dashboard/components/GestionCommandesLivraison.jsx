@@ -141,7 +141,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [modalClotureLivreurOuverte, setModalClotureLivreurOuverte] = useState(false);
   const [rechercheClotureLivreurInput, setRechercheClotureLivreurInput] = useState('');
 
-  const [colonneTri, setColonneTri] = useState('date');
+  const [colonneTri, setColonneTri] = useState('numero');
   const [ordreTri, setOrdreTri] = useState('asc');
 
   const rapportRef = useRef(null);
@@ -834,7 +834,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const ouvrirCommandePourModification = async (cmd) => {
     setCommandeEnEdition(cmd);
-    setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace(/CMD-.*?-/, '').replace('CMD-', '') : '1');
+    setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1');
     setDateCommande(cmd.date_commande || new Date().toISOString().split('T')[0]);
     setIdPartenaire(cmd.id_partenaire || '');
     setDepotId(cmd.id_depot || 'AUCUN_DEPOT');
@@ -1013,10 +1013,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     setSauvegardeEnCours(true);
     try {
-      const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('utilisateur_email') || 'SUP') : 'SUP';
-      const sigSupervisor = emailConnecte.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-      const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}-${sigSupervisor}`;
+      const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
       let dateNormalisee = dateCommande;
       if (dateNormalisee.includes('/')) {
@@ -1169,7 +1166,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
 
       } else {
-        const idLocal = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${sigSupervisor}`;
+        const idLocal = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
         const { data: cmdInseree, error: errCmd } = await supabase
           .from('commandes_livraison_en_tete')
@@ -1514,36 +1511,49 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   };
 
+  const extraireNumero = (numStr) => {
+    if (!numStr) return 0;
+    const match = numStr.match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+
   const commandesRapportTriees = [...commandesRapport].sort((a, b) => {
     let valA, valB;
 
-    if (colonneTri === 'date') {
+    if (colonneTri === 'numero') {
+      const numA = extraireNumero(a.numero_commande);
+      const numB = extraireNumero(b.numero_commande);
+      return ordreTri === 'asc' ? numA - numB : numB - numA;
+    } else if (colonneTri === 'date') {
       valA = a.date_commande || '';
       valB = b.date_commande || '';
-    } else if (colonneTri === 'numero') {
-      valA = a.numero_commande || '';
-      valB = b.numero_commande || '';
+      if (valA !== valB) return ordreTri === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     } else if (colonneTri === 'partenaire') {
-      valA = a.nom_partenaire || '';
-      valB = b.nom_partenaire || '';
+      valA = (a.nom_partenaire || '').toUpperCase();
+      valB = (b.nom_partenaire || '').toUpperCase();
+      if (valA !== valB) return ordreTri === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     } else if (colonneTri === 'article') {
       const lignesA = lignesCommandesMap[a.id] || [];
       valA = lignesA.length > 0 ? lignesA.map(l => `${l.designation} x${l.quantite}`).join(', ') : '';
       const lignesB = lignesCommandesMap[b.id] || [];
       valB = lignesB.length > 0 ? lignesB.map(l => `${l.designation} x${l.quantite}`).join(', ') : '';
+      if (valA !== valB) return ordreTri === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     } else if (colonneTri === 'montant') {
       valA = Number(a.montant_commande || 0);
       valB = Number(b.montant_commande || 0);
+      if (valA !== valB) return ordreTri === 'asc' ? valA - valB : valB - valA;
+      return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     } else if (colonneTri === 'frais') {
       valA = Number(a.frais_livraison || 0);
       valB = Number(b.frais_livraison || 0);
+      if (valA !== valB) return ordreTri === 'asc' ? valA - valB : valB - valA;
+      return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     } else {
-      return 0;
+      return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     }
-
-    if (valA < valB) return ordreTri === 'asc' ? -1 : 1;
-    if (valA > valB) return ordreTri === 'asc' ? 1 : -1;
-    return 0;
   });
 
   const totalMontantRapport = commandesRapport.reduce((acc, cmd) => acc + Number(cmd.montant_commande || 0), 0);
@@ -1605,6 +1615,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               ${rapportRef.current.querySelector('.overflow-x-auto') ? rapportRef.current.querySelector('.overflow-x-auto').innerHTML : ''}
 
               <div class="print-footer">
+                <div>
+                  <span class="label">Total Commandes</span>
+                  <span class="valeur">${commandesRapport.length}</span>
+                </div>
                 <div>
                   <span class="label">Montant Total</span>
                   <span class="valeur">${totalMontantRapport.toLocaleString('fr-FR')} CFA</span>
@@ -2179,12 +2193,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   </table>
                 </div>
 
-                <div className="bg-emerald-900 text-white p-2.5 border-t border-emerald-800 grid grid-cols-3 gap-2 text-[10px] font-black text-center">
+                <div className="bg-emerald-900 text-white p-2.5 border-t border-emerald-800 grid grid-cols-4 gap-2 text-[10px] font-black text-center">
                   <div>
+                    <span className="block text-[8px] text-emerald-200 uppercase">Total Commandes</span>
+                    <span className="text-emerald-300 font-mono">{commandesRapport.length}</span>
+                  </div>
+                  <div className="border-x border-emerald-700 px-1">
                     <span className="block text-[8px] text-emerald-200 uppercase">Montant total</span>
                     <span className="text-emerald-300 font-mono">{totalMontantRapport.toLocaleString('fr-FR')} F</span>
                   </div>
-                  <div className="border-x border-emerald-700 px-1">
+                  <div className="border-r border-emerald-700 pr-1">
                     <span className="block text-[8px] text-emerald-200 uppercase">Frais</span>
                     <span className="text-emerald-300 font-mono">{totalFraisRapport.toLocaleString('fr-FR')} F</span>
                   </div>
@@ -2268,7 +2286,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
                   N° Client * <span className={`text-[8px] font-bold ${numeroClient.trim().length === 9 ? 'text-emerald-600' : 'text-rose-600'}`}>({numeroClient.trim().length}/9)</span>
                 </label>
-                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   ref={inputNumeroClientRef}
                   type="text"
@@ -2299,7 +2316,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse *</label>
-                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   ref={inputAdresseRef}
                   type="text"
@@ -2322,7 +2338,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
-                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   ref={inputMontantRef}
                   type="number"
@@ -2341,7 +2356,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Départ) *</label>
-                  {/* 🎯 PLACEHOLDER RETIRÉ */}
                   <input
                     type="text"
                     required
@@ -2355,7 +2369,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature colis</label>
-                  {/* 🎯 PLACEHOLDER RETIRÉ */}
                   <input
                     type="text"
                     value={natureColis}
@@ -2379,7 +2392,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
-                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   type="number"
                   step="0.01"

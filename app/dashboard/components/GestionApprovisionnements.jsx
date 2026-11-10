@@ -14,6 +14,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const moduleActuel = obtenirModuleActuel();
   const estModeLivraison = moduleActuel === 'LIVRAISON';
+  const libelleTiers = estModeLivraison ? 'PARTENAIRE' : 'FOURNISSEUR';
 
   const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
   const cleCacheCommandes = `commandes_${entrepriseId}_${moduleActuel}`;
@@ -89,6 +90,8 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [limiteAppro, setLimiteAppro] = useState(20);
   const [limiteCommandes, setLimiteCommandes] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
+  const [limiteFournisseursModal, setLimiteFournisseursModal] = useState(20);
+  const [limiteDepotsModal, setLimiteDepotsModal] = useState(20);
 
   const [numeroDoc, setNumeroDoc] = useState('');
   const [referenceFournisseur, setReferenceFournisseur] = useState('');
@@ -100,7 +103,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [montantPaye, setMontantPaye] = useState(0);
 
   const [modalArticleOuverte, setModalArticleOuverte] = useState(false);
+  const [modalFournisseurOuverte, setModalFournisseurOuverte] = useState(false);
+  const [modalDepotOuverte, setModalDepotOuverte] = useState(false);
+
   const [rechercheArticle, setRechercheArticle] = useState('');
+  const [rechercheFournisseur, setRechercheFournisseur] = useState('');
+  const [rechercheDepot, setRechercheDepot] = useState('');
+
   const [articleCourant, setArticleCourant] = useState({ id_article: '', designation: '', quantite: '1', prix_achat: '0' });
   const [indexEnCoursModif, setIndexEnCoursModif] = useState(null);
 
@@ -112,7 +121,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const inputQuantiteRef = useRef(null);
   const selectArticleRef = useRef(null);
 
-  // --- GÉNÉRATION SÉCURISÉE & CONTINUE DES NUMÉROS ---
   const genererNumeroDoc = (type, listeDocs) => {
     const prefix = type === 'APPRO' ? 'APP-' : 'BC-';
     const seq = String((listeDocs || []).length + 1).padStart(3, '0');
@@ -223,7 +231,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         setNumeroDoc(genererNumeroDoc('APPRO', dataAppro || approvisionnements));
       }
     } catch (err) {
-      console.error('Erreur chargement (mode hors-ligne actif) :', err.message);
+      console.error('Erreur chargement :', err.message);
     } finally {
       setChargement(false);
     }
@@ -242,25 +250,20 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const fournisseursAvecStockage = fournisseurs.filter(f => !estStatutSansStockage(f.statut_stockage));
 
-  const gererChangementPartenaire = (e) => {
+  const selectionnerPartenaire = (frs) => {
     if (enTrainDeSauvegarder) return;
-    const partenaireId = e.target.value;
+    const partenaireId = frs.id;
     setIdFournisseur(partenaireId);
 
-    if (partenaireId) {
-      const frsTrouve = fournisseurs.find(f => String(f.id) === String(partenaireId));
-      if (frsTrouve) {
-        if (estStatutSansStockage(frsTrouve.statut_stockage)) {
-          setIdDepotDestination('');
-        } else if (estModeLivraison && frsTrouve.id_depot) {
-          setIdDepotDestination(frsTrouve.id_depot);
-        } else {
-          setIdDepotDestination('');
-        }
-      }
+    if (estStatutSansStockage(frs.statut_stockage)) {
+      setIdDepotDestination('');
+    } else if (estModeLivraison && frs.id_depot) {
+      setIdDepotDestination(frs.id_depot);
     } else {
       setIdDepotDestination('');
     }
+    setModalFournisseurOuverte(false);
+    setRechercheFournisseur('');
   };
 
   const partenaireActuelObj = fournisseurs.find(f => String(f.id) === String(idFournisseur));
@@ -351,12 +354,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const articlesFiltresModalAffiches = articlesFiltresModal.slice(0, limiteArticlesModal);
 
+  const fournisseursFiltresModal = fournisseursAvecStockage.filter(f => 
+    (f.nom_fournisseur || f.nom || f.raison_sociale || '').toLowerCase().includes((rechercheFournisseur || '').toLowerCase())
+  );
+  const fournisseursFiltresModalAffiches = fournisseursFiltresModal.slice(0, limiteFournisseursModal);
+
+  const depotsFiltresModal = depots.filter(d => 
+    (d.nom_depot || d.nom || d.libelle || '').toLowerCase().includes((rechercheDepot || '').toLowerCase())
+  );
+  const depotsFiltresModalAffiches = depotsFiltresModal.slice(0, limiteDepotsModal);
+
   const montantTotalGlobal = lignesValidees.reduce((sum, item) => sum + (Number(item.quantite || 0) * Number(item.prix_achat || 0)), 0);
   const soldeRestant = statutPaiement === 'SOLDE' ? 0 : statutPaiement === 'CREDIT' ? montantTotalGlobal : Math.max(0, montantTotalGlobal - (parseFloat(montantPaye) || 0));
 
   const verifierEnTeteAvantSaisie = () => {
     if (!dateDoc) { alert('⚠️ Veuillez renseigner la date.'); return false; }
-    if (!idFournisseur) { alert('⚠️ Veuillez sélectionner un partenaire.'); return false; }
+    if (!idFournisseur) { alert(`⚠️ Veuillez sélectionner un ${libelleTiers.toLowerCase()}.`); return false; }
     if (!estModeLivraison && (!referenceFournisseur || !referenceFournisseur.trim())) { alert('⚠️ Veuillez renseigner la référence.'); return false; }
     if (!estPartenaireSansStockage && !idDepotDestination) { alert('⚠️ Veuillez sélectionner un dépôt.'); return false; }
     return true;
@@ -765,6 +778,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const nomEntrepriseImpression = entrepriseInfo?.nom_entreprise || entrepriseInfo?.nom || '4TS Suite manager';
   const libelleDepotImpression = moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt';
 
+  const nomPartenaireCourant = obtenirNomFournisseur(idFournisseur);
+  const nomDepotCourant = estPartenaireSansStockage ? '-- SANS STOCK --' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '');
+
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
@@ -808,7 +824,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         </div>
 
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 12px', marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '15px', fontSize: '10.5px' }}>
-          <span><strong>Partenaire :</strong> <span className="uppercase">{nomFournisseurImpression}</span></span>
+          <span><strong>{libelleTiers} :</strong> <span className="uppercase">{nomFournisseurImpression}</span></span>
           <span><strong>{libelleDepotImpression} :</strong> <span className="uppercase">{depotTexteImpression}</span></span>
           <span><strong>Date :</strong> {dateDoc ? new Date(dateDoc).toLocaleDateString('fr-FR') : '-'}</span>
           <span><strong>Réf :</strong> {referenceFournisseur || docEnEditionObjet?.numero_commande || '-'}</span>
@@ -862,7 +878,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         )}
 
         <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', color: '#334155' }}>
-          <div><p>Signature & Cachet Partenaire :</p></div>
+          <div><p>Signature & Cachet {libelleTiers} :</p></div>
           <div style={{ textAlign: 'right' }}><p>Signature & Cachet Entreprise :</p></div>
         </div>
       </div>
@@ -927,7 +943,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                     type="date"
                     value={dateDebutFiltre}
                     onChange={(e) => setDateDebutFiltre(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
+                    className="w-full bg-white border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
                   />
                 </div>
                 <div>
@@ -936,7 +952,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                     type="date"
                     value={dateFinFiltre}
                     onChange={(e) => setDateFinFiltre(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
+                    className="w-full bg-white border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
                   />
                 </div>
               </div>
@@ -973,7 +989,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                       <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
                         <th onClick={() => gererTri('date')} className="p-2 w-[18%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
                         <th onClick={() => gererTri('numero')} className="p-2 w-[22%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° APPRO {rendreFlecheTri('numero')}</th>
-                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
+                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">{libelleTiers} {rendreFlecheTri('fournisseur')}</th>
                         {!estModeLivraison && <th onClick={() => gererTri('statut')} className="p-2 w-[18%] text-right cursor-pointer hover:bg-slate-200 whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>}
                       </tr>
                     </thead>
@@ -983,7 +999,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                           <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO', idx)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                             <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
                             <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{formaterNumeroAffichageIndex(idx, 'APPRO')}</td>
-                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || 'PARTENAIRE'}</td>
+                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || libelleTiers}</td>
                             {!estModeLivraison && (
                               <td className="p-2 text-right whitespace-nowrap">
                                 <span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>
@@ -1020,7 +1036,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                       <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
                         <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
                         <th onClick={() => gererTri('numero')} className="p-2 w-[35%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
-                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">PARTENAIRE {rendreFlecheTri('fournisseur')}</th>
+                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">{libelleTiers} {rendreFlecheTri('fournisseur')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-[10px]">
@@ -1029,7 +1045,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                           <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE', idx)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                             <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
                             <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{formaterNumeroAffichageIndex(idx, 'COMMANDE')}</td>
-                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || 'PARTENAIRE'}</td>
+                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || libelleTiers}</td>
                           </tr>
                         ))
                       )}
@@ -1060,11 +1076,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-1">
-              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-slate-50 hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-white hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
                 <span className="text-2xl">📋</span>
                 <span className="font-black text-[11px] text-slate-900">Bon de Commande</span>
               </button>
-              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('APPRO')} className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('APPRO')} className="bg-white hover:bg-emerald-50 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
                 <span className="text-2xl">📥</span>
                 <span className="font-black text-[11px] text-emerald-900">Approvisionnement</span>
               </button>
@@ -1081,48 +1097,48 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               </div>
               <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2 rounded-xl border border-slate-200">
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label>
                 <input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
               </div>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Partenaire *</label>
-                <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={gererChangementPartenaire} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
-                  <option value="">-- Choisir --</option>
-                  {fournisseursAvecStockage.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
-                </select>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">{libelleTiers} *</label>
+                <div 
+                  onClick={() => { if (enTeteVerrouille) return; setModalFournisseurOuverte(true); }}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]"
+                >
+                  {nomPartenaireCourant}
+                </div>
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
+                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
                   {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
                 </label>
                 {estPartenaireSansStockage ? (
-                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 font-extrabold text-xs text-amber-800 shadow-xs cursor-not-allowed" />
+                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed" />
                 ) : estModeLivraison ? (
-                  <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed">
-                    <option value="">-- Automatique --</option>
-                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                  </select>
+                  <input type="text" disabled value={nomDepotCourant} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed" />
                 ) : (
-                  <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs">
-                    <option value="">-- Choisir le dépôt --</option>
-                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                  </select>
+                  <div 
+                    onClick={() => { if (enTeteVerrouille) return; setModalDepotOuverte(true); }}
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]"
+                  >
+                    {nomDepotCourant}
+                  </div>
                 )}
               </div>
             </div>
-            <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
-              <span className="font-black uppercase text-slate-800 text-[9px] block">SAISIE DES ARTICLES</span>
+            <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
               <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
                 <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
                   <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
-                  <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">
-                    {articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}
+                  <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">
+                    {articleCourant.designation}
                   </div>
                 </div>
                 <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
@@ -1145,7 +1161,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
-                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
+                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%'}>Article</th>
                       <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
                       {!estModeLivraison && <th className="p-2 w-[20%] text-right">P.A</th>}
                       {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
@@ -1173,7 +1189,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               </div>
             )}
             {!estModeLivraison && (
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1.5">
+              <div className="bg-white p-2 rounded-xl border border-slate-200 space-y-1.5">
                 <div className="grid grid-cols-3 gap-2 text-[9px] uppercase text-slate-700 font-black">
                   <div>STATUT PAIEMENT</div><div>MONTANT RÉGLÉ</div><div>RESTE À PAYER</div>
                 </div>
@@ -1227,43 +1243,43 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               </div>
               <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-white p-2 rounded-xl border border-slate-200">
               <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Partenaire *</label>
-                <select disabled={enTeteVerrouille} required value={idFournisseur} onChange={gererChangementPartenaire} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
-                  <option value="">-- Choisir --</option>
-                  {fournisseursAvecStockage.map((f) => (<option key={f.id} value={f.id} className="text-slate-900">{(f.nom_fournisseur || f.nom || f.raison_sociale || '').toUpperCase()}</option>))}
-                </select>
+                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">{libelleTiers} *</label>
+                <div 
+                  onClick={() => { if (enTeteVerrouille) return; setModalFournisseurOuverte(true); }}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold cursor-pointer truncate shadow-xs min-h-[26px]"
+                >
+                  {nomPartenaireCourant}
+                </div>
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} placeholder="RÉF" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs" />
+                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs" />
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
                   {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
                 </label>
                 {estPartenaireSansStockage ? (
-                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-amber-50 border border-amber-300 rounded p-1.5 text-xs text-amber-800 font-extrabold shadow-xs cursor-not-allowed" />
+                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed" />
                 ) : estModeLivraison ? (
-                  <select disabled required value={idDepotDestination} className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed">
-                    <option value="">-- Automatique --</option>
-                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                  </select>
+                  <input type="text" disabled value={nomDepotCourant} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed" />
                 ) : (
-                  <select disabled={enTeteVerrouille} required value={idDepotDestination} onChange={(e) => setIdDepotDestination(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
-                    <option value="">-- Choisir le dépôt --</option>
-                    {depots.map((d) => (<option key={d.id} value={d.id} className="text-slate-900">{(d.nom_depot || d.nom || d.libelle || '').toUpperCase()}</option>))}
-                  </select>
+                  <div 
+                    onClick={() => { if (enTeteVerrouille) return; setModalDepotOuverte(true); }}
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold cursor-pointer truncate shadow-xs min-h-[26px]"
+                  >
+                    {nomDepotCourant}
+                  </div>
                 )}
               </div>
-              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} placeholder="7 JOURS" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
+              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
             </div>
-            <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
-              <span className="font-black uppercase text-slate-800 text-[9px] block">ARTICLES À COMMANDER</span>
+            <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
               <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
-                <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs">{articleCourant.designation ? articleCourant.designation : '-- ARTICLE --'}</div></div>
+                <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">{articleCourant.designation}</div></div>
                 <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
                 {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
                 <div className="col-span-1 text-center"><button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
@@ -1325,6 +1341,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
           </form>
         )}
 
+        {/* MODAL ARTICLE */}
         {modalArticleOuverte && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -1398,6 +1415,124 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
             </div>
           </div>
         )}
+
+        {/* MODAL FOURNISSEUR / PARTENAIRE */}
+        {modalFournisseurOuverte && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                  <span>🏢</span> SÉLECTIONNER UN {libelleTiers} ({fournisseursFiltresModalAffiches.length} / {fournisseursFiltresModal.length})
+                </h4>
+                <button type="button" onClick={() => setModalFournisseurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+              </div>
+              <div>
+                <input
+                  type="text"
+                  value={rechercheFournisseur}
+                  onChange={(e) => setRechercheFournisseur(e.target.value.toUpperCase())}
+                  placeholder="RECHERCHER..."
+                  autoFocus
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1">
+                {fournisseursFiltresModalAffiches.length === 0 ? (
+                  <div className="py-6 text-center text-slate-400 font-bold italic text-xs">Aucun {libelleTiers.toLowerCase()} trouvé.</div>
+                ) : (
+                  fournisseursFiltresModalAffiches.map((frs) => {
+                    const nomFrs = (frs.nom_fournisseur || frs.nom || frs.raison_sociale || '').toUpperCase();
+                    return (
+                      <div 
+                        key={frs.id} 
+                        onClick={() => selectionnerPartenaire(frs)} 
+                        className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex justify-between items-center shadow-2xs bg-white"
+                      >
+                        <span className="font-black text-xs text-slate-900 uppercase">{nomFrs}</span>
+                        {frs.statut_stockage && (
+                          <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold">
+                            {frs.statut_stockage}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {limiteFournisseursModal < fournisseursFiltresModal.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteFournisseursModal(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                  >
+                    📥 Charger 20 {libelleTiers.toLowerCase()}s de plus ({fournisseursFiltresModal.length - limiteFournisseursModal} restants)
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DÉPÔT */}
+        {modalDepotOuverte && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                  <span>🏭</span> SÉLECTIONNER UN DÉPÔT ({depotsFiltresModalAffiches.length} / {depotsFiltresModal.length})
+                </h4>
+                <button type="button" onClick={() => setModalDepotOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+              </div>
+              <div>
+                <input
+                  type="text"
+                  value={rechercheDepot}
+                  onChange={(e) => setRechercheDepot(e.target.value.toUpperCase())}
+                  placeholder="RECHERCHER..."
+                  autoFocus
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+              <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1">
+                {depotsFiltresModalAffiches.length === 0 ? (
+                  <div className="py-6 text-center text-slate-400 font-bold italic text-xs">Aucun dépôt trouvé.</div>
+                ) : (
+                  depotsFiltresModalAffiches.map((dep) => {
+                    const nomDep = (dep.nom_depot || dep.nom || dep.libelle || '').toUpperCase();
+                    return (
+                      <div 
+                        key={dep.id} 
+                        onClick={() => {
+                          setIdDepotDestination(dep.id);
+                          setModalDepotOuverte(false);
+                          setRechercheDepot('');
+                        }} 
+                        className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex justify-between items-center shadow-2xs bg-white"
+                      >
+                        <span className="font-black text-xs text-slate-900 uppercase">{nomDep}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {limiteDepotsModal < depotsFiltresModal.length && (
+                <div className="text-center pt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setLimiteDepotsModal(prev => prev + 20)}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                  >
+                    📥 Charger 20 dépôts de plus ({depotsFiltresModal.length - limiteDepotsModal} restants)
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

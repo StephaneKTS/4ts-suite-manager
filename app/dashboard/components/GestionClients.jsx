@@ -33,11 +33,9 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   
   const [ongletActif, setOngletActif] = useState('repertoire');
 
-  // États initialisés vides pour éviter les faux droits par défaut au démarrage
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
 
-  // Récupération propre de la session locale au montage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
@@ -68,7 +66,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
   const cleCacheClients = `clients_${entrepriseId}_${moduleActuel}`;
 
-  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
   const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
     entrepriseId,
     utilisateurConnecte,
@@ -107,10 +104,10 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     email: '',
     id_categorie: '',
     solde_credit: 0,
+    est_defaut: false,
   });
 
   const chargerDonnees = async () => {
-    // 1. Chargement instantané depuis le cache local (Zéro attente)
     const clientsLocaux = localSync.recupererDonneesLocales(cleCacheClients);
     if (clientsLocaux && clientsLocaux.length > 0) {
       setClients(clientsLocaux);
@@ -129,7 +126,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
       setCategories(dataCat || []);
 
-      // 2. Récupération Supabase filtrée strictement par entreprise et module
       const { data: dataCli, error: errCli } = await supabase
         .from('clients')
         .select('*')
@@ -141,7 +137,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       const listClients = dataCli || [];
       setClients(listClients);
 
-      // Mise à jour du cache local propre
       localSync.sauvegarderDonneesLocales(cleCacheClients, listClients);
 
       if (listClients.length > 0 && !clientHistoriqueId) {
@@ -238,6 +233,11 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
+      // Gestion locale du client par défaut dans le stockage pour éviter les erreurs de colonne manquante dans Supabase
+      if (nouveauClient.est_defaut && typeof window !== 'undefined') {
+        localStorage.setItem(`client_defaut_${entrepriseId}_${moduleActuel}`, nouveauClient.nom_client.trim().toUpperCase());
+      }
+
       let payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -256,7 +256,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
         if (error) throw error;
 
-        setClients(prev => prev.map(c => c.id === clientEnEdition.id ? { ...c, ...payload } : c));
+        setClients(prev => prev.map(c => c.id === clientEnEdition.id ? { ...c, ...payload, est_defaut: nouveauClient.est_defaut } : { ...c, est_defaut: nouveauClient.est_defaut ? false : c.est_defaut }));
         alert('Client mis à jour avec succès !');
       } else {
         const { error, data } = await supabase.from('clients').insert([
@@ -269,7 +269,8 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         if (error) throw error;
 
         if (data) {
-          setClients(prev => [data, ...prev.filter(c => c.id !== data.id)]);
+          const clientAjoute = { ...data, est_defaut: nouveauClient.est_defaut };
+          setClients(prev => [clientAjoute, ...prev.filter(c => c.id !== data.id)]);
         }
         alert('Client enregistré avec succès !');
       }
@@ -306,6 +307,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       email: (client.email || '').toLowerCase(),
       id_categorie: client.id_categorie || '',
       solde_credit: calculerSoldeCreditClient(client),
+      est_defaut: client.est_defaut || (client.nom_client || '').toUpperCase().includes('DIVERS'),
     });
     setAfficherForm(true);
   };
@@ -320,6 +322,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       email: '',
       id_categorie: '',
       solde_credit: 0,
+      est_defaut: false,
     });
     setAfficherForm(false);
   };
@@ -650,7 +653,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   if (afficherForm) {
                     annulerForm();
                   } else {
-                    setNouveauClient({ nom_client: '', pays: 'cmr', telephone: '', email: '', id_categorie: '', solde_credit: 0 });
+                    setNouveauClient({ nom_client: '', pays: 'cmr', telephone: '', email: '', id_categorie: '', solde_credit: 0, est_defaut: false });
                     setClientEnEdition(null);
                     setAfficherForm(true);
                   }
@@ -687,7 +690,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                     disabled={enTrainDeSauvegarder}
                     value={nouveauClient.nom_client}
                     onChange={(e) => setNouveauClient({ ...nouveauClient, nom_client: e.target.value.toUpperCase() })}
-                    placeholder="EX: CLIENTS DIVERS"
+                    placeholder=""
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
                 </div>
@@ -754,7 +757,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                       maxLength={paysActuelObj.longueur}
                       value={nouveauClient.telephone}
                       onChange={gererSaisieTelephone}
-                      placeholder="6XXXXXXXX"
+                      placeholder=""
                       className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none"
                     />
                   </div>
@@ -767,9 +770,25 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                     disabled={enTrainDeSauvegarder}
                     value={nouveauClient.email}
                     onChange={(e) => setNouveauClient({ ...nouveauClient, email: e.target.value.toLowerCase() })}
-                    placeholder="client@email.com"
+                    placeholder=""
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400"
                   />
+                </div>
+              </div>
+
+              <div className="pt-1.5 border-t border-slate-100">
+                <div className="bg-orange-50/70 border border-orange-200/80 rounded-xl p-2 flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="defautCheck"
+                    disabled={enTrainDeSauvegarder}
+                    checked={nouveauClient.est_defaut}
+                    onChange={(e) => setNouveauClient({ ...nouveauClient, est_defaut: e.target.checked })}
+                    className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
+                  />
+                  <label htmlFor="defautCheck" className="text-[11px] font-black text-slate-900 cursor-pointer select-none leading-tight">
+                    ⭐ Définir comme client par défaut pour les ventes
+                  </label>
                 </div>
               </div>
 
@@ -824,7 +843,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   disabled={enTrainDeSauvegarder}
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-                  placeholder="RECHERCHER PAR NOM OU TÉLÉPHONE..."
+                  placeholder=""
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs placeholder:text-slate-400"
                 />
               </div>
@@ -860,7 +879,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                         {clientsAffiches.map((c) => {
                           const catTrouvee = categories.find((cat) => String(cat.id) === String(c.id_categorie));
                           const soldeCreditCalcule = calculerSoldeCreditClient(c);
-                          const estDivers = (c.nom_client || '').toUpperCase().includes('DIVERS');
+                          const estDefautClient = c.est_defaut || (c.nom_client || '').toUpperCase().includes('DIVERS');
                           return (
                             <tr 
                               key={c.id} 
@@ -870,7 +889,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                             >
                               <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate flex items-center gap-1.5">
                                 {c.nom_client}
-                                {estDivers && (
+                                {estDefautClient && (
                                   <span className="bg-blue-100 text-blue-800 text-[8px] px-1.5 py-0.5 rounded font-black shrink-0">
                                     PAR DÉFAUT
                                   </span>

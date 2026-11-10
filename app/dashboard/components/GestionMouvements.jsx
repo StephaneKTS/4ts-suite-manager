@@ -13,6 +13,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const moduleActuel = obtenirModuleActuel();
+  const estModeBoutique = moduleActuel === 'BOUTIQUE';
+
+  // Libellés dynamiques selon le module actif (Boutique -> Emplacement / Livraison -> Livreur)
+  const libelleLivreur = estModeBoutique ? 'Emplacement' : 'Livreur';
+  const libellePlaceholderSource = estModeBoutique ? '-- Emplacement --' : '-- Livreur --';
+  const libellePlaceholderDest = estModeBoutique ? '-- Emplacement (Optionnel) --' : '-- Livreur (Optionnel) --';
+  const libelleAucunLivreur = estModeBoutique ? '-- Aucun emplacement --' : '-- Aucun livreur --';
+  const libelleRechercheLivreur = estModeBoutique ? 'RECHERCHER UN EMPLACEMENT...' : 'RECHERCHER UN LIVREUR...';
+
   const cleCacheMouvements = `mouvements_stock_${entrepriseId}_${moduleActuel}`;
   const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
   const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
@@ -143,7 +152,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [recherchePopup, setRecherchePopup] = useState('');
   const [articleSelectionneTemp, setArticleSelectionneTemp] = useState(null);
 
-  // États pour les modales de sélection Partenaire (Dépôt) et Livreur (Emplacement)
+  // États pour les modales de sélection Partenaire (Dépôt) et Livreur / Emplacement
   const [modalDepotSourceOuvert, setModalDepotSourceOuvert] = useState(false);
   const [modalDepotDestOuvert, setModalDepotDestOuvert] = useState(false);
   const [modalLivreurSourceOuvert, setModalLivreurSourceOuvert] = useState(false);
@@ -509,7 +518,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       }
     }
 
-    // 3. Filtrage par stock disponible sur l'emplacement du livreur / dépôt source (pour Sortie/Transfert/Avaries)
+    // 3. Filtrage par stock disponible sur l'emplacement / dépôt source (pour Sortie/Transfert/Avaries)
     const artId = art.id_article || art.id;
     if (typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') {
       if (emplacementSourceId) {
@@ -1049,7 +1058,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
                       className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1"
                     >
-                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : '-- Livreur --'}</span>
+                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : libellePlaceholderSource}</span>
                       <span>🔍</span>
                     </button>
                   </div>
@@ -1071,7 +1080,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       onClick={() => { setRechercheModalPopup(''); setModalLivreurDestOuvert(true); }}
                       className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1"
                     >
-                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : '-- Livreur (Optionnel) --'}</span>
+                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : libellePlaceholderDest}</span>
                       <span>🔍</span>
                     </button>
                   </div>
@@ -1091,7 +1100,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     </button>
                   </div>
                   <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 Livreur</label>
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 {libelleLivreur}</label>
                     <button 
                       type="button"
                       disabled={enTeteVerrouille}
@@ -1107,7 +1116,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           </div>
 
-          {/* MODALES DE SÉLECTION (PARTENAIRES/DÉPÔTS & LIVREURS) */}
+          {/* MODALES DE SÉLECTION (PARTENAIRES/DÉPÔTS & LIVREURS/EMPLACEMENTS) */}
           {modalDepotSourceOuvert && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -1123,7 +1132,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun dépôt trouvé.</div>
                   ) : (
                     depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
-                      <div key={dep.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_depot_source: dep.id })); setModalDepotSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                      <div key={dep.id} onClick={() => { 
+                        setEnTeteDoc(prev => ({ 
+                          ...prev, 
+                          id_depot_source: dep.id,
+                          id_depot_destination: (typeOperation === 'TRANSFERT' && (!prev.id_depot_destination || prev.id_depot_destination === prev.id_depot_source)) ? dep.id : prev.id_depot_destination
+                        })); 
+                        setModalDepotSourceOuvert(false); 
+                      }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
                         <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
                       </div>
                     ))
@@ -1162,15 +1178,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER UN LIVREUR</h4>
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER UN {libelleLivreur.toUpperCase()}</h4>
                   <button type="button" onClick={() => setModalLivreurSourceOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN LIVREUR..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                   <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: '' })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
-                    <span className="font-black text-xs text-slate-500 uppercase truncate">-- Aucun livreur --</span>
+                    <span className="font-black text-xs text-slate-500 uppercase truncate">{libelleAucunLivreur}</span>
                   </div>
                   {emplacementsSourceFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
                     <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: emp.id })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
@@ -1187,15 +1203,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER LE LIVREUR DESTINATION</h4>
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER LE {libelleLivreur.toUpperCase()} DESTINATION</h4>
                   <button type="button" onClick={() => setModalLivreurDestOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN LIVREUR..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                   <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: '' })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
-                    <span className="font-black text-xs text-slate-500 uppercase truncate">-- Aucun livreur --</span>
+                    <span className="font-black text-xs text-slate-500 uppercase truncate">{libelleAucunLivreur}</span>
                   </div>
                   {emplacementsDestinationFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
                     <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: emp.id })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
@@ -1263,7 +1279,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </div>
                   <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                     {articlesPopupFiltres.length === 0 ? (
-                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé pour ce partenaire / ce livreur.</div>
+                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé pour ce partenaire / cet emplacement.</div>
                     ) : (
                       articlesPopupFiltres.map((art) => {
                         const artId = art.id_article || art.id;
