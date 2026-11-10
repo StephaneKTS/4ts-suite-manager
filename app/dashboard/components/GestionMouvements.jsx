@@ -18,7 +18,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
   const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
-  const cleCacheReferencesDocs = `references_documents_${entrepriseId}_${moduleActuel}`;
 
   const obtenirNomOperateurConnecte = () => {
     if (typeof window === 'undefined') return 'DC KTS';
@@ -106,14 +105,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return [];
   });
 
-  const [referencesDocsMap, setReferencesDocsMap] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const data = localSync.recupererDonneesLocales(cleCacheReferencesDocs);
-      return data && typeof data === 'object' ? data : {};
-    }
-    return {};
-  });
-
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
@@ -172,12 +163,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
-  const genererNumeroDocIndependant = (type, mouvementsList) => {
+  const genererNumeroDocSecurise = (type) => {
     const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
     const prefix = prefixes[type] || 'TR';
-    const listeSecure = Array.isArray(mouvementsList) ? mouvementsList : [];
-    const numsUniques = [...new Set(listeSecure.filter((m) => m.type_mouvement === type).map(m => m.motif_remarque))];
-    return `${prefix}-${String(numsUniques.length + 1).padStart(2, '0')}`;
+    const timestampAleatoire = Date.now().toString().slice(-6);
+    const suffixeAleatoire = Math.floor(Math.random() * 900 + 100);
+    return `${prefix}-${timestampAleatoire}-${suffixeAleatoire}`;
   };
 
   const chargerDonnees = async (silencieux = false) => {
@@ -319,7 +310,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       }
 
       if (!mouvementEnEditionId) {
-        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocIndependant(typeOperation, mouvementsList), operateur: nomConnecteEffectif }));
+        setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: nomConnecteEffectif }));
       }
     } catch (err) { 
       console.error('Erreur (mode hors-ligne actif) :', err.message); 
@@ -491,25 +482,21 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const verifierEnTeteAvantSaisie = () => {
-    // 1. Vérification de la zone Référence obligatoire
     if (!enTeteDoc.referenceDoc || String(enTeteDoc.referenceDoc).trim() === '') {
       alert('⚠️ La zone Référence est obligatoire pour pouvoir ajouter des articles.');
       return false;
     }
 
     if (typeOperation === 'TRANSFERT') {
-      // 2. Dépôt d'origine obligatoire
       if (!enTeteDoc.id_depot_source) { 
         alert('⚠️ Sélectionnez le dépôt source (origine).'); 
         return false; 
       }
-      // 3. Dépôt de destination obligatoire
       if (!enTeteDoc.id_depot_destination) { 
         alert('⚠️ Sélectionnez le dépôt destination.'); 
         return false; 
       }
     } else {
-      // Dépôt d'origine obligatoire pour les autres types
       if (!enTeteDoc.id_depot_source) { 
         alert('⚠️ Sélectionnez le dépôt.'); 
         return false; 
@@ -593,7 +580,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setEnTeteDoc(prev => ({
       ...prev,
       referenceDoc: '',
-      numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements),
+      numeroDoc: genererNumeroDocSecurise(typeOperation),
       operateur: obtenirNomOperateurConnecte()
     }));
   };
@@ -643,11 +630,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         setMouvements(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
         localStorage.removeItem(cleCacheMouvements);
-
-        const nouvellesRefs = { ...referencesDocsMap };
-        delete nouvellesRefs[enTeteDoc.numeroDoc];
-        setReferencesDocsMap(nouvellesRefs);
-        localSync.sauvegarderDonneesLocales(cleCacheReferencesDocs, nouvellesRefs);
       }
 
       alert('Document supprimé avec succès.');
@@ -659,7 +641,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       setEnTeteDoc(prev => ({
         ...prev,
         referenceDoc: '',
-        numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements),
+        numeroDoc: genererNumeroDocSecurise(typeOperation),
         operateur: obtenirNomOperateurConnecte()
       }));
       await chargerDonnees(true);
@@ -692,13 +674,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setEnTrainDeSauvegarder(true);
     try {
       if (mouvementEnEditionId) {
-        const { error: errDel } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
-        if (errDel) {
-          localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: enTeteDoc.numeroDoc });
-        }
+        await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
       }
       
       const operateurActuel = obtenirNomOperateurConnecte();
+      const referenceSaisie = (enTeteDoc.referenceDoc || '').trim().toUpperCase();
       
       let dateMvtIso = new Date().toISOString();
       if (enTeteDoc.dateDoc) {
@@ -723,6 +703,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           id_article: parseInt(ligne.id_article),
           quantite: ligne.quantite,
           motif_remarque: enTeteDoc.numeroDoc,
+          reference: referenceSaisie,
           operateur: operateurActuel,
           created_at: dateMvtIso,
         };
@@ -737,10 +718,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         }
       }
 
-      const nouvellesRefs = { ...referencesDocsMap, [enTeteDoc.numeroDoc]: enTeteDoc.referenceDoc || '' };
-      setReferencesDocsMap(nouvellesRefs);
-      localSync.sauvegarderDonneesLocales(cleCacheReferencesDocs, nouvellesRefs);
-
       const mouvementsFiltres = mouvements.filter(m => m.motif_remarque !== enTeteDoc.numeroDoc);
       const listeMaj = [...nouveauxMouvementsAjoutes, ...mouvementsFiltres];
       setMouvements(listeMaj);
@@ -751,7 +728,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       setLignesPanier([]);
       setMouvementEnEditionId(null);
       setEtatInitialEdition(null);
-      setEnTeteDoc((prev) => ({ ...prev, referenceDoc: '', operateur: obtenirNomOperateurConnecte() }));
+      setEnTeteDoc((prev) => ({ 
+        ...prev, 
+        referenceDoc: '', 
+        numeroDoc: genererNumeroDocSecurise(typeOperation),
+        operateur: obtenirNomOperateurConnecte() 
+      }));
       await chargerDonnees(true);
       setModeAffichage('LISTE_DOCS');
     } catch (err) { 
@@ -773,7 +755,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       ? String(premier.operateur).trim().toUpperCase() 
       : obtenirNomOperateurConnecte();
 
-    const refEnregistree = referencesDocsMap[numeroDocUnique] || premier.reference || premier.motif || '';
+    // 🛡️ Récupération de la référence directement depuis la base de données (partagée pour tous)
+    const refEnregistree = premier.reference || premier.motif || '';
 
     const nouvelEnTete = { 
       ...enTeteDoc, 
@@ -819,12 +802,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (matchTicket) return matchTicket[1];
     const matchCmd = motifBrut.match(/(CMD-\d+)/i);
     if (matchCmd) return matchCmd[1];
-    const matchType = motifBrut.match(/([A-Z]+-\d+)/i);
+    const matchType = motifBrut.match(/([A-Z]+-\d+-[0-9]+)/i);
     if (matchType) return matchType[1];
     return motifBrut;
   };
 
-  // 🛡️ EXCLUSION DES MOUVEMENTS DE COMMANDES ET LIVRAISONS DE L'AFFICHAGE VISUEL UNIQUEMENT
   const documentsGroupes = Object.values(
     mouvements
       .filter((mvt) => {
@@ -841,7 +823,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             ? String(operateurEnBase).trim().toUpperCase() 
             : obtenirNomOperateurConnecte();
 
-          const refDocAssociee = referencesDocsMap[numDocBrut] || '';
+          // 🛡️ Récupération globale de la référence enregistrée en base pour l'affichage de la liste
+          const refDocAssociee = mvt.reference || '';
 
           acc[numDocCle] = { 
             numeroDoc: numDocCle, 
@@ -855,6 +838,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             lignesCount: 0 
           }; 
         }
+        // S'assure de récupérer la référence même si elle est portée par une autre ligne du même groupe
+        if (!acc[numDocCle].referenceDoc && mvt.reference) {
+          acc[numDocCle].referenceDoc = mvt.reference;
+        }
+
         acc[numDocCle].lignesCount += 1;
         return acc;
       }, {})
@@ -909,7 +897,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             setMouvementEnEditionId(null); 
             setEtatInitialEdition(null);
             setLignesPanier([]); 
-            setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocIndependant(typeOperation, mouvements), operateur: obtenirNomOperateurConnecte() })); 
+            setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: obtenirNomOperateurConnecte() })); 
           }} 
           className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
         >
@@ -936,7 +924,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 if (mouvementEnEditionId) return;
                 const nt = e.target.value; 
                 setTypeOperation(nt); 
-                if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocIndependant(nt, mouvements), operateur: obtenirNomOperateurConnecte() })); 
+                if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(nt), operateur: obtenirNomOperateurConnecte() })); 
               }} 
               className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]"
             >
