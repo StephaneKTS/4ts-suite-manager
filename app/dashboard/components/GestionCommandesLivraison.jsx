@@ -116,6 +116,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [modalFiltreLivreurOuverte, setModalFiltreLivreurOuverte] = useState(false);
   const [rechercheFiltreLivreurInput, setRechercheFiltreLivreurInput] = useState('');
 
+  // 🌍 Nouvel état pour le filtre par zone de livraison
+  const [filtreZone, setFiltreZone] = useState('');
+  const [modalFiltreZoneOuverte, setModalFiltreZoneOuverte] = useState(false);
+  const [rechercheFiltreZoneInput, setRechercheFiltreZoneInput] = useState('');
+
   const [filtreDateDebut, setFiltreDateDebut] = useState(dateDuJourStr);
   const [filtreDateFin, setFiltreDateFin] = useState(dateDuJourStr);
   const [filtreStatut, setFiltreStatut] = useState('');
@@ -366,6 +371,23 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       localSync.synchroniserVersCloud(supabase);
     }
   }, [entrepriseId, propEntrepriseId]);
+
+  // 🌍 Récupération dynamique de toutes les zones / adresses uniques enregistrées dans les commandes
+  const listeZonesUniques = () => {
+    const setZones = new Set();
+    commandes.forEach(c => {
+      const zone = (c.zone_effective_livraison || c.adresse_livraison || '').trim().toUpperCase();
+      if (zone) setZones.add(zone);
+    });
+    // Ajout également des zones issues de la grille tarifaire si disponibles
+    grilleTarifaire.forEach(t => {
+      const nomZ = (t.nom_zone || '').trim().toUpperCase();
+      if (nomZ) setZones.add(nomZ);
+    });
+    return Array.from(setZones).sort();
+  };
+
+  const zonesFiltresFiltrees = listeZonesUniques().filter(z => z.toLowerCase().includes(rechercheFiltreZoneInput.toLowerCase()));
 
   const trouverIdEmplacementLivreur = (nomLivreur) => {
     if (!nomLivreur) return null;
@@ -1198,6 +1220,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const commandesFiltrees = commandes.filter((cmd) => {
     let matchPartenaire = true;
     let matchLivreur = true;
+    let matchZone = true;
     let matchDate = true;
     let matchStatut = true;
 
@@ -1206,6 +1229,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
     if (filtreLivreur) {
       matchLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase() === filtreLivreur.trim().toUpperCase();
+    }
+    // 🌍 Filtrage par zone / adresse de livraison
+    if (filtreZone) {
+      const zoneCmd = (cmd.zone_effective_livraison || cmd.adresse_livraison || '').trim().toUpperCase();
+      matchZone = zoneCmd === filtreZone.trim().toUpperCase() || zoneCmd.includes(filtreZone.trim().toUpperCase());
     }
     if (filtreDateDebut && filtreDateFin) {
       matchDate = cmd.date_commande >= filtreDateDebut && cmd.date_commande <= filtreDateFin;
@@ -1220,7 +1248,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       matchStatut = statutCMDReel === filtreStatutNorm;
     }
 
-    return matchPartenaire && matchLivreur && matchDate && matchStatut;
+    return matchPartenaire && matchLivreur && matchZone && matchDate && matchStatut;
   }).sort((a, b) => {
     const partA = (a.nom_partenaire || '').toUpperCase();
     const partB = (b.nom_partenaire || '').toUpperCase();
@@ -2667,12 +2695,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <span className="font-black text-slate-900 uppercase text-[10px] flex items-center gap-1">
                 🔍 FILTRER LES COMMANDES
               </span>
-              {(filtrePartenaire || filtreLivreur || filtreDateDebut !== dateDuJourStr || filtreDateFin !== dateDuJourStr || filtreStatut) && (
+              {(filtrePartenaire || filtreLivreur || filtreZone || filtreDateDebut !== dateDuJourStr || filtreDateFin !== dateDuJourStr || filtreStatut) && (
                 <button
                   type="button"
                   onClick={() => {
                     setFiltrePartenaire('');
                     setFiltreLivreur('');
+                    setFiltreZone('');
                     setFiltreDateDebut(dateDuJourStr);
                     setFiltreDateFin(dateDuJourStr);
                     setFiltreStatut('');
@@ -2723,16 +2752,31 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 </div>
               </div>
 
-              <div>
-                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
-                <button
-                  type="button"
-                  onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
-                >
-                  <span className="truncate">{filtreLivreur || 'Tous'}</span>
-                  <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
-                </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                  >
+                    <span className="truncate">{filtreLivreur || 'Tous'}</span>
+                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                  </button>
+                </div>
+
+                {/* 🌍 Nouveau champ de filtre par zone de livraison */}
+                <div>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Zone / Quartier</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheFiltreZoneInput(''); setModalFiltreZoneOuverte(true); }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                  >
+                    <span className="truncate">{filtreZone || 'Toutes les zones'}</span>
+                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -3042,6 +3086,25 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
               {filtreLivreursFiltres.map((nom, idx) => (
                 <div key={idx} onClick={() => { setFiltreLivreur(nom); setModalFiltreLivreurOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{nom}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🌍 Modale de sélection de la zone pour le filtre */}
+      {modalFiltreZoneOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">ZONE / QUARTIER DE LIVRAISON</h4>
+              <button type="button" onClick={() => setModalFiltreZoneOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
+            </div>
+            <input type="text" value={rechercheFiltreZoneInput} onChange={(e) => setRechercheFiltreZoneInput(e.target.value)} placeholder="RECHERCHER UNE ZONE..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              <div onClick={() => { setFiltreZone(''); setModalFiltreZoneOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Toutes les zones --</div>
+              {zonesFiltresFiltrees.map((zone, idx) => (
+                <div key={idx} onClick={() => { setFiltreZone(zone); setModalFiltreZoneOuverte(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{zone}</div>
               ))}
             </div>
           </div>
