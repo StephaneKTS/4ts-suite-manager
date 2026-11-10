@@ -143,6 +143,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [recherchePopup, setRecherchePopup] = useState('');
   const [articleSelectionneTemp, setArticleSelectionneTemp] = useState(null);
 
+  // États pour les modales de sélection Partenaire (Dépôt) et Livreur (Emplacement)
+  const [modalDepotSourceOuvert, setModalDepotSourceOuvert] = useState(false);
+  const [modalDepotDestOuvert, setModalDepotDestOuvert] = useState(false);
+  const [modalLivreurSourceOuvert, setModalLivreurSourceOuvert] = useState(false);
+  const [modalLivreurDestOuvert, setModalLivreurDestOuvert] = useState(false);
+  const [rechercheModalPopup, setRechercheModalPopup] = useState('');
+
   const [quantiteSaisie, setQuantiteSaisie] = useState(1);
   const [lignesPanier, setLignesPanier] = useState([]);
   const [mouvementEnEditionId, setMouvementEnEditionId] = useState(null);
@@ -519,7 +526,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const verifierEnTeteAvantSaisie = () => {
     if (!enTeteDoc.referenceDoc || String(enTeteDoc.referenceDoc).trim() === '') {
-      alert('⚠️ La zone Référence est obligatoire pour pouvoir ajouter des articles.');
+      alert('⚠️ La zone Motif est obligatoire pour pouvoir ajouter des articles.');
       return false;
     }
 
@@ -1018,8 +1025,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   <input type="date" value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
                 </div>
                 <div>
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Réf. * (Obligatoire)</label>
-                  <input type="text" value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} placeholder="EX: VENTE DJOMO" className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Motif * (Obligatoire)</label>
+                  <input type="text" value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
                 </div>
               </div>
 
@@ -1027,45 +1034,179 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <div className="space-y-1 bg-orange-50/40 p-1.5 rounded-lg border border-orange-200">
                     <label className="block font-black text-[8px] text-orange-800 uppercase">🏢 Origine (Source) *</label>
-                    <select required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-700 text-[9px]">
-                      <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
-                    </select>
-                    <select value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
-                      <option value="">-- Emplacement --</option>
-                      {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
-                    </select>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-700 text-[9px] flex justify-between items-center"
+                    >
+                      <span className="truncate">{obtenirNomDepotParId(enTeteDoc.id_depot_source) || '-- Dépôt --'}</span>
+                      <span>🔍</span>
+                    </button>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1"
+                    >
+                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : '-- Livreur --'}</span>
+                      <span>🔍</span>
+                    </button>
                   </div>
 
                   <div className="space-y-1 bg-blue-50/40 p-1.5 rounded-lg border border-blue-200">
                     <label className="block font-black text-[8px] text-blue-800 uppercase">🎯 Destination *</label>
-                    <select required value={enTeteDoc.id_depot_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-blue-700 text-[9px]">
-                      <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
-                    </select>
-                    <select value={enTeteDoc.id_emplacement_destination} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_destination: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
-                      <option value="">-- Emplacement (Optionnel) --</option>
-                      {emplacementsDestinationFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
-                    </select>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-blue-700 text-[9px] flex justify-between items-center"
+                    >
+                      <span className="truncate">{obtenirNomDepotParId(enTeteDoc.id_depot_destination) || '-- Dépôt --'}</span>
+                      <span>🔍</span>
+                    </button>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalLivreurDestOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1"
+                    >
+                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : '-- Livreur (Optionnel) --'}</span>
+                      <span>🔍</span>
+                    </button>
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
                     <label className="block font-black text-[8px] text-slate-700 uppercase">🏢 Dépôt *</label>
-                    <select required value={enTeteDoc.id_depot_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_depot_source: e.target.value })} className="w-full bg-white border rounded p-1 font-extrabold text-orange-600 text-[9px]">
-                      <option value="">-- Dépôt --</option>{depots.map((dep) => (<option key={dep.id} value={dep.id}>{dep.nom_depot}</option>))}
-                    </select>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-600 text-[9px] flex justify-between items-center"
+                    >
+                      <span className="truncate">{obtenirNomDepotParId(enTeteDoc.id_depot_source) || '-- Dépôt --'}</span>
+                      <span>🔍</span>
+                    </button>
                   </div>
                   <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 Emplacement / Livreur</label>
-                    <select value={enTeteDoc.id_emplacement_source} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, id_emplacement_source: e.target.value })} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]">
-                      <option value="">-- Aucun --</option>
-                      {emplacementsSourceFiltres.map((emp) => (<option key={emp.id} value={emp.id}>{emp.nom_emplacement || emp.code_emplacement}{emp.responsable_emplacement ? ` (${emp.responsable_emplacement})` : ''}</option>))}
-                    </select>
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 Livreur</label>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center"
+                    >
+                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : '-- Aucun --'}</span>
+                      <span>🔍</span>
+                    </button>
                   </div>
                 </div>
               )}
             </div>
           </div>
+
+          {/* MODALES DE SÉLECTION (PARTENAIRES/DÉPÔTS & LIVREURS) */}
+          {modalDepotSourceOuvert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER UN PARTENAIRE / DÉPÔT</h4>
+                  <button type="button" onClick={() => setModalDepotSourceOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                <div>
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN DÉPÔT..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                </div>
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                  {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).length === 0 ? (
+                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun dépôt trouvé.</div>
+                  ) : (
+                    depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
+                      <div key={dep.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_depot_source: dep.id })); setModalDepotSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                        <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalDepotDestOuvert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER LE DÉPÔT DESTINATION</h4>
+                  <button type="button" onClick={() => setModalDepotDestOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                <div>
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN DÉPÔT..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                </div>
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                  {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).length === 0 ? (
+                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun dépôt trouvé.</div>
+                  ) : (
+                    depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
+                      <div key={dep.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_depot_destination: dep.id })); setModalDepotDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                        <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalLivreurSourceOuvert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER UN LIVREUR</h4>
+                  <button type="button" onClick={() => setModalLivreurSourceOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                <div>
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN LIVREUR..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                </div>
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: '' })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
+                    <span className="font-black text-xs text-slate-500 uppercase truncate">-- Aucun livreur --</span>
+                  </div>
+                  {emplacementsSourceFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
+                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: emp.id })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</span>
+                      {emp.responsable_emplacement && <span className="text-[9px] text-slate-500 font-bold mt-0.5">{emp.responsable_emplacement}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalLivreurDestOuvert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER LE LIVREUR DESTINATION</h4>
+                  <button type="button" onClick={() => setModalLivreurDestOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                <div>
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN LIVREUR..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                </div>
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: '' })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
+                    <span className="font-black text-xs text-slate-500 uppercase truncate">-- Aucun livreur --</span>
+                  </div>
+                  {emplacementsDestinationFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
+                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: emp.id })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</span>
+                      {emp.responsable_emplacement && <span className="text-[9px] text-slate-500 font-bold mt-0.5">{emp.responsable_emplacement}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="bg-white border p-2 rounded-xl shadow-2xs space-y-1.5">
             <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles [{moduleActuel}]</span>
@@ -1122,7 +1263,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </div>
                   <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                     {articlesPopupFiltres.length === 0 ? (
-                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé pour ce partenaire / cet emplacement.</div>
+                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé pour ce partenaire / ce livreur.</div>
                     ) : (
                       articlesPopupFiltres.map((art) => {
                         const artId = art.id_article || art.id;
@@ -1260,7 +1401,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 <tr>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° DOC</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('referenceDoc')} className="p-1.5 cursor-pointer">RÉF.</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('referenceDoc')} className="p-1.5 cursor-pointer">MOTIF</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('depotNom')} className="p-1.5 cursor-pointer">DÉPÔT</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('depotDestNom')} className="p-1.5 cursor-pointer">DESTINATION</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('operateur')} className="p-1.5 cursor-pointer">OPÉRATEUR</th>
