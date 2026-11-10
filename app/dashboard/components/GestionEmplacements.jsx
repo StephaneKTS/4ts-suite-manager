@@ -195,13 +195,35 @@ export default function GestionEmplacements({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    if (!confirm(`Voulez-vous vraiment supprimer l'emplacement "${emplacementEnEdition.nom_emplacement}" ?`)) return;
+    const empIdCible = emplacementEnEdition.id;
+    const empNomCible = emplacementEnEdition.nom_emplacement || 'cet emplacement';
 
     try {
+      // 🔒 VÉRIFICATION DES MOUVEMENTS : Interdire la suppression si l'emplacement a connu au moins un mouvement
+      const { count: countSource, error: errSrc } = await supabase
+        .from('mouvements_stock')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_emplacement_source', empIdCible);
+
+      const { count: countDest, error: errDest } = await supabase
+        .from('mouvements_stock')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_emplacement_destination', empIdCible);
+
+      if (!errSrc && !errDest && ((countSource || 0) > 0 || (countDest || 0) > 0)) {
+        setMsg({
+          type: 'error',
+          text: `🚫 SUPPRESSION INTERDITE : L'emplacement "${empNomCible}" a déjà enregistré au moins un mouvement de stock.`
+        });
+        return;
+      }
+
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement l'emplacement "${empNomCible}" ?`)) return;
+
       const { error } = await supabase
         .from('emplacements_stock')
         .delete()
-        .eq('id', emplacementEnEdition.id);
+        .eq('id', empIdCible);
 
       if (error) throw error;
 

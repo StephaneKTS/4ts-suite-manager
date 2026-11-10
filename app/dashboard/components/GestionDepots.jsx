@@ -17,11 +17,9 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
 
-  // États initialisés vides pour éviter les faux droits par défaut au démarrage
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
 
-  // Récupération propre de la session locale au montage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
@@ -42,7 +40,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   const emailActuel = emailConnecte || '';
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
   const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
     entrepriseId,
     utilisateurConnecte,
@@ -57,7 +54,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     suppression: verifierSuppression('depots_stock', estSuperAdmin),
   };
 
-  // --- INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL ---
   const [depots, setDepots] = useState(() => {
     if (typeof window !== 'undefined') {
       return localSync.recupererDonneesLocales(cleCacheDepots) || [];
@@ -163,7 +159,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
-      // 🔒 BARRIÈRE ANTI-DOUBLONS : Vérifier si un dépôt avec ce même nom existe déjà pour cette entreprise et ce module
       if (!depotEnEdition) {
         const depotExistant = depots.find(d => 
           (d.nom_depot || d.Nom_Depot || '').trim().toUpperCase() === nomDepotClean
@@ -280,13 +275,30 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
     const depotIdCible = depotEnEdition.id || depotEnEdition.ID;
     const depotNomCible = depotEnEdition.nom_depot || depotEnEdition.Nom_Depot || 'ce dépôt';
 
-    if (!confirm(`Voulez-vous vraiment supprimer définitivement le dépôt "${depotNomCible}" et ses emplacements ?`)) {
-      return;
-    }
-
     setEnTrainDeSauvegarder(true);
     try {
-      // 1. Supprimer d'abord les emplacements rattachés à ce dépôt pour éviter les orphelins
+      // 🔒 VÉRIFICATION DES MOUVEMENTS : Interdire la suppression si le dépôt a déjà connu au moins un mouvement
+      const { count: countSource, error: errSrc } = await supabase
+        .from('mouvements_stock')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_depot_source', depotIdCible);
+
+      const { count: countDest, error: errDest } = await supabase
+        .from('mouvements_stock')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_depot_destination', depotIdCible);
+
+      if (!errSrc && !errDest && ((countSource || 0) > 0 || (countDest || 0) > 0)) {
+        alert(`🚫 SUPPRESSION INTERDITE :\n\nLe dépôt "${depotNomCible}" a déjà enregistré au moins un mouvement de stock.\nIl est impossible de le supprimer pour préserver l'intégrité de l'historique.`);
+        setEnTrainDeSauvegarder(false);
+        return;
+      }
+
+      if (!confirm(`Voulez-vous vraiment supprimer définitivement le dépôt "${depotNomCible}" et ses emplacements ?`)) {
+        setEnTrainDeSauvegarder(false);
+        return;
+      }
+
       const { error: errEmp } = await supabase
         .from('emplacements_stock')
         .delete()
@@ -296,7 +308,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         localSync.ajouterFileAttente('DELETE', 'emplacements_stock', { id_depot: depotIdCible });
       }
 
-      // 2. Supprimer ensuite le dépôt de la base de données
       const { error: errDep } = await supabase
         .from('depots_stock')
         .delete()

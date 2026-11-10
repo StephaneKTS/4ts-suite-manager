@@ -924,7 +924,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="font-extrabold uppercase text-slate-900">MOUVEMENTS DE STOCK</span>
           {roleNom && (
@@ -933,38 +933,38 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </span>
           )}
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-        <button 
-          type="button" 
-          disabled={enTrainDeSauvegarder} 
-          onClick={() => { 
-            if (enTrainDeSauvegarder) return;
-            setModeAffichage('SAISIE'); 
-            setMouvementEnEditionId(null); 
-            setEtatInitialEdition(null);
-            setLignesPanier([]); 
-            setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: obtenirNomOperateurConnecte() })); 
-          }} 
-          className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
-        >
-          ✍️ {mouvementEnEditionId ? 'Modifier' : 'Nouveau mouvement'}
-        </button>
-        <button 
-          type="button" 
-          disabled={enTrainDeSauvegarder} 
-          onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
-          className={`py-1 px-2 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-white text-slate-800'}`}
-        >
-          📋 Liste mouvement ({documentsFiltresParDate.length})
-        </button>
+        <div className="flex items-center gap-1">
+          <button 
+            type="button" 
+            disabled={enTrainDeSauvegarder} 
+            onClick={() => { 
+              if (enTrainDeSauvegarder) return;
+              setModeAffichage('SAISIE'); 
+              setMouvementEnEditionId(null); 
+              setEtatInitialEdition(null);
+              setLignesPanier([]); 
+              setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: obtenirNomOperateurConnecte() })); 
+            }} 
+            className={`py-1 px-3 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-800'}`}
+          >
+            ✍️ {mouvementEnEditionId ? 'Modifier' : 'Créer'}
+          </button>
+          <button 
+            type="button" 
+            disabled={enTrainDeSauvegarder} 
+            onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
+            className={`py-1 px-3 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-800'}`}
+          >
+            📋 Liste ({documentsFiltresParDate.length})
+          </button>
+        </div>
       </div>
 
       {modeAffichage === 'SAISIE' && (
         <>
-          {/* BOUTON RETOUR VERS LA LISTE DES DOCUMENTS */}
-          <div className="flex items-center justify-start">
+          {/* LIGNE ALIGNÉE : MOUVEMENT & RETOUR À LA LISTE DES DOCUMENTS */}
+          <div className="grid grid-cols-2 gap-2 items-center">
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
@@ -978,31 +978,31 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 setEtatInitialEdition(null);
                 setLignesPanier([]);
               }}
-              className="bg-slate-800 hover:bg-slate-700 text-white font-black px-3 py-1.5 rounded-xl text-[10px] uppercase shadow-xs transition flex items-center gap-1.5 border border-slate-700"
+              className="bg-slate-800 hover:bg-slate-700 text-white font-black px-3 py-2 rounded-xl text-[10px] uppercase shadow-xs transition flex items-center justify-center gap-1.5 border border-slate-700 w-full truncate"
             >
-              <span>←</span> Retour à la liste des documents
+              <span>←</span> Retour à la liste
             </button>
-          </div>
 
-          <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
-            <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
-            <select 
-              disabled={enTeteVerrouille || !!mouvementEnEditionId} 
-              value={typeOperation} 
-              onChange={(e) => { 
-                if (mouvementEnEditionId) return;
-                const nt = e.target.value; 
-                setTypeOperation(nt); 
-                if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(nt), operateur: obtenirNomOperateurConnecte() })); 
-              }} 
-              className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]"
-            >
-              <option value="TRANSFERT">🔀 Transfert (TR)</option>
-              <option value="ENTREE">📥 Entrée (ME)</option>
-              <option value="SORTIE">📤 Sortie (MS)</option>
-              <option value="AVARIES">⚠️ Avaries (AV)</option>
-              <option value="INVENTAIRE">📊 Inventaire (INV)</option>
-            </select>
+            <div className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
+              <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
+              <select 
+                disabled={enTeteVerrouille || !!mouvementEnEditionId} 
+                value={typeOperation} 
+                onChange={(e) => { 
+                  if (mouvementEnEditionId) return;
+                  const nt = e.target.value; 
+                  setTypeOperation(nt); 
+                  if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(nt), operateur: obtenirNomOperateurConnecte() })); 
+                }} 
+                className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]"
+              >
+                <option value="TRANSFERT">🔀 Transfert (TR)</option>
+                <option value="ENTREE">📥 Entrée (ME)</option>
+                <option value="SORTIE">📤 Sortie (MS)</option>
+                <option value="AVARIES">⚠️ Avaries (AV)</option>
+                <option value="INVENTAIRE">📊 Inventaire (INV)</option>
+              </select>
+            </div>
           </div>
 
           <div className={`bg-white border-2 border-orange-500/50 p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>

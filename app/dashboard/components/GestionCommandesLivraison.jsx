@@ -61,7 +61,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const inputNumeroClientRef = useRef(null);
   const inputAdresseRef = useRef(null);
   const inputMontantRef = useRef(null);
-  const inputNumeroCmdRef = useRef(null); // 🎯 Référence pour cibler le champ N° CMD
+  const inputNumeroCmdRef = useRef(null);
 
   const [pointADepart, setPointADepart] = useState('');
   const [adresseLivraison, setAdresseLivraison] = useState('');
@@ -70,7 +70,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [zoneGrilleSelectionnee, setZoneGrilleSelectionnee] = useState('');
   const [fraisLivraisonSaisi, setFraisLivraisonSaisi] = useState('');
   const [livreurAssigne, setLivreurAssigne] = useState('');
-  const [statutCommandeSaisi, setStatutCommandeSaisi] = useState('LIVRÉ'); // 🎯 Par défaut sur "LIVRÉ"
+  const [statutCommandeSaisi, setStatutCommandeSaisi] = useState('LIVRÉ');
 
   const [modalPartenaireOuverte, setModalPartenaireOuverte] = useState(false);
   const [recherchePartenaireInput, setRecherchePartenaireInput] = useState('');
@@ -116,7 +116,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [modalFiltreLivreurOuverte, setModalFiltreLivreurOuverte] = useState(false);
   const [rechercheFiltreLivreurInput, setRechercheFiltreLivreurInput] = useState('');
 
-  // 🌍 Nouvel état pour le filtre par zone de livraison
   const [filtreZone, setFiltreZone] = useState('');
   const [modalFiltreZoneOuverte, setModalFiltreZoneOuverte] = useState(false);
   const [rechercheFiltreZoneInput, setRechercheFiltreZoneInput] = useState('');
@@ -372,7 +371,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   }, [entrepriseId, propEntrepriseId]);
 
-  // 🌍 Récupération dynamique de toutes les zones / adresses uniques enregistrées dans les commandes
   const listeZonesUniques = () => {
     const setZones = new Set();
     commandes.forEach(c => {
@@ -675,7 +673,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setDepotId('AUCUN_DEPOT');
     }
 
-    // 🎯 Positionnement automatique du curseur dans le champ N° CMD après sélection du partenaire
     setTimeout(() => {
       if (inputNumeroCmdRef.current) {
         inputNumeroCmdRef.current.focus();
@@ -767,10 +764,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     const idArt = artObj.id_article;
-    
-    // 🔍 VÉRIFICATION DU SUIVI DE STOCK
     const estSuivi = artObj.suivi_stock ?? artObj.Suivi_Stock ?? true;
-    let stockDisp = 999999; // Valeur par défaut infinie si non suivi
+    let stockDisp = 999999;
 
     if (estSuivi !== false && estSuivi !== 0) {
       stockDisp = await recupererStockReelRPC(idArt, livreurAssigne);
@@ -1281,7 +1276,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     if (filtreLivreur) {
       matchLivreur = (cmd.vendeur_livreur || '').trim().toUpperCase() === filtreLivreur.trim().toUpperCase();
     }
-    // 🌍 Filtrage par zone / adresse de livraison
     if (filtreZone) {
       const zoneCmd = (cmd.zone_effective_livraison || cmd.adresse_livraison || '').trim().toUpperCase();
       matchZone = zoneCmd === filtreZone.trim().toUpperCase() || zoneCmd.includes(filtreZone.trim().toUpperCase());
@@ -1661,23 +1655,24 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       `}</style>
 
-      <div className="bg-white px-2 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1 overflow-hidden">
+      {/* 🎯 ESPACEMENT AMÉLIORÉ ENTRE LES BOUTONS D'EN-TÊTE */}
+      <div className="bg-white px-2.5 py-2 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-2 overflow-hidden">
         <div className="flex items-center gap-1 min-w-0 shrink-0">
           <h3 className="font-extrabold text-slate-900 uppercase text-[9px] flex items-center gap-0.5 shrink-0">
             <span>📦</span> LIVRAISON
           </h3>
           {roleUtilisateur && (
-            <span className="text-[7px] bg-slate-100 text-slate-700 px-1 py-0.5 rounded-full font-bold border border-slate-200 truncate max-w-[70px]">
+            <span className="text-[7px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-bold border border-slate-200 truncate max-w-[70px]">
               {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
             </span>
           )}
         </div>
         
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => setVueActive('LISTE')}
-            className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
+            className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'LISTE' 
                 ? 'bg-slate-900 text-white border-slate-900' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
@@ -1703,12 +1698,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 setZoneGrilleSelectionnee('');
                 setFraisLivraisonSaisi('');
                 setLivreurAssigne('');
-                setStatutCommandeSaisi('LIVRÉ'); // 🎯 Réinitialisation par défaut sur "LIVRÉ"
+                setStatutCommandeSaisi('LIVRÉ');
                 setLignesSaisies([]);
                 setStocksArticlesCache({});
                 setVueActive('CREATION');
               }}
-              className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
+              className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
                 vueActive === 'CREATION' 
                   ? 'bg-orange-600 text-white border-orange-600' 
                   : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
@@ -1721,7 +1716,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           <button
             type="button"
             onClick={() => setVueActive('RAPPORT')}
-            className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
+            className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'RAPPORT' 
                 ? 'bg-blue-900 text-white border-blue-900' 
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
@@ -1733,7 +1728,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           <button
             type="button"
             onClick={() => setVueActive('CLOTURE')}
-            className={`font-bold px-1.5 py-0.5 rounded transition shadow-2xs text-[8px] border whitespace-nowrap ${
+            className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'CLOTURE' 
                 ? 'bg-emerald-900 text-white border-emerald-900' 
                 : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -1900,7 +1895,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             type="number"
                             value={totalVerseRecetteGlobal}
                             onChange={(e) => setTotalVerseRecetteGlobal(e.target.value)}
-                            placeholder="Versé..."
+                            placeholder=""
                             className="w-full bg-slate-50 border border-slate-300 rounded p-1 text-center font-mono text-[11px] font-black text-slate-900 focus:outline-none focus:border-slate-500"
                           />
                         </div>
@@ -1923,7 +1918,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             type="number"
                             value={totalVerseFraisLivraison}
                             onChange={(e) => setTotalVerseFraisLivraison(e.target.value)}
-                            placeholder="Versé..."
+                            placeholder=""
                             className="w-full bg-slate-50 border border-slate-300 rounded p-1 text-center font-mono text-[11px] font-black text-slate-900 focus:outline-none focus:border-slate-500"
                           />
                         </div>
@@ -2228,7 +2223,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs text-left flex justify-between items-center truncate"
                 >
                   <span className="truncate">
-                    {idPartenaire ? (partenaires.find(p => String(p.id) === String(idPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(idPartenaire))?.nom || '-- Choisir --') : '-- Choisir --'}
+                    {idPartenaire ? (partenaires.find(p => String(p.id) === String(idPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(idPartenaire))?.nom || '') : ''}
                   </span>
                   <span className="text-slate-400 shrink-0">🔍</span>
                 </button>
@@ -2241,12 +2236,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     CMD-
                   </span>
                   <input
-                    ref={inputNumeroCmdRef} // 🎯 Référence rattachée au champ N° CMD
+                    ref={inputNumeroCmdRef}
                     type="text"
                     value={numeroCommande}
                     onChange={(e) => setNumeroCommande(e.target.value.replace(/[^0-9]/g, ''))}
                     onFocus={(e) => e.target.select()}
-                    placeholder="1"
+                    placeholder=""
                     className="w-full p-1.5 font-mono text-[10px] font-black text-slate-900 bg-white focus:outline-none"
                   />
                 </div>
@@ -2259,7 +2254,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 value={depotId}
                 className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs cursor-not-allowed"
               >
-                <option value="AUCUN_DEPOT">-- Sélection automatique via le partenaire --</option>
+                <option value="AUCUN_DEPOT"></option>
                 {depots.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.nom_depot || d.nom || d.libelle}
@@ -2273,6 +2268,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
                   N° Client * <span className={`text-[8px] font-bold ${numeroClient.trim().length === 9 ? 'text-emerald-600' : 'text-rose-600'}`}>({numeroClient.trim().length}/9)</span>
                 </label>
+                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   ref={inputNumeroClientRef}
                   type="text"
@@ -2294,7 +2290,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     }
                   }}
                   onFocus={(e) => e.target.select()}
-                  placeholder="6XXXXXXXX..."
+                  placeholder=""
                   className={`w-full bg-white border rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs font-mono ${
                     numeroClient.trim().length === 9 ? 'border-emerald-500' : 'border-rose-300 focus:border-rose-500'
                   }`}
@@ -2303,6 +2299,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse *</label>
+                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   ref={inputAdresseRef}
                   type="text"
@@ -2311,7 +2308,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   value={adresseLivraison}
                   onChange={(e) => handleChangementAdresse(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  placeholder="Quartier..."
+                  placeholder=""
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
                 />
                 <datalist id="liste-zones-commandes">
@@ -2325,6 +2322,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
+                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   ref={inputMontantRef}
                   type="number"
@@ -2333,7 +2331,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   value={montantSaisi}
                   onChange={(e) => setMontantSaisi(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  placeholder="0"
+                  placeholder=""
                   className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
                 />
               </div>
@@ -2343,25 +2341,27 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Départ) *</label>
+                  {/* 🎯 PLACEHOLDER RETIRÉ */}
                   <input
                     type="text"
                     required
                     value={pointADepart}
                     onChange={(e) => setPointADepart(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    placeholder="Ex: Hippodrome..."
+                    placeholder=""
                     className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
                   />
                 </div>
 
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature colis</label>
+                  {/* 🎯 PLACEHOLDER RETIRÉ */}
                   <input
                     type="text"
                     value={natureColis}
                     onChange={(e) => setNatureColis(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    placeholder="Colis fragile..."
+                    placeholder=""
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
                   />
                 </div>
@@ -2379,13 +2379,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
+                {/* 🎯 PLACEHOLDER RETIRÉ */}
                 <input
                   type="number"
                   step="0.01"
                   value={fraisLivraisonSaisi}
                   onChange={(e) => setFraisLivraisonSaisi(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  placeholder="0"
+                  placeholder=""
                   className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs"
                 />
               </div>
@@ -2397,7 +2398,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   onClick={() => { setRechercheLivreurInput(''); setModalLivreurOuverte(true); }}
                   className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase text-left flex justify-between items-center truncate"
                 >
-                  <span className="truncate">{livreurAssigne || '-- Choisir --'}</span>
+                  <span className="truncate">{livreurAssigne || ''}</span>
                   <span className="text-slate-400 shrink-0">🔍</span>
                 </button>
               </div>
@@ -2641,7 +2642,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     type="text"
                     value={recherchePartenaireInput}
                     onChange={(e) => setRecherchePartenaireInput(e.target.value)}
-                    placeholder="RECHERCHER..."
+                    placeholder=""
                     autoFocus
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
@@ -2674,7 +2675,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     type="text"
                     value={rechercheLivreurInput}
                     onChange={(e) => setRechercheLivreurInput(e.target.value)}
-                    placeholder="RECHERCHER..."
+                    placeholder=""
                     autoFocus
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
@@ -2710,7 +2711,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     type="text"
                     value={rechercheArticleInput}
                     onChange={(e) => setRechercheArticleInput(e.target.value)}
-                    placeholder="RECHERCHER..."
+                    placeholder=""
                     autoFocus
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
@@ -2816,7 +2817,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   </button>
                 </div>
 
-                {/* 🌍 Nouveau champ de filtre par zone de livraison */}
                 <div>
                   <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Zone / Quartier</label>
                   <button
@@ -3114,7 +3114,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <h4 className="font-black text-slate-900 uppercase text-xs">PARTENAIRE</h4>
               <button type="button" onClick={() => setModalFiltrePartenaireOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
-            <input type="text" value={rechercheFiltrePartenaireInput} onChange={(e) => setRechercheFiltrePartenaireInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="text" value={rechercheFiltrePartenaireInput} onChange={(e) => setRechercheFiltrePartenaireInput(e.target.value)} placeholder="" autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
               <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
               {filtrePartenairesFiltres.map(p => (
@@ -3132,7 +3132,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR</h4>
               <button type="button" onClick={() => setModalFiltreLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
-            <input type="text" value={rechercheFiltreLivreurInput} onChange={(e) => setRechercheFiltreLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="text" value={rechercheFiltreLivreurInput} onChange={(e) => setRechercheFiltreLivreurInput(e.target.value)} placeholder="" autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
               <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
               {filtreLivreursFiltres.map((nom, idx) => (
@@ -3143,7 +3143,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         </div>
       )}
 
-      {/* 🌍 Modale de sélection de la zone pour le filtre */}
       {modalFiltreZoneOuverte && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -3151,7 +3150,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <h4 className="font-black text-slate-900 uppercase text-xs">ZONE / QUARTIER DE LIVRAISON</h4>
               <button type="button" onClick={() => setModalFiltreZoneOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
-            <input type="text" value={rechercheFiltreZoneInput} onChange={(e) => setRechercheFiltreZoneInput(e.target.value)} placeholder="RECHERCHER UNE ZONE..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="text" value={rechercheFiltreZoneInput} onChange={(e) => setRechercheFiltreZoneInput(e.target.value)} placeholder="" autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
               <div onClick={() => { setFiltreZone(''); setModalFiltreZoneOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Toutes les zones --</div>
               {zonesFiltresFiltrees.map((zone, idx) => (
@@ -3169,7 +3168,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR (RAPPORT)</h4>
               <button type="button" onClick={() => setModalRapportLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
-            <input type="text" value={rechercheRapportLivreurInput} onChange={(e) => setRechercheRapportLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="text" value={rechercheRapportLivreurInput} onChange={(e) => setRechercheRapportLivreurInput(e.target.value)} placeholder="" autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
               <div onClick={() => { setRapportLivreur(''); setModalRapportLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Tous --</div>
               {rapportLivreursFiltres.map((nom, idx) => (
@@ -3187,7 +3186,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <h4 className="font-black text-slate-900 uppercase text-xs">PARTENAIRE (RAPPORT)</h4>
               <button type="button" onClick={() => setModalRapportPartenaireOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
-            <input type="text" value={rechercheRapportPartenaireInput} onChange={(e) => setRechercheRapportPartenaireInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="text" value={rechercheRapportPartenaireInput} onChange={(e) => setRechercheRapportPartenaireInput(e.target.value)} placeholder="" autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
               <div onClick={() => { setRapportPartenaire(''); setModalRapportPartenaireOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Tous --</div>
               {rapportPartenairesFiltres.map(p => (
@@ -3205,7 +3204,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <h4 className="font-black text-slate-900 uppercase text-xs">LIVREUR (CLÔTURE)</h4>
               <button type="button" onClick={() => setModalClotureLivreurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100">✕</button>
             </div>
-            <input type="text" value={rechercheClotureLivreurInput} onChange={(e) => setRechercheClotureLivreurInput(e.target.value)} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+            <input type="text" value={rechercheClotureLivreurInput} onChange={(e) => setRechercheClotureLivreurInput(e.target.value)} placeholder="" autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
               <div onClick={() => { setClotureLivreur(''); setModalClotureLivreurOuverte(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer font-bold text-slate-500 text-xs text-center">-- Tous les livreurs --</div>
               {clotureLivreursFiltres.map((nom, idx) => (
