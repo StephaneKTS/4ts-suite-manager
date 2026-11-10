@@ -386,8 +386,8 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* 2. ZONE CENTRALE (DÉFILEMENT INDÉPENDANT) */}
-      <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 overflow-y-auto w-full max-w-7xl mx-auto">
+      {/* 2. ZONE CENTRALE STABILISÉE (DÉFILEMENT INDÉPENDANT) */}
+      <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 overflow-y-auto w-full max-w-7xl mx-auto flex flex-col min-h-0">
         {ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
@@ -439,12 +439,12 @@ function DashboardContent() {
                 </button>
               </div>
             )}
-            <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full`}>
+            <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
               <MonProfil entrepriseId={entrepriseId} isDarkMode={isDarkMode} />
             </div>
           </div>
         ) : moduleActif === 'souscription' || moduleActif === 'super_admin_panel' ? (
-          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full`}>
+          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && !estModeLivraison ? (
@@ -612,7 +612,7 @@ function DashboardContent() {
             </div>
           </div>
         ) : (
-          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full`}>
+          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
             {rendreModuleActif()}
           </div>
         )}

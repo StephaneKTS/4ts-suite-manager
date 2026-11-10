@@ -496,7 +496,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const empObj = emplacements.find(e => String(e.id) === String(emplacementSourceId));
       if (empObj) {
         const empPartenaire = String(empObj.partenaire || empObj.id_partenaire || '').trim().toUpperCase();
-        // Si l'emplacement et l'article ont tous les deux un partenaire défini mais qu'ils diffèrent, on masque
         if (empPartenaire && artPartenaire && empPartenaire !== artPartenaire) {
           return false;
         }
@@ -957,6 +956,27 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
       {modeAffichage === 'SAISIE' && (
         <>
+          {/* BOUTON RETOUR VERS LA LISTE DES DOCUMENTS */}
+          <div className="flex items-center justify-start">
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => {
+                if (enTrainDeSauvegarder) return;
+                if (lignesPanier.length > 0 && !confirm('Voulez-vous quitter sans enregistrer ? Vos articles non validés seront ignorés.')) {
+                  return;
+                }
+                setModeAffichage('LISTE_DOCS');
+                setMouvementEnEditionId(null);
+                setEtatInitialEdition(null);
+                setLignesPanier([]);
+              }}
+              className="bg-slate-800 hover:bg-slate-700 text-white font-black px-3 py-1.5 rounded-xl text-[10px] uppercase shadow-xs transition flex items-center gap-1.5 border border-slate-700"
+            >
+              <span>←</span> Retour à la liste des documents
+            </button>
+          </div>
+
           <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
             <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
             <select 
