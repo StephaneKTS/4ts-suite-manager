@@ -163,6 +163,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
+  // 🛡️ Générateur de l'identifiant unique sécurisé en arrière-plan (anti-concurrence)
   const genererNumeroDocSecurise = (type) => {
     const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
     const prefix = prefixes[type] || 'TR';
@@ -702,7 +703,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           id_emplacement_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_emplacement_destination || null) : null,
           id_article: parseInt(ligne.id_article),
           quantite: ligne.quantite,
-          motif_remarque: enTeteDoc.numeroDoc,
+          motif_remarque: enTeteDoc.numeroDoc, // ID technique sécurisé conservé en arrière-plan
           reference: referenceSaisie,
           operateur: operateurActuel,
           created_at: dateMvtIso,
@@ -755,7 +756,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       ? String(premier.operateur).trim().toUpperCase() 
       : obtenirNomOperateurConnecte();
 
-    // 🛡️ Récupération de la référence directement depuis la base de données (partagée pour tous)
     const refEnregistree = premier.reference || premier.motif || '';
 
     const nouvelEnTete = { 
@@ -796,57 +796,65 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return enTeteModifie || typeModifie || lignesModifiees;
   }, [mouvementEnEditionId, etatInitialEdition, enTeteDoc, typeOperation, lignesPanier]);
 
-  const formaterNumeroDocAffichage = (motifBrut) => {
-    if (!motifBrut) return 'SANS-REF';
-    const matchTicket = motifBrut.match(/(C\d+-\d+)/i);
-    if (matchTicket) return matchTicket[1];
-    const matchCmd = motifBrut.match(/(CMD-\d+)/i);
-    if (matchCmd) return matchCmd[1];
-    const matchType = motifBrut.match(/([A-Z]+-\d+-[0-9]+)/i);
-    if (matchType) return matchType[1];
-    return motifBrut;
-  };
+  // 🛡️ FORMATION DE LA LISTE AVEC NUMÉROTATION SÉQUENTIELLE PROPRE (MS-01, MS-02, TR-01...)
+  const documentsGroupes = useMemo(() => {
+    const documentsBruts = Object.values(
+      mouvements
+        .filter((mvt) => {
+          const motif = (mvt.motif_remarque || '').trim().toUpperCase();
+          return !motif.includes('CMD-') && !motif.includes('LIVRAISON') && !motif.includes('RESTITUTION');
+        })
+        .reduce((acc, mvt) => {
+          const numDocBrut = mvt.motif_remarque || 'SANS-REF';
+          
+          if (!acc[numDocBrut]) { 
+            const operateurEnBase = mvt.operateur;
+            const operateurAffiche = (operateurEnBase && String(operateurEnBase).trim() !== '' && String(operateurEnBase).trim().toLowerCase() !== 'utilisateur' && String(operateurEnBase).trim() !== 'Utilisateur Inconnu') 
+              ? String(operateurEnBase).trim().toUpperCase() 
+              : obtenirNomOperateurConnecte();
 
-  const documentsGroupes = Object.values(
-    mouvements
-      .filter((mvt) => {
-        const motif = (mvt.motif_remarque || '').trim().toUpperCase();
-        return !motif.includes('CMD-') && !motif.includes('LIVRAISON') && !motif.includes('RESTITUTION');
-      })
-      .reduce((acc, mvt) => {
-        const numDocBrut = mvt.motif_remarque || 'SANS-REF';
-        const numDocCle = formaterNumeroDocAffichage(numDocBrut);
-        
-        if (!acc[numDocCle]) { 
-          const operateurEnBase = mvt.operateur;
-          const operateurAffiche = (operateurEnBase && String(operateurEnBase).trim() !== '' && String(operateurEnBase).trim().toLowerCase() !== 'utilisateur' && String(operateurEnBase).trim() !== 'Utilisateur Inconnu') 
-            ? String(operateurEnBase).trim().toUpperCase() 
-            : obtenirNomOperateurConnecte();
+            const refDocAssociee = mvt.reference || '';
 
-          // 🛡️ Récupération globale de la référence enregistrée en base pour l'affichage de la liste
-          const refDocAssociee = mvt.reference || '';
+            acc[numDocBrut] = { 
+              numeroDocBrut: numDocBrut, // ID technique masqué conservé pour les actions (modification/suppression)
+              referenceDoc: refDocAssociee,
+              date: mvt.created_at || '', 
+              type: (mvt.type_mouvement || 'TRANSFERT').toUpperCase(), 
+              depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
+              depotDestNom: obtenirNomDestinationParMvt(mvt),
+              operateur: operateurAffiche, 
+              lignesCount: 0 
+            }; 
+          }
+          if (!acc[numDocBrut].referenceDoc && mvt.reference) {
+            acc[numDocBrut].referenceDoc = mvt.reference;
+          }
+          acc[numDocBrut].lignesCount += 1;
+          return acc;
+        }, {})
+    );
 
-          acc[numDocCle] = { 
-            numeroDoc: numDocCle, 
-            numeroDocBrut: numDocBrut, 
-            referenceDoc: refDocAssociee,
-            date: mvt.created_at || '', 
-            type: mvt.type_mouvement || '', 
-            depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
-            depotDestNom: obtenirNomDestinationParMvt(mvt),
-            operateur: operateurAffiche, 
-            lignesCount: 0 
-          }; 
-        }
-        // S'assure de récupérer la référence même si elle est portée par une autre ligne du même groupe
-        if (!acc[numDocCle].referenceDoc && mvt.reference) {
-          acc[numDocCle].referenceDoc = mvt.reference;
-        }
+    // Tri chronologique croissant par date pour attribuer les numéros séquentiels dans l'ordre
+    documentsBruts.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-        acc[numDocCle].lignesCount += 1;
-        return acc;
-      }, {})
-  );
+    const compteursParType = {};
+    return documentsBruts.map((doc) => {
+      const typeMvt = doc.type;
+      const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+      const prefix = prefixes[typeMvt] || 'TR';
+
+      if (!compteursParType[prefix]) {
+        compteursParType[prefix] = 0;
+      }
+      compteursParType[prefix] += 1;
+      const numeroSequentiel = `${prefix}-${String(compteursParType[prefix]).padStart(2, '0')}`;
+
+      return {
+        ...doc,
+        numeroDoc: numeroSequentiel // Affichage visuel propre (MS-01, MS-02...)
+      };
+    });
+  }, [mouvements, depots, emplacements]);
 
   const documentsFiltresParDate = documentsGroupes.filter((doc) => {
     if (!doc.date) return true;
