@@ -428,17 +428,13 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
             </div>
           </div>
 
-          {/* MENU DES BOUTONS D'ACTION (Bouton Mon QR Code) */}
+          {/* MENU DES BOUTONS D'ACTION (Couleur unique: Remplissage rouge, écriture blanche) */}
           {estAdminEntreprise ? (
             <div className="grid grid-cols-4 gap-1">
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'reabonnement' ? null : 'reabonnement')}
-                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
-                  modeAction === 'reabonnement' 
-                    ? 'bg-orange-700 text-white border-orange-400' 
-                    : 'bg-cyan-700 hover:bg-cyan-600 text-white border-cyan-500'
-                }`}
+                className="w-full bg-red-600 hover:bg-red-500 text-white border-red-500 font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border"
               >
                 <span className="text-xs">🔄</span>
                 <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Réabonnement'}</span>
@@ -447,11 +443,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
-                  modeAction === 'switcher_module' 
-                    ? 'bg-orange-700 text-white border-orange-400' 
-                    : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
-                }`}
+                className="w-full bg-red-600 hover:bg-red-500 text-white border-red-500 font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border"
               >
                 <span className="text-xs">⚡</span>
                 <span className="text-center w-full">{modeAction === 'switcher_module' ? 'Fermer' : 'Modules'}</span>
@@ -460,11 +452,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'nouveau_module' ? null : 'nouveau_module')}
-                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
-                  modeAction === 'nouveau_module' 
-                    ? 'bg-orange-700 text-white border-orange-400' 
-                    : 'bg-emerald-700 hover:bg-emerald-600 text-white border-emerald-500'
-                }`}
+                className="w-full bg-red-600 hover:bg-red-500 text-white border-red-500 font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border"
               >
                 <span className="text-xs">➕</span>
                 <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Ajouter'}</span>
@@ -473,11 +461,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'generateur_qr' ? null : 'generateur_qr')}
-                className={`w-full font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border ${
-                  modeAction === 'generateur_qr' 
-                    ? 'bg-orange-700 text-white border-orange-400' 
-                    : 'bg-amber-700 hover:bg-amber-600 text-white border-amber-500'
-                }`}
+                className="w-full bg-red-600 hover:bg-red-500 text-white border-red-500 font-black py-1.5 px-1 rounded-xl shadow transition uppercase text-[7.5px] leading-tight flex flex-col items-center justify-center gap-0.5 border"
               >
                 <span className="text-xs">📱</span>
                 <span className="text-center w-full">{modeAction === 'generateur_qr' ? 'Fermer' : 'Mon QR Code'}</span>
@@ -488,11 +472,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-                className={`w-full font-black py-2.5 px-2 rounded-xl shadow transition uppercase text-[9px] flex items-center justify-center gap-1 border ${
-                  modeAction === 'switcher_module' 
-                    ? 'bg-orange-700 text-white border-orange-400' 
-                    : 'bg-indigo-700 hover:bg-indigo-600 text-white border-indigo-500'
-                }`}
+                className="w-full bg-red-600 hover:bg-red-500 text-white border-red-500 font-black py-2.5 px-2 rounded-xl shadow transition uppercase text-[9px] flex items-center justify-center gap-1 border"
               >
                 <span>⚡</span>
                 <span>{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
@@ -501,11 +481,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'generateur_qr' ? null : 'generateur_qr')}
-                className={`w-full font-black py-2.5 px-2 rounded-xl shadow transition uppercase text-[9px] flex items-center justify-center gap-1 border ${
-                  modeAction === 'generateur_qr' 
-                    ? 'bg-orange-700 text-white border-orange-400' 
-                    : 'bg-amber-700 hover:bg-amber-600 text-white border-amber-500'
-                }`}
+                className="w-full bg-red-600 hover:bg-red-500 text-white border-red-500 font-black py-2.5 px-2 rounded-xl shadow transition uppercase text-[9px] flex items-center justify-center gap-1 border"
               >
                 <span>📱</span>
                 <span>{modeAction === 'generateur_qr' ? 'Fermer' : 'Mon QR Code'}</span>
