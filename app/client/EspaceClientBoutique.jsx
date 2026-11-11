@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import MenuExplorer from '@/app/dashboard/components/MenuExplorer'; // ✅ Chemin corrigé vers le dossier dashboard/components
+import MenuExplorer from '../dashboard/components/MenuExplorer'; // ✅ Chemin relatif corrigé
 
 export default function EspaceClientBoutique() {
   const searchParams = useSearchParams();
