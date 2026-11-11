@@ -12,34 +12,116 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [modalChatbotOuvert, setModalChatbotOuvert] = useState(false);
   const [estEnPause, setEstEnPause] = useState(false);
 
-  // --- ÉTATS POUR LE CHATBOT (SONDAGE, DIVERTISSEMENT, SUPPORT & ASTUCES) ---
+  // --- ÉTATS POUR LE CHATBOT (SONDAGE, DIVERTISSEMENT, SUPPORT & 10 CATÉGORIES D'ASTUCES) ---
   const [modeChat, setModeChat] = useState('ACCUEIL'); 
   const [etapeSondage, setEtapeSondage] = useState(0);
   const [resultatsSondage, setResultatsSondage] = useState({});
   const [etapeDivertissement, setEtapeDivertissement] = useState(0);
   const [resultatsDivertissement, setResultatsDivertissement] = useState({});
 
-  // Base complète des astuces structurées par catégorie
+  // 10 catégories riches avec 30 astuces et conseils au total
   const categoriesAstuces = {
-    santé: {
-      titre: '🩺 Astuces Santé & Bien-être',
+    voyage: {
+      titre: '✈️ Voyage & Aventures',
       liste: [
-        { titre: '1. Entretien des cheveux au naturel', texte: 'Lavez vos cheveux avec de l’eau tiède (pas trop chaude), faites des bains d’huile végétale (coco, ricin ou karité) une fois par semaine et évitez les coiffures trop serrées qui cassent la fibre capillaire.' },
-        { titre: '2. Hygiène dentaire irréprochable', texte: 'Brossez vos dents pendant au moins 2 minutes après chaque repas, utilisez du fil dentaire chaque soir pour éliminer la plaque entre les dents et renouvelez votre brosse à dents tous les 3 mois.' },
-        { titre: '3. Activités sportives quotidiennes', texte: 'Pratiquez au moins 30 minutes de marche rapide par jour, faites du cardio 2 fois par semaine (course, corde à sauter) et intégrez des exercices de gainage pour renforcer votre dos.' }
+        { titre: '1. Rouler ses vêtements', texte: 'Roulez vos vêtements au lieu de les plier : cela gagne un espace considérable dans la valise et évite les faux plis.' },
+        { titre: '2. Copies de documents', texte: 'Gardez toujours des copies numériques de vos pièces d’identité et passeport dans votre boîte mail ou sur le cloud.' },
+        { titre: '3. Trousse de premiers secours', texte: 'Emportez toujours une mini-trousse avec des antalgiques, des pansements et des désinfectants pour parer aux petits bobos.' },
+        { titre: '4. Adaptateur universel', texte: 'Investissez dans un adaptateur de prise universel pour ne jamais être bloqué lors de vos déplacements internationaux.' },
+        { titre: '5. Hydratation en vol', texte: 'Buvez beaucoup d’eau pendant les long-courriers pour contrer l’air sec de la cabine et éviter la fatigue excessive.' }
+      ]
+    },
+    sante: {
+      titre: '🩺 Santé & Bien-être',
+      liste: [
+        { titre: '1. Sommeil régulier', texte: 'Couchez-vous et levez-vous à des heures fixes pour stabiliser votre horloge biologique et booster votre système immunitaire.' },
+        { titre: '2. Hydratation quotidienne', texte: 'Consommez au moins 1,5 à 2 litres d’eau par jour pour purifier votre organisme et maintenir votre énergie.' },
+        { titre: '3. Marche active', texte: 'Marchez au moins 30 minutes par jour pour stimuler votre circulation sanguine et réduire le stress.' },
+        { titre: '4. Gestion du stress', texte: 'Pratiquez des exercices de respiration profonde (cohérence cardiaque) dès que la pression monte.' },
+        { titre: '5. Posture au travail', texte: 'Ajustez la hauteur de votre écran à la hauteur de vos yeux pour éviter les tensions cervicales et dorsales.' }
+      ]
+    },
+    beaute: {
+      titre: '💄 Beauté & Soins',
+      liste: [
+        { titre: '1. Hydratation cutanée', texte: 'Appliquez votre crème hydratante juste après la douche sur une peau légèrement humide pour emprisonner l’humidité.' },
+        { titre: '2. Bains d’huile capillaire', texte: 'Nourrissez vos cheveux avec des bains d’huile végétale (ricin, coco ou karité) une fois par semaine pour renforcer la fibre.' },
+        { titre: '3. Démaquillage systématique', texte: 'Ne vous couchez jamais sans vous être démaquillé(e) pour laisser la peau respirer et éviter les imperfections.' },
+        { titre: '4. Protection solaire', texte: 'Protégez votre peau des UV même par temps couvert pour prévenir le vieillissement prématuré.' },
+        { titre: '5. Gommage doux', texte: 'Faites un gommage exfoliant doux une fois par semaine pour éliminer les cellules mortes et raviver l’éclat.' }
+      ]
+    },
+    entretien: {
+      titre: '🧹 Entretien & Maison',
+      liste: [
+        { titre: '1. Vinaigre blanc magique', texte: 'Utilisez du vinaigre blanc chaud pour détartrer robinets, bouilloires et surfaces vitrées de manière écologique.' },
+        { titre: '2. Bicarbonate de soude', texte: 'Neutralisez les mauvaises odeurs du réfrigérateur ou des tapis en y saupoudrant un peu de bicarbonate.' },
+        { titre: '3. Dépoussiérage méthodique', texte: 'Commencez toujours par nettoyer les surfaces en hauteur (étagères) avant de balayer ou aspirer le sol.' },
+        { titre: '4. Entretien des canalisations', texte: 'Versez de l’eau bouillante mélangée à du bicarbonate et du vinaigre dans vos éviers une fois par mois pour éviter les bouchons.' },
+        { titre: '5. Aération quotidienne', texte: 'Ouvrez vos fenêtres en grand pendant 10 minutes chaque matin pour renouveler l’air intérieur.' }
       ]
     },
     entrepreneuriat: {
-      titre: '💼 Astuces Entrepreneuriat & Business',
+      titre: '💼 Entrepreneuriat & Business',
       liste: [
-        { titre: '1. Valider son idée de projet avant de lancer', texte: 'Parlez de votre idée à de futurs clients potentiels, analysez la concurrence et testez un prototype miniature (MVP) pour valider qu’il y a un vrai besoin solvable sur le marché.' },
-        { titre: '2. Gérer sa trésorerie d’une main de fer', texte: 'Séparez toujours vos comptes personnels et professionnels. Ne confondez jamais le chiffre d’affaires encaissé avec le bénéfice net disponible.' }
+        { titre: '1. Valider son MVP', texte: 'Testez toujours un prototype miniature ou une offre pilote auprès de vrais clients avant d’investir massivement.' },
+        { titre: '2. Séparer les comptes', texte: 'Ne mélangez jamais vos finances personnelles et professionnelles pour garder une visibilité nette sur votre trésorerie.' },
+        { titre: '3. Focus sur le client', texte: 'Résolvez un vrai problème douloureux pour vos clients ; c’est la clé numéro un de la pérennité commerciale.' },
+        { titre: '4. Discipline et régularité', texte: 'La régularité dans l’effort et le marketing surpasse toujours les coups d’éclat isolés.' },
+        { titre: '5. Réseautage actif', texte: 'Entourez-vous d’entrepreneurs inspirants et participez à des événements sectoriels pour élargir vos opportunités.' }
+      ]
+    },
+    cuisine: {
+      titre: '🍲 Cuisine & Gastronomie',
+      liste: [
+        { titre: '1. Mise en place', texte: 'Préparez et découpez tous vos ingrédients avant de commencer la cuisson pour cuisiner sereinement.' },
+        { titre: '2. Assaisonnement progressif', texte: 'Salez et poivrez vos plats par petites touches en goûtant régulièrement plutôt qu’en fin de cuisson.' },
+        { titre: '3. Conservation des herbes', texte: 'Enveloppez vos herbes fraîches dans un torchon légèrement humide pour les garder vertes plus longtemps.' },
+        { titre: '4. Maîtrise des épices', texte: 'Faites revenir vos épices sèches quelques secondes dans l’huile chaude pour libérer tous leurs arômes.' },
+        { titre: '5. Utilisation des restes', texte: 'Transformez vos restes de légumes en soupes savoureuses ou gratins gourmands pour éviter le gaspillage.' }
+      ]
+    },
+    finances: {
+      titre: '💰 Finances & Épargne',
+      liste: [
+        { titre: '1. Règle du 50/30/20', texte: 'Allouez 50% de vos revenus aux besoins essentiels, 30% aux envies et 20% à l’épargne ou investissement.' },
+        { titre: '2. Épargne de précaution', texte: 'Constituez-vous une réserve équivalente à 3 ou 6 mois de dépenses pour faire face aux imprévus.' },
+        { titre: '3. Suivi rigoureux des dépenses', texte: 'Notez chaque centime dépensé pendant un mois pour identifier et éliminer les fuites budgétaires superflues.' },
+        { titre: '4. Éviter l’impulsion', texte: 'Attendez 48 heures avant de valider tout achat important non planifié.' },
+        { titre: '5. Investir en soi', texte: 'Consacrez une partie de votre budget à l’apprentissage de nouvelles compétences à forte valeur ajoutée.' }
+      ]
+    },
+    technologie: {
+      titre: '💻 Technologie & Numérique',
+      liste: [
+        { titre: '1. Mises à jour régulières', texte: 'Installez toujours les derniers correctifs de sécurité sur vos téléphones et ordinateurs pour contrer les failles.' },
+        { titre: '2. Sauvegardes cloud', texte: 'Automatisez la sauvegarde de vos fichiers importants sur le cloud ou un disque dur externe.' },
+        { titre: '3. Mots de passe robustes', texte: 'Utilisez des mots de passe uniques combinant majuscules, chiffres et caractères spéciaux pour chaque compte.' },
+        { titre: '4. Nettoyage du cache', texte: 'Videz régulièrement le cache de vos appareils pour libérer de l’espace et optimiser la vitesse d’exécution.' },
+        { titre: '5. Double authentification (2FA)', texte: 'Activez la double authentification sur vos boîtes mail et réseaux sociaux pour une sécurité maximale.' }
+      ]
+    },
+    sport: {
+      titre: '⚽ Sport & Fitness',
+      liste: [
+        { titre: '1. Échauffement obligatoire', texte: 'Prenez 10 minutes pour mobiliser vos articulations avant chaque séance afin d’éviter les blessures.' },
+        { titre: '2. Récupération et étirements', texte: 'Étirez vos muscles en fin de séance pour favoriser l’élimination des toxines et réduire les courbatures.' },
+        { titre: '3. Régularité avant l’intensité', texte: 'Mieux vaut 3 séances modérées par semaine qu’un seul entraînement exténuant par mois.' },
+        { titre: '4. Écouter son corps', texte: 'Sachez lever le pied en cas de douleur inhabituelle pour laisser le temps aux fibres musculaires de guérir.' },
+        { titre: '5. Sommeil et reconstruction', texte: 'Le muscle se construit pendant le repos : veillez à bien dormir après un effort intense.' }
+      ]
+    },
+    productivite: {
+      titre: '⚡ Productivité & Organisation',
+      liste: [
+        { titre: '1. La méthode des 3 priorités', texte: 'Listez chaque matin les 3 tâches capitales à accomplir absolument dans la journée.' },
+        { titre: '2. La technique Pomodoro', texte: 'Travaillez concentré pendant 25 minutes, puis accordez-vous 5 minutes de pause pour maintenir un focus maximal.' },
+        { titre: '3. Traiter les e-mails par lots', texte: 'Consacrez des créneaux précis dans la journée pour consulter vos messages au lieu de les garder ouverts en continu.' },
+        { titre: '4. Éliminer les distractions', texte: 'Mettez votre téléphone en mode silencieux et éloignez les notifications pendant vos sessions de travail intense.' },
+        { titre: '5. Bilan du soir', texte: 'Prenez 5 minutes le soir pour planifier la journée du lendemain et vider votre esprit.' }
       ]
     }
   };
-
-  const [categorieSelectionnee, setCategorieSelectionnee] = useState(null);
-  const [astuceActive, setAstuceActive] = useState(null);
 
   const [messagesChat, setMessagesChat] = useState([
     { expediteur: 'bot', texte: '👋 Bienvenue sur l’assistant interactif 4TS Suite Manager ! Comment puis-je vous guider aujourd’hui ?' }
@@ -68,6 +150,13 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     }
   }, [messagesChat, modalChatbotOuvert]);
 
+  const retournerAccueilChat = () => {
+    setModeChat('ACCUEIL');
+    setMessagesChat([
+      { expediteur: 'bot', texte: '👋 Bienvenue de retour au menu principal ! Que souhaitez-vous faire ?' }
+    ]);
+  };
+
   const lancerModeSondage = () => {
     setModeChat('SONDAGE');
     setEtapeSondage(0);
@@ -92,12 +181,11 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
   const lancerModeAstuces = () => {
     setModeChat('ASTUCES');
-    setCategorieSelectionnee(null);
-    setAstuceActive(null);
+    const listeNomsCategories = Object.keys(categoriesAstuces).map((cle) => categoriesAstuces[cle].titre);
     setMessagesChat((prev) => [
       ...prev,
       { expediteur: 'client', texte: '💡 Découvrir les Astuces & Conseils' },
-      { expediteur: 'bot', texte: '💡 **Bienvenue dans notre espace Astuces & Conseils !** Choisissez une catégorie :' }
+      { expediteur: 'bot', texte: '💡 **Bienvenue dans notre espace Astuces & Conseils riches et variés !** Choisissez une catégorie ci-dessous :', options: listeNomsCategories }
     ]);
   };
 
@@ -149,6 +237,11 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
           setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: '🌟 **Génial !** Quiz terminé avec succès.' }]);
         }, 600);
       }
+    } else if (modeChat === 'ASTUCES') {
+      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: texteSaisi }]);
+      setTimeout(() => {
+        setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: `💡 Astuce enregistrée. Choisissez une catégorie ou retournez au menu principal.` }]);
+      }, 500);
     } else {
       setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: texteSaisi }]);
       setTimeout(() => {
@@ -197,6 +290,22 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
           setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: '🌟 **Génial !** Quiz terminé.' }]);
         }, 600);
       }
+    } else if (modeChat === 'ASTUCES') {
+      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: option }]);
+      
+      const cleTrouvee = Object.keys(categoriesAstuces).find(
+        (cle) => categoriesAstuces[cle].titre.toLowerCase() === option.toLowerCase()
+      );
+
+      setTimeout(() => {
+        if (cleTrouvee) {
+          const cat = categoriesAstuces[cleTrouvee];
+          let texteAstuces = `✨ **${cat.titre}** :\n\n` + cat.liste.map(a => `📌 **${a.titre}**\n${a.texte}`).join('\n\n');
+          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: texteAstuces }]);
+        } else {
+          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: `Voici d'excellents conseils sélectionnés pour vous !` }]);
+        }
+      }, 600);
     }
   };
 
@@ -246,7 +355,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     setModalAdminReseauxOuvert(false);
   };
 
-  // --- FORMULAIRE DE CRÉATION D'ANNONCE (LIENS, VISUEL & TARIF REDUCTIONS) ---
+  // --- FORMULAIRE DE CRÉATION D'ANNONCE ---
   const [titreAnnonce, setTitreAnnonce] = useState('');
   const [descAnnonce, setDescAnnonce] = useState('');
   const [whatsappAnnonce, setWhatsappAnnonce] = useState('');
@@ -266,9 +375,9 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     let reduction = 0;
 
     if (jours >= 30) {
-      reduction = 0.10; // 10% pour 1 mois
+      reduction = 0.10; 
     } else if (jours >= 7) {
-      reduction = 0.05; // 5% pour 1 semaine
+      reduction = 0.05; 
     }
 
     const totalFinal = Math.round(totalBrut * (1 - reduction));
@@ -476,13 +585,13 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* ================= 2. SECTION 4TS ACADEMY ================= */}
+      {/* ================= 2. SECTION CENTRE DE FORMATION - GUIDE DES MODULES ================= */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <div className="flex items-center gap-2">
             <span className="text-lg">🎓</span>
             <div>
-              <h3 className="font-black text-slate-900 uppercase text-xs">4TS Academy — Vidéos & Réseaux Sociaux</h3>
+              <h3 className="font-black text-slate-900 uppercase text-xs">CENTRE DE FORMATION - GUIDE DES MODULES</h3>
               <p className="text-[9px] text-slate-500 font-bold">Accédez à nos plateformes officielles.</p>
             </div>
           </div>
@@ -522,12 +631,12 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* ================= 3. CENTRE DE FORMATION & GUIDE DES 4 MODULES ================= */}
+      {/* ================= 3. SECTION DÉCOUVREZ NOS MODULES ================= */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <div className="flex items-center gap-2">
             <span className="text-lg">📚</span>
-            <h3 className="font-black text-slate-900 uppercase text-xs">Centre de Formation — Guide des Modules</h3>
+            <h3 className="font-black text-slate-900 uppercase text-xs">DÉCOUVREZ NOS MODULES</h3>
           </div>
         </div>
 
@@ -635,7 +744,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </button>
       </div>
 
-      {/* ================= MODALE : CRÉATION D'ANNONCE AVEC LIENS, VISUEL & TARIF REDUCTIONS ================= */}
+      {/* ================= MODALE : CRÉATION D'ANNONCE ================= */}
       {modalAnnonceOuvert && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-4 p-5 max-h-[90vh] flex flex-col">
@@ -655,7 +764,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                   onChange={(e) => setTitreAnnonce(e.target.value.toUpperCase())}
                   placeholder="EX: PROMO EXCEPTIONNELLE..."
                   required
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-[10px]"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 placeholder-slate-400 uppercase text-[10px]"
                 />
               </div>
 
@@ -667,26 +776,26 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                   placeholder="Présentez votre offre..."
                   rows="2"
                   required
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-medium text-slate-900 text-[10px]"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-medium text-slate-900 placeholder-slate-400 text-[10px]"
                 ></textarea>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5">Lien WhatsApp</label>
-                  <input type="text" value={whatsappAnnonce} onChange={(e) => setWhatsappAnnonce(e.target.value)} placeholder="+237..." className="w-full bg-slate-50 border rounded-xl p-2 text-[10px]" />
+                  <input type="text" value={whatsappAnnonce} onChange={(e) => setWhatsappAnnonce(e.target.value)} placeholder="+237..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 placeholder-slate-400 text-[10px]" />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5">Lien Facebook</label>
-                  <input type="url" value={facebookAnnonce} onChange={(e) => setFacebookAnnonce(e.target.value)} placeholder="https://facebook.com/..." className="w-full bg-slate-50 border rounded-xl p-2 text-[10px]" />
+                  <input type="url" value={facebookAnnonce} onChange={(e) => setFacebookAnnonce(e.target.value)} placeholder="https://facebook.com/..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 placeholder-slate-400 text-[10px]" />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5">Lien TikTok</label>
-                  <input type="url" value={tiktokAnnonce} onChange={(e) => setTiktokAnnonce(e.target.value)} placeholder="https://tiktok.com/@..." className="w-full bg-slate-50 border rounded-xl p-2 text-[10px]" />
+                  <input type="url" value={tiktokAnnonce} onChange={(e) => setTiktokAnnonce(e.target.value)} placeholder="https://tiktok.com/@..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 placeholder-slate-400 text-[10px]" />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5">Lien YouTube</label>
-                  <input type="url" value={youtubeAnnonce} onChange={(e) => setYoutubeAnnonce(e.target.value)} placeholder="https://youtube.com/..." className="w-full bg-slate-50 border rounded-xl p-2 text-[10px]" />
+                  <input type="url" value={youtubeAnnonce} onChange={(e) => setYoutubeAnnonce(e.target.value)} placeholder="https://youtube.com/..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 placeholder-slate-400 text-[10px]" />
                 </div>
               </div>
 
@@ -696,7 +805,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                   type="file"
                   accept="image/*"
                   onChange={gererChangementVisuel}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-1.5 text-[9px] text-slate-600"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-1.5 text-[9px] font-bold text-slate-900 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[9px] file:font-black file:bg-slate-800 file:text-white"
                 />
               </div>
 
@@ -720,7 +829,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
-                <button type="button" onClick={() => setModalAnnonceOuvert(false)} className="bg-slate-100 px-3 py-2 rounded-xl font-bold">Annuler</button>
+                <button type="button" onClick={() => setModalAnnonceOuvert(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl font-bold">Annuler</button>
                 <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md">
                   🚀 Payer et Diffuser
                 </button>
@@ -730,28 +839,45 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* ================= MODALE CHATBOT ================= */}
+      {/* ================= MODALE CHATBOT (AVEC BOUTONS DE MENU PERSISTANTS ET RETOUR ACCUEIL) ================= */}
       {modalChatbotOuvert && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col h-[560px]">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col h-[580px]">
+            
+            {/* Header du Chatbot avec bouton Retour Accueil */}
             <div className="bg-slate-900 text-white p-3.5 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <span className="text-xl">🤖</span>
-                <h4 className="font-black uppercase text-xs">Assistant Virtuel 4TS</h4>
+                <div>
+                  <h4 className="font-black uppercase text-xs">Assistant Virtuel 4TS</h4>
+                  <p className="text-[8.5px] text-slate-400 font-bold">Toujours à votre service</p>
+                </div>
               </div>
-              <button onClick={() => setModalChatbotOuvert(false)} className="text-white font-bold p-1">✕</button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={retournerAccueilChat}
+                  title="Retour au menu principal"
+                  className="bg-slate-800 hover:bg-orange-600 text-white font-black text-[9px] px-2.5 py-1 rounded-lg uppercase transition shadow-2xs border border-slate-700"
+                >
+                  🏠 Menu
+                </button>
+                <button onClick={() => setModalChatbotOuvert(false)} className="text-slate-400 hover:text-white font-bold p-1">✕</button>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-slate-50 text-[10px]">
+            {/* Corps de la conversation */}
+            <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 bg-slate-50 text-[10px]">
               {messagesChat.map((msg, idx) => (
                 <div key={idx} className={`flex flex-col ${msg.expediteur === 'client' ? 'items-end' : 'items-start'}`}>
-                  <div className={`p-3 rounded-2xl ${msg.expediteur === 'client' ? 'bg-slate-900 text-white' : 'bg-white text-slate-800 border'}`}>
+                  <div className={`p-3 rounded-2xl whitespace-pre-line max-w-[90%] leading-relaxed ${msg.expediteur === 'client' ? 'bg-slate-900 text-white font-medium shadow-md' : 'bg-white text-slate-800 border border-slate-200 shadow-2xs'}`}>
                     {msg.texte}
                   </div>
-                  {msg.options && (modeChat === 'SONDAGE' || modeChat === 'DIVERTISSEMENT') && (
-                    <div className="flex flex-col gap-1.5 mt-2 w-full pl-2">
+                  {msg.options && (
+                    <div className="flex flex-col gap-1.5 mt-2.5 w-full pl-2">
                       {msg.options.map((opt, i) => (
-                        <button key={i} onClick={() => selectionnerOptionChoix(opt)} className="bg-slate-800 text-white p-2 rounded-xl text-left font-bold">👉 {opt}</button>
+                        <button key={i} onClick={() => selectionnerOptionChoix(opt)} className="bg-slate-900 hover:bg-orange-600 text-white p-2.5 rounded-xl text-left font-bold transition shadow-2xs flex items-center gap-2">
+                          <span>👉</span> <span>{opt}</span>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -760,24 +886,24 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
               <div ref={chatFinRef} />
             </div>
 
-            {modeChat === 'ACCUEIL' && (
-              <div className="p-2.5 bg-slate-100 border-t flex gap-1.5 justify-around shrink-0 flex-wrap">
-                <button onClick={lancerModeSondage} className="flex-1 bg-slate-800 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black">📊 Sondage</button>
-                <button onClick={lancerModeDivertissement} className="flex-1 bg-slate-800 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black">🎮 Quiz</button>
-                <button onClick={lancerModeAstuces} className="flex-1 bg-slate-800 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black">💡 Astuces</button>
-                <button onClick={lancerModeSupport} className="flex-1 bg-slate-800 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black">❓ Support</button>
-              </div>
-            )}
+            {/* Barre de menu permanente en bas (Sondage, Quiz, Astuces, Support) */}
+            <div className="px-3 py-2 bg-slate-100 border-t border-slate-200 flex gap-1.5 justify-around shrink-0 flex-wrap shadow-inner">
+              <button onClick={lancerModeSondage} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">📊 Sondage</button>
+              <button onClick={lancerModeDivertissement} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">🎮 Quiz</button>
+              <button onClick={lancerModeAstuces} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">💡 Astuces</button>
+              <button onClick={lancerModeSupport} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">❓ Support</button>
+            </div>
 
+            {/* Formulaire de saisie de message */}
             <form onSubmit={soumettreReponseChat} className="p-3 bg-white border-t border-slate-200 flex gap-2 shrink-0">
               <input
                 type="text"
                 value={saisieMessage}
                 onChange={(e) => setSaisieMessage(e.target.value)}
-                placeholder="Posez votre question..."
-                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-[10px] font-medium text-slate-900 focus:outline-none"
+                placeholder="Posez votre question ici..."
+                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-[10px] font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500"
               />
-              <button type="submit" className="bg-slate-800 hover:bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md">
+              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md transition">
                 Envoyer
               </button>
             </form>
@@ -785,7 +911,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* ================= MODALE CONFIGURATION DES CONTACTS & RÉSEAUX (AVEC TOUS LES CHAMPS ET TEXTE VISIBLE) ================= */}
+      {/* ================= MODALE CONFIGURATION DES CONTACTS & RÉSEAUX ================= */}
       {modalAdminReseauxOuvert && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4 max-h-[90vh] flex flex-col">
@@ -797,68 +923,27 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             <form onSubmit={sauvegarderLiensReseaux} className="space-y-3 text-[10px] overflow-y-auto pr-1">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">WhatsApp</label>
-                <input 
-                  type="text" 
-                  value={waInput} 
-                  onChange={(e) => setWaInput(e.target.value)} 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
-                  required 
-                />
+                <input type="text" value={waInput} onChange={(e) => setWaInput(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" required />
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Téléphone</label>
-                <input 
-                  type="text" 
-                  value={telInput} 
-                  onChange={(e) => setTelInput(e.target.value)} 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
-                  required 
-                />
+                <input type="text" value={telInput} onChange={(e) => setTelInput(e.target.value)} className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" required />
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Lien Facebook</label>
-                <input 
-                  type="url" 
-                  value={fbInput} 
-                  onChange={(e) => setFbInput(e.target.value)} 
-                  placeholder="https://www.facebook.com/..." 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
-                />
+                <input type="url" value={fbInput} onChange={(e) => setFbInput(e.target.value)} placeholder="https://www.facebook.com/..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Lien TikTok</label>
-                <input 
-                  type="url" 
-                  value={tkInput} 
-                  onChange={(e) => setTkInput(e.target.value)} 
-                  placeholder="https://www.tiktok.com/@..." 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
-                />
+                <input type="url" value={tkInput} onChange={(e) => setTkInput(e.target.value)} placeholder="https://www.tiktok.com/@..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Lien YouTube</label>
-                <input 
-                  type="url" 
-                  value={ytInput} 
-                  onChange={(e) => setYtInput(e.target.value)} 
-                  placeholder="https://www.youtube.com/..." 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
-                />
+                <input type="url" value={ytInput} onChange={(e) => setYtInput(e.target.value)} placeholder="https://www.youtube.com/..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Lien Instagram</label>
-                <input 
-                  type="url" 
-                  value={instaInput} 
-                  onChange={(e) => setInstaInput(e.target.value)} 
-                  placeholder="https://instagram.com/..." 
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
-                />
+                <input type="url" value={instaInput} onChange={(e) => setInstaInput(e.target.value)} placeholder="https://instagram.com/..." className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
