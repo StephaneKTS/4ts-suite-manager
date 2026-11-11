@@ -785,23 +785,85 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* Modale Configuration Réseaux Admin */}
+      {/* ================= MODALE CONFIGURATION DES CONTACTS & RÉSEAUX (AVEC TOUS LES CHAMPS ET TEXTE VISIBLE) ================= */}
       {modalAdminReseauxOuvert && (
         <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4">
-            <h4 className="font-black text-slate-900 uppercase text-xs">⚙️ CONFIGURATION DES CONTACTS</h4>
-            <form onSubmit={sauvegarderLiensReseaux} className="space-y-3 text-[10px]">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">⚙️ CONFIGURATION DES CONTACTS & RÉSEAUX</h4>
+              <button onClick={() => setModalAdminReseauxOuvert(false)} className="text-slate-400 font-bold">✕</button>
+            </div>
+
+            <form onSubmit={sauvegarderLiensReseaux} className="space-y-3 text-[10px] overflow-y-auto pr-1">
               <div>
-                <label className="block font-bold">WhatsApp</label>
-                <input type="text" value={waInput} onChange={(e) => setWaInput(e.target.value)} className="w-full border rounded-xl p-2" required />
+                <label className="block font-bold text-slate-700 mb-1">WhatsApp</label>
+                <input 
+                  type="text" 
+                  value={waInput} 
+                  onChange={(e) => setWaInput(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
+                  required 
+                />
               </div>
+
               <div>
-                <label className="block font-bold">Téléphone</label>
-                <input type="text" value={telInput} onChange={(e) => setTelInput(e.target.value)} className="w-full border rounded-xl p-2" required />
+                <label className="block font-bold text-slate-700 mb-1">Téléphone</label>
+                <input 
+                  type="text" 
+                  value={telInput} 
+                  onChange={(e) => setTelInput(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
+                  required 
+                />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setModalAdminReseauxOuvert(false)} className="bg-slate-100 px-3 py-2 rounded-xl font-bold">Annuler</button>
-                <button type="submit" className="bg-amber-600 text-white font-black px-4 py-2 rounded-xl uppercase">Enregistrer</button>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Lien Facebook</label>
+                <input 
+                  type="url" 
+                  value={fbInput} 
+                  onChange={(e) => setFbInput(e.target.value)} 
+                  placeholder="https://www.facebook.com/..." 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Lien TikTok</label>
+                <input 
+                  type="url" 
+                  value={tkInput} 
+                  onChange={(e) => setTkInput(e.target.value)} 
+                  placeholder="https://www.tiktok.com/@..." 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Lien YouTube</label>
+                <input 
+                  type="url" 
+                  value={ytInput} 
+                  onChange={(e) => setYtInput(e.target.value)} 
+                  placeholder="https://www.youtube.com/..." 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Lien Instagram</label>
+                <input 
+                  type="url" 
+                  value={instaInput} 
+                  onChange={(e) => setInstaInput(e.target.value)} 
+                  placeholder="https://instagram.com/..." 
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]" 
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setModalAdminReseauxOuvert(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl font-bold">Annuler</button>
+                <button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2 rounded-xl uppercase shadow-md">Enregistrer</button>
               </div>
             </form>
           </div>
