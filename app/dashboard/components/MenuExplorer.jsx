@@ -248,7 +248,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         let reponseBot = "Contactez notre service client par WhatsApp ou via le bouton d'appel en bas de page.";
         const texteMin = texteSaisi.toLowerCase();
         if (texteMin.includes('module') || texteMin.includes('service')) {
-          reponseBot = "📦 **Nos modules :**\n1. Module Boutique & Caisse (✅)\n2. Module Livraison & Flotte (✅)\n3. Module Tontine & Épargne (En développement 🔒)\n4. Module Logistique Avancée (En développement 🔒)";
+          reponseBot = "📦 **Nos modules :\n1. Module Boutique & Caisse (✅)\n2. Module Livraison & Flotte (✅)\n3. Module Tontine & Épargne (En développement 🔒)\n4. Module Logistique Avancée (En développement 🔒)";
         } else if (texteMin.includes('prix') || texteMin.includes('tarif')) {
           reponseBot = "💰 Les options de diffusion publicitaire débutent à 300 XAF/jour avec des réductions de 5% et 10%.";
         }
@@ -839,44 +839,46 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* ================= MODALE CHATBOT (AVEC BOUTONS DE MENU PERSISTANTS ET RETOUR ACCUEIL) ================= */}
+      {/* ================= MODALE CHATBOT (PLEIN ÉCRAN VERTICAL DU HAUT VERS LE BAS) ================= */}
       {modalChatbotOuvert && (
-        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col h-[580px]">
+        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col h-[94vh] sm:h-[90vh]">
             
             {/* Header du Chatbot avec bouton Retour Accueil */}
-            <div className="bg-slate-900 text-white p-3.5 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-2.5">
-                <span className="text-xl">🤖</span>
+            <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-red-600/30 border border-red-500/40 flex items-center justify-center text-lg shadow-inner">
+                  🤖
+                </div>
                 <div>
-                  <h4 className="font-black uppercase text-xs">Assistant Virtuel 4TS</h4>
-                  <p className="text-[8.5px] text-slate-400 font-bold">Toujours à votre service</p>
+                  <h4 className="font-black uppercase text-xs tracking-wide">Assistant Virtuel 4TS</h4>
+                  <p className="text-[9px] text-slate-300 font-bold">Toujours à votre service</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={retournerAccueilChat}
                   title="Retour au menu principal"
-                  className="bg-slate-800 hover:bg-orange-600 text-white font-black text-[9px] px-2.5 py-1 rounded-lg uppercase transition shadow-2xs border border-slate-700"
+                  className="bg-slate-800 hover:bg-orange-600 text-white font-black text-[9.5px] px-3 py-1.5 rounded-xl uppercase transition shadow-md border border-slate-700 flex items-center gap-1"
                 >
-                  🏠 Menu
+                  <span>🏠</span> Menu
                 </button>
-                <button onClick={() => setModalChatbotOuvert(false)} className="text-slate-400 hover:text-white font-bold p-1">✕</button>
+                <button onClick={() => setModalChatbotOuvert(false)} className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold flex items-center justify-center transition">✕</button>
               </div>
             </div>
 
-            {/* Corps de la conversation */}
-            <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 bg-slate-50 text-[10px]">
+            {/* Corps de la conversation (Grand espace vertical pour tout afficher) */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 text-[11px]">
               {messagesChat.map((msg, idx) => (
                 <div key={idx} className={`flex flex-col ${msg.expediteur === 'client' ? 'items-end' : 'items-start'}`}>
-                  <div className={`p-3 rounded-2xl whitespace-pre-line max-w-[90%] leading-relaxed ${msg.expediteur === 'client' ? 'bg-slate-900 text-white font-medium shadow-md' : 'bg-white text-slate-800 border border-slate-200 shadow-2xs'}`}>
+                  <div className={`p-3.5 rounded-2xl whitespace-pre-line max-w-[92%] leading-relaxed ${msg.expediteur === 'client' ? 'bg-slate-900 text-white font-medium shadow-md' : 'bg-white text-slate-800 border border-slate-200 shadow-xs'}`}>
                     {msg.texte}
                   </div>
                   {msg.options && (
-                    <div className="flex flex-col gap-1.5 mt-2.5 w-full pl-2">
+                    <div className="flex flex-col gap-2 mt-3 w-full pl-2">
                       {msg.options.map((opt, i) => (
-                        <button key={i} onClick={() => selectionnerOptionChoix(opt)} className="bg-slate-900 hover:bg-orange-600 text-white p-2.5 rounded-xl text-left font-bold transition shadow-2xs flex items-center gap-2">
-                          <span>👉</span> <span>{opt}</span>
+                        <button key={i} onClick={() => selectionnerOptionChoix(opt)} className="bg-slate-900 hover:bg-orange-600 text-white p-3 rounded-xl text-left font-bold transition shadow-sm flex items-center gap-2.5">
+                          <span className="text-orange-400 font-black">👉</span> <span>{opt}</span>
                         </button>
                       ))}
                     </div>
@@ -887,23 +889,23 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             </div>
 
             {/* Barre de menu permanente en bas (Sondage, Quiz, Astuces, Support) */}
-            <div className="px-3 py-2 bg-slate-100 border-t border-slate-200 flex gap-1.5 justify-around shrink-0 flex-wrap shadow-inner">
-              <button onClick={lancerModeSondage} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">📊 Sondage</button>
-              <button onClick={lancerModeDivertissement} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">🎮 Quiz</button>
-              <button onClick={lancerModeAstuces} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">💡 Astuces</button>
-              <button onClick={lancerModeSupport} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8px] uppercase font-black transition shadow-2xs">❓ Support</button>
+            <div className="px-3 py-2.5 bg-slate-100 border-t border-slate-200 flex gap-2 justify-around shrink-0 flex-wrap shadow-inner">
+              <button onClick={lancerModeSondage} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">📊 Sondage</button>
+              <button onClick={lancerModeDivertissement} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">🎮 Quiz</button>
+              <button onClick={lancerModeAstuces} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">💡 Astuces</button>
+              <button onClick={lancerModeSupport} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">❓ Support</button>
             </div>
 
             {/* Formulaire de saisie de message */}
-            <form onSubmit={soumettreReponseChat} className="p-3 bg-white border-t border-slate-200 flex gap-2 shrink-0">
+            <form onSubmit={soumettreReponseChat} className="p-3.5 bg-white border-t border-slate-200 flex gap-2 shrink-0">
               <input
                 type="text"
                 value={saisieMessage}
                 onChange={(e) => setSaisieMessage(e.target.value)}
                 placeholder="Posez votre question ici..."
-                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-[10px] font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-[11px] font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500"
               />
-              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md transition">
+              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-black px-5 py-2.5 rounded-xl text-[10px] uppercase shadow-md transition">
                 Envoyer
               </button>
             </form>
