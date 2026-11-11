@@ -1022,6 +1022,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
+          {/* 🌟 LIGNE ÉPURÉE : BOUTON RETOUR ET SÉLECTEUR DE MOUVEMENT CÔTE À CÔTE SANS DÉBORDEMENT */}
           <div className="grid grid-cols-2 gap-2 items-center">
             <button
               type="button"
@@ -1037,13 +1038,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 setEtatInitialEdition(null);
                 setLignesPanier([]);
               }}
-              className="bg-slate-800 hover:bg-slate-700 text-white font-black px-3 py-2 rounded-xl text-[10px] uppercase shadow-xs transition flex items-center justify-center gap-1.5 border border-slate-700 w-full truncate"
+              className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-1.5 rounded-xl text-[9px] uppercase shadow-xs transition flex items-center justify-center gap-1 border border-slate-700 w-full truncate"
             >
-              <span>←</span> Retour à la liste
+              <span>←</span> Retour liste
             </button>
 
-            <div className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
-              <span className="font-extrabold text-[9px] text-slate-700 uppercase">Mouvement</span>
+            <div className="bg-white border border-slate-200 px-2 py-1 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
+              <span className="font-extrabold text-[8px] text-slate-700 uppercase shrink-0">Type</span>
               <select 
                 disabled={enTeteVerrouille || !!mouvementEnEditionId} 
                 value={typeOperation} 
@@ -1053,7 +1054,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   setTypeOperation(nt); 
                   if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(nt), operateur: obtenirNomOperateurConnecte() })); 
                 }} 
-                className="bg-slate-50 border rounded-lg px-2 py-0.5 font-extrabold text-orange-600 text-[10px]"
+                className="bg-slate-50 border rounded px-1.5 py-0.5 font-extrabold text-orange-600 text-[9px] truncate w-full"
               >
                 <option value="TRANSFERT">🔀 Transfert (TR)</option>
                 <option value="ENTREE">📥 Entrée (ME)</option>
