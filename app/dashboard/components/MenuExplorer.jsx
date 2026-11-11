@@ -454,12 +454,14 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [tiktokAnnonce, setTiktokAnnonce] = useState('');
   const [youtubeAnnonce, setYoutubeAnnonce] = useState('');
   const [instagramAnnonce, setInstagramAnnonce] = useState('');
+  const [dureeHeures, setDureeHeures] = useState('24');
   const [visuelFichier, setVisuelFichier] = useState(null);
   const [visuelPreview, setVisuelPreview] = useState(null);
 
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
+  // --- GESTION PERSISTANTE DES ANNONCES (LOCALSTORAGE) ---
   const [bannières, setBannières] = useState([
     {
       id: 1,
@@ -492,6 +494,30 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
       modifiable: false
     }
   ]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const annoncesSauvegardées = localStorage.getItem('4ts_bannieres_annonces_persistantes');
+      if (annoncesSauvegardées) {
+        try {
+          const parsed = JSON.parse(annoncesSauvegardées);
+          const maintenant = Date.now();
+          // Filtrer uniquement les annonces qui ne sont pas encore expirées
+          const valides = parsed.filter(item => !item.expireAt || item.expireAt > maintenant);
+          setBannières(valides);
+        } catch (e) {
+          console.error("Erreur chargement annonces", e);
+        }
+      }
+    }
+  }, []);
+
+  const sauvegarderBannièresStorage = (nouvellesBannières) => {
+    setBannières(nouvellesBannières);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('4ts_bannieres_annonces_persistantes', JSON.stringify(nouvellesBannières));
+    }
+  };
 
   useEffect(() => {
     if (estEnPause) return;
@@ -539,6 +565,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     setTiktokAnnonce('');
     setYoutubeAnnonce('');
     setInstagramAnnonce('');
+    setDureeHeures('24');
     setVisuelFichier(null);
     setVisuelPreview(null);
     setModalAnnonceOuvert(true);
@@ -564,25 +591,28 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
       return;
     }
 
+    const expirationMS = parseInt(dureeHeures) * 3600 * 1000;
+    const expireAt = Date.now() + expirationMS;
+
     if (annonceIdEnCoursDeModif) {
-      setBannières((prev) =>
-        prev.map((item) =>
-          item.id === annonceIdEnCoursDeModif
-            ? {
-                ...item,
-                titre: titreAnnonce,
-                description: descAnnonce,
-                whatsapp: whatsappAnnonce,
-                facebook: facebookAnnonce,
-                tiktok: tiktokAnnonce,
-                youtube: youtubeAnnonce,
-                instagram: instagramAnnonce,
-                visuel: visuelPreview
-              }
-            : item
-        )
+      const misesAJour = bannières.map((item) =>
+        item.id === annonceIdEnCoursDeModif
+          ? {
+              ...item,
+              titre: titreAnnonce,
+              description: descAnnonce,
+              whatsapp: whatsappAnnonce,
+              facebook: facebookAnnonce,
+              tiktok: tiktokAnnonce,
+              youtube: youtubeAnnonce,
+              instagram: instagramAnnonce,
+              visuel: visuelPreview,
+              expireAt
+            }
+          : item
       );
-      alert(`✏️ Annonce modifiée et mise à jour en direct avec succès !`);
+      sauvegarderBannièresStorage(misesAJour);
+      alert(`✏️ Annonce modifiée et enregistrée avec succès !`);
     } else {
       const nouvelleBanniere = {
         id: Date.now(),
@@ -597,24 +627,15 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         couleur: 'from-amber-950 via-slate-900 to-red-950',
         badge: 'ANNONCE PERSONNELLE',
         visuel: visuelPreview,
-        modifiable: true
+        modifiable: true,
+        expireAt
       };
 
-      setBannières((prev) => [nouvelleBanniere, ...prev]);
+      sauvegarderBannièresStorage([nouvelleBanniere, ...bannières]);
       setBanniereIndex(0);
-      alert(`✅ Annonce créée et diffusée en direct avec succès !`);
+      alert(`✅ Annonce créée et diffusée pour une durée de ${dureeHeures}h !`);
     }
 
-    setAnnonceIdEnCoursDeModif(null);
-    setTitreAnnonce('');
-    setDescAnnonce('');
-    setWhatsappAnnonce('');
-    setFacebookAnnonce('');
-    setTiktokAnnonce('');
-    setYoutubeAnnonce('');
-    setInstagramAnnonce('');
-    setVisuelFichier(null);
-    setVisuelPreview(null);
     setModalAnnonceOuvert(false);
   };
 
@@ -657,10 +678,10 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     }
   ];
 
-  const banniereActuelle = bannières[banniereIndex];
+  const banniereActuelle = bannières[banniereIndex] || bannières[0];
 
   return (
-    <div className="space-y-4 font-sans text-xs pb-10">
+    <div className="space-y-4 font-sans text-xs pb-16">
       
       {/* ================= 1. BANNIÈRE DÉFILANTE PRINCIPALE ================= */}
       <div 
@@ -672,7 +693,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         onMouseDown={handleTouchStart}
         onMouseUp={handleTouchEnd}
         className="relative overflow-hidden rounded-2xl shadow-xl border border-slate-800 bg-slate-950 text-white p-6 transition-all duration-700 select-none cursor-grab active:cursor-grabbing"
-        title="Maintenez ou touchez pour faire une pause, glissez pour changer de bannière"
       >
         <div className={`absolute inset-0 bg-gradient-to-r ${banniereActuelle.couleur} opacity-90 transition-all duration-700`}></div>
         
@@ -721,49 +741,22 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             {(banniereActuelle.whatsapp || banniereActuelle.facebook || banniereActuelle.tiktok || banniereActuelle.youtube || banniereActuelle.instagram || banniereActuelle.contientReseaux) && (
               <div className="pt-2 flex items-center gap-2 flex-wrap">
                 <a
-                  href={liensReseauxSociaux.whatsapp.startsWith('http') ? liensReseauxSociaux.whatsapp : `https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
+                  href={`https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition transform hover:scale-105"
+                  className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition"
                 >
                   <span>💬</span> WhatsApp
                 </a>
                 <a
-                  href={banniereActuelle.facebook || liensReseauxSociaux.facebook}
+                  href={liensReseauxSociaux.facebook}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition transform hover:scale-105"
+                  className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition"
                 >
                   <span>f</span> Facebook
-                </a>
-                <a
-                  href={banniereActuelle.tiktok || liensReseauxSociaux.tiktok}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg border border-slate-700 transition transform hover:scale-105"
-                >
-                  <span>♪</span> TikTok
-                </a>
-                <a
-                  href={banniereActuelle.youtube || liensReseauxSociaux.youtube}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition transform hover:scale-105"
-                >
-                  <span>▶</span> YouTube
-                </a>
-                <a
-                  href={banniereActuelle.instagram || liensReseauxSociaux.instagram}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition transform hover:scale-105"
-                >
-                  <span>📸</span> Instagram
                 </a>
               </div>
             )}
@@ -774,157 +767,16 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             {estSuperAdmin && (
               <button
                 onClick={(e) => { e.stopPropagation(); ouvrirModalCreation(); }}
-                className="bg-white hover:bg-slate-100 text-slate-950 font-black px-4 py-1.5 rounded-xl text-[10px] uppercase shadow-lg transition transform hover:scale-105"
+                className="bg-white hover:bg-slate-100 text-slate-950 font-black px-4 py-1.5 rounded-xl text-[10px] uppercase shadow-lg transition"
               >
-                ✨ Diffuser mon annonce (Instantané)
+                ✨ Diffuser mon annonce
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* ================= 2. SECTION 4TS ACADEMY ================= */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🎓</span>
-            <div>
-              <h3 className="font-black text-slate-900 uppercase text-xs">4TS Academy — Vidéos & Réseaux Sociaux</h3>
-              <p className="text-[9px] text-slate-500 font-bold">Cliquez sur un lien pour accéder directement à nos pages officielles et suivre nos vidéos.</p>
-            </div>
-          </div>
-
-          {estSuperAdmin && (
-            <button
-              onClick={ouvrirAdminReseaux}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-black px-3 py-1.5 rounded-xl text-[9.5px] uppercase shadow-md transition flex items-center gap-1.5"
-            >
-              <span>⚙️</span> Gérer les Liens Officiels (Super-Admin)
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <a
-            href={liensReseauxSociaux.facebook}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-blue-600 hover:bg-blue-50/40 transition group shadow-2xs"
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-md group-hover:scale-110 transition animate-bounce">
-              f
-            </div>
-            <div>
-              <h4 className="font-black text-slate-900 uppercase text-xs group-hover:text-blue-700">Facebook</h4>
-              <p className="text-[9px] text-slate-500 font-bold">Voir nos publications</p>
-            </div>
-          </a>
-
-          <a
-            href={liensReseauxSociaux.tiktok}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-slate-900 hover:bg-slate-50 transition group shadow-2xs"
-          >
-            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-base shadow-md group-hover:scale-110 transition animate-bounce">
-              tk
-            </div>
-            <div>
-              <h4 className="font-black text-slate-900 uppercase text-xs">TikTok</h4>
-              <p className="text-[9px] text-slate-500 font-bold">Tutos express & business</p>
-            </div>
-          </a>
-
-          <a
-            href={liensReseauxSociaux.youtube}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-red-600 hover:bg-red-50/40 transition group shadow-2xs"
-          >
-            <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center font-black text-base shadow-md group-hover:scale-110 transition animate-bounce">
-              ▶
-            </div>
-            <div>
-              <h4 className="font-black text-slate-900 uppercase text-xs group-hover:text-red-700">YouTube</h4>
-              <p className="text-[9px] text-slate-500 font-bold">Formations complètes</p>
-            </div>
-          </a>
-        </div>
-      </div>
-
-      {/* ================= 3. CENTRE DE FORMATION & GUIDE DES MODULES ================= */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">📚</span>
-            <div>
-              <h3 className="font-black text-slate-900 uppercase text-xs">Centre de Formation — Guide des Modules</h3>
-              <p className="text-[9px] text-slate-500 font-bold">Accédez aux modules terminés ou découvrez nos projets en cours de développement.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {modulesFormation.map((mod) => {
-            const estVerrouille = mod.statut === 'EN_DEVELOPPEMENT';
-            return (
-              <div
-                key={mod.id}
-                onClick={() => {
-                  if (estVerrouille) {
-                    alert(`🔒 Le module "${mod.nom}" est actuellement en plein développement. Il sera bientôt disponible dans l'écosystème 4TS !`);
-                  } else {
-                    setModuleSelectionne(mod);
-                  }
-                }}
-                className={`p-3.5 rounded-xl border transition flex flex-col justify-between shadow-2xs relative overflow-hidden ${
-                  estVerrouille 
-                    ? 'bg-slate-100 border-slate-300 opacity-80 cursor-not-allowed' 
-                    : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 cursor-pointer group'
-                }`}
-              >
-                {estVerrouille && (
-                  <div className="absolute top-2 right-2 bg-amber-500 text-white text-[7.5px] font-black px-2 py-0.5 rounded-full uppercase shadow-xs">
-                    🔒 En développement
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-2xl">{mod.icone}</span>
-                    {!estVerrouille && (
-                      <span className="text-[8px] bg-slate-100 text-slate-700 font-extrabold px-2 py-0.5 rounded-full group-hover:bg-orange-600 group-hover:text-white transition">
-                        Guide interactif →
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="font-black text-slate-900 uppercase text-xs">{mod.nom}</h4>
-                  <p className="text-[9px] text-slate-600 leading-relaxed font-medium">{mod.description}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ================= 4. PIED DE PAGE : CGU ================= */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-base">🛡️</span>
-          <div>
-            <h4 className="font-black text-slate-900 uppercase text-xs">Politique & Conditions Générales d’Utilisation</h4>
-            <p className="text-[9px] text-slate-500 font-bold">Consultez les règles d’utilisation, de confidentialité et de sécurité de 4TS Suite Manager.</p>
-          </div>
-        </div>
-        <button
-          onClick={() => setModalCguOuvert(true)}
-          className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md transition"
-        >
-          📖 Lire les CGU
-        </button>
-      </div>
-
-      {/* ================= 5. BANNIÈRE NOUS CONTACTER (BOUTONS LOGOS REDUITS & CHATBOT ROUGE/BLANC TRÈS ATTRACTIF) ================= */}
+      {/* ================= 2. BANNIÈRE "BESOIN D'AIDE ? NOUS CONTACTER" (POSITIONNÉE EN HAUT POUR ÊTRE VISIBLE SUR TOUS LES TÉLÉPHONES) ================= */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-xl shrink-0 shadow-inner">
@@ -937,7 +789,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap md:flex-nowrap justify-end shrink-0">
-          {/* Logo WhatsApp uniquement */}
           <a
             href={`https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
             target="_blank"
@@ -948,7 +799,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             💬
           </a>
 
-          {/* Logo Appeler uniquement */}
           <a
             href={`tel:${liensReseauxSociaux.telephone || liensReseauxSociaux.whatsapp}`}
             title="Appeler"
@@ -957,7 +807,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             📞
           </a>
 
-          {/* Bouton Chatbot très attractif : Fond Rouge, Écriture Blanche & Animation Pulse */}
           <button
             onClick={() => { setModalChatbotOuvert(true); setModeChat('ACCUEIL'); }}
             className="bg-red-600 hover:bg-red-700 text-white font-black px-4 py-2.5 rounded-xl text-[10px] uppercase shadow-xl transition transform hover:scale-105 flex items-center gap-2 shrink-0 animate-pulse border-2 border-red-400"
@@ -968,11 +817,150 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* ================= MODALE : CHATBOT CLIENT-ENTREPRISE (AVEC ASTUCES) ================= */}
+      {/* ================= 3. SECTION 4TS ACADEMY ================= */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎓</span>
+            <div>
+              <h3 className="font-black text-slate-900 uppercase text-xs">4TS Academy — Vidéos & Réseaux Sociaux</h3>
+              <p className="text-[9px] text-slate-500 font-bold">Cliquez sur un lien pour accéder directement à nos pages officielles.</p>
+            </div>
+          </div>
+
+          {estSuperAdmin && (
+            <button
+              onClick={ouvrirAdminReseaux}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-black px-3 py-1.5 rounded-xl text-[9.5px] uppercase shadow-md transition flex items-center gap-1.5"
+            >
+              <span>⚙️</span> Configurer Liens
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <a
+            href={liensReseauxSociaux.facebook}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-blue-600 hover:bg-blue-50/40 transition group shadow-2xs"
+          >
+            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-md group-hover:scale-110 transition">
+              f
+            </div>
+            <div>
+              <h4 className="font-black text-slate-900 uppercase text-xs">Facebook</h4>
+              <p className="text-[9px] text-slate-500 font-bold">Voir nos publications</p>
+            </div>
+          </a>
+
+          <a
+            href={liensReseauxSociaux.tiktok}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-slate-900 hover:bg-slate-50 transition group shadow-2xs"
+          >
+            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-base shadow-md group-hover:scale-110 transition">
+              tk
+            </div>
+            <div>
+              <h4 className="font-black text-slate-900 uppercase text-xs">TikTok</h4>
+              <p className="text-[9px] text-slate-500 font-bold">Tutos express</p>
+            </div>
+          </a>
+
+          <a
+            href={liensReseauxSociaux.youtube}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-red-600 hover:bg-red-50/40 transition group shadow-2xs"
+          >
+            <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center font-black text-base shadow-md group-hover:scale-110 transition">
+              ▶
+            </div>
+            <div>
+              <h4 className="font-black text-slate-900 uppercase text-xs">YouTube</h4>
+              <p className="text-[9px] text-slate-500 font-bold">Formations complètes</p>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      {/* ================= 4. CENTRE DE FORMATION & GUIDE DES MODULES ================= */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📚</span>
+            <div>
+              <h3 className="font-black text-slate-900 uppercase text-xs">Centre de Formation — Guide des Modules</h3>
+              <p className="text-[9px] text-slate-500 font-bold">Accédez aux modules terminés ou découvrez nos projets en développement.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {modulesFormation.map((mod) => {
+            const estVerrouille = mod.statut === 'EN_DEVELOPPEMENT';
+            return (
+              <div
+                key={mod.id}
+                onClick={() => {
+                  if (estVerrouille) {
+                    alert(`🔒 Le module "${mod.nom}" est actuellement en développement.`);
+                  } else {
+                    setModuleSelectionne(mod);
+                  }
+                }}
+                className={`p-3.5 rounded-xl border transition flex flex-col justify-between shadow-2xs relative overflow-hidden ${
+                  estVerrouille 
+                    ? 'bg-slate-100 border-slate-300 opacity-80 cursor-not-allowed' 
+                    : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 cursor-pointer group'
+                }`}
+              >
+                {estVerrouille && (
+                  <div className="absolute top-2 right-2 bg-amber-500 text-white text-[7.5px] font-black px-2 py-0.5 rounded-full uppercase shadow-xs">
+                    🔒 Bientôt
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-2xl">{mod.icone}</span>
+                    {!estVerrouille && (
+                      <span className="text-[8px] bg-slate-100 text-slate-700 font-extrabold px-2 py-0.5 rounded-full group-hover:bg-orange-600 group-hover:text-white transition">
+                        Guide →
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="font-black text-slate-900 uppercase text-xs">{mod.nom}</h4>
+                  <p className="text-[9px] text-slate-600 leading-relaxed font-medium">{mod.description}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ================= 5. PIED DE PAGE : CGU ================= */}
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🛡️</span>
+          <div>
+            <h4 className="font-black text-slate-900 uppercase text-xs">Politique & Conditions Générales d’Utilisation</h4>
+            <p className="text-[9px] text-slate-500 font-bold">Consultez les règles d’utilisation et de confidentialité de 4TS.</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setModalCguOuvert(true)}
+          className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md transition"
+        >
+          📖 Lire les CGU
+        </button>
+      </div>
+
+      {/* ================= MODALE : CHATBOT CLIENT-ENTREPRISE (BOUTONS UNIFIÉS GRIS FONCÉ / BLANC) ================= */}
       {modalChatbotOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col h-[560px] animate-in fade-in zoom-in duration-200">
-            {/* Header Chatbot */}
             <div className="bg-slate-900 text-white p-3.5 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🤖</span>
@@ -989,26 +977,24 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
               </button>
             </div>
 
-            {/* Corps des messages */}
             <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-slate-50 text-[10px]">
               {messagesChat.map((msg, idx) => (
                 <div key={idx} className={`flex flex-col ${msg.expediteur === 'client' ? 'items-end' : 'items-start'}`}>
                   <div className={`max-w-[85%] p-3 rounded-2xl font-medium leading-relaxed ${
                     msg.expediteur === 'client' 
-                      ? 'bg-blue-600 text-white rounded-br-none shadow-xs' 
+                      ? 'bg-slate-900 text-white rounded-br-none shadow-xs' 
                       : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none shadow-xs'
                   }`}>
                     {msg.texte}
                   </div>
 
-                  {/* Boutons d'options interactives pour le sondage ou le divertissement */}
                   {msg.options && (modeChat === 'SONDAGE' || modeChat === 'DIVERTISSEMENT') && (
                     <div className="flex flex-col gap-1.5 mt-2 w-full pl-2">
                       {msg.options.map((opt, i) => (
                         <button
                           key={i}
                           onClick={() => selectionnerOptionChoix(opt)}
-                          className="bg-orange-50 hover:bg-orange-100 text-orange-900 border border-orange-200 font-bold p-2 rounded-xl text-left transition shadow-2xs"
+                          className="bg-slate-800 hover:bg-slate-900 text-white border border-slate-700 font-bold p-2.5 rounded-xl text-left transition shadow-2xs"
                         >
                           👉 {opt}
                         </button>
@@ -1018,72 +1004,68 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 </div>
               ))}
 
-              {/* INTERFACE DE SÉLECTION DES CATÉGORIES ET LECTURE DES ASTUCES */}
               {modeChat === 'ASTUCES' && !categorieSelectionnee && (
                 <div className="grid grid-cols-2 gap-2 pt-2 w-full">
                   {Object.entries(categoriesAstuces).map(([key, cat]) => (
                     <button
                       key={key}
                       onClick={() => setCategorieSelectionnee(key)}
-                      className="bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-400 p-2.5 rounded-xl font-black text-slate-900 text-left transition shadow-2xs flex flex-col justify-between"
+                      className="bg-slate-800 hover:bg-slate-900 text-white border border-slate-700 p-2.5 rounded-xl font-black text-left transition shadow-2xs flex flex-col justify-between"
                     >
                       <span className="text-xs mb-1">{cat.titre.split(' ')[0]}</span>
-                      <span className="text-[9.5px] uppercase text-orange-700">{cat.titre.split(' ').slice(1).join(' ')}</span>
+                      <span className="text-[9.5px] uppercase text-slate-300">{cat.titre.split(' ').slice(1).join(' ')}</span>
                     </button>
                   ))}
                 </div>
               )}
 
-              {/* LECTURE DE LA LISTE DES ASTUCES DE LA CATÉGORIE CHOISIE */}
               {modeChat === 'ASTUCES' && categorieSelectionnee && !astuceActive && (
                 <div className="space-y-2 pt-2 w-full">
-                  <div className="flex justify-between items-center bg-orange-100 p-2 rounded-xl">
-                    <span className="font-black text-orange-900 text-[10px]">📂 {categoriesAstuces[categorieSelectionnee].titre}</span>
+                  <div className="flex justify-between items-center bg-slate-800 text-white p-2.5 rounded-xl">
+                    <span className="font-black text-[10px]">📂 {categoriesAstuces[categorieSelectionnee].titre}</span>
                     <button
                       onClick={() => setCategorieSelectionnee(null)}
-                      className="bg-orange-600 text-white font-black px-2 py-1 rounded-lg text-[8px] uppercase"
+                      className="bg-slate-700 hover:bg-slate-600 text-white font-black px-2 py-1 rounded-lg text-[8px] uppercase"
                     >
-                      ← Retour catégories
+                      ← Retour
                     </button>
                   </div>
-
                   <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
                     {categoriesAstuces[categorieSelectionnee].liste.map((ast, i) => (
                       <button
                         key={i}
                         onClick={() => setAstuceActive(ast)}
-                        className="w-full bg-white hover:bg-slate-100 border border-slate-200 p-2 rounded-xl text-left font-bold text-slate-800 text-[9.5px] transition flex items-center justify-between shadow-2xs"
+                        className="w-full bg-white hover:bg-slate-100 border border-slate-200 p-2 rounded-xl text-left font-bold text-slate-800 text-[9.5px] transition flex items-center justify-between"
                       >
                         <span>{ast.titre}</span>
-                        <span className="text-orange-600 font-black">Lire →</span>
+                        <span className="text-slate-900 font-black">Lire →</span>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* LECTURE D'UNE ASTUCE PARTICULIÈRE */}
               {modeChat === 'ASTUCES' && astuceActive && (
-                <div className="bg-orange-50 border border-orange-200 p-3 rounded-2xl space-y-2 w-full">
-                  <div className="flex justify-between items-center border-b border-orange-200 pb-1.5">
-                    <h5 className="font-black text-orange-900 text-[10px] uppercase">📖 {astuceActive.titre}</h5>
+                <div className="bg-slate-900 text-white p-3.5 rounded-2xl space-y-2 w-full shadow-lg">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                    <h5 className="font-black text-xs uppercase text-slate-100">📖 {astuceActive.titre}</h5>
                     <button
                       onClick={() => setAstuceActive(null)}
-                      className="bg-orange-600 hover:bg-orange-700 text-white font-black px-2 py-1 rounded-lg text-[8px] uppercase shadow-xs"
+                      className="bg-slate-800 hover:bg-slate-700 text-white font-black px-2 py-1 rounded-lg text-[8px] uppercase"
                     >
-                      ✕ Fermer l'astuce
+                      ✕ Fermer
                     </button>
                   </div>
-                  <p className="text-[9.5px] text-slate-800 font-medium leading-relaxed">
+                  <p className="text-[9.5px] text-slate-300 font-medium leading-relaxed">
                     {astuceActive.texte}
                   </p>
                   <div className="pt-1 flex justify-between items-center">
-                    <span className="text-[8px] text-orange-700 font-bold italic">💡 Astuce validée par 4TS Suite Manager</span>
+                    <span className="text-[8px] text-slate-400 font-bold italic">💡 4TS Suite Manager</span>
                     <button
                       onClick={() => setAstuceActive(null)}
-                      className="text-[9px] bg-white border border-orange-300 text-orange-800 font-black px-2.5 py-1 rounded-lg hover:bg-orange-100"
+                      className="text-[9px] bg-slate-800 border border-slate-700 text-white font-black px-2.5 py-1 rounded-lg"
                     >
-                      ← Choisir une autre astuce
+                      ← Retour astuces
                     </button>
                   </div>
                 </div>
@@ -1092,55 +1074,28 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
               <div ref={chatFinRef} />
             </div>
 
-            {/* Boutons de choix rapide à l'accueil du Chatbot */}
             {modeChat === 'ACCUEIL' && (
               <div className="p-2.5 bg-slate-100 border-t border-slate-200 flex gap-1.5 justify-around shrink-0 flex-wrap">
-                <button
-                  onClick={lancerModeSondage}
-                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm transition"
-                >
-                  📊 Sondage
-                </button>
-                <button
-                  onClick={lancerModeDivertissement}
-                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm transition"
-                >
-                  🎮 Quiz
-                </button>
-                <button
-                  onClick={lancerModeAstuces}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm transition"
-                >
-                  💡 Astuces
-                </button>
-                <button
-                  onClick={lancerModeSupport}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm transition"
-                >
-                  ❓ Support
-                </button>
+                <button onClick={lancerModeSondage} className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm">📊 Sondage</button>
+                <button onClick={lancerModeDivertissement} className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm">🎮 Quiz</button>
+                <button onClick={lancerModeAstuces} className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm">💡 Astuces</button>
+                <button onClick={lancerModeSupport} className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-black py-2 px-1 rounded-xl text-[8.5px] uppercase shadow-sm">❓ Support</button>
               </div>
             )}
 
-            {/* Formulaire de saisie message */}
             <form onSubmit={soumettreReponseChat} className="p-3 bg-white border-t border-slate-200 flex gap-2 shrink-0">
               <input
                 type="text"
                 value={saisieMessage}
                 onChange={(e) => setSaisieMessage(e.target.value)}
-                placeholder={
-                  modeChat === 'ASTUCES' ? "Explorez les catégories d'astuces ci-dessus..." :
-                  modeChat === 'SONDAGE' ? "Écrivez votre réponse..." :
-                  modeChat === 'DIVERTISSEMENT' ? "Écrivez votre réponse..." :
-                  "Posez votre question sur nos services..."
-                }
+                placeholder="Posez votre question..."
                 disabled={modeChat === 'ASTUCES'}
-                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-[10px] font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-[10px] font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-800 disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={modeChat === 'ASTUCES'}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md transition disabled:opacity-50"
+                className="bg-slate-800 hover:bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md transition disabled:opacity-50"
               >
                 Envoyer
               </button>
@@ -1149,153 +1104,72 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* ================= MODALE : GÉRER LES LIENS RÉSEAUX & CONTACTS (SUPER ADMIN) ================= */}
+      {/* ================= MODALE : CONFIGURATION DES LIENS RÉSEAUX (SUPER ADMIN) ================= */}
       {modalAdminReseauxOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
-                <span>⚙️</span> CONFIGURATION DES CONTACTS & RÉSEAUX (SUPER-ADMIN)
+                <span>⚙️</span> CONFIGURATION DES CONTACTS & RÉSEAUX
               </h4>
-              <button
-                onClick={() => setModalAdminReseauxOuvert(false)}
-                className="text-slate-400 hover:text-slate-700 font-black text-sm px-2 py-1 rounded-lg hover:bg-slate-100 transition"
-              >
-                ✕
-              </button>
+              <button onClick={() => setModalAdminReseauxOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm">✕</button>
             </div>
 
             <form onSubmit={sauvegarderLiensReseaux} className="space-y-3 text-[10px]">
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">Numéro WhatsApp du Service Client *</label>
-                <input
-                  type="text"
-                  value={waInput}
-                  onChange={(e) => setWaInput(e.target.value)}
-                  placeholder="EX: +237600000000"
-                  required
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]"
-                />
+                <label className="block font-bold text-slate-700 mb-0.5">Numéro WhatsApp *</label>
+                <input type="text" value={waInput} onChange={(e) => setWaInput(e.target.value)} required className="w-full bg-slate-50 border rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
-
               <div>
                 <label className="block font-bold text-slate-700 mb-0.5">Numéro d'Appel Direct *</label>
-                <input
-                  type="text"
-                  value={telInput}
-                  onChange={(e) => setTelInput(e.target.value)}
-                  placeholder="EX: +237600000000"
-                  required
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]"
-                />
+                <input type="text" value={telInput} onChange={(e) => setTelInput(e.target.value)} required className="w-full bg-slate-50 border rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
-
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">Lien officiel Facebook</label>
-                <input
-                  type="url"
-                  value={fbInput}
-                  onChange={(e) => setFbInput(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]"
-                />
+                <label className="block font-bold text-slate-700 mb-0.5">Lien Facebook</label>
+                <input type="url" value={fbInput} onChange={(e) => setFbInput(e.target.value)} className="w-full bg-slate-50 border rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
-
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">Lien officiel TikTok</label>
-                <input
-                  type="url"
-                  value={tkInput}
-                  onChange={(e) => setTkInput(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]"
-                />
+                <label className="block font-bold text-slate-700 mb-0.5">Lien TikTok</label>
+                <input type="url" value={tkInput} onChange={(e) => setTkInput(e.target.value)} className="w-full bg-slate-50 border rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
-
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">Lien officiel YouTube</label>
-                <input
-                  type="url"
-                  value={ytInput}
-                  onChange={(e) => setYtInput(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]"
-                />
-              </div>
-
-              <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-[9px] text-amber-800 font-bold">
-                🔒 Espace sécurisé : Ces numéros et liens mettront à jour instantanément la bannière "Nous Contacter".
+                <label className="block font-bold text-slate-700 mb-0.5">Lien YouTube</label>
+                <input type="url" value={ytInput} onChange={(e) => setYtInput(e.target.value)} className="w-full bg-slate-50 border rounded-xl p-2 font-bold text-slate-900 text-[10px]" />
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModalAdminReseauxOuvert(false)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-[10px] uppercase"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md"
-                >
-                  💾 Enregistrer les contacts
-                </button>
+                <button type="button" onClick={() => setModalAdminReseauxOuvert(false)} className="bg-slate-100 px-3 py-2 rounded-xl font-bold">Annuler</button>
+                <button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md">💾 Enregistrer</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modale Guide */}
+      {/* Modale Guide Modules */}
       {moduleSelectionne && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-5 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{moduleSelectionne.icone}</span>
                 <h4 className="font-black text-slate-900 uppercase text-xs">Guide : {moduleSelectionne.nom}</h4>
               </div>
-              <button
-                onClick={() => setModuleSelectionne(null)}
-                className="text-slate-400 hover:text-slate-700 font-black text-sm px-2 py-1 rounded-lg hover:bg-slate-100 transition"
-              >
-                ✕
-              </button>
+              <button onClick={() => setModuleSelectionne(null)} className="text-slate-400 font-bold">✕</button>
             </div>
-
             <div className="space-y-3 text-[10px]">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <p className="font-bold text-slate-700 whitespace-pre-line leading-relaxed">
-                  {moduleSelectionne.tutorielTexte}
-                </p>
-              </div>
-              <div className="bg-orange-50 border border-orange-200 p-3 rounded-xl flex items-center justify-between">
-                <div>
-                  <h5 className="font-black text-orange-900 uppercase text-[9px]">Besoin d'une explication en vidéo ?</h5>
-                  <p className="text-[8.5px] text-orange-700 font-medium">Retrouvez la démonstration filmée de ce module sur nos réseaux.</p>
-                </div>
-                <a
-                  href={moduleSelectionne.videoLien}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1.5 rounded-lg text-[9px] uppercase shadow-md transition shrink-0"
-                >
-                  Voir la vidéo ▶
-                </a>
+                <p className="font-bold text-slate-700 whitespace-pre-line leading-relaxed">{moduleSelectionne.tutorielTexte}</p>
               </div>
             </div>
-
             <div className="pt-2 flex justify-end">
-              <button
-                onClick={() => setModuleSelectionne(null)}
-                className="bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md"
-              >
-                Fermer
-              </button>
+              <button onClick={() => setModuleSelectionne(null)} className="bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md">Fermer</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ================= MODALE : CRÉATION / MODIFICATION D'ANNONCE ================= */}
+      {/* ================= MODALE : CRÉATION / MODIFICATION D'ANNONCE PERSISTANTE ================= */}
       {modalAnnonceOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200 max-h-[90vh] flex flex-col">
@@ -1304,12 +1178,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 <span>{annonceIdEnCoursDeModif ? '✏️' : '📢'}</span> 
                 {annonceIdEnCoursDeModif ? 'MODIFIER VOTRE ANNONCE' : 'CRÉER ET DIFFUSER UNE ANNONCE'}
               </h4>
-              <button
-                onClick={() => setModalAnnonceOuvert(false)}
-                className="text-slate-400 hover:text-slate-700 font-black text-sm px-2 py-1 rounded-lg hover:bg-slate-100 transition"
-              >
-                ✕
-              </button>
+              <button onClick={() => setModalAnnonceOuvert(false)} className="text-slate-400 font-bold">✕</button>
             </div>
 
             <form onSubmit={soumettreAnnonce} className="space-y-3 text-[10px] overflow-y-auto pr-1">
@@ -1319,9 +1188,9 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                   type="text"
                   value={titreAnnonce}
                   onChange={(e) => setTitreAnnonce(e.target.value.toUpperCase())}
-                  placeholder="EX: PROMOTION EXCEPTIONNELLE SUR LE RIZ..."
+                  placeholder="EX: PROMOTION SPÉCIALE..."
                   required
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-[10px] focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-[10px]"
                 />
               </div>
 
@@ -1330,100 +1199,43 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 <textarea
                   value={descAnnonce}
                   onChange={(e) => setDescAnnonce(e.target.value)}
-                  placeholder="Présentez votre offre, vos services ou vos produits en quelques mots..."
+                  placeholder="Présentez votre offre..."
                   rows="2"
                   required
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-medium text-slate-900 text-[10px] focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-medium text-slate-900 text-[10px]"
                 ></textarea>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                <h5 className="font-black text-slate-900 uppercase text-[9px]">🔗 Liens & Contacts cliquables sur l'annonce</h5>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Numéro ou Lien WhatsApp</label>
-                    <input
-                      type="text"
-                      value={whatsappAnnonce}
-                      onChange={(e) => setWhatsappAnnonce(e.target.value)}
-                      placeholder="EX: +237 6XXXXXXXX"
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[10px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Lien page Facebook</label>
-                    <input
-                      type="url"
-                      value={facebookAnnonce}
-                      onChange={(e) => setFacebookAnnonce(e.target.value)}
-                      placeholder="https://facebook.com/votrepage"
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[10px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Lien profil / vidéo TikTok</label>
-                    <input
-                      type="url"
-                      value={tiktokAnnonce}
-                      onChange={(e) => setTiktokAnnonce(e.target.value)}
-                      placeholder="https://tiktok.com/@votrecompte"
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[10px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-0.5">Lien chaîne YouTube</label>
-                    <input
-                      type="url"
-                      value={youtubeAnnonce}
-                      onChange={(e) => setYoutubeAnnonce(e.target.value)}
-                      placeholder="https://youtube.com/@votrechaine"
-                      className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[10px]"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">Lien profil Instagram</label>
-                  <input
-                    type="url"
-                    value={instagramAnnonce}
-                    onChange={(e) => setInstagramAnnonce(e.target.value)}
-                    placeholder="https://instagram.com/votrecompte"
-                    className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[10px]"
-                  />
-                </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">⏱️ Durée de validité de l'annonce :</label>
+                <select
+                  value={dureeHeures}
+                  onChange={(e) => setDureeHeures(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-[10px]"
+                >
+                  <option value="24">24 Heures (1 Jour)</option>
+                  <option value="72">72 Heures (3 Jours)</option>
+                  <option value="168">1 Semaine (7 Jours)</option>
+                  <option value="720">1 Mois (30 Jours)</option>
+                  <option value="8760">Permanent (1 An)</option>
+                </select>
+                <p className="text-[8px] text-slate-500 font-bold mt-1">L'annonce restera affichée en continu jusqu'à l'expiration de ce délai, même après vos mises à jour.</p>
               </div>
 
               <div className="space-y-1">
-                <label className="block font-bold text-slate-700">Visuel de l'annonce (Image)</label>
+                <label className="block font-bold text-slate-700">Visuel de l'annonce (Image optionnelle)</label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={gererChangementVisuel}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-1.5 text-[9px] text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[9px] file:font-black file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-1.5 text-[9px] text-slate-600"
                 />
-                <p className="text-[8.5px] text-slate-500 font-bold italic">
-                  📐 Taille recommandée : <span className="text-orange-600 font-black">1200 x 400 pixels</span> (Format paysage adapté au défilement de la bannière).
-                </p>
-              </div>
-
-              <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-[9px] text-emerald-800 font-bold">
-                🚀 Mise à jour instantanée : Vos modifications s'appliqueront et s'afficheront immédiatement sur la bannière.
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModalAnnonceOuvert(false)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-[10px] uppercase"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md"
-                >
-                  {annonceIdEnCoursDeModif ? '💾 Enregistrer les modifications' : '🚀 Valider et Diffuser en Direct'}
+                <button type="button" onClick={() => setModalAnnonceOuvert(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-[10px] uppercase">Annuler</button>
+                <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md">
+                  {annonceIdEnCoursDeModif ? '💾 Enregistrer' : '🚀 Valider et Diffuser'}
                 </button>
               </div>
             </form>
@@ -1434,34 +1246,16 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
       {/* Modale CGU */}
       {modalCguOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200 max-h-[85vh] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden space-y-4 p-5 max-h-[85vh] flex flex-col">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
-                <span>🛡️</span> CONDITIONS GÉNÉRALES D’UTILISATION (CGU)
-              </h4>
-              <button
-                onClick={() => setModalCguOuvert(false)}
-                className="text-slate-400 hover:text-slate-700 font-black text-sm px-2 py-1 rounded-lg hover:bg-slate-100 transition"
-              >
-                ✕
-              </button>
+              <h4 className="font-black text-slate-900 uppercase text-xs">🛡️ CONDITIONS GÉNÉRALES D’UTILISATION</h4>
+              <button onClick={() => setModalCguOuvert(false)} className="text-slate-400 font-bold">✕</button>
             </div>
-
             <div className="space-y-3 text-[10px] text-slate-700 overflow-y-auto pr-2 leading-relaxed font-medium">
-              <h5 className="font-black text-slate-900 uppercase">1. Objet de l’écosystème 4TS Suite Manager</h5>
               <p>4TS Suite Manager est une solution logicielle modulaire conçue pour la gestion commerciale, la comptabilité, le suivi des stocks, la caisse boutique, la logistique, la tontine et la gestion des flottes de livraison.</p>
-
-              <h5 className="font-black text-slate-900 uppercase">2. Service Client et Support</h5>
-              <p>Pour toute assistance, les utilisateurs peuvent contacter directement le service client via la bannière dédiée (WhatsApp, Appel direct ou Chatbot interactif).</p>
             </div>
-
             <div className="pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setModalCguOuvert(false)}
-                className="bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md"
-              >
-                J'ai compris et fermé
-              </button>
+              <button onClick={() => setModalCguOuvert(false)} className="bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-[10px] uppercase shadow-md">Fermer</button>
             </div>
           </div>
         </div>
