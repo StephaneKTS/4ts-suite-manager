@@ -20,18 +20,18 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // Annonce vocale renforcée et débloquée
+  // Annonce vocale renforcée et réveillée à chaque appel
   const annoncervocalement = (texte) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
-        window.speechSynthesis.resume(); // Débloque l'audio si mis en pause par le navigateur
-        window.speechSynthesis.cancel(); // Annule la file d'attente précédente
+        window.speechSynthesis.resume();
+        window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(texte);
         utterance.lang = 'fr-FR';
-        utterance.rate = 0.95; // Vitesse claire
-        utterance.pitch = 1.1;  // Ton un peu plus aigu pour attirer l'attention
-        utterance.volume = 1.0; // Volume au maximum
+        utterance.rate = 0.95;
+        utterance.pitch = 1.1;
+        utterance.volume = 1.0;
         
         window.speechSynthesis.speak(utterance);
       } catch (e) {
@@ -40,21 +40,26 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // Son d'alarme beaucoup plus fort, long et percutant (Séquence de bips répétés)
-  const jouerSonAlerteFort = () => {
+  // Son d'alarme fort, long et percutant avec réveil forcé de l'AudioContext
+  const jouerSonAlerteFort = async () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioContext();
       
-      // Séquence de 3 bips puissants répétés
+      // Si le navigateur a mis le contexte en veille, on le relance
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      
+      // Séquence de 4 bips puissants répétés
       [0, 0.4, 0.8, 1.2].forEach((delay) => {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         
-        osc.type = 'sawtooth'; // Son plus fort et percutant qu'un simple 'sine'
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay); // Note aiguë (La5)
+        osc.type = 'sawtooth'; // Son percutant
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay);
         
-        gain.gain.setValueAtTime(0.7, audioCtx.currentTime + delay); // Volume élevé (0.7)
+        gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay); // Volume élevé
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.3);
         
         osc.connect(gain);
@@ -82,7 +87,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       
       if (verifierNouveau && dernierNombreCommandes.current !== null) {
         if (nouvellesCommandes.length > dernierNombreCommandes.current) {
-          // Nouvelle commande détectée : Alerte forte, vibrations et voix
+          // Nouvelle commande détectée : Déclenchement simultané Son + Vibration + Voix
           jouerSonAlerteFort();
           declencherVibration();
           
@@ -182,18 +187,17 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse inline-block"></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">Suivi en direct & Alertes Fortes</p>
+            <p className="text-[9px] text-slate-500 font-bold">Suivi en direct & Alertes Actives</p>
           </div>
           <button
             onClick={() => {
-              // Permet aussi de débloquer l'audio d'un simple clic si nécessaire
               jouerSonAlerteFort();
-              annoncervocalement("Système audio activé.");
+              annoncervocalement("Système audio réactivé avec succès.");
               chargerCommandesQR(false);
             }}
-            className="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold px-2 py-1 rounded-lg text-[9px] transition"
+            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs animate-pulse"
           >
-            🔊 Tester / Actualiser
+            🔊 Activer / Tester l'audio
           </button>
         </div>
 
