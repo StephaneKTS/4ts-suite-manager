@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import MenuExplorer from '@/components/MenuExplorer'; // Importation du menu Explorer
+import MenuExplorer from '@/app/dashboard/components/MenuExplorer'; // ✅ Chemin corrigé vers le dossier dashboard/components
 
 export default function EspaceClientBoutique() {
   const searchParams = useSearchParams();
@@ -225,7 +225,6 @@ export default function EspaceClientBoutique() {
     );
   }
 
-  // --- VUE 2 : PAGE PLEIN ÉCRAN DU PANIER ET VALIDATION ---
   if (vuePanier) {
     return (
       <div className="w-full min-h-screen bg-white font-sans text-xs flex flex-col justify-between pb-10">
@@ -349,15 +348,12 @@ export default function EspaceClientBoutique() {
     );
   }
 
-  // --- VUE PRINCIPALE AVEC SÉLECTION ONGLETS : BOUTIQUE (COMMANDES) OU EXPLORER ---
   return (
     <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
       
-      {/* EN-TÊTE DU RESTAURANT */}
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
         <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
         
-        {/* BARRE D'ONGLETS : MENU COMMANDE vs MENU EXPLORER */}
         <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
@@ -384,12 +380,10 @@ export default function EspaceClientBoutique() {
         </div>
       </div>
 
-      {/* CONTENU SELON L'ONGLET ACTIF */}
       {ongletActif === 'EXPLORER' ? (
         <MenuExplorer entrepriseId={entrepriseId} />
       ) : (
         <div className="space-y-4">
-          {/* BANDEAU FLOTTANT EN HAUT POUR ACCÈS À LA PAGE PANIER */}
           {panier.length > 0 && (
             <div className="sticky top-24 z-40 bg-orange-600 text-white p-3 rounded-2xl shadow-lg flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -411,7 +405,6 @@ export default function EspaceClientBoutique() {
             </div>
           )}
 
-          {/* LISTE DES ARTICLES */}
           <div className="space-y-2">
             <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Plats & Articles disponibles</h2>
             {chargement ? (
