@@ -20,7 +20,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // Annonce vocale renforcée et réveillée à chaque appel
+  // Annonce vocale optimisée pour une meilleure prononciation des noms
   const annoncervocalement = (texte) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
@@ -29,9 +29,9 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         
         const utterance = new SpeechSynthesisUtterance(texte);
         utterance.lang = 'fr-FR';
-        utterance.rate = 0.95;
-        utterance.pitch = 1.1;
-        utterance.volume = 1.0;
+        utterance.rate = 0.90; // Vitesse un peu plus lente pour bien prononcer les noms
+        utterance.pitch = 1.0; // Ton neutre et naturel
+        utterance.volume = 1.0; // Volume au maximum
         
         window.speechSynthesis.speak(utterance);
       } catch (e) {
@@ -40,26 +40,24 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // Son d'alarme fort, long et percutant avec réveil forcé de l'AudioContext
+  // Son d'alarme fort, long et percutant
   const jouerSonAlerteFort = async () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioContext();
       
-      // Si le navigateur a mis le contexte en veille, on le relance
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
       }
       
-      // Séquence de 4 bips puissants répétés
       [0, 0.4, 0.8, 1.2].forEach((delay) => {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         
-        osc.type = 'sawtooth'; // Son percutant
+        osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay);
         
-        gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay); // Volume élevé
+        gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay);
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.3);
         
         osc.connect(gain);
@@ -75,11 +73,12 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
   const chargerCommandesQR = async (verifierNouveau = false) => {
     try {
+      // Tri par ordre d'arrivée (du plus ancien au plus récent pour l'ordre logique de traitement)
       const { data, error } = await supabase
         .from('commandes_clients_qr')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -87,20 +86,23 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       
       if (verifierNouveau && dernierNombreCommandes.current !== null) {
         if (nouvellesCommandes.length > dernierNombreCommandes.current) {
-          // Nouvelle commande détectée : Déclenchement simultané Son + Vibration + Voix
           jouerSonAlerteFort();
           declencherVibration();
           
-          const derniereCmd = nouvellesCommandes[0];
+          // Identifier la toute dernière commande ajoutée
+          const derniereCmd = nouvellesCommandes[nouvellesCommandes.length - 1];
           if (derniereCmd) {
-            const messageVocal = `Attention ! Nouvelle commande reçue. Client ${derniereCmd.nom_client || 'Anonyme'}, table ${derniereCmd.numero_table || 'non spécifiée'}.`;
+            const nomClientPropre = (derniereCmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
+            const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${derniereCmd.numero_table || 'non spécifiée'}.`;
             annoncervocalement(messageVocal);
           }
         }
       }
       
       dernierNombreCommandes.current = nouvellesCommandes.length;
-      setCommandes(nouvellesCommandes);
+      // Pour l'affichage à l'écran, on remet les plus récentes en haut (ordre inverse) si souhaité, 
+      // ou on garde l'ordre. Ici on inverse pour l'affichage visuel tout en gardant la logique propre.
+      setCommandes([...nouvellesCommandes].reverse());
     } catch (err) {
       console.error('Erreur chargement commandes :', err.message);
     } finally {
@@ -112,12 +114,10 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     if (entrepriseId) {
       chargerCommandesQR(false);
       
-      // Actualisation automatique toutes les 6 secondes
       const interval = setInterval(() => {
         chargerCommandesQR(true);
       }, 6000);
 
-      // Rappel toutes les 5 minutes pour les commandes servies mais non payées
       const intervalRappelPaiement = setInterval(() => {
         setCommandes(prevCommandes => {
           const impayesServis = prevCommandes.some(c => c.statut === 'SERVI' && c.statut_paiement !== 'PAYE');
@@ -187,12 +187,12 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse inline-block"></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">Suivi en direct & Alertes Actives</p>
+            <p className="text-[9px] text-slate-500 font-bold">Suivi par ordre d'arrivée & Voix claire</p>
           </div>
           <button
             onClick={() => {
               jouerSonAlerteFort();
-              annoncervocalement("Système audio réactivé avec succès.");
+              annoncervocalement("Système audio et vocal activé avec succès.");
               chargerCommandesQR(false);
             }}
             className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs animate-pulse"
