@@ -7,73 +7,148 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [commandes, setCommandes] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [filtreStatut, setFiltreStatut] = useState('TOUT');
+  const [filtreDate, setFiltreDate] = useState('AUJOURDHUI');
+  
+  const [audioActive, setAudioActive] = useState(true);
   const dernierNombreCommandes = useRef(null);
 
-  // Vibration forte et rythmée
+  // File d'attente audio pour éviter les superpositions
+  const fileDAbsolueAudio = useRef([]);
+  const enTrainDeJouerAudio = useRef(false);
+
+  useEffect(() => {
+    const preferenceAudio = localStorage.getItem('4ts_audio_active');
+    if (preferenceAudio !== null) {
+      setAudioActive(preferenceAudio === 'true');
+    }
+  }, []);
+
+  // Fonction principale qui gère la lecture séquentielle de la file d'attente
+  const traiterFileDAbsolue = async () => {
+    if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActive) {
+      return;
+    }
+
+    enTrainDeJouerAudio.current = true;
+    const tacheCourante = fileDAbsolueAudio.current.shift(); // Récupère la première tâche
+
+    try {
+      if (tacheCourante.type === 'ALERTE_SONORE') {
+        await executerSonFort();
+      } else if (tacheCourante.type === 'ANNONCE_VOCALE') {
+        await executerVoix(tacheCourante.texte);
+      }
+    } catch (e) {
+      console.log("Erreur lecture audio :", e);
+    } finally {
+      enTrainDeJouerAudio.current = false;
+      // Passer à l'élément suivant dans la file s'il y en a
+      if (fileDAbsolueAudio.current.length > 0) {
+        setTimeout(traiterFileDAbsolue, 300); // Petite pause de 300ms entre les sons
+      }
+    }
+  };
+
+  // Ajouter une alerte ou une voix dans la file d'attente
+  const ajouterFichierAudio = (type, texte = '') => {
+    if (!audioActive) return;
+    fileDAbsolueAudio.current.push({ type, texte });
+    traiterFileDAbsolue();
+  };
+
+  // Exécution physique du son d'alarme (jusqu'à sa fin)
+  const executerSonFort = () => {
+    return new Promise((resolve) => {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+        
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        
+        const dureeTotaleMs = 1600; // Durée totale des bips (environ 1.6 seconde)
+        [0, 0.4, 0.8, 1.2].forEach((delay) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay);
+          
+          gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.3);
+          
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          
+          osc.start(audioCtx.currentTime + delay);
+          osc.stop(audioCtx.currentTime + delay + 0.3);
+        });
+
+        setTimeout(resolve, dureeTotaleMs);
+      } catch (e) {
+        console.log("Erreur son :", e);
+        resolve();
+      }
+    });
+  };
+
+  // Exécution physique de la voix (attend que la parole soit finie)
+  const executerVoix = (texte) => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.resume();
+          window.speechSynthesis.cancel();
+          
+          const utterance = new SpeechSynthesisUtterance(texte);
+          utterance.lang = 'fr-FR';
+          utterance.rate = 0.90;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          
+          utterance.onend = () => resolve(); // Libère la file quand la voix a fini de parler
+          utterance.onerror = () => resolve();
+
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          console.log("Erreur voix :", e);
+          resolve();
+        }
+      } else {
+        resolve();
+      }
+    });
+  };
+
+  const toggleAudio = async () => {
+    const nouvelEtat = !audioActive;
+    setAudioActive(nouvelEtat);
+    localStorage.setItem('4ts_audio_active', nouvelEtat);
+
+    if (nouvelEtat) {
+      fileDAbsolueAudio.current = []; // Vider la file en cas de réactivation
+      ajouterFichierAudio('ALERTE_SONORE');
+      ajouterFichierAudio('ANNONCE_VOCALE', "Système audio et vocal activé.");
+    } else {
+      fileDAbsolueAudio.current = [];
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    }
+  };
+
   const declencherVibration = () => {
+    if (!audioActive) return;
     if (typeof window !== 'undefined' && navigator.vibrate) {
       try {
-        navigator.vibrate([500, 200, 500, 200, 800, 200, 800]);
-      } catch (e) {
-        console.log("Vibration non supportée");
-      }
-    }
-  };
-
-  // Annonce vocale optimisée pour une meilleure prononciation des noms
-  const annoncervocalement = (texte) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.resume();
-        window.speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(texte);
-        utterance.lang = 'fr-FR';
-        utterance.rate = 0.90; // Vitesse un peu plus lente pour bien prononcer les noms
-        utterance.pitch = 1.0; // Ton neutre et naturel
-        utterance.volume = 1.0; // Volume au maximum
-        
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        console.log("Erreur synthèse vocale :", e);
-      }
-    }
-  };
-
-  // Son d'alarme fort, long et percutant
-  const jouerSonAlerteFort = async () => {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      const audioCtx = new AudioContext();
-      
-      if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-      }
-      
-      [0, 0.4, 0.8, 1.2].forEach((delay) => {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay);
-        
-        gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.3);
-        
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        
-        osc.start(audioCtx.currentTime + delay);
-        osc.stop(audioCtx.currentTime + delay + 0.3);
-      });
-    } catch (e) {
-      console.log("Audio non pris en charge ou bloqué :", e);
+        navigator.vibrate([400, 150, 400, 150, 600]);
+      } catch (e) {}
     }
   };
 
   const chargerCommandesQR = async (verifierNouveau = false) => {
     try {
-      // Tri par ordre d'arrivée (du plus ancien au plus récent pour l'ordre logique de traitement)
       const { data, error } = await supabase
         .from('commandes_clients_qr')
         .select('*')
@@ -86,22 +161,25 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       
       if (verifierNouveau && dernierNombreCommandes.current !== null) {
         if (nouvellesCommandes.length > dernierNombreCommandes.current) {
-          jouerSonAlerteFort();
-          declencherVibration();
-          
-          // Identifier la toute dernière commande ajoutée
-          const derniereCmd = nouvellesCommandes[nouvellesCommandes.length - 1];
-          if (derniereCmd) {
-            const nomClientPropre = (derniereCmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
-            const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${derniereCmd.numero_table || 'non spécifiée'}.`;
-            annoncervocalement(messageVocal);
+          if (audioActive) {
+            declencherVibration();
+            
+            // S'il y a plusieurs commandes arrivées en même temps, on les enfile proprement une par une
+            const nbNouvelles = nouvellesCommandes.length - dernierNombreCommandes.current;
+            const commandesAjoutees = nouvellesCommandes.slice(nouvellesCommandes.length - nbNouvelles);
+
+            commandesAjoutees.forEach((cmd) => {
+              const nomClientPropre = (cmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
+              const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${cmd.numero_table || 'non spécifiée'}.`;
+              
+              ajouterFichierAudio('ALERTE_SONORE');
+              ajouterFichierAudio('ANNONCE_VOCALE', messageVocal);
+            });
           }
         }
       }
       
       dernierNombreCommandes.current = nouvellesCommandes.length;
-      // Pour l'affichage à l'écran, on remet les plus récentes en haut (ordre inverse) si souhaité, 
-      // ou on garde l'ordre. Ici on inverse pour l'affichage visuel tout en gardant la logique propre.
       setCommandes([...nouvellesCommandes].reverse());
     } catch (err) {
       console.error('Erreur chargement commandes :', err.message);
@@ -116,26 +194,26 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       
       const interval = setInterval(() => {
         chargerCommandesQR(true);
-      }, 6000);
+      }, 2000);
 
       const intervalRappelPaiement = setInterval(() => {
         setCommandes(prevCommandes => {
           const impayesServis = prevCommandes.some(c => c.statut === 'SERVI' && c.statut_paiement !== 'PAYE');
-          if (impayesServis) {
-            jouerSonAlerteFort();
+          if (impayesServis && audioActive) {
             declencherVibration();
-            annoncervocalement("Alerte impayé ! Une commande servie n'a pas encore été réglée.");
+            ajouterFichierAudio('ALERTE_SONORE');
+            ajouterFichierAudio('ANNONCE_VOCALE', "Alerte impayé ! Une commande servie n'a pas encore été réglée.");
           }
           return prevCommandes;
         });
-      }, 300000); // 5 minutes
+      }, 300000);
 
       return () => {
         clearInterval(interval);
         clearInterval(intervalRappelPaiement);
       };
     }
-  }, [entrepriseId]);
+  }, [entrepriseId, audioActive]);
 
   const changerStatutCommande = async (idCommande, nouveauStatut, statutPaiement) => {
     if (nouveauStatut === 'SERVI' && statutPaiement !== 'PAYE') {
@@ -174,8 +252,23 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   };
 
   const commandesFiltrees = commandes.filter(cmd => {
-    if (filtreStatut === 'TOUT') return true;
-    return cmd.statut === filtreStatut;
+    if (filtreStatut !== 'TOUT' && cmd.statut !== filtreStatut) {
+      return false;
+    }
+
+    if (filtreDate !== 'TOUTES' && cmd.created_at) {
+      const dateCmd = new Date(cmd.created_at).toDateString();
+      const aujourdhui = new Date().toDateString();
+      
+      const hierDate = new Date();
+      hierDate.setDate(hierDate.getDate() - 1);
+      const hier = hierDate.toDateString();
+
+      if (filtreDate === 'AUJOURDHUI' && dateCmd !== aujourdhui) return false;
+      if (filtreDate === 'HIER' && dateCmd !== hier) return false;
+    }
+
+    return true;
   });
 
   return (
@@ -184,20 +277,21 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         <div className="flex justify-between items-center">
           <div>
             <h2 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse inline-block"></span>
+              <span className={`w-2 h-2 rounded-full ${audioActive ? 'bg-emerald-600 animate-pulse' : 'bg-red-500'} inline-block`}></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">Suivi par ordre d'arrivée & Voix claire</p>
+            <p className="text-[9px] text-slate-500 font-bold">File d'attente audio intelligente & Suivi instantané</p>
           </div>
+          
           <button
-            onClick={() => {
-              jouerSonAlerteFort();
-              annoncervocalement("Système audio et vocal activé avec succès.");
-              chargerCommandesQR(false);
-            }}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs animate-pulse"
+            onClick={toggleAudio}
+            className={`font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs flex items-center gap-1 ${
+              audioActive 
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
+                : 'bg-slate-300 hover:bg-slate-400 text-slate-800'
+            }`}
           >
-            🔊 Activer / Tester l'audio
+            {audioActive ? '🔊 Audio : ACTIVÉ' : '🔇 Audio : DÉSACTIVÉ'}
           </button>
         </div>
 
@@ -215,12 +309,31 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             </button>
           ))}
         </div>
+
+        <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+          {[
+            { id: 'AUJOURDHUI', label: '📅 Aujourd\'hui' },
+            { id: 'HIER', label: '🗓️ Hier' },
+            { id: 'TOUTES', label: '📂 Toutes les dates' }
+          ].map((dt) => (
+            <button
+              key={dt.id}
+              type="button"
+              onClick={() => setFiltreDate(dt.id)}
+              className={`py-1.5 px-1 rounded-md font-black text-[8px] uppercase transition text-center truncate ${
+                filtreDate === dt.id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              {dt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {chargement ? (
         <div className="bg-white p-6 text-center text-slate-400 font-bold rounded-xl border">Chargement...</div>
       ) : commandesFiltrees.length === 0 ? (
-        <div className="bg-white p-6 text-center text-slate-400 font-bold rounded-xl border italic text-[11px]">Aucune commande trouvée.</div>
+        <div className="bg-white p-6 text-center text-slate-400 font-bold rounded-xl border italic text-[11px]">Aucune commande trouvée pour cette période.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {commandesFiltrees.map((cmd) => {
