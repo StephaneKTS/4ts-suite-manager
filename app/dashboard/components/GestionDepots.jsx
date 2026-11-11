@@ -277,7 +277,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
-      // 🔒 VÉRIFICATION DES MOUVEMENTS : Interdire la suppression si le dépôt a déjà connu au moins un mouvement
       const { count: countSource, error: errSrc } = await supabase
         .from('mouvements_stock')
         .select('*', { count: 'exact', head: true })
@@ -328,79 +327,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       await chargerDepots(true);
     } catch (err) {
       alert('Erreur lors de la suppression : ' + err.message);
-    } finally {
-      setEnTrainDeSauvegarder(false);
-    }
-  };
-
-  const toggleDepotEmplacements = (depotId) => {
-    if (enTrainDeSauvegarder) return;
-    setDepotOuvertId(depotOuvertId === depotId ? null : depotId);
-  };
-
-  const ajouterEmplacement = async (e, depot) => {
-    e.preventDefault();
-    if (enTrainDeSauvegarder) return;
-    if (!permissions.creation) {
-      alert('⛔ Action non autorisée : Ajout d’emplacement interdit par votre profil.');
-      return;
-    }
-    if (!nouveauNomEmplacement.trim()) return;
-
-    setEnTrainDeSauvegarder(true);
-    try {
-      const respFinal = responsableEmplacement || depot.responsable_depot || depot.Responsable_Depot || 'NON ASSIGNÉ';
-      const depotIdCible = depot.id || depot.ID;
-
-      const payloadEmp = {
-        id_entreprise: entrepriseId,
-        id_depot: depotIdCible,
-        nom_emplacement: nouveauNomEmplacement.trim().toUpperCase(),
-        responsable_emplacement: respFinal,
-        module: moduleActuel,
-      };
-
-      const { error } = await supabase
-        .from('emplacements_stock')
-        .insert([payloadEmp]);
-
-      if (error) {
-        localSync.ajouterFileAttente('INSERT', 'emplacements_stock', payloadEmp);
-      }
-
-      alert('Emplacement enregistré avec succès !');
-
-      setNouveauNomEmplacement('');
-      setResponsableEmplacement('');
-      localStorage.removeItem(cleCacheEmplacements);
-      await chargerDepots(true);
-    } catch (err) {
-      alert('Erreur lors de l’ajout de l’emplacement : ' + err.message);
-    } finally {
-      setEnTrainDeSauvegarder(false);
-    }
-  };
-
-  const supprimerEmplacement = async (empId) => {
-    if (enTrainDeSauvegarder) return;
-    if (!permissions.suppression) {
-      alert('⛔ Action non autorisée : Suppression d’emplacement interdite par votre profil.');
-      return;
-    }
-    if (!confirm('Supprimer cet emplacement ?')) return;
-
-    setEnTrainDeSauvegarder(true);
-    try {
-      const { error } = await supabase.from('emplacements_stock').delete().eq('id', empId);
-      if (error) {
-        localSync.ajouterFileAttente('DELETE', 'emplacements_stock', { id: empId });
-      }
-
-      localStorage.removeItem(cleCacheEmplacements);
-      alert('Emplacement supprimé.');
-      await chargerDepots(true);
-    } catch (err) {
-      alert('Erreur de suppression : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -565,15 +491,10 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
               const depResp = dep.responsable_depot || dep.Responsable_Depot || '';
               const estDefaut = dep.est_depot_par_defaut ?? dep.Est_Depot_Par_Defaut ?? false;
 
-              const estOuvert = depotOuvertId === depId;
-              const emplacements = emplacementsParDepot[depId] || [];
-
               return (
                 <div
                   key={depId}
-                  className={`bg-white border rounded-xl transition overflow-hidden shadow-2xs ${
-                    estOuvert ? 'border-orange-500 ring-1 ring-orange-500/20' : 'border-slate-200'
-                  }`}
+                  className="bg-white border border-slate-200 rounded-xl transition overflow-hidden shadow-2xs"
                 >
                   <div
                     onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirEdition(dep)}
@@ -593,104 +514,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                         </p>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        disabled={enTrainDeSauvegarder}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleDepotEmplacements(depId);
-                        }}
-                        className="text-[10px] font-black bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-2xs transition"
-                      >
-                        📍 {emplacements.length} Empl. {estOuvert ? '▼' : '▶'}
-                      </button>
-                    </div>
                   </div>
-
-                  {estOuvert && (
-                    <div className="bg-slate-50 border-t border-slate-200 p-2.5 space-y-2 text-[10px]">
-                      <div className="flex justify-between items-center">
-                        <span className="font-black text-slate-800 uppercase tracking-wider text-[9.5px]">
-                          EMPLACEMENTS DU DÉPÔT
-                        </span>
-                      </div>
-
-                      {permissions.creation && (
-                        <form
-                          onSubmit={(e) => ajouterEmplacement(e, dep)}
-                          className="bg-white p-2 rounded-lg border border-slate-300 flex gap-1.5 items-end shadow-2xs"
-                        >
-                          <div className="flex-1">
-                            <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Emplacement</label>
-                            <input
-                              type="text"
-                              required
-                              disabled={enTrainDeSauvegarder}
-                              value={nouveauNomEmplacement}
-                              onChange={(e) => setNouveauNomEmplacement(e.target.value.toUpperCase())}
-                              placeholder="EX: RAYON A1"
-                              className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold uppercase text-slate-900 shadow-xs"
-                            />
-                          </div>
-
-                          <div className="flex-1">
-                            <label className="block text-[8px] text-slate-700 font-black mb-0.5 uppercase">Responsable</label>
-                            <div 
-                              onClick={() => { if (!enTrainDeSauvegarder) setModalRespOuverte(true); }} 
-                              className="w-full bg-white border border-slate-300 rounded p-1 text-[10px] font-extrabold text-slate-900 cursor-pointer truncate shadow-xs"
-                            >
-                              {responsableEmplacement ? responsableEmplacement : `-- Choisir --`}
-                            </div>
-                          </div>
-
-                          <button
-                            type="submit"
-                            disabled={enTrainDeSauvegarder}
-                            className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1 rounded text-[10px] shadow-xs shrink-0 flex items-center gap-1"
-                          >
-                            <span>➕</span> Ajouter
-                          </button>
-                        </form>
-                      )}
-
-                      {emplacements.length === 0 ? (
-                        <p className="text-center text-slate-500 py-2 font-bold italic text-[10px]">Aucun emplacement enregistré.</p>
-                      ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                          {emplacements.map((emp) => {
-                            const empId = emp.id || emp.ID;
-                            const empNom = emp.nom_emplacement || emp.Nom_Emplacement || '';
-                            const empResp = emp.responsable_emplacement || emp.Responsable_Emplacement || '';
-
-                            return (
-                              <div
-                                key={empId}
-                                className="bg-white border border-slate-200 p-2 rounded-lg shadow-2xs flex justify-between items-center"
-                              >
-                                <div className="truncate pr-1">
-                                  <p className="font-black text-slate-900 text-[10px] truncate">📦 {empNom}</p>
-                                  <p className="text-[8.5px] text-slate-600 font-bold truncate">👤 {empResp}</p>
-                                </div>
-                                {permissions.suppression && (
-                                  <button
-                                    type="button"
-                                    disabled={enTrainDeSauvegarder}
-                                    onClick={() => supprimerEmplacement(empId)}
-                                    className="text-red-500 hover:text-red-700 disabled:opacity-50 p-1 rounded text-[10px] shrink-0 font-bold"
-                                    title="Supprimer"
-                                  >
-                                    🗑️
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -709,46 +533,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
             )}
           </div>
         )
-      )}
-
-      {modalRespOuverte && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-3 space-y-2.5 max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-              <span className="font-black text-xs text-slate-900 uppercase">Sélectionner un responsable</span>
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setModalRespOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
-            </div>
-            <input 
-              type="text" 
-              autoFocus 
-              disabled={enTrainDeSauvegarder}
-              placeholder="Rechercher..." 
-              value={rechercheResp} 
-              onChange={(e) => setRechercheResp(e.target.value)} 
-              className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-extrabold text-slate-900 shadow-xs" 
-            />
-            <div className="overflow-y-auto space-y-1 flex-1 max-h-60">
-              {personnelFiltreModal.length === 0 ? (
-                <p className="text-center text-slate-500 py-6 text-xs font-bold">Aucun responsable trouvé.</p>
-              ) : (
-                personnelFiltreModal.map((p) => (
-                  <div 
-                    key={p.id} 
-                    onClick={() => { 
-                      if (enTrainDeSauvegarder) return;
-                      setResponsableEmplacement(p.nom); 
-                      setModalRespOuverte(false); 
-                      setRechercheResp(''); 
-                    }} 
-                    className="p-2.5 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded-xl flex justify-between items-center cursor-pointer transition"
-                  >
-                    <span className="font-black text-slate-900 text-[11px]">👤 {p.nom}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

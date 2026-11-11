@@ -133,7 +133,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       setPartenaires(listPartenaires);
       localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listPartenaires);
 
-      // Charger les taxes & ristournes déductibles (uniquement pour le module BOUTIQUE)
       if (moduleActuel === 'BOUTIQUE') {
         const { data: dataTaxes } = await supabase
           .from('types_taxes_ristournes')
@@ -213,17 +212,60 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
+      let idDepotAssocie = partenaireEnEdition ? partenaireEnEdition.id_depot : null;
+
+      // Création automatique du dépôt dans la table correcte "depots_stock"
+      if (estModeLivraison && nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE') {
+        if (!idDepotAssocie) {
+          const nomDepot = nomPartenaireClean;
+          
+          // Vérifier si le dépôt existe déjà dans depots_stock
+          const { data: depotExistant } = await supabase
+            .from('depots_stock')
+            .select('id')
+            .eq('id_entreprise', entrepriseId)
+            .eq('module', moduleActuel)
+            .eq('nom_depot', nomDepot)
+            .maybeSingle();
+
+          if (depotExistant) {
+            idDepotAssocie = depotExistant.id;
+          } else {
+            const { data: nouveauDepot, error: errDepot } = await supabase
+              .from('depots_stock')
+              .insert([{
+                id_entreprise: entrepriseId,
+                nom_depot: nomDepot,
+                adresse_localisation: nouveauPartenaire.adresse || 'ADRESSE PARTENAIRE',
+                responsable_depot: nomPartenaireClean,
+                module: moduleActuel,
+                est_depot_par_defaut: false
+              }])
+              .select('id')
+              .single();
+
+            if (!errDepot && nouveauDepot) {
+              idDepotAssocie = nouveauDepot.id;
+            } else if (errDepot) {
+              console.error('Erreur création dépôt stock :', errDepot.message);
+            }
+          }
+        }
+      } else {
+        idDepotAssocie = null;
+      }
+
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
         nom_fournisseur: nomPartenaireClean,
-        statut_stockage: 'AVEC_STOCKAGE',
-        id_depot: null,
+        statut_stockage: estModeLivraison ? nouveauPartenaire.statut_stockage : 'AVEC_STOCKAGE',
+        id_depot: idDepotAssocie,
         pays: nouveauPartenaire.pays,
         telephone: numeroComplet,
         email: (nouveauPartenaire.email || '').trim().toLowerCase(),
         adresse: (nouveauPartenaire.adresse || '').trim().toUpperCase(),
-        taxes_ristournes_associees: nouveauPartenaire.taxes_ristournes_associees || [],
+        taxes_ristournes_associees: estModeLivraison ? [] : (nouveauPartenaire.taxes_ristournes_associees || []),
       };
 
       if (partenaireEnEdition) {
@@ -256,7 +298,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         setPartenaires(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
-        alert('Enregistrement réussi !');
+        alert('Enregistrement réussi avec création du dépôt de stockage associé !');
       }
 
       localStorage.removeItem(cleCacheFournisseurs);
@@ -285,7 +327,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
     setNouveauPartenaire({
       nom_fournisseur: partenaire.nom_fournisseur || partenaire.nom || '',
-      statut_stockage: 'AVEC_STOCKAGE',
+      statut_stockage: partenaire.statut_stockage || 'AVEC_STOCKAGE',
       pays: partenaire.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
       email: (partenaire.email || '').toLowerCase(),
@@ -360,6 +402,11 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       if (!confirm(`Voulez-vous vraiment supprimer définitivement "${partenaireNomStr}" ?`)) {
         setEnTrainDeSauvegarder(false);
         return;
+      }
+
+      // Suppression du dépôt associé dans depots_stock si existant
+      if (partenaireEnEdition.id_depot) {
+        await supabase.from('depots_stock').delete().eq('id', partenaireEnEdition.id_depot);
       }
 
       const { error } = await supabase.from('fournisseurs').delete().eq('id', partenaireEnEdition.id);
@@ -468,7 +515,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             <form onSubmit={enregistrerPartenaire} className="bg-white border-2 border-orange-500/50 p-3 sm:p-5 rounded-2xl space-y-4 shadow-md">
               <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                 <h4 className="font-extrabold text-orange-600 uppercase text-xs">
-                  {partenaireEnEdition ? `✏️ Fiche du fournisseur` : `➕ Nouveau fournisseur`}
+                  {partenaireEnEdition ? `✏️ Fiche du ${estModeLivraison ? 'partenaire' : 'fournisseur'}` : `➕ Nouveau ${estModeLivraison ? 'partenaire' : 'fournisseur'}`}
                 </h4>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✖</button>
               </div>
@@ -537,8 +584,30 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              {/* GESTION DU RATTACHEMENT DES TAXES & RISTOURNES (DEDUCTIBLE) */}
-              {moduleActuel === 'BOUTIQUE' && (
+              {/* BOUTON À COCHER POUR LA GESTION DU STOCK (MODULE LIVRAISON) */}
+              {estModeLivraison && (
+                <div className="pt-3 border-t border-slate-100">
+                  <label className="flex items-center gap-3 cursor-pointer p-2.5 bg-orange-50/50 border border-orange-200 rounded-xl hover:bg-orange-50 transition">
+                    <input
+                      type="checkbox"
+                      disabled={enTrainDeSauvegarder}
+                      checked={nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE'}
+                      onChange={(e) => setNouveauPartenaire({
+                        ...nouveauPartenaire,
+                        statut_stockage: e.target.checked ? 'AVEC_STOCKAGE' : 'SANS_STOCKAGE'
+                      })}
+                      className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500"
+                    />
+                    <div>
+                      <span className="font-extrabold text-slate-900 text-xs uppercase block">📦 AVEC STOCKAGE</span>
+                      <span className="text-[9px] text-slate-600 font-medium">Cochez cette case pour gérer le stock de ce partenaire et générer automatiquement son dépôt attitré.</span>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* GESTION DU RATTACHEMENT DES TAXES & RISTOURNES (DEDUCTIBLE) - UNIQUEMENT EN MODULE BOUTIQUE */}
+              {!estModeLivraison && moduleActuel === 'BOUTIQUE' && (
                 <div className="pt-3 border-t border-slate-200 space-y-2">
                   <label className="block font-black text-[10px] uppercase text-slate-800">
                     Association des Taxes & Ristournes Déductibles (Achats) :
@@ -595,7 +664,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   value={recherche}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-                  placeholder="🔍 RECHERCHER UN FOURNISSEUR..."
+                  placeholder={`🔍 RECHERCHER UN ${estModeLivraison ? 'PARTENAIRE' : 'FOURNISSEUR'}...`}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-extrabold uppercase text-slate-900 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>
@@ -607,19 +676,21 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                       <th onClick={() => gererTri('nom_fournisseur')} className="p-3 cursor-pointer hover:bg-slate-200 transition">Nom / Raison Sociale</th>
                       <th className="p-3">Téléphone</th>
                       <th className="p-3">Adresse</th>
-                      <th className="p-3">Taxes & Ristournes Associées</th>
+                      {estModeLivraison && <th className="p-3 text-center">Gestion Stock</th>}
+                      {!estModeLivraison && <th className="p-3">Taxes & Ristournes Associées</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[11px] font-bold text-slate-900">
                     {partenairesAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan="4" className="p-6 text-center text-slate-500 font-normal">Aucun fournisseur trouvé.</td>
+                        <td colSpan={estModeLivraison ? 4 : 4} className="p-6 text-center text-slate-500 font-normal">Aucun élément trouvé.</td>
                       </tr>
                     ) : (
                       partenairesAffiches.map((f) => {
                         const nomP = f.nom_fournisseur || f.nom || '';
                         const telP = f.telephone || '-';
                         const adresseP = f.adresse || '-';
+                        const statutStock = f.statut_stockage || 'AVEC_STOCKAGE';
                         const taxesAssociees = f.taxes_ristournes_associees || [];
 
                         return (
@@ -627,19 +698,34 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                             <td className="p-3 font-black uppercase text-slate-900">{nomP}</td>
                             <td className="p-3 font-mono font-bold text-slate-700">{telP}</td>
                             <td className="p-3 font-bold uppercase text-slate-600">{adresseP}</td>
-                            <td className="p-3">
-                              <div className="flex flex-wrap gap-1">
-                                {taxesAssociees.length > 0 ? (
-                                  taxesAssociees.map((code, idx) => (
-                                    <span key={idx} className="bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md text-[9px] font-mono font-black">
-                                      {code}
-                                    </span>
-                                  ))
+                            {estModeLivraison && (
+                              <td className="p-3 text-center">
+                                {statutStock === 'AVEC_STOCKAGE' ? (
+                                  <span className="bg-emerald-100 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full text-[9px] font-black">
+                                    📦 AVEC STOCKAGE
+                                  </span>
                                 ) : (
-                                  <span className="text-slate-400 font-normal italic text-[10px]">Aucune taxe liée</span>
+                                  <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                                    🚫 SANS STOCKAGE
+                                  </span>
                                 )}
-                              </div>
-                            </td>
+                              </td>
+                            )}
+                            {!estModeLivraison && (
+                              <td className="p-3">
+                                <div className="flex flex-wrap gap-1">
+                                  {taxesAssociees.length > 0 ? (
+                                    taxesAssociees.map((code, idx) => (
+                                      <span key={idx} className="bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md text-[9px] font-mono font-black">
+                                        {code}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-slate-400 font-normal italic text-[10px]">Aucune taxe liée</span>
+                                  )}
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         );
                       })
