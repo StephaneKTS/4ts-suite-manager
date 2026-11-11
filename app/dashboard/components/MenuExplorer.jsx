@@ -13,7 +13,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [estEnPause, setEstEnPause] = useState(false);
 
   // --- ÉTATS POUR LE CHATBOT (SONDAGE, DIVERTISSEMENT, SUPPORT & ASTUCES) ---
-  const [modeChat, setModeChat] = useState('ACCUEIL'); // 'ACCUEIL', 'SUPPORT', 'SONDAGE', 'DIVERTISSEMENT', 'ASTUCES'
+  const [modeChat, setModeChat] = useState('ACCUEIL'); 
   const [etapeSondage, setEtapeSondage] = useState(0);
   const [resultatsSondage, setResultatsSondage] = useState({});
   
@@ -502,7 +502,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         try {
           const parsed = JSON.parse(annoncesSauvegardées);
           const maintenant = Date.now();
-          // Filtrer uniquement les annonces qui ne sont pas encore expirées
           const valides = parsed.filter(item => !item.expireAt || item.expireAt > maintenant);
           setBannières(valides);
         } catch (e) {
@@ -776,43 +775,47 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* ================= 2. BANNIÈRE "BESOIN D'AIDE ? NOUS CONTACTER" (POSITIONNÉE EN HAUT POUR ÊTRE VISIBLE SUR TOUS LES TÉLÉPHONES) ================= */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+      {/* ================= 2. BANNIÈRE "BESOIN D'AIDE ? NOUS CONTACTER" (100% VISIBLE POUR TOUS, OPTIMISÉE MOBILE) ================= */}
+      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-xl shrink-0 shadow-inner">
             🎧
           </div>
           <div>
             <h4 className="font-black uppercase text-xs sm:text-sm tracking-wide text-cyan-300">Besoin d'aide ? Nous Contacter</h4>
-            <p className="text-[10px] text-slate-300 font-medium">Notre service client est à votre écoute par WhatsApp, appel direct ou via notre Chatbot.</p>
+            <p className="text-[10px] text-slate-300 font-medium">Service client disponible pour tous par WhatsApp, appel ou Chatbot.</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap md:flex-nowrap justify-end shrink-0">
+        <div className="flex items-center justify-center sm:justify-end gap-2.5 w-full sm:w-auto flex-wrap shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-blue-900/50">
           <a
             href={`https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
             target="_blank"
             rel="noopener noreferrer"
             title="WhatsApp"
-            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center text-lg shadow-lg transition transform hover:scale-110 shrink-0"
+            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center shadow-lg transition transform hover:scale-110 shrink-0"
           >
-            💬
+            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38c1.45.79 3.08 1.21 4.79 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01C17.18 3.03 14.69 2 12.04 2zM12.04 20.12c-1.42 0-2.8-.38-4.02-1.11l-.29-.17-3.03.8.81-2.95-.19-.31c-.79-1.25-1.21-2.71-1.21-4.22 0-4.41 3.59-8 8-8s8 3.59 8 8c0 2.14-.83 4.15-2.34 5.66-1.51 1.51-3.52 2.34-5.63 2.34zm4.41-5.96c-.24-.12-1.42-.7-1.64-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.01-.37-1.93-1.19-.71-.63-1.19-1.42-1.33-1.66-.14-.24-.01-.37.1-.49.1-.1.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.31-.74-1.8-.2-.48-.4-.42-.54-.42h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.31.98 2.47c.12.16 1.69 2.58 4.1 3.62.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1rem.47-.07 1.42-.58 1.62-1.14.2-.56.2-1.04.14-1.14-.06-.1-.22-.16-.46-.28z"/>
+            </svg>
           </a>
 
           <a
             href={`tel:${liensReseauxSociaux.telephone || liensReseauxSociaux.whatsapp}`}
             title="Appeler"
-            className="w-10 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center text-lg shadow-lg transition transform hover:scale-110 shrink-0"
+            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center shadow-lg transition transform hover:scale-110 shrink-0"
           >
-            📞
+            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
           </a>
 
           <button
             onClick={() => { setModalChatbotOuvert(true); setModeChat('ACCUEIL'); }}
-            className="bg-red-600 hover:bg-red-700 text-white font-black px-4 py-2.5 rounded-xl text-[10px] uppercase shadow-xl transition transform hover:scale-105 flex items-center gap-2 shrink-0 animate-pulse border-2 border-red-400"
+            className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2.5 rounded-xl text-[10px] uppercase shadow-xl transition transform hover:scale-105 flex items-center gap-1.5 shrink-0 animate-pulse border-2 border-red-400"
           >
             <span className="text-sm">🤖</span>
-            <span>Ouvrir l'Assistant Chatbot ✨</span>
+            <span>Chatbot ✨</span>
           </button>
         </div>
       </div>
@@ -957,9 +960,9 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </button>
       </div>
 
-      {/* ================= MODALE : CHATBOT CLIENT-ENTREPRISE (BOUTONS UNIFIÉS GRIS FONCÉ / BLANC) ================= */}
+      {/* ================= MODALE : CHATBOT CLIENT-ENTREPRISE ================= */}
       {modalChatbotOuvert && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col h-[560px] animate-in fade-in zoom-in duration-200">
             <div className="bg-slate-900 text-white p-3.5 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
@@ -1106,7 +1109,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
       {/* ================= MODALE : CONFIGURATION DES LIENS RÉSEAUX (SUPER ADMIN) ================= */}
       {modalAdminReseauxOuvert && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -1148,7 +1151,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
       {/* Modale Guide Modules */}
       {moduleSelectionne && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-5 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -1171,7 +1174,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
       {/* ================= MODALE : CRÉATION / MODIFICATION D'ANNONCE PERSISTANTE ================= */}
       {modalAnnonceOuvert && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200 max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -1245,7 +1248,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
       {/* Modale CGU */}
       {modalCguOuvert && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden space-y-4 p-5 max-h-[85vh] flex flex-col">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h4 className="font-black text-slate-900 uppercase text-xs">🛡️ CONDITIONS GÉNÉRALES D’UTILISATION</h4>
