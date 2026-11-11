@@ -13,7 +13,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [estEnPause, setEstEnPause] = useState(false);
 
   // --- ÉTATS POUR LE CHATBOT (SONDAGE, DIVERTISSEMENT, SUPPORT & ASTUCES) ---
-  const [modeChat, setModeChat] = useState('ACCUEIL'); // 'ACCUEIL', 'SUPPORT', 'SONDAGE', 'DIVERTISSEMENT', 'ASTUCES', 'LECTURE_ASTUCE'
+  const [modeChat, setModeChat] = useState('ACCUEIL'); // 'ACCUEIL', 'SUPPORT', 'SONDAGE', 'DIVERTISSEMENT', 'ASTUCES'
   const [etapeSondage, setEtapeSondage] = useState(0);
   const [resultatsSondage, setResultatsSondage] = useState({});
   
@@ -118,7 +118,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [astuceActive, setAstuceActive] = useState(null);
 
   const [messagesChat, setMessagesChat] = useState([
-    { expediteur: 'bot', texte: '👋 Bonjour ! Bienvenue sur l’assistant interactif 4TS Suite Manager. Que souhaitez-vous faire aujourd’hui ?' }
+    { expediteur: 'bot', texte: '👋 Bienvenue sur l’assistant interactif 4TS Suite Manager ! Comment puis-je vous guider aujourd’hui ?' }
   ]);
   const [saisieMessage, setSaisieMessage] = useState('');
   const chatFinRef = useRef(null);
@@ -229,7 +229,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     ]);
   };
 
-  // Lancement du mode Astuces
   const lancerModeAstuces = () => {
     setModeChat('ASTUCES');
     setCategorieSelectionnee(null);
@@ -309,7 +308,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
       setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: texteSaisi }]);
 
       setTimeout(() => {
-        let reponseBot = "Je n'ai pas bien compris. N'hésitez pas à contacter directement notre service client par WhatsApp ou via le bouton 'Appeler'.";
+        let reponseBot = "Je n'ai pas bien compris. N'hésitez pas à contacter directement notre service client par WhatsApp ou via le bouton d'appel.";
         const texteMin = texteSaisi.toLowerCase();
 
         if (texteMin.includes('module') || texteMin.includes('service') || texteMin.includes('offrez')) {
@@ -690,7 +689,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 {banniereActuelle.badge} {estEnPause && '⏸️ (Pause)'}
               </span>
 
-              {banniereActuelle.modifiable && (
+              {estSuperAdmin && banniereActuelle.modifiable && (
                 <button
                   onClick={(e) => { e.stopPropagation(); ouvrirModalModification(banniereActuelle); }}
                   className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-2.5 py-1 rounded-full text-[9px] uppercase shadow-md transition flex items-center gap-1"
@@ -772,12 +771,14 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
           <div className="pt-2 flex items-center justify-between flex-wrap gap-2">
             <span className="text-[9px] text-slate-300 font-bold italic">💡 Glissez ou touchez pour naviguer, relâchez pour reprendre.</span>
-            <button
-              onClick={(e) => { e.stopPropagation(); ouvrirModalCreation(); }}
-              className="bg-white hover:bg-slate-100 text-slate-950 font-black px-4 py-1.5 rounded-xl text-[10px] uppercase shadow-lg transition transform hover:scale-105"
-            >
-              ✨ Diffuser mon annonce (Instantané)
-            </button>
+            {estSuperAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); ouvrirModalCreation(); }}
+                className="bg-white hover:bg-slate-100 text-slate-950 font-black px-4 py-1.5 rounded-xl text-[10px] uppercase shadow-lg transition transform hover:scale-105"
+              >
+                ✨ Diffuser mon annonce (Instantané)
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -923,7 +924,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </button>
       </div>
 
-      {/* ================= 5. BANNIÈRE NOUS CONTACTER ================= */}
+      {/* ================= 5. BANNIÈRE NOUS CONTACTER (BOUTONS LOGOS REDUITS & CHATBOT ROUGE/BLANC TRÈS ATTRACTIF) ================= */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-xl shrink-0 shadow-inner">
@@ -931,32 +932,38 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
           </div>
           <div>
             <h4 className="font-black uppercase text-xs sm:text-sm tracking-wide text-cyan-300">Besoin d'aide ? Nous Contacter</h4>
-            <p className="text-[10px] text-slate-300 font-medium">Notre service client est à votre écoute par WhatsApp, par appel direct ou via notre Chatbot.</p>
+            <p className="text-[10px] text-slate-300 font-medium">Notre service client est à votre écoute par WhatsApp, appel direct ou via notre Chatbot.</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap md:flex-nowrap justify-end shrink-0">
+          {/* Logo WhatsApp uniquement */}
           <a
             href={`https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3 py-2 rounded-xl text-[9.5px] uppercase shadow-md transition flex items-center gap-1 shrink-0"
+            title="WhatsApp"
+            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center text-lg shadow-lg transition transform hover:scale-110 shrink-0"
           >
-            <span>💬</span> WhatsApp
+            💬
           </a>
 
+          {/* Logo Appeler uniquement */}
           <a
             href={`tel:${liensReseauxSociaux.telephone || liensReseauxSociaux.whatsapp}`}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3 py-2 rounded-xl text-[9.5px] uppercase shadow-md transition flex items-center gap-1 shrink-0"
+            title="Appeler"
+            className="w-10 h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center text-lg shadow-lg transition transform hover:scale-110 shrink-0"
           >
-            <span>📞</span> Appeler
+            📞
           </a>
 
+          {/* Bouton Chatbot très attractif : Fond Rouge, Écriture Blanche & Animation Pulse */}
           <button
             onClick={() => { setModalChatbotOuvert(true); setModeChat('ACCUEIL'); }}
-            className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black px-3 py-2 rounded-xl text-[9.5px] uppercase shadow-md transition flex items-center gap-1 shrink-0 animate-pulse"
+            className="bg-red-600 hover:bg-red-700 text-white font-black px-4 py-2.5 rounded-xl text-[10px] uppercase shadow-xl transition transform hover:scale-105 flex items-center gap-2 shrink-0 animate-pulse border-2 border-red-400"
           >
-            <span>🤖</span> Chatbot Client
+            <span className="text-sm">🤖</span>
+            <span>Ouvrir l'Assistant Chatbot ✨</span>
           </button>
         </div>
       </div>
