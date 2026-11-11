@@ -86,6 +86,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [vueActive, setVueActive] = useState('liste');
   const [approEnEditionId, setApproEnEditionId] = useState(null);
   const [docEnEditionObjet, setDocEnEditionObjet] = useState(null);
+  const [documentEnLectureSeule, setDocumentEnLectureSeule] = useState(false);
 
   const [limiteAppro, setLimiteAppro] = useState(20);
   const [limiteCommandes, setLimiteCommandes] = useState(20);
@@ -251,7 +252,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const fournisseursAvecStockage = fournisseurs.filter(f => !estStatutSansStockage(f.statut_stockage));
 
   const selectionnerPartenaire = (frs) => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     const partenaireId = frs.id;
     setIdFournisseur(partenaireId);
 
@@ -368,6 +369,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const soldeRestant = statutPaiement === 'SOLDE' ? 0 : statutPaiement === 'CREDIT' ? montantTotalGlobal : Math.max(0, montantTotalGlobal - (parseFloat(montantPaye) || 0));
 
   const verifierEnTeteAvantSaisie = () => {
+    if (documentEnLectureSeule) {
+      alert('🔒 Ce document est en lecture seule (journée clôturée).');
+      return false;
+    }
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (dateDoc < dateDuJour) {
+      alert(`❌ Modification interdite : le document est daté du ${dateDoc} (journée clôturée et verrouillée).`);
+      return false;
+    }
     if (!dateDoc) { alert('⚠️ Veuillez renseigner la date.'); return false; }
     if (!idFournisseur) { alert(`⚠️ Veuillez sélectionner un ${libelleTiers.toLowerCase()}.`); return false; }
     if (!estModeLivraison && (!referenceFournisseur || !referenceFournisseur.trim())) { alert('⚠️ Veuillez renseigner la référence.'); return false; }
@@ -393,6 +403,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     setLignesValidees([]);
     setApproEnEditionId(null);
     setDocEnEditionObjet(null);
+    setDocumentEnLectureSeule(false);
     setStatutPaiement('SOLDE');
     setMontantPaye(0);
     setIndexEnCoursModif(null);
@@ -400,7 +411,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   };
 
   const ajouterArticleCourant = () => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     if (!verifierEnTeteAvantSaisie()) return;
     if (!articleCourant.id_article) { alert('Veuillez sélectionner un article.'); return; }
     const qte = parseInt(articleCourant.quantite);
@@ -431,7 +442,12 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   };
 
   const chargerLignePourModification = (index) => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (dateDoc < dateDuJour) {
+      alert(`❌ Modification interdite : ce document appartient à une journée clôturée (${dateDoc}).`);
+      return;
+    }
     const ligne = lignesValidees[index];
     setArticleCourant({ id_article: ligne.id_article, designation: ligne.designation, quantite: ligne.quantite, prix_achat: ligne.prix_achat });
     setIndexEnCoursModif(index);
@@ -439,7 +455,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const enregistrerFacture = async (e) => {
     e.preventDefault();
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (dateDoc < dateDuJour) {
+      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${dateDoc} car cette journée est clôturée.`);
+      return;
+    }
+
     if (approEnEditionId && !permissions.peut_modifier) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
       return;
@@ -515,7 +538,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const enregistrerCommande = async (e) => {
     e.preventDefault();
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (dateDoc < dateDuJour) {
+      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${dateDoc} car cette journée est clôturée.`);
+      return;
+    }
+
     if (approEnEditionId && !permissions.peut_modifier) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
       return;
@@ -589,7 +619,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   };
 
   const transformerEnFacture = async (doc) => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    const docDateStr = doc?.created_at ? doc.created_at.split('T')[0] : dateDuJour;
+    if (docDateStr < dateDuJour) {
+      alert(`❌ Action interdite : ce bon appartient à une journée clôturée (${docDateStr}).`);
+      return;
+    }
+
     if (!permissions.peut_valider) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de validation/transformation.');
       return;
@@ -660,11 +698,18 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const ouvrirDocModification = (doc, type, indexReel) => {
     if (enTrainDeSauvegarder) return;
+
+    // 🛡️ MODE CONSULTATION SEULE POUR LES JOURNÉES PASSÉES
+    const dateDocStr = doc.created_at ? doc.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    const estVerrouille = dateDocStr < dateDuJour;
+
+    setDocumentEnLectureSeule(estVerrouille);
     setApproEnEditionId(doc.id);
     setDocEnEditionObjet(doc);
     setNumeroDoc(formaterNumeroAffichageIndex(indexReel, type));
     setReferenceFournisseur(doc.numero_commande || doc.reference || '');
-    setDateDoc(doc.created_at ? doc.created_at.split('T')[0] : new Date().toISOString().split('T')[0]);
+    setDateDoc(dateDocStr);
     setIdFournisseur(doc.id_fournisseur || '');
     setIdDepotDestination(doc.id_depot_destination || '');
     setDelaiLivraison(doc.delai_livraison || '7 JOURS');
@@ -682,7 +727,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   };
 
   const supprimerDoc = async (id, type) => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (dateDoc < dateDuJour) {
+      alert(`❌ Suppression interdite : ce document appartient à une journée clôturée (${dateDoc}).`);
+      return;
+    }
+
     if (!permissions.peut_supprimer) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
       return;
@@ -710,6 +762,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       }
 
       alert('Supprimé.');
+      setDocumentEnLectureSeule(false);
       await chargerDonnees(true);
     } catch (err) { 
       alert('Erreur : ' + err.message); 
@@ -747,7 +800,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const documentsHistoriqueAffiches = documentsHistorique.slice(0, limiteAppro);
   const commandesHistoriqueAffiches = commandesHistorique.slice(0, limiteCommandes);
   
-  const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder;
+  const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder || documentEnLectureSeule;
   const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
   const fournisseurIdEffectif = idFournisseur || docEnEditionObjet?.id_fournisseur || '';
@@ -779,7 +832,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const libelleDepotImpression = moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt';
 
   const nomPartenaireCourant = obtenirNomFournisseur(idFournisseur);
-  const nomDepotCourant = estPartenaireSansStockage ? '-- SANS STOCK --' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '');
+  const nomDepotCourant = estPartenaireSansStockage ? '-- SANS STOCK / AUCUN DÉPÔT --' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '');
 
   return (
     <div className="space-y-2.5 font-sans text-xs">
@@ -910,7 +963,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
-              onClick={() => setVueActive('liste')}
+              onClick={() => {
+                setVueActive('liste');
+                setDocumentEnLectureSeule(false);
+              }}
               className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
             >
               ✕ Fermer
@@ -1090,17 +1146,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
         {vueActive === 'formulaire_facture' && (
           <form onSubmit={enregistrerFacture} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
+            {documentEnLectureSeule && (
+              <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
+                🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)
+              </div>
+            )}
             <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
               <div className="flex items-center gap-2">
                 <span className="font-black text-slate-900 text-xs uppercase">📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
               </div>
               <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2 rounded-xl border border-slate-200">
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label>
-                <input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                <input type="date" disabled={documentEnLectureSeule} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70" />
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">{libelleTiers} *</label>
@@ -1113,7 +1174,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs" />
+                <input type="text" disabled={documentEnLectureSeule} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs disabled:opacity-70" />
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
@@ -1133,44 +1194,48 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 )}
               </div>
             </div>
-            <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
-              <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
-                <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
-                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
-                  <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">
-                    {articleCourant.designation}
+
+            {!documentEnLectureSeule && (
+              <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
+                <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
+                  <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
+                    <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">
+                      {articleCourant.designation}
+                    </div>
                   </div>
-                </div>
-                <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
-                  <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label>
-                  <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
-                </div>
-                {!estModeLivraison && (
-                  <div className="col-span-3">
-                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A (F) *</label>
-                    <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                  <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label>
+                    <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
                   </div>
-                )}
-                <div className="col-span-1 text-center">
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button>
+                  {!estModeLivraison && (
+                    <div className="col-span-3">
+                      <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A (F) *</label>
+                      <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                    </div>
+                  )}
+                  <div className="col-span-1 text-center">
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
             {lignesValidees.length > 0 && (
               <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
-                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%'}>Article</th>
+                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
                       <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
                       {!estModeLivraison && <th className="p-2 w-[20%] text-right">P.A</th>}
                       {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
-                      <th className="p-2 w-[5%] text-center">⚙️</th>
+                      {!documentEnLectureSeule && <th className="p-2 w-[5%] text-center">⚙️</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">
                     {lignesValidees.map((l, index) => (
-                      <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                      <tr key={index} onClick={() => chargerLignePourModification(index)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition select-none" : "select-none"}>
                         <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
                         <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
                         {!estModeLivraison && (
@@ -1179,9 +1244,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                             <td className="p-2 text-right font-black text-emerald-700">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
                           </>
                         )}
-                        <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
-                        </td>
+                        {!documentEnLectureSeule && (
+                          <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1195,7 +1262,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 </div>
                 <div className="grid grid-cols-3 gap-2 items-center">
                   <div>
-                    <select value={statutPaiement} disabled={enTrainDeSauvegarder} onChange={(e) => setStatutPaiement(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs">
+                    <select value={statutPaiement} disabled={documentEnLectureSeule || enTrainDeSauvegarder} onChange={(e) => setStatutPaiement(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70">
                       <option value="SOLDE">Soldé</option>
                       <option value="PARTIEL">Avance</option>
                       <option value="CREDIT">Crédit</option>
@@ -1204,11 +1271,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                   <div>
                     <input 
                       type="number" 
-                      disabled={statutPaiement === 'SOLDE' || statutPaiement === 'CREDIT' || enTrainDeSauvegarder} 
+                      disabled={documentEnLectureSeule || statutPaiement === 'SOLDE' || statutPaiement === 'CREDIT' || enTrainDeSauvegarder} 
                       value={montantPaye} 
                       onFocus={(e) => e.target.select()} 
                       onChange={(e) => setMontantPaye(e.target.value)} 
-                      className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" 
+                      className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70" 
                     />
                   </div>
                   <div className="bg-white px-3 py-1.5 rounded border border-slate-300 text-right shadow-xs"><span className="text-xs font-black text-orange-600">{soldeRestant.toLocaleString('fr-FR')} F</span></div>
@@ -1216,7 +1283,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               </div>
             )}
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-              {approEnEditionId ? (
+              {approEnEditionId && !documentEnLectureSeule ? (
                 permissions.peut_supprimer ? (
                   <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
                 ) : <div/>
@@ -1224,7 +1291,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               
               <div className="flex items-center gap-1.5">
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
-                {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
+                {!documentEnLectureSeule && ((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
                   <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
                     {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Valider')}
                   </button>
@@ -1236,15 +1303,20 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
         {vueActive === 'formulaire_commande' && (
           <form onSubmit={enregistrerCommande} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
+            {documentEnLectureSeule && (
+              <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
+                🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)
+              </div>
+            )}
             <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
               <div className="flex items-center gap-2">
                 <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
               </div>
               <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-white p-2 rounded-xl border border-slate-200">
-              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label><input type="date" disabled={enTeteVerrouille} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
+              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label><input type="date" disabled={documentEnLectureSeule} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70" /></div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">{libelleTiers} *</label>
                 <div 
@@ -1256,7 +1328,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-                <input type="text" disabled={enTeteVerrouille} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs" />
+                <input type="text" disabled={documentEnLectureSeule} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs disabled:opacity-70" />
               </div>
               <div>
                 <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
@@ -1275,16 +1347,20 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                   </div>
                 )}
               </div>
-              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs" /></div>
+              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={documentEnLectureSeule || enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs disabled:opacity-70" /></div>
             </div>
-            <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
-              <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
-                <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">{articleCourant.designation}</div></div>
-                <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
-                {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
-                <div className="col-span-1 text-center"><button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
+
+            {!documentEnLectureSeule && (
+              <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
+                <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
+                  <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">{articleCourant.designation}</div></div>
+                  <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
+                  {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
+                  <div className="col-span-1 text-center"><button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
+                </div>
               </div>
-            </div>
+            )}
+
             {lignesValidees.length > 0 && (
               <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
                 <table className="w-full text-left text-xs">
@@ -1294,12 +1370,12 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                       <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
                       {!estModeLivraison && <th className="p-2 w-[20%] text-right">P. Estimé</th>}
                       {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
-                      <th className="p-2 w-[5%] text-center">⚙️</th>
+                      {!documentEnLectureSeule && <th className="p-2 w-[5%] text-center">⚙️</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">
                     {lignesValidees.map((l, index) => (
-                      <tr key={index} onClick={() => chargerLignePourModification(index)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                      <tr key={index} onClick={() => chargerLignePourModification(index)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition select-none" : "select-none"}>
                         <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
                         <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
                         {!estModeLivraison && (
@@ -1308,7 +1384,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                             <td className="p-2 text-right font-black text-slate-900">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
                           </>
                         )}
-                        <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button></td>
+                        {!documentEnLectureSeule && (
+                          <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1316,7 +1396,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               </div>
             )}
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-              {approEnEditionId ? (
+              {approEnEditionId && !documentEnLectureSeule ? (
                 <div className="flex gap-1.5">
                   {permissions.peut_supprimer && (
                     <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
@@ -1331,7 +1411,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               
               <div className="flex items-center gap-1.5">
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
-                {((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
+                {!documentEnLectureSeule && ((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
                   <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
                     {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Enregistrer')}
                   </button>

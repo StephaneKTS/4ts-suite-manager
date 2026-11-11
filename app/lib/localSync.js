@@ -60,13 +60,10 @@ export const localSync = {
           
           Object.keys(propre).forEach(key => {
             const val = propre[key];
-            // Si une valeur commence par local_ ou temp_ (ex: id_commande ou id), on la supprime 
-            // pour éviter les erreurs de type UUID invalide dans Supabase
             if (val && (String(val).startsWith('local_') || String(val).startsWith('temp_'))) {
               if (key === 'id') {
                 delete propre[key]; // Laisse Supabase générer un nouvel ID distant
               } else {
-                // Pour les clés étrangères temporaires (ex: id_commande), on peut mettre null ou supprimer
                 delete propre[key];
               }
             }
@@ -94,8 +91,21 @@ export const localSync = {
         }
 
         if (error) {
-          console.error(`Erreur sync table ${table}:`, error.message);
-          nouvelleQueue.push(item);
+          // Vérification si l'erreur provient du verrouillage de date de la base de données
+          const estErreurVerrouillage = error.message && (
+            error.message.includes('VERROUILLAGE ACTIF') || 
+            error.message.includes('Modification interdite') || 
+            error.message.includes('Action interdite')
+          );
+
+          if (estErreurVerrouillage) {
+            // Transforme l'erreur rouge en simple avertissement propre pour éviter de saturer la console
+            console.warn(`⚠️ Synchronisation rejetée (journée clôturée et verrouillée) sur la table ${table} :`, error.message);
+          } else {
+            // Pour les autres types d'erreurs (réseau, etc.), on garde l'affichage en erreur
+            console.error(`Erreur sync table ${table}:`, error.message);
+            nouvelleQueue.push(item);
+          }
         }
       }
 

@@ -162,6 +162,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [quantiteSaisie, setQuantiteSaisie] = useState(1);
   const [lignesPanier, setLignesPanier] = useState([]);
   const [mouvementEnEditionId, setMouvementEnEditionId] = useState(null);
+  const [documentEnLectureSeule, setDocumentEnLectureSeule] = useState(false);
 
   const [etatInitialEdition, setEtatInitialEdition] = useState(null);
 
@@ -498,13 +499,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const matchRecherche = designation.includes((recherchePopup || '').toLowerCase());
     if (!matchRecherche) return false;
 
-    // 1. Contrôle strict de l'entreprise et du module
     const artEntreprise = String(art.id_entreprise || art.entreprise_id || entrepriseId);
     const artModule = String(art.module || moduleActuel).toUpperCase();
     if (artEntreprise !== String(entrepriseId)) return false;
     if (artModule !== String(moduleActuel)) return false;
 
-    // 2. Contrôle du partenaire / fournisseur
     const artPartenaire = String(art.partenaire || art.id_partenaire || art.fournisseur || '').trim().toUpperCase();
     const emplacementSourceId = enTeteDoc.id_emplacement_source;
 
@@ -518,7 +517,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       }
     }
 
-    // 3. Filtrage par stock disponible sur l'emplacement / dépôt source (pour Sortie/Transfert/Avaries)
     const artId = art.id_article || art.id;
     if (typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') {
       if (emplacementSourceId) {
@@ -534,6 +532,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const verifierEnTeteAvantSaisie = () => {
+    if (documentEnLectureSeule) {
+      alert('🔒 Ce document est en lecture seule (journée clôturée).');
+      return false;
+    }
+
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (enTeteDoc.dateDoc < dateDuJour) {
+      alert(`❌ Modification interdite : le document est daté du ${enTeteDoc.dateDoc} (journée clôturée et verrouillée).`);
+      return false;
+    }
+
     if (!enTeteDoc.referenceDoc || String(enTeteDoc.referenceDoc).trim() === '') {
       alert('⚠️ La zone Motif est obligatoire pour pouvoir ajouter des articles.');
       return false;
@@ -558,7 +567,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const selectionnerArticleEtFocusQte = (art) => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     if (!verifierEnTeteAvantSaisie()) return;
     setArticleSelectionneTemp(art);
     setModalArticleOuvert(false);
@@ -567,7 +576,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const modifierLignePanier = (ligne) => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (enTeteDoc.dateDoc < dateDuJour) {
+      alert(`❌ Modification interdite : ce document appartient à une journée clôturée (${enTeteDoc.dateDoc}).`);
+      return;
+    }
     const artObj = articles.find(a => String(a.id_article || a.id) === String(ligne.id_article)) || { id_article: ligne.id_article, Designation: ligne.designation };
     setArticleSelectionneTemp(artObj);
     setQuantiteSaisie(ligne.quantite);
@@ -576,7 +590,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const ajouterArticleAuPanier = () => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     if (!permissions.peut_creer && !mouvementEnEditionId) {
       alert('⛔ Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.');
       return;
@@ -621,11 +635,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const annulerOperation = () => {
     if (enTrainDeSauvegarder) return;
-    if (lignesPanier.length > 0 || enTeteDoc.referenceDoc || mouvementEnEditionId) {
+    if (!documentEnLectureSeule && (lignesPanier.length > 0 || enTeteDoc.referenceDoc || mouvementEnEditionId)) {
       if (!confirm('Voulez-vous vraiment annuler cette opération en cours de saisie ?')) return;
     }
     setLignesPanier([]);
     setMouvementEnEditionId(null);
+    setDocumentEnLectureSeule(false);
     setEtatInitialEdition(null);
     setArticleSelectionneTemp(null);
     setQuantiteSaisie(1);
@@ -635,6 +650,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       numeroDoc: genererNumeroDocSecurise(typeOperation),
       operateur: obtenirNomOperateurConnecte()
     }));
+    setModeAffichage('LISTE_DOCS');
   };
 
   const verifierDroitSuppressionEffectif = () => {
@@ -656,7 +672,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const supprimerDocumentActuel = async () => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (enTeteDoc.dateDoc < dateDuJour) {
+      alert(`❌ Suppression interdite : ce document appartient à une journée clôturée (${enTeteDoc.dateDoc}).`);
+      return;
+    }
 
     if (!verifierDroitSuppressionEffectif()) {
       alert('⛔ Action non autorisée : Seuls l’Administrateur et le Super Administrateur peuvent supprimer une opération.');
@@ -687,6 +709,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       alert('Document supprimé avec succès.');
       setLignesPanier([]);
       setMouvementEnEditionId(null);
+      setDocumentEnLectureSeule(false);
       setEtatInitialEdition(null);
       setArticleSelectionneTemp(null);
       setQuantiteSaisie(1);
@@ -706,7 +729,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const validerDocumentMouvement = async () => {
-    if (enTrainDeSauvegarder) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    if (enTeteDoc.dateDoc < dateDuJour) {
+      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${enTeteDoc.dateDoc} car cette journée est clôturée.`);
+      return;
+    }
 
     if (mouvementEnEditionId && !permissions.peut_modifier) {
       alert('⛔ Action non autorisée : Votre profil n’a pas le droit de modifier les mouvements.');
@@ -779,6 +808,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       alert(`Document validé avec succès par ${operateurActuel} dans le module ${moduleActuel} !`);
       setLignesPanier([]);
       setMouvementEnEditionId(null);
+      setDocumentEnLectureSeule(false);
       setEtatInitialEdition(null);
       setEnTeteDoc((prev) => ({ 
         ...prev, 
@@ -801,6 +831,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const lignesAssociees = mouvements.filter(m => m.motif_remarque === numeroDocUnique);
     if (lignesAssociees.length === 0) return;
     const premier = lignesAssociees[0];
+    
+    // 🛡️ MODE CONSULTATION SEULE POUR LES JOURNÉES PASSÉES
+    const dateDocStr = premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
+    const dateDuJour = new Date().toISOString().split('T')[0];
+    const estVerrouille = dateDocStr < dateDuJour;
+
+    setDocumentEnLectureSeule(estVerrouille);
     setTypeOperation(premier.type_mouvement || 'TRANSFERT');
     
     const operateurDoc = premier.operateur && String(premier.operateur).trim() !== '' && String(premier.operateur).trim().toLowerCase() !== 'utilisateur' && String(premier.operateur).trim() !== 'Utilisateur Inconnu' 
@@ -812,7 +849,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const nouvelEnTete = { 
       ...enTeteDoc, 
       numeroDoc: numeroDocUnique, 
-      dateDoc: premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0], 
+      dateDoc: dateDocStr, 
       id_depot_source: premier.id_depot_source || '', 
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
@@ -852,7 +889,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       mouvements
         .filter((mvt) => {
           const motif = (mvt.motif_remarque || '').trim().toUpperCase();
-          // Exclure les commandes, livraisons, restitutions et les tickets de vente automatiques
           return (
             !motif.includes('CMD-') && 
             !motif.includes('LIVRAISON') && 
@@ -936,7 +972,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const documentsAffiches = documentsTries.slice(0, limiteDocuments);
-  const enTeteVerrouille = lignesPanier.length > 0 || enTrainDeSauvegarder;
+  const enTeteVerrouille = lignesPanier.length > 0 || enTrainDeSauvegarder || documentEnLectureSeule;
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
@@ -958,6 +994,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               if (enTrainDeSauvegarder) return;
               setModeAffichage('SAISIE'); 
               setMouvementEnEditionId(null); 
+              setDocumentEnLectureSeule(false);
               setEtatInitialEdition(null);
               setLignesPanier([]); 
               setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: obtenirNomOperateurConnecte() })); 
@@ -979,18 +1016,24 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
       {modeAffichage === 'SAISIE' && (
         <>
-          {/* LIGNE ALIGNÉE : MOUVEMENT & RETOUR À LA LISTE DES DOCUMENTS */}
+          {documentEnLectureSeule && (
+            <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs flex items-center justify-center gap-2">
+              <span>🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2 items-center">
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => {
                 if (enTrainDeSauvegarder) return;
-                if (lignesPanier.length > 0 && !confirm('Voulez-vous quitter sans enregistrer ? Vos articles non validés seront ignorés.')) {
+                if (!documentEnLectureSeule && lignesPanier.length > 0 && !confirm('Voulez-vous quitter sans enregistrer ? Vos articles non validés seront ignorés.')) {
                   return;
                 }
                 setModeAffichage('LISTE_DOCS');
                 setMouvementEnEditionId(null);
+                setDocumentEnLectureSeule(false);
                 setEtatInitialEdition(null);
                 setLignesPanier([]);
               }}
@@ -1038,11 +1081,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Date *</label>
-                  <input type="date" value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900" />
+                  <input type="date" disabled={documentEnLectureSeule} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900 disabled:opacity-70" />
                 </div>
                 <div>
                   <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Motif * (Obligatoire)</label>
-                  <input type="text" value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900" />
+                  <input type="text" disabled={documentEnLectureSeule} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900 disabled:opacity-70" />
                 </div>
               </div>
 
@@ -1054,7 +1097,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button"
                       disabled={enTeteVerrouille}
                       onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-700 text-[9px] flex justify-between items-center"
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-700 text-[9px] flex justify-between items-center disabled:opacity-70"
                     >
                       <span className="truncate">{obtenirNomDepotParId(enTeteDoc.id_depot_source) || '-- Dépôt --'}</span>
                       <span>🔍</span>
@@ -1063,7 +1106,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button"
                       disabled={enTeteVerrouille}
                       onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
-                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1"
+                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1 disabled:opacity-70"
                     >
                       <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : libellePlaceholderSource}</span>
                       <span>🔍</span>
@@ -1076,7 +1119,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button"
                       disabled={enTeteVerrouille}
                       onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
-                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-blue-700 text-[9px] flex justify-between items-center"
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-blue-700 text-[9px] flex justify-between items-center disabled:opacity-70"
                     >
                       <span className="truncate">{obtenirNomDepotParId(enTeteDoc.id_depot_destination) || '-- Dépôt --'}</span>
                       <span>🔍</span>
@@ -1085,7 +1128,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button"
                       disabled={enTeteVerrouille}
                       onClick={() => { setRechercheModalPopup(''); setModalLivreurDestOuvert(true); }}
-                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1"
+                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1 disabled:opacity-70"
                     >
                       <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : libellePlaceholderDest}</span>
                       <span>🔍</span>
@@ -1100,7 +1143,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button"
                       disabled={enTeteVerrouille}
                       onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-600 text-[9px] flex justify-between items-center"
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-600 text-[9px] flex justify-between items-center disabled:opacity-70"
                     >
                       <span className="truncate">{obtenirNomDepotParId(enTeteDoc.id_depot_source) || '-- Dépôt --'}</span>
                       <span>🔍</span>
@@ -1112,7 +1155,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button"
                       disabled={enTeteVerrouille}
                       onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
-                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center"
+                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center disabled:opacity-70"
                     >
                       <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : '-- Aucun --'}</span>
                       <span>🔍</span>
@@ -1123,7 +1166,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           </div>
 
-          {/* MODALES DE SÉLECTION (PARTENAIRES/DÉPÔTS & LIVREURS/EMPLACEMENTS) */}
           {modalDepotSourceOuvert && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -1234,36 +1276,38 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           <div className="bg-white border p-2 rounded-xl shadow-2xs space-y-1.5">
             <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles [{moduleActuel}]</span>
             
-            <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
-              <div className="col-span-8">
-                <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
-                <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
-                  <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
-                  <span className="text-orange-600 shrink-0 ml-1">🔍</span>
-                </button>
-              </div>
-              
-              <div className="col-span-3">
-                <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
-                <input 
-                  ref={inputQuantiteRef} 
-                  type="number" 
-                  min="1" 
-                  value={quantiteSaisie} 
-                  disabled={enTrainDeSauvegarder}
-                  onFocus={(e) => e.target.select()} 
-                  onChange={(e) => setQuantiteSaisie(e.target.value)} 
-                  onKeyDown={gererKeyDownQuantite}
-                  className="w-full bg-white border rounded p-1 font-black text-emerald-600 text-center" 
-                />
-              </div>
+            {!documentEnLectureSeule && (
+              <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
+                <div className="col-span-8">
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
+                  <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
+                    <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
+                    <span className="text-orange-600 shrink-0 ml-1">🔍</span>
+                  </button>
+                </div>
+                
+                <div className="col-span-3">
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
+                  <input 
+                    ref={inputQuantiteRef} 
+                    type="number" 
+                    min="1" 
+                    value={quantiteSaisie} 
+                    disabled={enTrainDeSauvegarder}
+                    onFocus={(e) => e.target.select()} 
+                    onChange={(e) => setQuantiteSaisie(e.target.value)} 
+                    onKeyDown={gererKeyDownQuantite}
+                    className="w-full bg-white border rounded p-1 font-black text-emerald-600 text-center" 
+                  />
+                </div>
 
-              <div className="col-span-1">
-                <button type="button" disabled={enTrainDeSauvegarder || (!permissions.peut_creer && !mouvementEnEditionId)} onClick={ajouterArticleAuPanier} className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" title="Valider l'article (ou Entrée)">
-                  OK
-                </button>
+                <div className="col-span-1">
+                  <button type="button" disabled={enTrainDeSauvegarder || (!permissions.peut_creer && !mouvementEnEditionId)} onClick={ajouterArticleAuPanier} className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" title="Valider l'article (ou Entrée)">
+                    OK
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             {modalArticleOuvert && (
               <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
@@ -1317,16 +1361,22 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <div className="overflow-x-auto border rounded-lg bg-white">
                 <table className="w-full text-left text-[9.5px] table-fixed">
                   <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
-                    <tr><th className="p-1 w-[60%]">ARTICLE</th><th className="p-1 w-[25%] text-center">QTE</th><th className="p-1 w-[15%] text-center">⚙️</th></tr>
+                    <tr>
+                      <th className="p-1 w-[60%]">ARTICLE</th>
+                      <th className="p-1 w-[25%] text-center">QTE</th>
+                      {!documentEnLectureSeule && <th className="p-1 w-[15%] text-center">⚙️</th>}
+                    </tr>
                   </thead>
                   <tbody className="divide-y text-[9px]">
                     {lignesPanier.map((ligne, index) => (
-                      <tr key={index} onClick={() => !enTrainDeSauvegarder && modifierLignePanier(ligne)} className="hover:bg-orange-50/70 cursor-pointer transition">
+                      <tr key={index} onClick={() => !documentEnLectureSeule && !enTrainDeSauvegarder && modifierLignePanier(ligne)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition" : "transition"}>
                         <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
                         <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
-                        <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
-                        </td>
+                        {!documentEnLectureSeule && (
+                          <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1336,7 +1386,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
             <div className="pt-1.5 flex items-center justify-between gap-1 flex-wrap">
               <div className="flex items-center gap-1">
-                {verifierDroitSuppressionEffectif() && (
+                {!documentEnLectureSeule && verifierDroitSuppressionEffectif() && (
                   <button 
                     type="button" 
                     disabled={enTrainDeSauvegarder} 
@@ -1350,11 +1400,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               </div>
               
               <div className="flex items-center gap-1 flex-wrap">
-                {!mouvementEnEditionId && (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">❌ Annuler</button>
-                )}
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">
+                  {documentEnLectureSeule ? '← Retour' : '❌ Annuler'}
+                </button>
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2 py-1 rounded text-[9px]">🖨️ Imprimer</button>
-                {((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
+                
+                {!documentEnLectureSeule && ((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
                   <button 
                     type="button" 
                     onClick={validerDocumentMouvement} 

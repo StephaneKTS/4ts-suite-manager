@@ -51,6 +51,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [vueActive, setVueActive] = useState('LISTE');
   const [sousOngletCloture, setSousOngletCloture] = useState('nouveau');
   const [commandeEnEdition, setCommandeEnEdition] = useState(null);
+  const [documentEnLectureSeule, setDocumentEnLectureSeule] = useState(false);
 
   const [numeroCommande, setNumeroCommande] = useState('1');
   const [dateCommande, setDateCommande] = useState(new Date().toISOString().split('T')[0]);
@@ -511,6 +512,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const changerStatutRapide = async (cmd, nouveauStatut) => {
     setMenuStatutOuvertId(null);
+
+    // 🛡️ VÉRIFICATION DE LA DATE (CLÔTURE DE JOURNÉE)
+    const dateCmdStr = cmd.date_commande || dateDuJourStr;
+    if (dateCmdStr < dateDuJourStr) {
+      alert(`❌ Action interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
+      return;
+    }
+
     const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     const statutActuelBrut = cmd.statut || cmd.statut_commande || 'EN ATTENTE';
     const statutActuelNorm = statutActuelBrut.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -634,6 +643,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const handleChangementPartenaire = (partenaireId) => {
+    if (documentEnLectureSeule) return;
     setIdPartenaire(partenaireId);
     if (!commandeEnEdition) setLignesSaisies([]);
     setStocksArticlesCache({});
@@ -682,11 +692,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const handleChangementDate = (nouvelleDate) => {
+    if (documentEnLectureSeule) return;
     setDateCommande(nouvelleDate);
     calculerNumeroAutomatique(commandes, idPartenaire, nouvelleDate);
   };
 
   const handleChangementAdresse = (valeur) => {
+    if (documentEnLectureSeule) return;
     setAdresseLivraison(valeur);
     const zoneCorrespondante = grilleTarifaire.find(
       t => (t.nom_zone || '').trim().toUpperCase() === valeur.trim().toUpperCase()
@@ -749,6 +761,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && (depotId && depotId !== 'AUCUN_DEPOT'));
 
   const ajouterArticleAuPanier = async (artObj) => {
+    if (documentEnLectureSeule) return;
     if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
       alert('⚠️ Veuillez saisir un numéro de client valide à exactement 9 chiffres.');
       if (inputNumeroClientRef.current) {
@@ -804,6 +817,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const modifierQuantiteLigne = async (index, delta) => {
+    if (documentEnLectureSeule) return;
     const nouvellesLignes = [...lignesSaisies];
     const nouvelleQte = nouvellesLignes[index].quantite + delta;
     if (nouvelleQte <= 0) {
@@ -827,15 +841,21 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const supprimerLignePanier = (index) => {
+    if (documentEnLectureSeule) return;
     setLignesSaisies(lignesSaisies.filter((_, i) => i !== index));
   };
 
   const napGlobal = parseFloat(montantSaisi) || 0;
 
   const ouvrirCommandePourModification = async (cmd) => {
+    // 🛡️ MODE CONSULTATION SEULE POUR LES JOURNÉES PASSÉES
+    const dateCmdStr = cmd.date_commande || dateDuJourStr;
+    const estVerrouille = dateCmdStr < dateDuJourStr;
+
+    setDocumentEnLectureSeule(estVerrouille);
     setCommandeEnEdition(cmd);
     setNumeroCommande(cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1');
-    setDateCommande(cmd.date_commande || new Date().toISOString().split('T')[0]);
+    setDateCommande(dateCmdStr);
     setIdPartenaire(cmd.id_partenaire || '');
     setDepotId(cmd.id_depot || 'AUCUN_DEPOT');
     setMontantSaisi(cmd.montant_commande !== undefined && cmd.montant_commande !== null ? String(cmd.montant_commande) : '0');
@@ -878,7 +898,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const supprimerCommandeActuelle = async () => {
-    if (!commandeEnEdition || sauvegardeEnCours) return;
+    if (!commandeEnEdition || sauvegardeEnCours || documentEnLectureSeule) return;
+
+    const dateCmdStr = commandeEnEdition.date_commande || dateDuJourStr;
+    if (dateCmdStr < dateDuJourStr) {
+      alert(`❌ Suppression interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
+      return;
+    }
+
     const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     if (!permissions.peut_supprimer) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
@@ -956,6 +983,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setLivreurAssigne('');
       setStatutCommandeSaisi('LIVRÉ');
       setCommandeEnEdition(null);
+      setDocumentEnLectureSeule(false);
       setStocksArticlesCache({});
       setVueActive('LISTE');
       chargerDonnees();
@@ -968,9 +996,26 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const sauvegarderCommande = async (e) => {
     if (e) e.preventDefault();
-    if (sauvegardeEnCours) return;
+    if (sauvegardeEnCours || documentEnLectureSeule) return;
     
     const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
+
+    let dateNormalisee = dateCommande;
+    if (dateNormalisee.includes('/')) {
+      const parts = dateNormalisee.split('/');
+      if (parts.length === 3) {
+        if (parts[2].length === 4) {
+          dateNormalisee = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (parts[0].length === 4) {
+          dateNormalisee = `${parts[0]}-${parts[1]}-${parts[2]}`;
+        }
+      }
+    }
+
+    if (dateNormalisee < dateDuJourStr) {
+      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${dateNormalisee} car cette journée est clôturée.`);
+      return;
+    }
 
     if (commandeEnEdition && !permissions.peut_modifier) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
@@ -1014,18 +1059,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     setSauvegardeEnCours(true);
     try {
       const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
-
-      let dateNormalisee = dateCommande;
-      if (dateNormalisee.includes('/')) {
-        const parts = dateNormalisee.split('/');
-        if (parts.length === 3) {
-          if (parts[2].length === 4) {
-            dateNormalisee = `${parts[2]}-${parts[1]}-${parts[0]}`;
-          } else if (parts[0].length === 4) {
-            dateNormalisee = `${parts[0]}-${parts[1]}-${parts[2]}`;
-          }
-        }
-      }
 
       if (!commandeEnEdition) {
         const doublonTrouve = commandes.find(c => 
@@ -1250,6 +1283,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setLivreurAssigne('');
       setStatutCommandeSaisi('LIVRÉ');
       setCommandeEnEdition(null);
+      setDocumentEnLectureSeule(false);
       setStocksArticlesCache({});
       setVueActive('LISTE');
       await chargerDonnees();
@@ -1669,7 +1703,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       `}</style>
 
-      {/* 🎯 ESPACEMENT AMÉLIORÉ ENTRE LES BOUTONS D'EN-TÊTE */}
       <div className="bg-white px-2.5 py-2 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-2 overflow-hidden">
         <div className="flex items-center gap-1 min-w-0 shrink-0">
           <h3 className="font-extrabold text-slate-900 uppercase text-[9px] flex items-center gap-0.5 shrink-0">
@@ -1685,7 +1718,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => setVueActive('LISTE')}
+            onClick={() => {
+              setVueActive('LISTE');
+              setDocumentEnLectureSeule(false);
+            }}
             className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'LISTE' 
                 ? 'bg-slate-900 text-white border-slate-900' 
@@ -1700,6 +1736,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               type="button"
               onClick={() => {
                 setCommandeEnEdition(null);
+                setDocumentEnLectureSeule(false);
                 setNumeroCommande('1');
                 setIdPartenaire('');
                 setDepotId('AUCUN_DEPOT');
@@ -1729,7 +1766,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
           <button
             type="button"
-            onClick={() => setVueActive('RAPPORT')}
+            onClick={() => {
+              setVueActive('RAPPORT');
+              setDocumentEnLectureSeule(false);
+            }}
             className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'RAPPORT' 
                 ? 'bg-blue-900 text-white border-blue-900' 
@@ -1741,7 +1781,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
           <button
             type="button"
-            onClick={() => setVueActive('CLOTURE')}
+            onClick={() => {
+              setVueActive('CLOTURE');
+              setDocumentEnLectureSeule(false);
+            }}
             className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
               vueActive === 'CLOTURE' 
                 ? 'bg-emerald-900 text-white border-emerald-900' 
@@ -2219,6 +2262,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       {vueActive === 'CREATION' && (
         <div className="space-y-3">
+          {documentEnLectureSeule && (
+            <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
+              🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)
+            </div>
+          )}
+
           <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-2.5">
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-3">
@@ -2226,10 +2275,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <input
                   type="date"
                   required
+                  disabled={documentEnLectureSeule}
                   value={dateCommande}
                   onChange={(e) => handleChangementDate(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs disabled:opacity-70"
                 />
               </div>
 
@@ -2237,8 +2287,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire *</label>
                 <button
                   type="button"
-                  onClick={() => { setRecherchePartenaireInput(''); setModalPartenaireOuverte(true); }}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs text-left flex justify-between items-center truncate"
+                  disabled={documentEnLectureSeule}
+                  onClick={() => { if (documentEnLectureSeule) return; setRecherchePartenaireInput(''); setModalPartenaireOuverte(true); }}
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs text-left flex justify-between items-center truncate disabled:opacity-70"
                 >
                   <span className="truncate">
                     {idPartenaire ? (partenaires.find(p => String(p.id) === String(idPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(idPartenaire))?.nom || '') : ''}
@@ -2256,11 +2307,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <input
                     ref={inputNumeroCmdRef}
                     type="text"
+                    disabled={documentEnLectureSeule}
                     value={numeroCommande}
                     onChange={(e) => setNumeroCommande(e.target.value.replace(/[^0-9]/g, ''))}
                     onFocus={(e) => e.target.select()}
                     placeholder=""
-                    className="w-full p-1.5 font-mono text-[10px] font-black text-slate-900 bg-white focus:outline-none"
+                    className="w-full p-1.5 font-mono text-[10px] font-black text-slate-900 bg-white focus:outline-none disabled:opacity-70"
                   />
                 </div>
               </div>
@@ -2291,6 +2343,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   type="text"
                   required
                   maxLength={9}
+                  disabled={documentEnLectureSeule}
                   value={numeroClient}
                   onChange={(e) => setNumeroClient(e.target.value.replace(/\D/g, ''))}
                   onKeyDown={(e) => {
@@ -2308,7 +2361,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   }}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className={`w-full bg-white border rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs font-mono ${
+                  className={`w-full bg-white border rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs font-mono disabled:opacity-70 ${
                     numeroClient.trim().length === 9 ? 'border-emerald-500' : 'border-rose-300 focus:border-rose-500'
                   }`}
                 />
@@ -2321,11 +2374,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   type="text"
                   required
                   list="liste-zones-commandes"
+                  disabled={documentEnLectureSeule}
                   value={adresseLivraison}
                   onChange={(e) => handleChangementAdresse(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase disabled:opacity-70"
                 />
                 <datalist id="liste-zones-commandes">
                   {grilleTarifaire.map((tarif) => (
@@ -2343,11 +2397,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   type="number"
                   step="0.01"
                   required
+                  disabled={documentEnLectureSeule}
                   value={montantSaisi}
                   onChange={(e) => setMontantSaisi(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs"
+                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs disabled:opacity-70"
                 />
               </div>
             </div>
@@ -2359,11 +2414,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <input
                     type="text"
                     required
+                    disabled={documentEnLectureSeule}
                     value={pointADepart}
                     onChange={(e) => setPointADepart(e.target.value)}
                     onFocus={(e) => e.target.select()}
                     placeholder=""
-                    className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                    className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase disabled:opacity-70"
                   />
                 </div>
 
@@ -2371,11 +2427,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature colis</label>
                   <input
                     type="text"
+                    disabled={documentEnLectureSeule}
                     value={natureColis}
                     onChange={(e) => setNatureColis(e.target.value)}
                     onFocus={(e) => e.target.select()}
                     placeholder=""
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase"
+                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase disabled:opacity-70"
                   />
                 </div>
               </div>
@@ -2395,11 +2452,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <input
                   type="number"
                   step="0.01"
+                  disabled={documentEnLectureSeule}
                   value={fraisLivraisonSaisi}
                   onChange={(e) => setFraisLivraisonSaisi(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs"
+                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs disabled:opacity-70"
                 />
               </div>
 
@@ -2407,8 +2465,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur</label>
                 <button
                   type="button"
-                  onClick={() => { setRechercheLivreurInput(''); setModalLivreurOuverte(true); }}
-                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase text-left flex justify-between items-center truncate"
+                  disabled={documentEnLectureSeule}
+                  onClick={() => { if (documentEnLectureSeule) return; setRechercheLivreurInput(''); setModalLivreurOuverte(true); }}
+                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase text-left flex justify-between items-center truncate disabled:opacity-70"
                 >
                   <span className="truncate">{livreurAssigne || ''}</span>
                   <span className="text-slate-400 shrink-0">🔍</span>
@@ -2419,8 +2478,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Statut *</label>
                 <select
                   value={statutCommandeSaisi}
+                  disabled={documentEnLectureSeule}
                   onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-[10px] shadow-xs cursor-pointer"
+                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-[10px] shadow-xs cursor-pointer disabled:opacity-70"
                 >
                   <option value="EN ATTENTE">EN ATTENTE</option>
                   <option value="LIVRÉ">LIVRÉ</option>
@@ -2438,14 +2498,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <span className="font-black text-slate-900 uppercase text-[11px] truncate">
                     ARTICLE
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setModalArticleOuverte(true)}
-                    disabled={!enteteValide}
-                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-2 py-1.5 rounded-md text-[10px] flex items-center justify-center gap-1 shadow-2xs transition disabled:opacity-50"
-                  >
-                    <span>🔍</span> Rechercher un article
-                  </button>
+                  {!documentEnLectureSeule && (
+                    <button
+                      type="button"
+                      onClick={() => setModalArticleOuverte(true)}
+                      disabled={!enteteValide}
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-2 py-1.5 rounded-md text-[10px] flex items-center justify-center gap-1 shadow-2xs transition disabled:opacity-50"
+                    >
+                      <span>🔍</span> Rechercher un article
+                    </button>
+                  )}
                 </div>
 
                 {!enteteValide ? (
@@ -2465,7 +2527,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         <ArticleItemStockCard 
                           key={`${idArt}_${livreurAssigne}_${depotId}`} 
                           art={art} 
-                          onSelect={() => ajouterArticleAuPanier(art)} 
+                          onSelect={() => { if (!documentEnLectureSeule) ajouterArticleAuPanier(art); }} 
                           chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
                         />
                       );
@@ -2493,28 +2555,34 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                           </div>
                           
                           <div className="flex items-center gap-0.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => modifierQuantiteLigne(index, -1)}
-                              className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
-                            >
-                              -
-                            </button>
+                            {!documentEnLectureSeule && (
+                              <button
+                                type="button"
+                                onClick={() => modifierQuantiteLigne(index, -1)}
+                                className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
+                              >
+                                -
+                              </button>
+                            )}
                             <span className="font-black text-orange-600 w-4 text-center text-[9px]">{l.quantite}</span>
-                            <button
-                              type="button"
-                              onClick={() => modifierQuantiteLigne(index, 1)}
-                              className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
-                            >
-                              +
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => supprimerLignePanier(index)}
-                              className="text-red-600 font-bold ml-0.5 text-[9px] px-0.5"
-                            >
-                              ✕
-                            </button>
+                            {!documentEnLectureSeule && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => modifierQuantiteLigne(index, 1)}
+                                  className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
+                                >
+                                  +
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => supprimerLignePanier(index)}
+                                  className="text-red-600 font-bold ml-0.5 text-[9px] px-0.5"
+                                >
+                                  ✕
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2537,13 +2605,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         setStocksArticlesCache({});
                         setVueActive('LISTE');
                         setCommandeEnEdition(null);
+                        setDocumentEnLectureSeule(false);
                       }}
-                      className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-1.5 px-1 rounded-md text-[9px] transition text-center disabled:opacity-50"
+                      className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-1.5 px-1 rounded-md text-[9px] transition text-center disabled:opacity-50"
                     >
-                      Annuler
+                      Fermer
                     </button>
 
-                    {commandeEnEdition && permissions.peut_supprimer && (
+                    {commandeEnEdition && !documentEnLectureSeule && permissions.peut_supprimer && (
                       <button
                         type="button"
                         disabled={sauvegardeEnCours}
@@ -2555,7 +2624,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </button>
                     )}
 
-                    {((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
+                    {!documentEnLectureSeule && ((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
                       <button
                         type="button"
                         disabled={sauvegardeEnCours}
@@ -2608,13 +2677,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     setStocksArticlesCache({});
                     setVueActive('LISTE');
                     setCommandeEnEdition(null);
+                    setDocumentEnLectureSeule(false);
                   }}
-                  className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 px-2 rounded-lg text-xs transition text-center disabled:opacity-50"
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2 px-2 rounded-lg text-xs transition text-center disabled:opacity-50"
                 >
-                  Annuler
+                  Fermer
                 </button>
 
-                {commandeEnEdition && permissions.peut_supprimer && (
+                {commandeEnEdition && !documentEnLectureSeule && permissions.peut_supprimer && (
                   <button
                     type="button"
                     disabled={sauvegardeEnCours}
@@ -2626,7 +2696,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   </button>
                 )}
 
-                {((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
+                {!documentEnLectureSeule && ((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
                   <button
                     type="button"
                     disabled={sauvegardeEnCours}
@@ -2953,7 +3023,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         <div className="relative" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => setMenuStatutOuvertId(menuStatutOuvertId === cmd.id ? null : cmd.id)}
+                            onClick={() => {
+                              const dateCmdStr = cmd.date_commande || dateDuJourStr;
+                              if (dateCmdStr < dateDuJourStr) {
+                                alert(`❌ Modification interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
+                                return;
+                              }
+                              setMenuStatutOuvertId(menuStatutOuvertId === cmd.id ? null : cmd.id);
+                            }}
                             className={`text-[7px] font-black px-1.5 py-0.5 rounded-full border truncate whitespace-nowrap flex items-center gap-0.5 shadow-2xs cursor-pointer hover:opacity-80 transition ${badgeColor}`}
                             title="Changer le statut"
                           >
