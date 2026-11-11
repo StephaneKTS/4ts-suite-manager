@@ -12,6 +12,10 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [modalChatbotOuvert, setModalChatbotOuvert] = useState(false);
   const [estEnPause, setEstEnPause] = useState(false);
 
+  // --- ÉTATS POUR LE GLISSER / SWIPE DES ANNONCES ---
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+
   // --- ÉTATS POUR LE CHATBOT ---
   const [modeChat, setModeChat] = useState('ACCUEIL'); 
   const [etapeSondage, setEtapeSondage] = useState(0);
@@ -375,6 +379,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     chargerBannièresSupabase();
   }, []);
 
+  // Défilement automatique géré par intervalle (en pause seulement si estEnPause est vrai)
   useEffect(() => {
     if (estEnPause || bannières.length <= 1) return;
     const interval = setInterval(() => {
@@ -382,6 +387,32 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     }, 4000);
     return () => clearInterval(interval);
   }, [bannières.length, estEnPause]);
+
+  // Gestion du Swipe tactile / Glissement pour changer d'annonce
+  const handleTouchStart = (e) => {
+    setEstEnPause(true);
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    setEstEnPause(false);
+    const distance = touchStartX.current - touchEndX.current;
+    const minSwipeDistance = 50;
+
+    if (Math.abs(distance) > minSwipeDistance) {
+      if (distance > 0) {
+        // Swipe vers la gauche -> Annonce suivante
+        setBanniereIndex((prev) => (prev + 1) % bannières.length);
+      } else {
+        // Swipe vers la droite -> Annonce précédente
+        setBanniereIndex((prev) => (prev - 1 + bannières.length) % bannières.length);
+      }
+    }
+  };
 
   const soumettreAnnonce = async (e) => {
     e.preventDefault();
@@ -462,11 +493,16 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   return (
     <div className="space-y-4 font-sans text-xs pb-16">
       
-      {/* ================= 1. BANNIÈRE DÉFILANTE PRINCIPALE ================= */}
+      {/* ================= 1. BANNIÈRE DÉFILANTE PRINCIPALE (AUTO-SCROLL & SWIPE & PAUSE AU MAINTIEN) ================= */}
       <div 
         onMouseEnter={() => setEstEnPause(true)}
         onMouseLeave={() => setEstEnPause(false)}
-        className="relative overflow-hidden rounded-2xl shadow-xl border border-slate-800 bg-slate-950 text-white p-6 transition-all duration-700 select-none cursor-grab"
+        onMouseDown={() => setEstEnPause(true)}
+        onMouseUp={() => setEstEnPause(false)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className="relative overflow-hidden rounded-2xl shadow-xl border border-slate-800 bg-slate-950 text-white p-6 transition-all duration-700 select-none cursor-grab active:cursor-grabbing"
       >
         <div className={`absolute inset-0 bg-gradient-to-r ${banniereActuelle?.couleur || 'from-slate-900 via-red-950 to-slate-950'} opacity-90 transition-all duration-700`}></div>
         
@@ -520,7 +556,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
           </div>
 
           <div className="pt-2 flex items-center justify-between flex-wrap gap-2">
-            <span className="text-[9px] text-slate-300 font-bold italic">💡 Glissez ou touchez pour naviguer.</span>
+            <span className="text-[9px] text-slate-300 font-bold italic">💡 Glissez vers la gauche/droite ou maintenez pour faire pause.</span>
             {estSuperAdmin && (
               <button
                 onClick={(e) => { e.stopPropagation(); setModalAnnonceOuvert(true); }}
