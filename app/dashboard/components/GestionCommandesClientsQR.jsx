@@ -10,8 +10,8 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [filtreDate, setFiltreDate] = useState('AUJOURDHUI');
   
   const [audioActive, setAudioActive] = useState(true);
-  const dernierNombreCommandes = useRef(null);
 
+  // File d'attente audio pour éviter les superpositions
   const fileDAbsolueAudio = useRef([]);
   const enTrainDeJouerAudio = useRef(false);
 
@@ -68,7 +68,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         }, { onConflict: 'endpoint' });
 
       if (error) throw error;
-      alert("Notifications push activées avec succès ! Ce téléphone pourra recevoir des alertes en veille.");
+      alert("Notifications push activées avec succès !");
     } catch (err) {
       console.error("Erreur détaillée push :", err);
       alert("Erreur Push : " + (err.message || err.name || "Erreur inconnue"));
@@ -94,7 +94,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     } finally {
       enTrainDeJouerAudio.current = false;
       if (fileDAbsolueAudio.current.length > 0) {
-        setTimeout(traiterFileDAbsolue, 300);
+        setTimeout(traiterFileDAbsolue, 200);
       }
     }
   };
@@ -149,7 +149,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           
           const utterance = new SpeechSynthesisUtterance(texte);
           utterance.lang = 'fr-FR';
-          utterance.rate = 0.90;
+          utterance.rate = 0.95;
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
           
@@ -192,39 +192,17 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  const chargerCommandesQR = async (verifierNouveau = false) => {
+  // Chargement initial des commandes
+  const chargerCommandesQR = async () => {
     try {
       const { data, error } = await supabase
         .from('commandes_clients_qr')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-
-      const nouvellesCommandes = data || [];
-      
-      if (verifierNouveau && dernierNombreCommandes.current !== null) {
-        if (nouvellesCommandes.length > dernierNombreCommandes.current) {
-          if (audioActive) {
-            declencherVibration();
-            
-            const nbNouvelles = nouvellesCommandes.length - dernierNombreCommandes.current;
-            const commandesAjoutees = nouvellesCommandes.slice(nouvellesCommandes.length - nbNouvelles);
-
-            commandesAjoutees.forEach((cmd) => {
-              const nomClientPropre = (cmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
-              const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${cmd.numero_table || 'non spécifiée'}.`;
-              
-              ajouterFichierAudio('ALERTE_SONORE');
-              ajouterFichierAudio('ANNONCE_VOCALE', messageVocal);
-            });
-          }
-        }
-      }
-      
-      dernierNombreCommandes.current = nouvellesCommandes.length;
-      setCommandes([...nouvellesCommandes].reverse());
+      setCommandes(data || []);
     } catch (err) {
       console.error('Erreur chargement commandes :', err.message);
     } finally {
@@ -232,34 +210,60 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
+  // Abonnement Realtime Supabase (Zéro délai d'attente dès qu'une commande est insérée)
   useEffect(() => {
-    if (entrepriseId) {
-      chargerCommandesQR(false);
-      
-      const interval = setInterval(() => {
-        chargerCommandesQR(true);
-      }, 2000);
+    if (!entrepriseId) return;
 
-      const intervalRappelPaiement = setInterval(() => {
-        setCommandes(prevCommandes => {
-          const impayesServis = prevCommandes.some(c => c.statut === 'SERVI' && c.statut_paiement !== 'PAYE');
-          if (impayesServis && audioActive) {
+    chargerCommandesQR();
+
+    const canalRealtime = supabase
+      .channel(`commandes-realtime-${entrepriseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'commandes_clients_qr',
+          filter: `id_entreprise=eq.${entrepriseId}`
+        },
+        (payload) => {
+          const nouvelleCmd = payload.new;
+          
+          // Mettre à jour instantanément la liste des commandes à l'écran
+          setCommandes((prev) => [nouvelleCmd, ...prev]);
+
+          // Déclencher l'alerte sonore et vocale immédiatement
+          if (audioActive) {
             declencherVibration();
+            const nomClientPropre = (nouvelleCmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
+            const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${nouvelleCmd.numero_table || 'non spécifiée'}.`;
+            
             ajouterFichierAudio('ALERTE_SONORE');
-            ajouterFichierAudio('ANNONCE_VOCALE', "Alerte impayé ! Une commande servie n'a pas encore été réglée.");
+            ajouterFichierAudio('ANNONCE_VOCALE', messageVocal);
           }
-          return prevCommandes;
-        });
-      }, 300000);
+        }
+      )
+      .subscribe();
 
-      return () => {
-        clearInterval(interval);
-        clearInterval(intervalRappelPaiement);
-      };
-    }
+    // Vérification périodique de sécurité pour les impayés (toutes les 5 minutes)
+    const intervalRappelPaiement = setInterval(() => {
+      setCommandes(prevCommandes => {
+        const impayesServis = prevCommandes.some(c => c.statut === 'SERVI' && c.statut_paiement !== 'PAYE');
+        if (impayesServis && audioActive) {
+          declencherVibration();
+          ajouterFichierAudio('ALERTE_SONORE');
+          ajouterFichierAudio('ANNONCE_VOCALE', "Alerte impayé ! Une commande servie n'a pas encore été réglée.");
+        }
+        return prevCommandes;
+      });
+    }, 300000);
+
+    return () => {
+      supabase.removeChannel(canalRealtime);
+      clearInterval(intervalRappelPaiement);
+    };
   }, [entrepriseId, audioActive]);
 
-  // Modification du statut avec appel de la fonction RPC sécurisée pour déstocker en temps réel
   const changerStatutCommande = async (idCommande, nouveauStatut, statutPaiement) => {
     if (nouveauStatut === 'SERVI' && statutPaiement !== 'PAYE') {
       const confirmer = window.confirm(
@@ -270,7 +274,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
     try {
       if (nouveauStatut === 'SERVI') {
-        // Appel de la fonction RPC atomique pour valider, déstocker et tracer le mouvement
         const { data, error } = await supabase.rpc('valider_et_destockage_commande_qr', {
           p_id_commande: idCommande,
           p_id_entreprise: entrepriseId
@@ -282,7 +285,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           return;
         }
       } else {
-        // Pour les autres statuts (ex: EN_COURS), simple mise à jour du statut
         const { error } = await supabase
           .from('commandes_clients_qr')
           .update({ statut: nouveauStatut })
@@ -292,7 +294,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         if (error) throw error;
       }
 
-      chargerCommandesQR(false);
+      chargerCommandesQR();
     } catch (err) {
       alert('Erreur lors de la mise à jour du statut : ' + err.message);
     }
@@ -307,7 +309,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         .eq('id', idCommande);
 
       if (error) throw error;
-      chargerCommandesQR(false);
+      chargerCommandesQR();
     } catch (err) {
       alert('Erreur lors de la mise à jour du paiement : ' + err.message);
     }
@@ -342,7 +344,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               <span className={`w-2 h-2 rounded-full ${audioActive ? 'bg-emerald-600 animate-pulse' : 'bg-red-500'} inline-block`}></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">File d'attente audio & Déstockage temps réel</p>
+            <p className="text-[9px] text-slate-500 font-bold">Temps Réel Instantané & Déstockage auto</p>
           </div>
           
           <div className="flex items-center gap-1 shrink-0">
