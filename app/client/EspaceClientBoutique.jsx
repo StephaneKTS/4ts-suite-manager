@@ -29,7 +29,8 @@ export default function EspaceClientBoutique() {
   const [client, setClient] = useState({
     nom: '',
     telephone: '',
-    table: ''
+    table: '',
+    modePaiement: 'ESPECES'
   });
 
   useEffect(() => {
@@ -83,6 +84,26 @@ export default function EspaceClientBoutique() {
 
     chargerDonneesBoutiqueUniverselle();
   }, [entrepriseId]);
+
+  // Actualisation automatique des commandes du client en arrière-plan (toutes les 5 secondes si le numéro est renseigné)
+  useEffect(() => {
+    if (ongletActif === 'SUIVI' && telephoneRecherche.trim()) {
+      const interval = setInterval(async () => {
+        try {
+          const { data } = await supabase
+            .from('commandes_clients_qr')
+            .select('*')
+            .eq('id_entreprise', entrepriseId)
+            .eq('telephone_client', telephoneRecherche.trim())
+            .order('created_at', { ascending: false });
+
+          if (data) setMesCommandesClient(data);
+        } catch (e) {}
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [ongletActif, telephoneRecherche, entrepriseId]);
 
   const calculerStockReel = (articleId) => {
     let stockInitial = 0;
@@ -183,7 +204,8 @@ export default function EspaceClientBoutique() {
           .update({
             details_articles: JSON.stringify(panier),
             montant_total: montantTotalModif,
-            numero_table: client.table || 'N/A'
+            numero_table: client.table || 'N/A',
+            mode_paiement: client.modePaiement
           })
           .eq('id', commandeEnCoursModification.id)
           .eq('statut', 'EN_ATTENTE');
@@ -217,6 +239,8 @@ export default function EspaceClientBoutique() {
           details_articles: JSON.stringify(panier),
           montant_total: totalPanier,
           statut: 'EN_ATTENTE',
+          statut_paiement: 'NON_PAYE',
+          mode_paiement: client.modePaiement,
           created_at: new Date().toISOString()
         };
 
@@ -261,7 +285,7 @@ export default function EspaceClientBoutique() {
 
   const preparerModification = (cmd) => {
     if (cmd.statut !== 'EN_ATTENTE') {
-      alert('Cette commande est déjà prise en charge en cuisine et ne peut plus être modifiée.');
+      alert('Cette commande est déjà prise en charge et ne peut plus être modifiée.');
       return;
     }
     try {
@@ -270,7 +294,8 @@ export default function EspaceClientBoutique() {
       setClient({
         nom: cmd.nom_client || '',
         telephone: cmd.telephone_client || '',
-        table: cmd.numero_table || ''
+        table: cmd.numero_table || '',
+        modePaiement: cmd.mode_paiement || 'ESPECES'
       });
       setCommandeEnCoursModification(cmd);
       setOngletActif('BOUTIQUE');
@@ -295,11 +320,11 @@ export default function EspaceClientBoutique() {
       <div className="w-full min-h-screen bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center">
         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-xs">✅</div>
         <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
-        <p className="text-xs text-slate-600">Votre numéro de commande est : <strong className="text-orange-600 font-mono text-xs block mt-1">{numeroCommande}</strong></p>
-        <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise en cuisine pour un service sur place.</p>
+        <p className="text-[11px] text-slate-600">Votre numéro de commande est : <strong className="text-orange-600 font-mono text-xs block mt-1">{numeroCommande}</strong></p>
+        <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise pour un service sur place.</p>
         <div className="flex gap-2 w-full max-w-xs mt-4">
           <button
-            onClick={() => { setValide(false); setVuePanier(false); setCommandeEnCoursModification(null); setClient({ nom: '', telephone: '', table: '' }); }}
+            onClick={() => { setValide(false); setVuePanier(false); setCommandeEnCoursModification(null); setClient({ nom: '', telephone: '', table: '', modePaiement: 'ESPECES' }); }}
             className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
           >
             Commander 🍽️
@@ -426,6 +451,19 @@ export default function EspaceClientBoutique() {
                       </div>
                     </div>
 
+                    <div>
+                      <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Mode de paiement *</label>
+                      <select
+                        value={client.modePaiement}
+                        onChange={(e) => setClient({ ...client, modePaiement: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                      >
+                        <option value="ESPECES">Espèces (À la caisse / Table)</option>
+                        <option value="MOBILE_MONEY">Mobile Money (Orange / MTN)</option>
+                        <option value="CARTE">Carte bancaire</option>
+                      </select>
+                    </div>
+
                     <button
                       type="submit"
                       className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition mt-3 flex items-center justify-center gap-1.5"
@@ -528,22 +566,35 @@ export default function EspaceClientBoutique() {
                 if (cmd.statut === 'EN_COURS') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
                 if (cmd.statut === 'SERVI') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
 
+                const estPaye = cmd.statut_paiement === 'PAYE';
+
                 return (
                   <div key={cmd.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
                     <div className="flex justify-between items-start border-b pb-2">
                       <div>
-                        <span className="font-mono font-black text-orange-600 text-xs block">{cmd.numero_commande}</span>
+                        <span className="font-mono font-black text-orange-600 text-[11px] block">{cmd.numero_commande}</span>
                         <span className="text-[9px] text-slate-400 font-bold">
                           {new Date(cmd.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(cmd.created_at).toLocaleDateString()}
                         </span>
                       </div>
                       <span className={`px-2.5 py-1 rounded-full font-black text-[9px] border uppercase ${badgeColor}`}>
-                        {cmd.statut === 'EN_ATTENTE' ? 'En attente (Modifiable)' : cmd.statut === 'EN_COURS' ? 'En cours en cuisine 🍳' : 'Servi ✅'}
+                        {cmd.statut === 'EN_ATTENTE' ? 'En attente' : cmd.statut === 'EN_COURS' ? 'Encours' : 'Servi ✅'}
                       </span>
                     </div>
 
+                    <div className="bg-slate-50 p-2 rounded-xl border flex justify-between items-center text-[10px]">
+                      <div>
+                        <p className="font-bold text-slate-700">📍 Table : <strong className="text-slate-900">{cmd.numero_table}</strong></p>
+                        <p className="font-bold text-slate-500">💳 Paiement : {cmd.mode_paiement || 'ESPECES'}</p>
+                      </div>
+                      <div>
+                        <span className={`px-2 py-1 rounded-md font-black text-[9px] uppercase border ${estPaye ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                          {estPaye ? 'Payé 🟢' : 'Non payé 🔴'}
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="space-y-1">
-                      <p className="font-bold text-slate-700 text-[10px]">📍 Table : <strong className="text-slate-900">{cmd.numero_table}</strong></p>
                       <div className="divide-y divide-slate-100 max-h-24 overflow-y-auto">
                         {detailsArticles.map((art, idx) => (
                           <div key={idx} className="flex justify-between items-center py-1 text-[10px]">
@@ -566,7 +617,7 @@ export default function EspaceClientBoutique() {
                           Modifier ✏️
                         </button>
                       ) : (
-                        <span className="text-[9px] font-bold text-slate-400 italic">🔒 Verrouillé (En cuisine/Servi)</span>
+                        <span className="text-[9px] font-bold text-slate-400 italic">🔒 Verrouillé</span>
                       )}
                     </div>
                   </div>

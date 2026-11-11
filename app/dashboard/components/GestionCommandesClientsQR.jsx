@@ -9,22 +9,49 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [filtreStatut, setFiltreStatut] = useState('TOUT');
   const dernierNombreCommandes = useRef(null);
 
-  // Fonction pour jouer un son de notification (Synthétiseur audio web)
-  const jouerSonAlerte = () => {
+  // Fonction pour faire vibrer le téléphone (patte de vibration pour alertes)
+  const declencherVibration = () => {
+    if (typeof window !== 'undefined' && navigator.vibrate) {
+      try {
+        // Vibreur : 3 impulsions (vibre 300ms, pause 150ms, vibre 300ms, pause 150ms, vibre 500ms)
+        navigator.vibrate([300, 150, 300, 150, 500]);
+      } catch (e) {
+        console.log("Vibration non supportée ou bloquée");
+      }
+    }
+  };
+
+  // Fonction pour l'alerte vocale (Text-to-Speech)
+  const annoncervocalement = (texte) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel(); // Arrêter toute parole précédente
+        const utterance = new SpeechSynthesisUtterance(texte);
+        utterance.lang = 'fr-FR';
+        utterance.rate = 1.0; // Vitesse normale
+        utterance.pitch = 1.0; // Ton normal
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        console.log("Synthèse vocale non supportée");
+      }
+    }
+  };
+
+  const jouerSonAlerte = (frequence = 587.33) => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // Note Ré5
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(frequence, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.8);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.8);
     } catch (e) {
-      console.log("Audio non pris en charge ou bloqué par le navigateur");
+      console.log("Audio non pris en charge");
     }
   };
 
@@ -42,7 +69,16 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       
       if (verifierNouveau && dernierNombreCommandes.current !== null) {
         if (nouvellesCommandes.length > dernierNombreCommandes.current) {
-          jouerSonAlerte();
+          // Nouvelle commande détectée !
+          jouerSonAlerte(587.33);
+          declencherVibration();
+          
+          // Récupérer la dernière commande pour l'annonce vocale personnalisée
+          const derniereCmd = nouvellesCommandes[0];
+          if (derniereCmd) {
+            const messageVocal = `Nouvelle commande reçue ! Client ${derniereCmd.nom_client || 'Anonyme'}, table ${derniereCmd.numero_table || 'non spécifiée'}.`;
+            annoncervocalement(messageVocal);
+          }
         }
       }
       
@@ -58,17 +94,40 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   useEffect(() => {
     if (entrepriseId) {
       chargerCommandesQR(false);
-
-      // Vérification automatique des nouvelles commandes toutes les 6 secondes
+      
+      // Actualisation automatique toutes les 6 secondes
       const interval = setInterval(() => {
         chargerCommandesQR(true);
       }, 6000);
 
-      return () => clearInterval(interval);
+      // Alerte sonore et vocale de rappel toutes les 5 minutes (300 000 ms) pour les commandes SERVIE mais NON_PAYE
+      const intervalRappelPaiement = setInterval(() => {
+        setCommandes(prevCommandes => {
+          const impayesServis = prevCommandes.some(c => c.statut === 'SERVI' && c.statut_paiement !== 'PAYE');
+          if (impayesServis) {
+            jouerSonAlerte(440);
+            declencherVibration();
+            annoncervocalement("Alerte ! Une commande servie n'a pas encore été payée.");
+          }
+          return prevCommandes;
+        });
+      }, 300000); // 5 minutes
+
+      return () => {
+        clearInterval(interval);
+        clearInterval(intervalRappelPaiement);
+      };
     }
   }, [entrepriseId]);
 
-  const changerStatutCommande = async (idCommande, nouveauStatut) => {
+  const changerStatutCommande = async (idCommande, nouveauStatut, statutPaiement) => {
+    if (nouveauStatut === 'SERVI' && statutPaiement !== 'PAYE') {
+      const confirmer = window.confirm(
+        "⚠️ ATTENTION : Cette commande n'a pas encore été payée !\n\nVoulez-vous vraiment la marquer comme SERVIE ?"
+      );
+      if (!confirmer) return;
+    }
+
     try {
       const { error } = await supabase
         .from('commandes_clients_qr')
@@ -82,6 +141,21 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
+  const basculerPaiement = async (idCommande, statutActuel) => {
+    const nouveauStatutPaiement = statutActuel === 'PAYE' ? 'NON_PAYE' : 'PAYE';
+    try {
+      const { error } = await supabase
+        .from('commandes_clients_qr')
+        .update({ statut_paiement: nouveauStatutPaiement })
+        .eq('id', idCommande);
+
+      if (error) throw error;
+      chargerCommandesQR(false);
+    } catch (err) {
+      alert('Erreur lors de la mise à jour du paiement : ' + err.message);
+    }
+  };
+
   const commandesFiltrees = commandes.filter(cmd => {
     if (filtreStatut === 'TOUT') return true;
     return cmd.statut === filtreStatut;
@@ -89,7 +163,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
   return (
     <div className="space-y-2 font-sans text-xs max-w-4xl mx-auto p-1 pb-16">
-      {/* En-tête épuré vert et orange */}
       <div className="bg-white p-2 rounded-xl border border-orange-200 shadow-2xs flex flex-col gap-2">
         <div className="flex justify-between items-center">
           <div>
@@ -97,7 +170,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse inline-block"></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">Suivi en direct (Cuisine / Caisse)</p>
+            <p className="text-[9px] text-slate-500 font-bold">Suivi en direct, Alertes vocales & Vibrations</p>
           </div>
           <button
             onClick={() => chargerCommandesQR(false)}
@@ -107,7 +180,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           </button>
         </div>
 
-        {/* Boutons de filtre compacts */}
         <div className="grid grid-cols-4 gap-1 bg-orange-50/80 p-1 rounded-lg border border-orange-100">
           {['TOUT', 'EN_ATTENTE', 'EN_COURS', 'SERVI'].map((st) => (
             <button
@@ -140,8 +212,16 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             if (cmd.statut === 'EN_COURS') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
             if (cmd.statut === 'SERVI') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
 
+            const estPaye = cmd.statut_paiement === 'PAYE';
+            const estServiImpaye = cmd.statut === 'SERVI' && !estPaye;
+
             return (
-              <div key={cmd.id} className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs space-y-2 flex flex-col justify-between">
+              <div 
+                key={cmd.id} 
+                className={`bg-white rounded-xl border p-2.5 shadow-2xs space-y-2 flex flex-col justify-between transition ${
+                  estServiImpaye ? 'border-red-500 ring-2 ring-red-400/50 bg-red-50/20' : 'border-slate-200'
+                }`}
+              >
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-start border-b border-slate-100 pb-1">
                     <div>
@@ -155,15 +235,32 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                     </span>
                   </div>
 
+                  {estServiImpaye && (
+                    <div className="bg-red-500 text-white p-1.5 rounded-lg text-center font-black text-[9px] uppercase tracking-wider animate-bounce">
+                      🚨 ALERTE : COMMANDE SERVIE MAIS NON PAYÉE !
+                    </div>
+                  )}
+
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 flex justify-between items-center">
                     <div>
                       <p className="font-black text-slate-900 uppercase text-[10px]">👤 {cmd.nom_client}</p>
-                      <p className="font-bold text-slate-600 text-[9px]">📞 {cmd.telephone_client}</p>
+                      <p className="font-bold text-slate-600 text-[9px]">📞 {cmd.telephone_client} | 💳 {cmd.mode_paiement || 'ESPECES'}</p>
                     </div>
-                    <div className="text-right">
-                      <span className="bg-orange-100 text-orange-800 font-black px-2 py-1 rounded-md text-[9px]">
-                        📍 Table : {cmd.numero_table || 'N/A'}
+                    <div className="text-right space-y-1">
+                      <span className="bg-orange-100 text-orange-800 font-black px-2 py-0.5 rounded-md text-[9px] block">
+                        Table : {cmd.numero_table || 'N/A'}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => basculerPaiement(cmd.id, cmd.statttut_paiement || cmd.statut_paiement)}
+                        className={`px-2 py-0.5 rounded-md font-black text-[8px] uppercase border transition ${
+                          estPaye 
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' 
+                            : 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200 animate-pulse'
+                        }`}
+                      >
+                        {estPaye ? 'Payé 🟢' : 'Non Payé 🔴'}
+                      </button>
                     </div>
                   </div>
 
@@ -190,27 +287,32 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                     <span className="text-emerald-600 font-mono text-xs">{Number(cmd.montant_total).toLocaleString()} FCFA</span>
                   </div>
 
-                  {/* Boutons de statut compacts et visibles sur mobile */}
-                  <div className="flex items-center gap-1 pt-0.5">
-                    {cmd.statut !== 'EN_COURS' && (
+                  {cmd.statut === 'SERVI' ? (
+                    <div className="text-center py-1 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <span className="font-black text-[9px] text-emerald-700 uppercase tracking-wide">
+                        🔒 Servie & Verrouillée ✅
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 pt-0.5">
+                      {cmd.statut !== 'EN_COURS' && (
+                        <button
+                          type="button"
+                          onClick={() => changerStatutCommande(cmd.id, 'EN_COURS', cmd.statut_paiement)}
+                          className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
+                        >
+                          En cours 🍳
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => changerStatutCommande(cmd.id, 'EN_COURS')}
-                        className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
-                      >
-                        En cours 🍳
-                      </button>
-                    )}
-                    {cmd.statut !== 'SERVI' && (
-                      <button
-                        type="button"
-                        onClick={() => changerStatutCommande(cmd.id, 'SERVI')}
+                        onClick={() => changerStatutCommande(cmd.id, 'SERVI', cmd.statut_paiement)}
                         className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
                       >
                         Servi ✅
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
