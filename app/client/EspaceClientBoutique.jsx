@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import MenuExplorer from '@/components/MenuExplorer'; // Importation du menu Explorer
 
 export default function EspaceClientBoutique() {
   const searchParams = useSearchParams();
@@ -18,6 +19,7 @@ export default function EspaceClientBoutique() {
   const [numeroCommande, setNumeroCommande] = useState('');
 
   const [vuePanier, setVuePanier] = useState(false);
+  const [ongletActif, setOngletActif] = useState('BOUTIQUE'); // 'BOUTIQUE' ou 'EXPLORER'
 
   const [client, setClient] = useState({
     nom: '',
@@ -228,7 +230,6 @@ export default function EspaceClientBoutique() {
     return (
       <div className="w-full min-h-screen bg-white font-sans text-xs flex flex-col justify-between pb-10">
         <div className="space-y-4">
-          {/* Barre de navigation supérieure */}
           <div className="bg-white px-4 py-3 border-b border-slate-100 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
             <button
               type="button"
@@ -254,7 +255,6 @@ export default function EspaceClientBoutique() {
               </div>
             ) : (
               <>
-                {/* Liste des articles dans le panier */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
                   <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-2">Articles sélectionnés</h2>
                   
@@ -288,14 +288,12 @@ export default function EspaceClientBoutique() {
                     })}
                   </div>
 
-                  {/* Total panier */}
                   <div className="border-t border-slate-200 pt-3 flex justify-between items-center bg-orange-50/50 p-3 rounded-xl mt-2">
                     <span className="font-black text-slate-900 text-xs uppercase">Total à payer :</span>
                     <span className="font-black text-emerald-600 text-sm">{totalPanier.toLocaleString()} FCFA</span>
                   </div>
                 </div>
 
-                {/* Formulaire de validation sur place */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
                   <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-2">Informations de commande</h2>
                   
@@ -351,109 +349,141 @@ export default function EspaceClientBoutique() {
     );
   }
 
-  // --- VUE 1 : CATALOGUE DES ARTICLES (RESTO) ---
+  // --- VUE PRINCIPALE AVEC SÉLECTION ONGLETS : BOUTIQUE (COMMANDES) OU EXPLORER ---
   return (
     <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
       
       {/* EN-TÊTE DU RESTAURANT */}
-      <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30">
+      <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
         <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
-        <p className="text-[10px] text-slate-500">Sélectionnez vos plats et validez votre commande sur place</p>
-      </div>
-
-      {/* BANDEAU FLOTTANT EN HAUT POUR ACCÈS À LA PAGE PANIER */}
-      {panier.length > 0 && (
-        <div className="sticky top-14 z-40 bg-orange-600 text-white p-3 rounded-2xl shadow-lg flex justify-between items-center animate-bounce-short">
-          <div className="flex items-center gap-2">
-            <span className="bg-white text-orange-600 font-black px-2.5 py-0.5 rounded-full text-xs shadow-xs">
-              {nombreTotalArticlesPanier}
-            </span>
-            <div>
-              <p className="font-black uppercase text-[11px]">Mon Panier</p>
-              <p className="font-extrabold text-xs text-orange-100">{totalPanier.toLocaleString()} FCFA</p>
-            </div>
-          </div>
+        
+        {/* BARRE D'ONGLETS : MENU COMMANDE vs MENU EXPLORER */}
+        <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
-            onClick={() => setVuePanier(true)}
-            className="bg-white text-orange-600 hover:bg-orange-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1"
+            onClick={() => setOngletActif('BOUTIQUE')}
+            className={`py-2 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+              ongletActif === 'BOUTIQUE' 
+                ? 'bg-orange-600 text-white shadow-xs' 
+                : 'bg-transparent text-slate-700 hover:bg-slate-200'
+            }`}
           >
-            <span>Voir le panier 🛒</span>
+            🛍️ Commander (Menu QR)
+          </button>
+          <button
+            type="button"
+            onClick={() => setOngletActif('EXPLORER')}
+            className={`py-2 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+              ongletActif === 'EXPLORER' 
+                ? 'bg-slate-900 text-white shadow-xs' 
+                : 'bg-transparent text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            🧭 Menu Explorer (4TS)
           </button>
         </div>
-      )}
+      </div>
 
-      {/* LISTE DES ARTICLES */}
-      <div className="space-y-2">
-        <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Plats & Articles disponibles</h2>
-        {chargement ? (
-          <p className="text-center text-slate-400 py-6 font-bold">Chargement du menu...</p>
-        ) : articles.length === 0 ? (
-          <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article disponible pour le moment.</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {articles.map((art) => {
-              const artId = art.id_article || art.id;
-              const designation = art.Designation || art.designation;
-              const prix = art.Prix_Vente || art.prix_vente || 0;
-              const photoUrl = art.Photo || art.photo || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
-              const stockReel = calculerStockReel(artId);
+      {/* CONTENU SELON L'ONGLET ACTIF */}
+      {ongletActif === 'EXPLORER' ? (
+        <MenuExplorer entrepriseId={entrepriseId} />
+      ) : (
+        <div className="space-y-4">
+          {/* BANDEAU FLOTTANT EN HAUT POUR ACCÈS À LA PAGE PANIER */}
+          {panier.length > 0 && (
+            <div className="sticky top-24 z-40 bg-orange-600 text-white p-3 rounded-2xl shadow-lg flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="bg-white text-orange-600 font-black px-2.5 py-0.5 rounded-full text-xs shadow-xs">
+                  {nombreTotalArticlesPanier}
+                </span>
+                <div>
+                  <p className="font-black uppercase text-[11px]">Mon Panier</p>
+                  <p className="font-extrabold text-xs text-orange-100">{totalPanier.toLocaleString()} FCFA</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVuePanier(true)}
+                className="bg-white text-orange-600 hover:bg-orange-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1"
+              >
+                <span>Voir le panier 🛒</span>
+              </button>
+            </div>
+          )}
 
-              return (
-                <div 
-                  key={artId} 
-                  className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden flex flex-col justify-between transition hover:shadow-md"
-                >
-                  <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
-                    <img 
-                      src={photoUrl} 
-                      alt={designation} 
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.src = 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
-                      }}
-                    />
-                    {stockReel <= 0 && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <span className="bg-slate-900/80 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
-                          Épuisé
-                        </span>
-                      </div>
-                    )}
-                  </div>
+          {/* LISTE DES ARTICLES */}
+          <div className="space-y-2">
+            <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Plats & Articles disponibles</h2>
+            {chargement ? (
+              <p className="text-center text-slate-400 py-6 font-bold">Chargement du menu...</p>
+            ) : articles.length === 0 ? (
+              <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article disponible pour le moment.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {articles.map((art) => {
+                  const artId = art.id_article || art.id;
+                  const designation = art.Designation || art.designation;
+                  const prix = art.Prix_Vente || art.prix_vente || 0;
+                  const photoUrl = art.Photo || art.photo || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
+                  const stockReel = calculerStockReel(artId);
 
-                  <div className="p-2.5 flex flex-col flex-1 justify-between space-y-2">
-                    <div>
-                      <div className="font-black text-slate-900 text-xs tracking-tight text-emerald-600">
-                        {prix.toLocaleString()} FCFA
+                  return (
+                    <div 
+                      key={artId} 
+                      className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden flex flex-col justify-between transition hover:shadow-md"
+                    >
+                      <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
+                        <img 
+                          src={photoUrl} 
+                          alt={designation} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.src = 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
+                          }}
+                        />
+                        {stockReel <= 0 && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <span className="bg-slate-900/80 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
+                              Épuisé
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="font-extrabold text-slate-700 text-[11px] uppercase line-clamp-2 mt-0.5">
-                        {designation}
-                      </div>
-                      <div className="text-[9px] text-slate-400 font-bold mt-0.5">
-                        Stock : {stockReel}
+
+                      <div className="p-2.5 flex flex-col flex-1 justify-between space-y-2">
+                        <div>
+                          <div className="font-black text-slate-900 text-xs tracking-tight text-emerald-600">
+                            {prix.toLocaleString()} FCFA
+                          </div>
+                          <div className="font-extrabold text-slate-700 text-[11px] uppercase line-clamp-2 mt-0.5">
+                            {designation}
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-bold mt-0.5">
+                            Stock : {stockReel}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={stockReel <= 0}
+                          onClick={() => ajouterAuPanier(art, stockReel)}
+                          className={`w-full py-1.5 rounded-xl font-black text-[10px] transition shadow-xs flex items-center justify-center gap-1 ${
+                            stockReel > 0 
+                              ? 'bg-orange-600 hover:bg-orange-500 text-white active:scale-95' 
+                              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          }`}
+                        >
+                          {stockReel > 0 ? '+ Ajouter' : 'Épuisé'}
+                        </button>
                       </div>
                     </div>
-
-                    <button
-                      type="button"
-                      disabled={stockReel <= 0}
-                      onClick={() => ajouterAuPanier(art, stockReel)}
-                      className={`w-full py-1.5 rounded-xl font-black text-[10px] transition shadow-xs flex items-center justify-center gap-1 ${
-                        stockReel > 0 
-                          ? 'bg-orange-600 hover:bg-orange-500 text-white active:scale-95' 
-                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      }`}
-                    >
-                      {stockReel > 0 ? '+ Ajouter' : 'Épuisé'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
     </div>
   );
