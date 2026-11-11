@@ -17,9 +17,13 @@ export default function EspaceClientBoutique() {
   const [chargement, setChargement] = useState(true);
   const [valide, setValide] = useState(false);
   const [numeroCommande, setNumeroCommande] = useState('');
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [vuePanier, setVuePanier] = useState(false);
   const [ongletActif, setOngletActif] = useState('BOUTIQUE'); // 'BOUTIQUE', 'SUIVI', ou 'EXPLORER'
+
+  // Gestion de la recherche dynamique d'articles
+  const [rechercheArticle, setRechercheArticle] = useState('');
 
   // Gestion du suivi des commandes client par téléphone
   const [telephoneRecherche, setTelephoneRecherche] = useState('');
@@ -143,6 +147,7 @@ export default function EspaceClientBoutique() {
   };
 
   const ajouterAuPanier = (article, stockReel) => {
+    if (enTrainDeSauvegarder) return;
     const artId = article.id_article || article.id;
     const designation = article.Designation || article.designation;
     const prix = article.Prix_Vente || article.prix_vente || 0;
@@ -163,6 +168,7 @@ export default function EspaceClientBoutique() {
   };
 
   const modifierQuantite = (index, delta, stockReel) => {
+    if (enTrainDeSauvegarder) return;
     const nouveauPanier = [...panier];
     const nouvelleQte = nouveauPanier[index].quantite + delta;
     
@@ -183,6 +189,8 @@ export default function EspaceClientBoutique() {
 
   const passerCommande = async (e) => {
     e.preventDefault();
+    if (enTrainDeSauvegarder) return;
+
     if (!entrepriseId) {
       alert('Erreur : Identifiant de restaurant introuvable.');
       return;
@@ -196,6 +204,7 @@ export default function EspaceClientBoutique() {
       return;
     }
 
+    setEnTrainDeSauvegarder(true);
     try {
       if (commandeEnCoursModification) {
         const montantTotalModif = panier.reduce((acc, item) => acc + (item.prix * item.quantite), 0);
@@ -256,6 +265,8 @@ export default function EspaceClientBoutique() {
       }
     } catch (err) {
       alert('Erreur lors de la validation de la commande : ' + err.message);
+    } finally {
+      setEnTrainDeSauvegarder(false);
     }
   };
 
@@ -305,6 +316,12 @@ export default function EspaceClientBoutique() {
     }
   };
 
+  // Filtrage dynamique des articles selon la recherche saisie
+  const articlesFiltres = articles.filter(art => {
+    const designation = (art.Designation || art.designation || '').toLowerCase();
+    return designation.includes(rechercheArticle.trim().toLowerCase());
+  });
+
   if (!entrepriseId) {
     return (
       <div className="p-8 text-center space-y-3 font-sans">
@@ -347,8 +364,9 @@ export default function EspaceClientBoutique() {
           <div className="bg-white px-4 py-3 border-b border-slate-100 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
             <button
               type="button"
-              onClick={() => { setVuePanier(false); setCommandeEnCoursModification(null); }}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-3 py-2 rounded-xl text-xs transition flex items-center gap-1 shadow-2xs"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { if (!enTrainDeSauvegarder) { setVuePanier(false); setCommandeEnCoursModification(null); }}}
+              className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 font-black px-3 py-2 rounded-xl text-xs transition flex items-center gap-1 shadow-2xs"
             >
               <span>← Continuer mes achats</span>
             </button>
@@ -394,9 +412,19 @@ export default function EspaceClientBoutique() {
                           <div className="flex flex-col items-end gap-1.5 shrink-0">
                             <span className="font-black text-slate-900 text-xs">{item.prix * item.quantite} F</span>
                             <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-slate-50">
-                              <button type="button" onClick={() => modifierQuantite(idx, -1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">-</button>
+                              <button 
+                                type="button" 
+                                disabled={enTrainDeSauvegarder}
+                                onClick={() => modifierQuantite(idx, -1, stockReelItem)} 
+                                className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                              >-</button>
                               <span className="px-2 font-black text-slate-900">{item.quantite}</span>
-                              <button type="button" onClick={() => modifierQuantite(idx, 1, stockReelItem)} className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100">+</button>
+                              <button 
+                                type="button" 
+                                disabled={enTrainDeSauvegarder}
+                                onClick={() => modifierQuantite(idx, 1, stockReelItem)} 
+                                className="px-2 py-0.5 bg-white font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                              >+</button>
                             </div>
                           </div>
                         </div>
@@ -419,10 +447,11 @@ export default function EspaceClientBoutique() {
                       <input
                         type="text"
                         required
+                        disabled={enTrainDeSauvegarder}
                         value={client.nom}
                         onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
                         onFocus={(e) => e.target.select()}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
                       />
                     </div>
 
@@ -432,10 +461,11 @@ export default function EspaceClientBoutique() {
                         <input
                           type="tel"
                           required
+                          disabled={enTrainDeSauvegarder}
                           value={client.telephone}
                           onChange={(e) => setClient({ ...client, telephone: e.target.value })}
                           onFocus={(e) => e.target.select()}
-                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
                         />
                       </div>
 
@@ -443,10 +473,11 @@ export default function EspaceClientBoutique() {
                         <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table / Remarque</label>
                         <input
                           type="text"
+                          disabled={enTrainDeSauvegarder}
                           value={client.table}
                           onChange={(e) => setClient({ ...client, table: e.target.value.toUpperCase() })}
                           onFocus={(e) => e.target.select()}
-                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
                         />
                       </div>
                     </div>
@@ -454,9 +485,10 @@ export default function EspaceClientBoutique() {
                     <div>
                       <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Mode de paiement *</label>
                       <select
+                        disabled={enTrainDeSauvegarder}
                         value={client.modePaiement}
                         onChange={(e) => setClient({ ...client, modePaiement: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
                       >
                         <option value="ESPECES">Espèces (À la caisse / Table)</option>
                         <option value="MOBILE_MONEY">Mobile Money (Orange / MTN)</option>
@@ -466,9 +498,10 @@ export default function EspaceClientBoutique() {
 
                     <button
                       type="submit"
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition mt-3 flex items-center justify-center gap-1.5"
+                      disabled={enTrainDeSauvegarder}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition mt-3 flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <span>{commandeEnCoursModification ? 'Enregistrer les modifications' : `Valider la commande (${totalPanier.toLocaleString()} F)`}</span>
+                      <span>{enTrainDeSauvegarder ? 'Enregistrement en cours...' : (commandeEnCoursModification ? 'Enregistrer les modifications' : `Valider la commande (${totalPanier.toLocaleString()} F)`)}</span>
                     </button>
                   </form>
                 </div>
@@ -489,7 +522,8 @@ export default function EspaceClientBoutique() {
         <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
-            onClick={() => setOngletActif('BOUTIQUE')}
+            disabled={enTrainDeSauvegarder}
+            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('BOUTIQUE'); }}
             className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
               ongletActif === 'BOUTIQUE' 
                 ? 'bg-orange-600 text-white shadow-xs' 
@@ -500,7 +534,8 @@ export default function EspaceClientBoutique() {
           </button>
           <button
             type="button"
-            onClick={() => setOngletActif('SUIVI')}
+            disabled={enTrainDeSauvegarder}
+            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('SUIVI'); }}
             className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
               ongletActif === 'SUIVI' 
                 ? 'bg-orange-600 text-white shadow-xs' 
@@ -511,7 +546,8 @@ export default function EspaceClientBoutique() {
           </button>
           <button
             type="button"
-            onClick={() => setOngletActif('EXPLORER')}
+            disabled={enTrainDeSauvegarder}
+            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('EXPLORER'); }}
             className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
               ongletActif === 'EXPLORER' 
                 ? 'bg-slate-900 text-white shadow-xs' 
@@ -627,37 +663,50 @@ export default function EspaceClientBoutique() {
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {panier.length > 0 && (
-            <div className="sticky top-24 z-40 bg-orange-600 text-white p-3 rounded-2xl shadow-lg flex justify-between items-center">
+            <div className="sticky top-24 z-40 bg-orange-600 text-white p-3.5 rounded-2xl shadow-lg flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <span className="bg-white text-orange-600 font-black px-2.5 py-0.5 rounded-full text-xs shadow-xs">
                   {nombreTotalArticlesPanier}
                 </span>
                 <div>
-                  <p className="font-black uppercase text-[11px]">Mon Panier</p>
+                  <p className="font-black uppercase text-[11px]">MON PANIER</p>
                   <p className="font-extrabold text-xs text-orange-100">{totalPanier.toLocaleString()} FCFA</p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setVuePanier(true)}
-                className="bg-white text-orange-600 hover:bg-orange-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => { if (!enTrainDeSauvegarder) setVuePanier(true); }}
+                className="bg-white text-orange-600 hover:bg-orange-50 disabled:opacity-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1"
               >
                 <span>Voir le panier 🛒</span>
               </button>
             </div>
           )}
 
+          {/* Barre de recherche dynamique d'articles */}
+          <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
+            <input
+              type="text"
+              disabled={enTrainDeSauvegarder}
+              value={rechercheArticle}
+              onChange={(e) => setRechercheArticle(e.target.value)}
+              placeholder="🔍 Rechercher un plat ou un article..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
+            />
+          </div>
+
           <div className="space-y-2">
             <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Plats & Articles disponibles</h2>
             {chargement ? (
               <p className="text-center text-slate-400 py-6 font-bold">Chargement du menu...</p>
-            ) : articles.length === 0 ? (
-              <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article disponible pour le moment.</p>
+            ) : articlesFiltres.length === 0 ? (
+              <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article trouvé.</p>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                {articles.map((art) => {
+                {articlesFiltres.map((art) => {
                   const artId = art.id_article || art.id;
                   const designation = art.Designation || art.designation;
                   const prix = art.Prix_Vente || art.prix_vente || 0;
@@ -702,10 +751,10 @@ export default function EspaceClientBoutique() {
 
                         <button
                           type="button"
-                          disabled={stockReel <= 0}
+                          disabled={stockReel <= 0 || enTrainDeSauvegarder}
                           onClick={() => ajouterAuPanier(art, stockReel)}
                           className={`w-full py-1.5 rounded-xl font-black text-[10px] transition shadow-xs flex items-center justify-center gap-1 ${
-                            stockReel > 0 
+                            stockReel > 0 && !enTrainDeSauvegarder
                               ? 'bg-orange-600 hover:bg-orange-500 text-white active:scale-95' 
                               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                           }`}

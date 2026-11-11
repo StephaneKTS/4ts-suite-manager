@@ -12,7 +12,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [audioActive, setAudioActive] = useState(true);
   const dernierNombreCommandes = useRef(null);
 
-  // File d'attente audio pour éviter les superpositions et respecter l'ordre exact
   const fileDAbsolueAudio = useRef([]);
   const enTrainDeJouerAudio = useRef(false);
 
@@ -23,7 +22,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   }, []);
 
-  // Utilitaire pour convertir la clé VAPID au format Uint8Array requis par le navigateur
   const urlBase64ToUint8Array = (base64String) => {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -35,7 +33,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     return outputArray;
   };
 
-  // Fonction pour activer les notifications Push avec gestion détaillée des erreurs
   const sAbonnerAuxNotifications = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert("Les notifications Push ne sont pas supportées par ce navigateur.");
@@ -52,7 +49,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         return;
       }
 
-      // Clé VAPID publique de test
       const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'; 
 
       const subscription = await registration.pushManager.subscribe({
@@ -75,11 +71,10 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       alert("Notifications push activées avec succès ! Ce téléphone pourra recevoir des alertes en veille.");
     } catch (err) {
       console.error("Erreur détaillée push :", err);
-      alert("Erreur Push : " + (err.message || err.name || "Erreur inconnue (Vérifiez si vous êtes en HTTPS ou localhost)"));
+      alert("Erreur Push : " + (err.message || err.name || "Erreur inconnue"));
     }
   };
 
-  // Gestion de la file d'attente séquentielle
   const traiterFileDAbsolue = async () => {
     if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActive) {
       return;
@@ -179,7 +174,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     if (nouvelEtat) {
       fileDAbsolueAudio.current = [];
       await executerSonFort();
-      executerVoix("Système audio et vocal activé.");
+      executerVoix("Système audio activé.");
     } else {
       fileDAbsolueAudio.current = [];
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -264,6 +259,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   }, [entrepriseId, audioActive]);
 
+  // Modification du statut avec appel de la fonction RPC sécurisée pour déstocker en temps réel
   const changerStatutCommande = async (idCommande, nouveauStatut, statutPaiement) => {
     if (nouveauStatut === 'SERVI' && statutPaiement !== 'PAYE') {
       const confirmer = window.confirm(
@@ -273,12 +269,29 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
 
     try {
-      const { error } = await supabase
-        .from('commandes_clients_qr')
-        .update({ statut: nouveauStatut })
-        .eq('id', idCommande);
+      if (nouveauStatut === 'SERVI') {
+        // Appel de la fonction RPC atomique pour valider, déstocker et tracer le mouvement
+        const { data, error } = await supabase.rpc('valider_et_destockage_commande_qr', {
+          p_id_commande: idCommande,
+          p_id_entreprise: entrepriseId
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+        if (data && !data.success) {
+          alert("Erreur de déstockage : " + data.message);
+          return;
+        }
+      } else {
+        // Pour les autres statuts (ex: EN_COURS), simple mise à jour du statut
+        const { error } = await supabase
+          .from('commandes_clients_qr')
+          .update({ statut: nouveauStatut })
+          .eq('id', idCommande)
+          .eq('id_entreprise', entrepriseId);
+
+        if (error) throw error;
+      }
+
       chargerCommandesQR(false);
     } catch (err) {
       alert('Erreur lors de la mise à jour du statut : ' + err.message);
@@ -323,33 +336,33 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   return (
     <div className="space-y-2 font-sans text-xs max-w-4xl mx-auto p-1 pb-16">
       <div className="bg-white p-2 rounded-xl border border-orange-200 shadow-2xs flex flex-col gap-2">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-1">
           <div>
             <h2 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${audioActive ? 'bg-emerald-600 animate-pulse' : 'bg-red-500'} inline-block`}></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">File d'attente audio intelligente & Push</p>
+            <p className="text-[9px] text-slate-500 font-bold">File d'attente audio & Déstockage temps réel</p>
           </div>
           
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={sAbonnerAuxNotifications}
-              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs"
-              title="Activer les notifications push en arrière-plan"
+              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-2 py-1 rounded text-[8px] uppercase tracking-wide transition shadow-xs whitespace-nowrap"
+              title="Activer les notifications push"
             >
               🔔 Push
             </button>
 
             <button
               onClick={toggleAudio}
-              className={`font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs flex items-center gap-1 ${
+              className={`font-black px-2.5 py-1 rounded text-[8px] uppercase tracking-wide transition shadow-xs whitespace-nowrap ${
                 audioActive 
                   ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
                   : 'bg-slate-300 hover:bg-slate-400 text-slate-800'
               }`}
             >
-              {audioActive ? '🔊 Audio : ACTIF' : '🔇 Audio : COUPÉ'}
+              {audioActive ? '🔊 Audio : Actif' : '🔇 Audio : Coupé'}
             </button>
           </div>
         </div>
@@ -373,13 +386,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           {[
             { id: 'AUJOURDHUI', label: '📅 Aujourd\'hui' },
             { id: 'HIER', label: '🗓️ Hier' },
-            { id: 'TOUTES', label: '📂 Toutes les dates' }
+            { id: 'TOUTES', label: '📂 Toutes' }
           ].map((dt) => (
             <button
               key={dt.id}
               type="button"
               onClick={() => setFiltreDate(dt.id)}
-              className={`py-1.5 px-1 rounded-md font-black text-[8px] uppercase transition text-center truncate ${
+              className={`py-1 px-1 rounded-md font-black text-[8px] uppercase transition text-center truncate ${
                 filtreDate === dt.id ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -437,7 +450,21 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 flex justify-between items-center">
                     <div>
                       <p className="font-black text-slate-900 uppercase text-[10px]">👤 {cmd.nom_client}</p>
-                      <p className="font-bold text-slate-600 text-[9px]">📞 {cmd.telephone_client} | 💳 {cmd.mode_paiement || 'ESPECES'}</p>
+                      <p className="font-bold text-slate-600 text-[9px]">
+                        📞{' '}
+                        {cmd.telephone_client ? (
+                          <a 
+                            href={`tel:${cmd.telephone_client.replace(/[^0-9+]/g, '')}`} 
+                            className="text-blue-600 hover:underline font-mono"
+                            title="Cliquer pour appeler"
+                          >
+                            {cmd.telephone_client}
+                          </a>
+                        ) : (
+                          'N/A'
+                        )}{' '}
+                        | 💳 {cmd.mode_paiement || 'ESPECES'}
+                      </p>
                     </div>
                     <div className="text-right space-y-1">
                       <span className="bg-orange-100 text-orange-800 font-black px-2 py-0.5 rounded-md text-[9px] block">
@@ -482,7 +509,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
                   {cmd.statut === 'SERVI' ? (
                     <div className="text-center py-1 bg-emerald-50 border border-emerald-200 rounded-lg">
-                      <span className="font-black text-[9px] text-emerald-700 uppercase tracking-wide">
+                      <span className="font-black text-[8px] text-emerald-700 uppercase tracking-wide">
                         🔒 Servie & Verrouillée ✅
                       </span>
                     </div>
@@ -492,7 +519,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                         <button
                           type="button"
                           onClick={() => changerStatutCommande(cmd.id, 'EN_COURS', cmd.statut_paiement)}
-                          className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
+                          className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-1 rounded text-[8px] uppercase transition shadow-2xs"
                         >
                           En cours 🍳
                         </button>
@@ -500,7 +527,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                       <button
                         type="button"
                         onClick={() => changerStatutCommande(cmd.id, 'SERVI', cmd.statut_paiement)}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-1 rounded text-[8px] uppercase transition shadow-2xs"
                       >
                         Servi ✅
                       </button>
