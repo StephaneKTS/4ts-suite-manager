@@ -308,6 +308,18 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [waInput, setWaInput] = useState(liensReseauxSociaux.whatsapp);
   const [telInput, setTelInput] = useState(liensReseauxSociaux.telephone || '+237600000000');
 
+  // Synchroniser les inputs à l'ouverture de la modale de configuration
+  useEffect(() => {
+    if (modalAdminReseauxOuvert) {
+      setFbInput(liensReseauxSociaux.facebook);
+      setTkInput(liensReseauxSociaux.tiktok);
+      setYtInput(liensReseauxSociaux.youtube);
+      setInstaInput(liensReseauxSociaux.instagram);
+      setWaInput(liensReseauxSociaux.whatsapp);
+      setTelInput(liensReseauxSociaux.telephone);
+    }
+  }, [modalAdminReseauxOuvert, liensReseauxSociaux]);
+
   const sauvegarderLiensReseaux = (e) => {
     e.preventDefault();
     const nouveauxLiens = { facebook: fbInput, tiktok: tkInput, youtube: ytInput, instagram: instaInput, whatsapp: waInput, telephone: telInput };
@@ -405,10 +417,8 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
     if (Math.abs(distance) > minSwipeDistance) {
       if (distance > 0) {
-        // Swipe vers la gauche -> Annonce suivante
         setBanniereIndex((prev) => (prev + 1) % bannières.length);
       } else {
-        // Swipe vers la droite -> Annonce précédente
         setBanniereIndex((prev) => (prev - 1 + bannières.length) % bannières.length);
       }
     }
