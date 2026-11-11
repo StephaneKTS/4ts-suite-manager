@@ -17,6 +17,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const [ventesHistoriques, setVentesHistoriques] = useState([]);
   const [utilisateursList, setUtilisateursList] = useState([]);
   const [cloturesList, setCloturesList] = useState([]);
+  
+  // --- NOUVEAU : ÉTAT POUR LES RISTOURNES ET PROMOTIONS PAR ARTICLE ---
+  const [reglesPromotions, setReglesPromotions] = useState([]);
+
   const [chargement, setChargement] = useState(false);
   
   // --- GESTION DES DROITS ET AUTORISATIONS ---
@@ -54,7 +58,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   // --- ONGLETS : 'vente', 'tickets', 'journal', 'cloture' ---
   const [ongletActif, setOngletActif] = useState('vente');
 
-  const [ordreAlphabetique, setOrdreAlphabetique] = useState('ASC');
   const [limiteVentes, setLimiteVentes] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
 
@@ -158,6 +161,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         setApprovisionnements(cacheBrut.approvisionnements || []);
         setUtilisateursList(cacheBrut.utilisateursList || []);
         setCloturesList(cacheBrut.cloturesList || []);
+        if (cacheBrut.reglesPromotions) setReglesPromotions(cacheBrut.reglesPromotions);
         return true;
       }
     } catch (e) {
@@ -233,7 +237,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       const ventesLocales = cacheActuel?.ventes || [];
       const ventesData = fusionnerParId(ventesCloud, ventesLocales);
 
-      const [resArticles, resFamilles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro, resUsers, resClotures] = await Promise.all([
+      const [resArticles, resFamilles, resClients, resCategories, resCaisses, resDepots, resMouvements, resAppro, resUsers, resClotures, resPromos] = await Promise.all([
         supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('familles_articles').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('clients').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
@@ -243,7 +247,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel),
         supabase.from('utilisateurs').select('*').eq('id_entreprise', entrepriseId),
-        supabase.from('clotures_caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false })
+        supabase.from('clotures_caisses').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel).order('created_at', { ascending: false }),
+        supabase.from('types_taxes_ristournes').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel)
       ]);
 
       const dataArticles = resArticles.data || [];
@@ -256,6 +261,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       const dataAppro = resAppro.data || [];
       const dataUsers = resUsers.data || [];
       const dataClotures = fusionnerParId(resClotures.data || [], cacheActuel?.cloturesList || []);
+      const dataPromos = resPromos.data || [];
 
       setVentes(ventesData);
       setVentesHistoriques(ventesData);
@@ -264,6 +270,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setClientsList(dataClients);
       setCategoriesList(dataCategories);
       setCaissesList(dataCaisses);
+      setReglesPromotions(dataPromos);
 
       const caissePrincipale = dataCaisses.find(c => 
         (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE') || 
@@ -284,12 +291,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setDateJour(dateDuJourStr);
 
       let codeCaisseCourant = 'C01';
-      if (dataCaisses.length > 0) {
-        setCaisseId(dataCaisses[0].id);
-        codeCaisseCourant = dataCaisses[0].code_caisse || 'C01';
-        setCodeCaisseActif(codeCaisseCourant);
-      }
-
       setNumeroTicket(genererNumeroTicket(codeCaisseCourant, ventesData.length));
 
       if (dataDepots.length > 0) {
@@ -318,7 +319,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         mouvements: dataMouvements,
         approvisionnements: dataAppro,
         utilisateursList: dataUsers,
-        cloturesList: dataClotures
+        cloturesList: dataClotures,
+        reglesPromotions: dataPromos
       });
 
     } catch (err) {
@@ -543,13 +545,52 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     }, 100);
   };
 
+  // 🛡️ INTERDICTION DE SÉLECTIONNER UN ARTICLE SANS CHOIX D'UNE CAISSE + APPLICATION AUTO DES PROMOSSIONS PAR ARTICLE
   const ajouterAuPanier = (article) => {
     if (enTrainDeSauvegarder) return;
+
+    if (!caisseId) {
+      alert('⚠️ Veuillez obligatoirement sélectionner une caisse avant d’ajouter des articles au panier.');
+      return;
+    }
+
     const articleId = article.id_article || article.id;
+    const codeBarreArt = article.Code_Barre || String(articleId);
     const designation = (article.Designation || article.nom || '').toUpperCase();
     const prixU = Number(article.Prix_Vente || article.prix_vente || article.prix || 0);
     const prixAchatU = Number(article.Prix_Achat || article.prix_achat || article.prix_revient || 0);
-    
+
+    // --- LOGIQUE ISOLÉE : CALCUL DE LA PROMOTION / RISTOURNE DE L'ARTICLE ---
+    let prixRemiseU = prixU;
+    let montantRemiseLigne = 0;
+
+    reglesPromotions.forEach((regle) => {
+      if (regle.actif !== false) {
+        const articlesConcernes = regle.articles_concernes || [];
+        const matchArticle = articlesConcernes.includes(codeBarreArt) || articlesConcernes.includes(String(articleId));
+        
+        if (matchArticle) {
+          const aujourdHui = new Date().toISOString().split('T')[0];
+          const debutValidite = regle.date_debut ? regle.date_debut.split('T')[0] : null;
+          const finValidite = regle.date_fin ? regle.date_fin.split('T')[0] : null;
+          const dansLesDates = (!debutValidite || aujourdHui >= debutValidite) && (!finValidite || aujourdHui <= finValidite);
+
+          if (dansLesDates) {
+            const modeCalc = (regle.mode_calcul || '').toUpperCase();
+            const valRegle = Number(regle.valeur || 0);
+
+            if (modeCalc === 'POURCENTAGE') {
+              montantRemiseLigne = (prixU * valRegle) / 100;
+            } else if (modeCalc === 'MONTANT') {
+              montantRemiseLigne = valRegle;
+            }
+            prixRemiseU = Math.max(0, prixU - montantRemiseLigne);
+          }
+        }
+      }
+    });
+    // --------------------------------------------------------------------------
+
     const estSuivi = articleEstSuiviEnStock(article);
     const stockDispo = estSuivi ? getStockReelArticle(article) : 999999;
 
@@ -564,7 +605,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     if (existant) {
       setPanier(panier.map((item) => (item.id === articleId ? { ...item, quantite: item.quantite + 1 } : item)));
     } else {
-      setPanier([...panier, { id: articleId, designation, prix_unitaire: prixU, prix_achat: prixAchatU, quantite: 1, stockMax: stockDispo, est_suivi_stock: estSuivi }]);
+      setPanier([...panier, { 
+        id: articleId, 
+        designation, 
+        prix_unitaire: prixRemiseU, 
+        prix_initial: prixU,
+        remise_appliquee: montantRemiseLigne,
+        prix_achat: prixAchatU, 
+        quantite: 1, 
+        stockMax: stockDispo, 
+        est_suivi_stock: estSuivi 
+      }]);
     }
     setAfficherModalArticle(false);
   };
@@ -630,6 +681,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     if (enTrainDeSauvegarder) return;
     if (!permissions.creation) {
       alert('⛔ Action non autorisée : Vous n’avez pas le droit de créer des ventes.');
+      return;
+    }
+
+    if (!caisseId) {
+      alert('⚠️ Veuillez sélectionner une caisse obligatoire pour valider la vente.');
       return;
     }
 
@@ -1118,7 +1174,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       setCloturesList(prev => {
         const listeMaj = fusionnerParId(prev, [payloadCloture]);
-        sauvegarderCacheLocal({ ventes, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList: listeMaj });
+        sauvegarderCacheLocal({ ventes, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList: listeMaj, reglesPromotions });
         return listeMaj;
       });
 
@@ -1141,17 +1197,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   const clientsFiltres = clientsList.filter(c => (c.nom_client || c.nom || c.libelle || '').toLowerCase().includes(rechercheClientInput.toLowerCase()));
 
-  const articlesTries = [...articlesStock].sort((a, b) => {
-    const nomA = (a.Designation || a.nom || '').toLowerCase();
-    const nomB = (b.Designation || b.nom || '').toLowerCase();
-    if (ordreAlphabetique === 'ASC') {
-      return nomA.localeCompare(nomB);
-    } else {
-      return nomB.localeCompare(nomA);
-    }
-  });
-
-  const articlesFiltres = articlesTries.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
+  const articlesFiltres = articlesStock.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
   const articlesFiltresModalAffiches = articlesFiltres.slice(0, limiteArticlesModal);
 
   // Ticket actif pour l'impression (si aucun n'est sélectionné, on prend le tout dernier ticket enregistré pour éviter la page blanche)
@@ -1357,13 +1403,14 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </div>
 
               <div>
-                <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE</label>
+                <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE *</label>
                 <select
                   disabled={enTrainDeSauvegarder}
                   value={caisseId}
                   onChange={(e) => changerCaisseSelectionnee(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900"
                 >
+                  <option value="">-- Saisir une caisse --</option>
                   {caissesList.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.code_caisse || 'C01'} - {c.nom_caisse}
@@ -1438,25 +1485,20 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             
             <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col h-[380px]">
               <div className="flex justify-between items-center mb-2 gap-1">
-                <span className="font-extrabold text-slate-700 text-[11px] uppercase">Articles</span>
-                <div className="flex items-center gap-1">
-                  <button
-                    disabled={enTrainDeSauvegarder}
-                    onClick={() => setOrdreAlphabetique(ordreAlphabetique === 'ASC' ? 'DESC' : 'ASC')}
-                    title={ordreAlphabetique === 'ASC' ? 'Tri alphabétique A-Z' : 'Tri alphabétique Z-A'}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1.5 rounded-xl text-[10px] transition border border-slate-200 shadow-2xs flex items-center gap-0.5"
-                  >
-                    <span>{ordreAlphabetique === 'ASC' ? 'A-Z' : 'Z-A'}</span>
-                    <span>{ordreAlphabetique === 'ASC' ? '▲' : '▼'}</span>
-                  </button>
-                  <button
-                    disabled={enTrainDeSauvegarder}
-                    onClick={() => setAfficherModalArticle(true)}
-                    className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] shadow-2xs whitespace-nowrap"
-                  >
-                    🔍 recherche
-                  </button>
-                </div>
+                <span className="font-extrabold text-slate-700 text-[11px] uppercase flex-1">Articles</span>
+                <button
+                  disabled={enTrainDeSauvegarder}
+                  onClick={() => {
+                    if (!caisseId) {
+                      alert('⚠️ Veuillez obligatoirement sélectionner une caisse avant d’ouvrir la recherche d’articles.');
+                      return;
+                    }
+                    setAfficherModalArticle(true);
+                  }}
+                  className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] shadow-2xs whitespace-nowrap"
+                >
+                  🔍 recherche
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
@@ -1520,9 +1562,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       <div key={item.id} className="pt-1 flex justify-between items-center text-[10px]">
                         <div>
                           <p className="font-extrabold uppercase text-slate-900">{item.designation}</p>
-                          <p className="text-[9px] text-slate-600 font-mono font-bold">
-                            {Number(item.prix_unitaire).toLocaleString('fr-FR')} F x {item.quantite}
-                          </p>
+                          <div className="text-[9px] text-slate-600 font-mono font-bold flex items-center gap-1">
+                            {item.remise_appliquee > 0 ? (
+                              <>
+                                <span className="line-through text-slate-400">{Number(item.prix_initial).toLocaleString('fr-FR')} F</span>
+                                <span className="text-orange-600 font-bold">(-{item.remise_appliquee.toLocaleString('fr-FR')}F)</span>
+                              </>
+                            ) : null}
+                            <span>{Number(item.prix_unitaire).toLocaleString('fr-FR')} F x {item.quantite}</span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1">
                           <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-5 h-5 bg-slate-100 rounded-lg font-bold text-slate-900">-</button>
@@ -2516,7 +2564,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
             
             <form onSubmit={verifierEtExecuterSuppressionAdmin} className="p-4 space-y-3">
-              <p className="text-[10px] text-slate-600 font-bold">
+              <p className="test-[10px] text-slate-600 font-bold">
                 La suppression du ticket <strong>#{ticketEnCoursDeSuppression?.numero_ticket}</strong> nécessite les identifiants d'un superviseur ou administrateur ayant le droit de suppression.
               </p>
 

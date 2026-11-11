@@ -852,7 +852,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       mouvements
         .filter((mvt) => {
           const motif = (mvt.motif_remarque || '').trim().toUpperCase();
-          return !motif.includes('CMD-') && !motif.includes('LIVRAISON') && !motif.includes('RESTITUTION');
+          // Exclure les commandes, livraisons, restitutions et les tickets de vente automatiques
+          return (
+            !motif.includes('CMD-') && 
+            !motif.includes('LIVRAISON') && 
+            !motif.includes('RESTITUTION') &&
+            !motif.includes('VENTE') &&
+            !motif.includes('VENTE TICKET')
+          );
         })
         .reduce((acc, mvt) => {
           const numDocBrut = mvt.motif_remarque || 'SANS-REF';

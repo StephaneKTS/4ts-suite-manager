@@ -27,6 +27,8 @@ import GestionCommandesLivraison from './components/GestionCommandesLivraison';
 import GrilleTarifaireLivraison from './components/GrilleTarifaireLivraison';
 import MonProfil from './components/MonProfil';
 import ModuleLivraison from './livraison/page';
+import GestionTaxesRistournes from './components/GestionTaxesRistournes';
+import MenuExplorer from './components/MenuExplorer'; // 🧭 Importation du menu Explorer
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -282,6 +284,7 @@ function DashboardContent() {
     }
 
     switch (moduleActif) {
+      case 'taxes_ristournes': return <GestionTaxesRistournes entrepriseId={entrepriseId} />;
       case 'commandes_livraison': return <GestionCommandesLivraison entrepriseId={entrepriseId} />;
       case 'grille_tarifaire': return <GrilleTarifaireLivraison entrepriseId={entrepriseId} />;
       case 'challenges_commerciaux': return <GestionChallengesCommerciaux entrepriseId={entrepriseId} />;
@@ -388,7 +391,11 @@ function DashboardContent() {
 
       {/* 2. ZONE CENTRALE STABILISÉE (DÉFILEMENT INDÉPENDANT) */}
       <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 overflow-y-auto w-full max-w-7xl mx-auto flex flex-col min-h-0">
-        {ongletNavigation === 'rapports' && !moduleActif ? (
+        {ongletNavigation === 'explorer' && !moduleActif ? (
+          <div className="w-full flex-1">
+            <MenuExplorer entrepriseId={entrepriseId} />
+          </div>
+        ) : ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               COMPTABILITÉ
@@ -529,6 +536,10 @@ function DashboardContent() {
                 <span className="text-2xl group-hover:scale-110 transition">🔑</span>
                 <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
               </div>
+              <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
+              </div>
             </div>
           </div>
         ) : !moduleActif && estModeLivraison ? (
@@ -609,6 +620,10 @@ function DashboardContent() {
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
                 </div>
               )}
+              <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
+              </div>
             </div>
           </div>
         ) : (
@@ -618,7 +633,7 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* 3. BARRE DE NAVIGATION INFÉRIEURE (FIGÉE) */}
+      {/* 3. BARRE DE NAVIGATION INFÉRIEURE (FIGÉE AVEC LE MENU EXPLORER AJOUTÉ) */}
       <div className={`bottom-0 left-0 right-0 z-30 ${bgHeaderNav} border-t py-2.5 px-6 flex justify-around items-center shadow-2xl shrink-0 w-full`}>
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
@@ -630,6 +645,19 @@ function DashboardContent() {
         >
           <span className="text-lg">🏠</span>
           <span className="text-[10px]">Accueil</span>
+        </button>
+
+        {/* 🧭 Bouton EXPLORER ajouté ici */}
+        <button
+          onClick={() => { setOngletNavigation('explorer'); setModuleActif(null); }}
+          className={`flex flex-col items-center space-y-0.5 transition ${
+            ongletNavigation === 'explorer' && !moduleActif 
+              ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
+              : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
+          }`}
+        >
+          <span className="text-lg">🧭</span>
+          <span className="text-[10px]">Explorer</span>
         </button>
 
         <button

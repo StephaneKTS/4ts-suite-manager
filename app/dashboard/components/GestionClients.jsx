@@ -25,7 +25,6 @@ const LISTE_PAYS = [
 
 export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   const [clients, setClients] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [ventes, setVentes] = useState([]);
   const [articles, setArticles] = useState([]);
   const [chargement, setChargement] = useState(false);
@@ -102,7 +101,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     pays: 'cmr',
     telephone: '',
     email: '',
-    id_categorie: '',
     solde_credit: 0,
     est_defaut: false,
   });
@@ -117,15 +115,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
-      const { data: dataCat } = await supabase
-        .from('categories_clients')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .order('nom_categorie', { ascending: true });
-
-      setCategories(dataCat || []);
-
       const { data: dataCli, error: errCli } = await supabase
         .from('clients')
         .select('*')
@@ -215,11 +204,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
       return;
     }
-    
-    if (!nouveauClient.id_categorie) {
-      alert('⚠️ Veuillez sélectionner une catégorie client.');
-      return;
-    }
 
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauClient.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauClient.telephone || '').replace(/[^0-9]/g, '');
@@ -233,7 +217,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
-      // Gestion locale du client par défaut dans le stockage pour éviter les erreurs de colonne manquante dans Supabase
       if (nouveauClient.est_defaut && typeof window !== 'undefined') {
         localStorage.setItem(`client_defaut_${entrepriseId}_${moduleActuel}`, nouveauClient.nom_client.trim().toUpperCase());
       }
@@ -245,7 +228,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         pays: nouveauClient.pays,
         telephone: numeroComplet,
         email: (nouveauClient.email || '').trim().toLowerCase(),
-        id_categorie: parseInt(nouveauClient.id_categorie),
       };
 
       if (clientEnEdition) {
@@ -305,7 +287,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       pays: client.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
       email: (client.email || '').toLowerCase(),
-      id_categorie: client.id_categorie || '',
       solde_credit: calculerSoldeCreditClient(client),
       est_defaut: client.est_defaut || (client.nom_client || '').toUpperCase().includes('DIVERS'),
     });
@@ -320,7 +301,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       pays: 'cmr',
       telephone: '',
       email: '',
-      id_categorie: '',
       solde_credit: 0,
       est_defaut: false,
     });
@@ -451,9 +431,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       if (triCol === 'nom_client') {
         valA = a.nom_client || '';
         valB = b.nom_client || '';
-      } else if (triCol === 'categorie') {
-        valA = categories.find(cat => String(cat.id) === String(a.id_categorie))?.nom_categorie || '';
-        valB = categories.find(cat => String(cat.id) === String(b.id_categorie))?.nom_categorie || '';
       } else if (triCol === 'solde_credit') {
         valA = Number(calculerSoldeCreditClient(a));
         valB = Number(calculerSoldeCreditClient(b));
@@ -653,7 +630,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   if (afficherForm) {
                     annulerForm();
                   } else {
-                    setNouveauClient({ nom_client: '', pays: 'cmr', telephone: '', email: '', id_categorie: '', solde_credit: 0, est_defaut: false });
+                    setNouveauClient({ nom_client: '', pays: 'cmr', telephone: '', email: '', solde_credit: 0, est_defaut: false });
                     setClientEnEdition(null);
                     setAfficherForm(true);
                   }
@@ -666,7 +643,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           {afficherForm && permissions.peut_creer ? (
-            <form onSubmit={enregistrerClient} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2 shadow-2xs">
+            <form onSubmit={enregistrerClient} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-2xs">
               <div className="flex justify-between items-center border-b border-slate-200 pb-1">
                 <h4 className="font-extrabold text-orange-600 uppercase text-[10px]">
                   {clientEnEdition ? '✏️ Fiche du client' : '➕ Nouveau client'}
@@ -681,7 +658,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                 </button>
               </div>
 
-              <div className={`grid grid-cols-1 ${clientEnEdition ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-1.5`}>
+              <div className={`grid grid-cols-1 ${clientEnEdition ? 'sm:grid-cols-2' : 'sm:grid-cols-1'} gap-1.5`}>
                 <div>
                   <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom / Prénom(s) *</label>
                   <input
@@ -693,24 +670,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                     placeholder=""
                     className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
-                </div>
-
-                <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Catégorie *</label>
-                  <select
-                    required
-                    disabled={enTrainDeSauvegarder}
-                    value={nouveauClient.id_categorie}
-                    onChange={(e) => setNouveauClient({ ...nouveauClient, id_categorie: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                  >
-                    <option value="">-- Choisir catégorie --</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.nom_categorie} ({cat.taux_remise_defaut}%)
-                      </option>
-                    ))}
-                  </select>
                 </div>
 
                 {clientEnEdition && (
@@ -843,7 +802,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                   disabled={enTrainDeSauvegarder}
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-                  placeholder=""
+                  placeholder="🔍 RECHERCHER UN CLIENT..."
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs placeholder:text-slate-400"
                 />
               </div>
@@ -864,20 +823,16 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                     <table className="w-full text-left text-xs table-fixed">
                       <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                         <tr>
-                          <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_client')} className="p-2.5 w-[45%] cursor-pointer hover:bg-slate-200 transition">
+                          <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_client')} className="p-2.5 w-[75%] cursor-pointer hover:bg-slate-200 transition">
                             Nom / Prénom(s) {rendreFlecheTri('nom_client')}
                           </th>
-                          <th onClick={() => !enTrainDeSauvegarder && gererTri('categorie')} className="p-2.5 w-[40%] cursor-pointer hover:bg-slate-200 transition">
-                            Catégorie {rendreFlecheTri('categorie')}
-                          </th>
-                          <th onClick={() => !enTrainDeSauvegarder && gererTri('solde_credit')} className="p-2.5 w-[15%] text-right cursor-pointer hover:bg-slate-200 transition">
+                          <th onClick={() => !enTrainDeSauvegarder && gererTri('solde_credit')} className="p-2.5 w-[25%] text-right cursor-pointer hover:bg-slate-200 transition">
                             Solde Crédit {rendreFlecheTri('solde_credit')}
                           </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-[10.5px]">
                         {clientsAffiches.map((c) => {
-                          const catTrouvee = categories.find((cat) => String(cat.id) === String(c.id_categorie));
                           const soldeCreditCalcule = calculerSoldeCreditClient(c);
                           const estDefautClient = c.est_defaut || (c.nom_client || '').toUpperCase().includes('DIVERS');
                           return (
@@ -894,11 +849,6 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
                                     PAR DÉFAUT
                                   </span>
                                 )}
-                              </td>
-                              <td className="p-2.5 truncate">
-                                <span className="bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px]">
-                                  {catTrouvee ? catTrouvee.nom_categorie : 'STANDARD'}
-                                </span>
                               </td>
                               <td className="p-2.5 text-right font-black text-blue-700 truncate">
                                 {soldeCreditCalcule.toLocaleString('fr-FR')} F
