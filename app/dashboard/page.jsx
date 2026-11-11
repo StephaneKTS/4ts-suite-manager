@@ -29,6 +29,7 @@ import MonProfil from './components/MonProfil';
 import ModuleLivraison from './livraison/page';
 import GestionTaxesRistournes from './components/GestionTaxesRistournes';
 import MenuExplorer from './components/MenuExplorer'; // 🧭 Importation du menu Explorer
+import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; // 📱 Importation du suivi des commandes QR Code Boutique
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -204,6 +205,10 @@ function DashboardContent() {
   const rendreModuleActif = () => {
     if (moduleActif === 'souscription') {
       return <EspaceSouscription entrepriseId={entrepriseId} />;
+    }
+
+    if (moduleActif === 'commandes_clients_qr') {
+      return <GestionCommandesClientsQR entrepriseId={entrepriseId} />;
     }
 
     if (moduleActif === 'super_admin_panel') {
@@ -460,6 +465,16 @@ function DashboardContent() {
               ACCUEIL
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
+              
+              {/* ✅ BOUTON EXCLUSIF BOUTIQUE : COMMANDES QR CODE */}
+              <div 
+                onClick={() => setModuleActif('commandes_clients_qr')} 
+                className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-orange-500/50`}
+              >
+                <span className="text-2xl group-hover:scale-110 transition">📱</span>
+                <span className="font-black text-[11px] sm:text-xs leading-tight text-orange-600">Commandes QR Code</span>
+              </div>
+
               {verifierPermission('caisse') && (
                 <div onClick={() => tenterAccesModule('ventes', 'Caisse & Ventes')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🛒</span>

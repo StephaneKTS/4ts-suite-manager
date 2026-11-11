@@ -513,7 +513,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const changerStatutRapide = async (cmd, nouveauStatut) => {
     setMenuStatutOuvertId(null);
 
-    // 🛡️ VÉRIFICATION DE LA DATE (CLÔTURE DE JOURNÉE)
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
     if (dateCmdStr < dateDuJourStr) {
       alert(`❌ Action interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
@@ -848,7 +847,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const napGlobal = parseFloat(montantSaisi) || 0;
 
   const ouvrirCommandePourModification = async (cmd) => {
-    // 🛡️ MODE CONSULTATION SEULE POUR LES JOURNÉES PASSÉES
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
     const estVerrouille = dateCmdStr < dateDuJourStr;
 
@@ -1684,7 +1682,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   return (
-    <div className="space-y-3 text-[11px] font-sans">
+    <div className="space-y-2 text-[10px] font-sans px-0.5 max-w-full overflow-x-hidden">
       
       <style jsx global>{`
         @keyframes clignoteRouge {
@@ -1703,26 +1701,27 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       `}</style>
 
-      <div className="bg-white px-2.5 py-2 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-2 overflow-hidden">
+      {/* Barre de navigation supérieure */}
+      <div className="bg-white px-2 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1 overflow-hidden">
         <div className="flex items-center gap-1 min-w-0 shrink-0">
           <h3 className="font-extrabold text-slate-900 uppercase text-[9px] flex items-center gap-0.5 shrink-0">
             <span>📦</span> LIVRAISON
           </h3>
           {roleUtilisateur && (
-            <span className="text-[7px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full font-bold border border-slate-200 truncate max-w-[70px]">
+            <span className="text-[7px] bg-slate-100 text-slate-700 px-1 py-0.2 rounded-full font-bold border border-slate-200 truncate max-w-[60px]">
               {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
             </span>
           )}
         </div>
         
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => {
               setVueActive('LISTE');
               setDocumentEnLectureSeule(false);
             }}
-            className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
+            className={`font-bold px-2 py-1 rounded-lg transition shadow-2xs text-[8.5px] border whitespace-nowrap ${
               vueActive === 'LISTE' 
                 ? 'bg-slate-900 text-white border-slate-900' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
@@ -1754,7 +1753,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 setStocksArticlesCache({});
                 setVueActive('CREATION');
               }}
-              className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
+              className={`font-bold px-2 py-1 rounded-lg transition shadow-2xs text-[8.5px] border whitespace-nowrap ${
                 vueActive === 'CREATION' 
                   ? 'bg-orange-600 text-white border-orange-600' 
                   : 'bg-orange-100 hover:bg-orange-200 text-orange-800 border-orange-300'
@@ -1770,7 +1769,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               setVueActive('RAPPORT');
               setDocumentEnLectureSeule(false);
             }}
-            className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
+            className={`font-bold px-2 py-1 rounded-lg transition shadow-2xs text-[8.5px] border whitespace-nowrap ${
               vueActive === 'RAPPORT' 
                 ? 'bg-blue-900 text-white border-blue-900' 
                 : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
@@ -1785,7 +1784,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               setVueActive('CLOTURE');
               setDocumentEnLectureSeule(false);
             }}
-            className={`font-bold px-2.5 py-1 rounded-lg transition shadow-2xs text-[9px] border whitespace-nowrap ${
+            className={`font-bold px-2 py-1 rounded-lg transition shadow-2xs text-[8.5px] border whitespace-nowrap ${
               vueActive === 'CLOTURE' 
                 ? 'bg-emerald-900 text-white border-emerald-900' 
                 : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -1797,12 +1796,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       </div>
 
       {vueActive === 'CLOTURE' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
             <button
               type="button"
               onClick={() => setSousOngletCloture('nouveau')}
-              className={`flex-1 py-1 px-1 rounded font-black text-[9px] uppercase transition shadow-2xs whitespace-nowrap text-center ${
+              className={`flex-1 py-1 px-1 rounded font-black text-[8.5px] uppercase transition shadow-2xs whitespace-nowrap text-center ${
                 sousOngletCloture === 'nouveau' ? 'bg-emerald-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
               }`}
             >
@@ -1811,7 +1810,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             <button
               type="button"
               onClick={() => setSousOngletCloture('liste')}
-              className={`flex-1 py-1 px-1 rounded font-black text-[9px] uppercase transition shadow-2xs whitespace-nowrap text-center ${
+              className={`flex-1 py-1 px-1 rounded font-black text-[8.5px] uppercase transition shadow-2xs whitespace-nowrap text-center ${
                 sousOngletCloture === 'liste' ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
               }`}
             >
@@ -1820,10 +1819,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           </div>
 
           {sousOngletCloture === 'nouveau' && (
-            <div className="space-y-3">
-              <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+            <div className="space-y-2">
+              <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-1">
-                  <span className="font-black text-emerald-900 uppercase text-[9px] flex items-center gap-1">
+                  <span className="font-black text-emerald-900 uppercase text-[8.5px] flex items-center gap-1">
                     🔐 CLÔTURE DE CAISSE DES LIVREURS
                   </span>
                   {(clotureDateDebut !== new Date().toISOString().split('T')[0] || clotureDateFin !== new Date().toISOString().split('T')[0] || clotureLivreur) && (
@@ -1835,153 +1834,153 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         setClotureDateFin(ajd);
                         setClotureLivreur('');
                       }}
-                      className="text-emerald-600 hover:text-emerald-700 font-bold text-[9px] underline"
+                      className="text-emerald-600 hover:text-emerald-700 font-bold text-[8px] underline"
                     >
                       Réinitialiser
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-1.5 items-end">
+                <div className="grid grid-cols-3 gap-1 items-end">
                   <div>
-                    <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Début</label>
+                    <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Début</label>
                     <input
                       type="date"
                       value={clotureDateDebut}
                       onChange={(e) => setClotureDateDebut(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px]"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Fin</label>
+                    <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Fin</label>
                     <input
                       type="date"
                       value={clotureDateFin}
                       onChange={(e) => setClotureDateFin(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px]"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
+                    <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Livreur</label>
                     <button
                       type="button"
                       onClick={() => { setRechercheClotureLivreurInput(''); setModalClotureLivreurOuverte(true); }}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px] uppercase text-left flex justify-between items-center truncate"
+                      className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[8.5px] uppercase text-left flex justify-between items-center truncate"
                     >
                       <span className="truncate">{clotureLivreur || 'TOUS'}</span>
-                      <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                      <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center bg-slate-100 p-2 rounded-lg border border-slate-200">
+              <div className="flex justify-between items-center bg-slate-100 p-1.5 rounded-lg border border-slate-200">
                 <div className="min-w-0 pr-1">
-                  <h4 className="font-black text-[10px] uppercase tracking-wider text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
+                  <h4 className="font-black text-[9px] uppercase tracking-wider text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis">
                     EN ATTENTE DE CLOTURE
                   </h4>
-                  <p className="text-[9px] text-slate-600 font-bold mt-0.5 truncate">
+                  <p className="text-[8px] text-slate-600 font-bold mt-0.5 truncate">
                     Période : <span className="text-slate-900">{clotureDateDebut === clotureDateFin ? formaterDateJJMMAAAA(clotureDateDebut) : `Du ${formaterDateJJMMAAAA(clotureDateDebut)} au ${formaterDateJJMMAAAA(clotureDateFin)}`}</span>
                   </p>
                 </div>
-                <div className="bg-white px-2 py-1 rounded-lg border border-slate-200 text-[9px] font-bold text-slate-800 shrink-0 whitespace-nowrap shadow-2xs">
+                <div className="bg-white px-1.5 py-0.5 rounded-lg border border-slate-200 text-[8px] font-bold text-slate-800 shrink-0 whitespace-nowrap shadow-2xs">
                   Livreurs : <strong className="text-emerald-700">{listeResumeCloture.length}</strong>
                 </div>
               </div>
 
               {listeResumeCloture.length === 0 ? (
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs text-center text-slate-400 font-bold italic text-[10px]">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs text-center text-slate-400 font-bold italic text-[9px]">
                   Aucune commande livrée en attente de clôture pour cette période.
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {listeResumeCloture.map((item, index) => {
                     const resteAVerser = item.montantTotalEncaisse - item.totalFraisLivraison;
                     return (
-                      <div key={index} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm space-y-2 text-slate-900">
-                        <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                          <span className="font-black text-xs uppercase text-blue-700 flex items-center gap-1">
+                      <div key={index} className="bg-white rounded-xl p-2.5 border border-slate-200 shadow-sm space-y-1.5 text-slate-900">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-1">
+                          <span className="font-black text-[10px] uppercase text-blue-700 flex items-center gap-1 truncate">
                             🛵 {item.nom}
                           </span>
-                          <span className="bg-orange-100 text-orange-800 font-extrabold px-2 py-0.5 rounded-full text-[9px]">
-                            {item.nombreCommandes} commande(s) livrée(s)
+                          <span className="bg-orange-100 text-orange-800 font-extrabold px-1.5 py-0.2 rounded-full text-[8px] shrink-0">
+                            {item.nombreCommandes} cmd(s)
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                            <span className="block text-[8px] text-slate-500 uppercase font-bold">Montant Encaissé</span>
-                            <span className="font-mono font-black text-emerald-700 text-xs">{item.montantTotalEncaisse.toLocaleString('fr-FR')} F</span>
+                        <div className="grid grid-cols-3 gap-1.5 text-center pt-0.5">
+                          <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                            <span className="block text-[7.5px] text-slate-500 uppercase font-bold">Encaissé</span>
+                            <span className="font-mono font-black text-emerald-700 text-[10px]">{item.montantTotalEncaisse.toLocaleString('fr-FR')} F</span>
                           </div>
-                          <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                            <span className="block text-[8px] text-slate-500 uppercase font-bold">Frais (Indicatif)</span>
-                            <span className="font-mono font-bold text-slate-700 text-xs">{item.totalFraisLivraison.toLocaleString('fr-FR')} F</span>
+                          <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                            <span className="block text-[7.5px] text-slate-500 uppercase font-bold">Frais</span>
+                            <span className="font-mono font-bold text-slate-700 text-[10px]">{item.totalFraisLivraison.toLocaleString('fr-FR')} F</span>
                           </div>
-                          <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                            <span className="block text-[8px] text-emerald-800 uppercase font-bold">Total / Net</span>
-                            <span className="font-mono font-black text-emerald-900 text-xs">{resteAVerser.toLocaleString('fr-FR')} F</span>
+                          <div className="bg-emerald-50 p-1.5 rounded-lg border border-emerald-200">
+                            <span className="block text-[7.5px] text-emerald-800 uppercase font-bold">Total / Net</span>
+                            <span className="font-mono font-black text-emerald-900 text-[10px]">{resteAVerser.toLocaleString('fr-FR')} F</span>
                           </div>
                         </div>
                       </div>
                     );
                   })}
 
-                  <div className="bg-slate-100 text-slate-900 p-3 rounded-xl border border-slate-300 space-y-2 shadow-sm">
-                    <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
-                      <span className="font-black text-[10px] uppercase tracking-wider text-slate-900 flex items-center gap-1">
+                  <div className="bg-slate-100 text-slate-900 p-2.5 rounded-xl border border-slate-300 space-y-1.5 shadow-sm">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-1">
+                      <span className="font-black text-[9px] uppercase tracking-wider text-slate-900 flex items-center gap-1 truncate">
                         📋 CLÔTURE & VERSEMENT GLOBAL
                       </span>
                       {caisseSelectionneeCloture && (
-                        <span className="bg-white text-slate-800 px-2 py-0.5 rounded text-[8px] font-bold border border-slate-300">
-                          Caisse : <strong className="text-slate-900">{caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || caisseSelectionneeCloture}</strong>
+                        <span className="bg-white text-slate-800 px-1.5 py-0.2 rounded text-[7.5px] font-bold border border-slate-300 truncate max-w-[90px]">
+                          {caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || caisseSelectionneeCloture}
                         </span>
                       )}
                     </div>
 
-                    <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="block font-black text-[9px] text-slate-800 uppercase truncate">1. Recette Globale (Partenaire)</span>
-                        <span className="font-mono text-[9px] text-slate-500 font-bold">Attendu : {totalEncaisseGlobalCloture.toLocaleString('fr-FR')} F</span>
+                    <div className="bg-white p-1.5 rounded-lg border border-slate-200 flex items-center justify-between gap-1.5">
+                      <div className="min-w-0 pr-1">
+                        <span className="block font-black text-[8px] text-slate-800 uppercase truncate">1. Recette Globale (Partenaire)</span>
+                        <span className="font-mono text-[8px] text-slate-500 font-bold">Attendu: {totalEncaisseGlobalCloture.toLocaleString('fr-FR')} F</span>
                       </div>
                       
-                      <div className="flex items-center gap-2 shrink-0">
-                        <div className="w-24">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <div className="w-20">
                           <input
                             type="number"
                             value={totalVerseRecetteGlobal}
                             onChange={(e) => setTotalVerseRecetteGlobal(e.target.value)}
                             placeholder=""
-                            className="w-full bg-slate-50 border border-slate-300 rounded p-1 text-center font-mono text-[11px] font-black text-slate-900 focus:outline-none focus:border-slate-500"
+                            className="w-full bg-slate-50 border border-slate-300 rounded p-1 text-center font-mono text-[10px] font-black text-slate-900 focus:outline-none focus:border-slate-500"
                           />
                         </div>
-                        <div className="text-right min-w-[70px]">
-                          <span className="block text-[8px] text-slate-500 uppercase font-bold">Écart</span>
-                          <span className="font-mono text-[10px] font-black text-slate-900">{ecartRecetteGlobale.toLocaleString('fr-FR')} F</span>
+                        <div className="text-right min-w-[55px]">
+                          <span className="block text-[7px] text-slate-500 uppercase font-bold">Écart</span>
+                          <span className="font-mono text-[9px] font-black text-slate-900">{ecartRecetteGlobale.toLocaleString('fr-FR')} F</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="block font-black text-[9px] text-slate-800 uppercase truncate">2. Frais de Livraison (Entreprise)</span>
-                        <span className="font-mono text-[9px] text-slate-500 font-bold">Attendu : {totalFraisLivraisonGlobalCloture.toLocaleString('fr-FR')} F</span>
+                    <div className="bg-white p-1.5 rounded-lg border border-slate-200 flex items-center justify-between gap-1.5">
+                      <div className="min-w-0 pr-1">
+                        <span className="block font-black text-[8px] text-slate-800 uppercase truncate">2. Frais de Livraison (Entreprise)</span>
+                        <span className="font-mono text-[8px] text-slate-500 font-bold">Attendu: {totalFraisLivraisonGlobalCloture.toLocaleString('fr-FR')} F</span>
                       </div>
                       
-                      <div className="flex items-center gap-2 shrink-0">
-                        <div className="w-24">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <div className="w-20">
                           <input
                             type="number"
                             value={totalVerseFraisLivraison}
                             onChange={(e) => setTotalVerseFraisLivraison(e.target.value)}
                             placeholder=""
-                            className="w-full bg-slate-50 border border-slate-300 rounded p-1 text-center font-mono text-[11px] font-black text-slate-900 focus:outline-none focus:border-slate-500"
+                            className="w-full bg-slate-50 border border-slate-300 rounded p-1 text-center font-mono text-[10px] font-black text-slate-900 focus:outline-none focus:border-slate-500"
                           />
                         </div>
-                        <div className="text-right min-w-[70px]">
-                          <span className="block text-[8px] text-slate-500 uppercase font-bold">Écart</span>
-                          <span className="font-mono text-[10px] font-black text-slate-900">{ecartFraisLivraison.toLocaleString('fr-FR')} F</span>
+                        <div className="text-right min-w-[55px]">
+                          <span className="block text-[7px] text-slate-500 uppercase font-bold">Écart</span>
+                          <span className="font-mono text-[9px] font-black text-slate-900">{ecartFraisLivraison.toLocaleString('fr-FR')} F</span>
                         </div>
                       </div>
                     </div>
@@ -1991,11 +1990,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         type="button"
                         disabled={sauvegardeEnCours}
                         onClick={() => setModalCaisseClotureOuverte(true)}
-                        className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-black py-2 rounded-lg text-[10px] uppercase tracking-wider transition shadow-sm border border-slate-900"
+                        className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-black py-1.5 rounded-lg text-[9px] uppercase tracking-wider transition shadow-sm border border-slate-900 truncate px-1"
                       >
-                        {sauvegardeEnCours ? 'Enregistrement en cours...' : (caisseSelectionneeCloture 
-                          ? `Valider et clôturer vers : ${caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || 'Caisse sélectionnée'}` 
-                          : 'Valider et clôturer (Choisir la caisse) ➔')}
+                        {sauvegardeEnCours ? 'Enregistrement...' : (caisseSelectionneeCloture 
+                          ? `Valider vers : ${caisses.find(c => String(c.id) === String(caisseSelectionneeCloture))?.nom_caisse || 'Caisse'}` 
+                          : 'Valider et clôturer (Choisir caisse) ➔')}
                       </button>
                     </div>
                   </div>
@@ -2005,31 +2004,31 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           )}
 
           {sousOngletCloture === 'liste' && (
-            <div className="space-y-3">
-              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-                <h4 className="font-black text-slate-900 uppercase text-[10px]">
-                  📋 HISTORIQUE DES CLÔTURES EFFECTUÉES ({cloturesEffectuees.length})
+            <div className="space-y-2">
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+                <h4 className="font-black text-slate-900 uppercase text-[9px]">
+                  📋 HISTORIQUE DES CLÔTURES ({cloturesEffectuees.length})
                 </h4>
               </div>
 
               {cloturesEffectuees.length === 0 ? (
-                <div className="bg-white p-8 text-center text-slate-400 font-bold italic rounded-xl border border-slate-200 text-[10px]">
-                  Aucune clôture de caisse enregistrée pour le moment.
+                <div className="bg-white p-6 text-center text-slate-400 font-bold italic rounded-xl border border-slate-200 text-[9px]">
+                  Aucune clôture de caisse enregistrée.
                 </div>
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-100 text-slate-700 uppercase text-[9px] font-black border-b border-slate-200">
-                          <th className="p-2">Date Clôture</th>
-                          <th className="p-2 font-mono">N° Clôture</th>
-                          <th className="p-2 text-right">Attendu</th>
-                          <th className="p-2 text-right">Versé</th>
-                          <th className="p-2 text-right">Écart</th>
+                        <tr className="bg-slate-100 text-slate-700 uppercase text-[8px] font-black border-b border-slate-200">
+                          <th className="p-1.5">Date</th>
+                          <th className="p-1.5 font-mono">N° Pièce</th>
+                          <th className="p-1.5 text-right">Attendu</th>
+                          <th className="p-1.5 text-right">Versé</th>
+                          <th className="p-1.5 text-right">Écart</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-[10px]">
+                      <tbody className="divide-y divide-slate-100 text-[9px]">
                         {cloturesEffectuees.map((cl) => {
                           const dateObj = new Date(cl.created_at || cl.date_debut);
                           const dateFormatee = !isNaN(dateObj) ? dateObj.toLocaleDateString('fr-FR') : '-';
@@ -2039,11 +2038,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
                           return (
                             <tr key={cl.id} className="hover:bg-slate-50 transition">
-                              <td className="p-2 font-bold text-slate-700 whitespace-nowrap">{dateFormatee}</td>
-                              <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{cl.code_cloture || 'LIVR-00'}</td>
-                              <td className="p-2 text-right font-mono font-bold text-slate-700">{atten.toLocaleString('fr-FR')}</td>
-                              <td className="p-2 text-right font-mono font-black text-emerald-700">{verse.toLocaleString('fr-FR')}</td>
-                              <td className={`p-2 text-right font-mono font-bold ${ecart === 0 ? 'text-slate-600' : 'text-slate-900'}`}>
+                              <td className="p-1.5 font-bold text-slate-700 whitespace-nowrap">{dateFormatee}</td>
+                              <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{cl.code_cloture || 'LIVR-00'}</td>
+                              <td className="p-1.5 text-right font-mono font-bold text-slate-700">{atten.toLocaleString('fr-FR')}</td>
+                              <td className="p-1.5 text-right font-mono font-black text-emerald-700">{verse.toLocaleString('fr-FR')}</td>
+                              <td className={`p-1.5 text-right font-mono font-bold ${ecart === 0 ? 'text-slate-600' : 'text-slate-900'}`}>
                                 {ecart.toLocaleString('fr-FR')}
                               </td>
                             </tr>
@@ -2060,10 +2059,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       )}
 
       {vueActive === 'RAPPORT' && (
-        <div className="space-y-3">
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-              <span className="font-black text-blue-900 uppercase text-[10px] flex items-center gap-1">
+        <div className="space-y-2">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-1">
+              <span className="font-black text-blue-900 uppercase text-[9px] flex items-center gap-1">
                 📊 RAPPORT DE LIVRAISON : COMMANDES LIVRÉES
               </span>
               {(rapportDateDebut !== premierJourMoisStr || rapportDateFin !== dernierJourMoisStr || rapportLivreur || rapportPartenaire) && (
@@ -2075,97 +2074,97 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     setRapportLivreur('');
                     setRapportPartenaire('');
                   }}
-                  className="text-blue-600 hover:text-blue-700 font-bold text-[10px] underline"
+                  className="text-blue-600 hover:text-blue-700 font-bold text-[8.5px] underline"
                 >
                   Réinitialiser
                 </button>
               )}
             </div>
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Début</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">Début</label>
                   <input
                     type="date"
                     value={rapportDateDebut}
                     onChange={(e) => setRapportDateDebut(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date Fin</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">Fin</label>
                   <input
                     type="date"
                     value={rapportDateFin}
                     onChange={(e) => setRapportDateFin(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[11px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Livreur</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">Livreur</label>
                   <button
                     type="button"
                     onClick={() => { setRechercheRapportLivreurInput(''); setModalRapportLivreurOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px] uppercase text-left flex justify-between items-center truncate"
                   >
                     <span className="truncate">{rapportLivreur || 'TOUS'}</span>
-                    <span className="text-slate-400 shrink-0">🔍</span>
+                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                   </button>
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">Partenaire</label>
                   <button
                     type="button"
                     onClick={() => { setRechercheRapportPartenaireInput(''); setModalRapportPartenaireOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-[10px] text-left flex justify-between items-center truncate"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px] text-left flex justify-between items-center truncate"
                   >
                     <span className="truncate">
                       {rapportPartenaire ? (partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(rapportPartenaire))?.nom || 'TOUS') : 'TOUS'}
                     </span>
-                    <span className="text-slate-400 shrink-0">🔍</span>
+                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <div ref={rapportRef} className="space-y-2">
-            <div className="bg-slate-900 text-white px-3 py-2 rounded-xl border border-slate-800 shadow-sm flex flex-col gap-1.5">
-              <div className="flex flex-row justify-between items-center gap-2">
-                <h4 className="titre-rapport-principal font-black text-[10px] uppercase tracking-wider text-orange-400 truncate">
+          <div ref={rapportRef} className="space-y-1.5">
+            <div className="bg-slate-900 text-white px-2.5 py-1.5 rounded-xl border border-slate-800 shadow-sm flex flex-col gap-1">
+              <div className="flex flex-row justify-between items-center gap-1">
+                <h4 className="titre-rapport-principal font-black text-[9px] uppercase tracking-wider text-orange-400 truncate">
                   RAPPORT DE LIVRAISON
                 </h4>
                 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-700 text-[9px] font-bold whitespace-nowrap">
-                    Total livré : <strong className="text-emerald-400">{commandesRapport.length}</strong>
+                <div className="flex items-center gap-1 shrink-0">
+                  <div className="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-[8px] font-bold whitespace-nowrap">
+                    Total: <strong className="text-emerald-400">{commandesRapport.length}</strong>
                   </div>
 
                   <button
                     type="button"
                     onClick={imprimerRapport}
-                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black px-2 py-0.5 rounded-lg text-[9px] transition flex items-center gap-1 shadow-2xs print-hide whitespace-nowrap"
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black px-1.5 py-0.5 rounded text-[8px] transition flex items-center gap-0.5 shadow-2xs print-hide whitespace-nowrap"
                   >
                     🖨️ Imprimer
                   </button>
                 </div>
               </div>
 
-              <div className="border-t border-slate-800 pt-1 flex items-center text-[10px] text-slate-300 font-extrabold truncate">
+              <div className="border-t border-slate-800 pt-0.5 flex items-center text-[8.5px] text-slate-300 font-extrabold truncate">
                 Livreur : <span className="text-blue-400 uppercase ml-1">{nomLivreurRapport}</span>
               </div>
             </div>
 
             {chargement && commandes.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-bold bg-white rounded-xl border border-slate-200">Chargement...</div>
+              <div className="p-6 text-center text-slate-400 font-bold bg-white rounded-xl border border-slate-200">Chargement...</div>
             ) : commandesRapport.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-bold italic bg-white rounded-xl border border-slate-200 text-[10px]">
+              <div className="p-6 text-center text-slate-400 font-bold italic bg-white rounded-xl border border-slate-200 text-[9px]">
                 Aucune livraison validée ne correspond à vos critères.
               </div>
             ) : (
@@ -2173,60 +2172,60 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-100 text-slate-700 uppercase text-[9px] font-black border-b border-slate-200">
-                        <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('date')}>
+                      <tr className="bg-slate-100 text-slate-700 uppercase text-[8px] font-black border-b border-slate-200">
+                        <th className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('date')}>
                           Date {colonneTri === 'date' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
-                        <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('numero')}>
+                        <th className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('numero')}>
                           N° Cmd {colonneTri === 'numero' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                         {!rapportPartenaire && (
-                          <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('partenaire')}>
+                          <th className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('partenaire')}>
                             Partenaire {colonneTri === 'partenaire' && (ordreTri === 'asc' ? '▲' : '▼')}
                           </th>
                         )}
-                        <th className="p-2 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('article')}>
+                        <th className="p-1.5 cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('article')}>
                           Article {colonneTri === 'article' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
-                        {!rapportLivreur && <th className="p-2">Livreur</th>}
-                        <th className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('montant')}>
+                        {!rapportLivreur && <th className="p-1.5">Livreur</th>}
+                        <th className="p-1.5 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('montant')}>
                           Montant {colonneTri === 'montant' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
-                        <th className="p-2 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('frais')}>
+                        <th className="p-1.5 text-right cursor-pointer hover:bg-slate-200 transition select-none" onClick={() => gererTri('frais')}>
                           Frais {colonneTri === 'frais' && (ordreTri === 'asc' ? '▲' : '▼')}
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-[10px]">
+                    <tbody className="divide-y divide-slate-100 text-[9px]">
                       {commandesRapportTriees.map((cmd) => {
                         const lignesCmd = lignesCommandesMap[cmd.id] || [];
                         return (
                           <tr key={cmd.id} className="hover:bg-slate-50 transition">
-                            <td className="p-2 font-bold text-slate-600 whitespace-nowrap">{formaterDateJJMMAAAA(cmd.date_commande)}</td>
-                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{cmd.numero_commande}</td>
-                            {!rapportPartenaire && <td className="p-2 font-extrabold text-slate-900">{cmd.nom_partenaire}</td>}
-                            <td className="p-2">
+                            <td className="p-1.5 font-bold text-slate-600 whitespace-nowrap">{formaterDateJJMMAAAA(cmd.date_commande)}</td>
+                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{cmd.numero_commande}</td>
+                            {!rapportPartenaire && <td className="p-1.5 font-extrabold text-slate-900 truncate max-w-[80px]">{cmd.nom_partenaire}</td>}
+                            <td className="p-1.5">
                               {lignesCmd.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
+                                <div className="flex flex-wrap gap-0.5">
                                   {lignesCmd.map((l, idx) => (
-                                    <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[9px]">
+                                    <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1 py-0.2 rounded text-[8px]">
                                       {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
                                     </span>
                                   ))}
                                 </div>
                               ) : cmd.point_a ? (
-                                <span className="text-slate-800 font-bold text-[9px]">
+                                <span className="text-slate-800 font-bold text-[8px]">
                                   📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
                                 </span>
                               ) : (
                                 <span className="text-slate-400 italic">Sans stockage</span>
                               )}
                             </td>
-                            {!rapportLivreur && <td className="p-2 font-bold text-blue-700 uppercase">{cmd.vendeur_livreur || '-'}</td>}
-                            <td className="p-2 text-right font-mono font-black text-emerald-700 whitespace-nowrap">
+                            {!rapportLivreur && <td className="p-1.5 font-bold text-blue-700 uppercase truncate max-w-[70px]">{cmd.vendeur_livreur || '-'}</td>}
+                            <td className="p-1.5 text-right font-mono font-black text-emerald-700 whitespace-nowrap">
                               {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')}
                             </td>
-                            <td className="p-2 text-right font-mono font-bold text-slate-600 whitespace-nowrap">
+                            <td className="p-1.5 text-right font-mono font-bold text-slate-600 whitespace-nowrap">
                               {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')}
                             </td>
                           </tr>
@@ -2236,21 +2235,21 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   </table>
                 </div>
 
-                <div className="bg-emerald-900 text-white p-2.5 border-t border-emerald-800 grid grid-cols-4 gap-2 text-[10px] font-black text-center">
+                <div className="bg-emerald-900 text-white p-2 border-t border-emerald-800 grid grid-cols-4 gap-1 text-[9px] font-black text-center">
                   <div>
-                    <span className="block text-[8px] text-emerald-200 uppercase">Total Commandes</span>
+                    <span className="block text-[7px] text-emerald-200 uppercase">Total Cmds</span>
                     <span className="text-emerald-300 font-mono">{commandesRapport.length}</span>
                   </div>
-                  <div className="border-x border-emerald-700 px-1">
-                    <span className="block text-[8px] text-emerald-200 uppercase">Montant total</span>
+                  <div className="border-x border-emerald-700 px-0.5">
+                    <span className="block text-[7px] text-emerald-200 uppercase">Montant</span>
                     <span className="text-emerald-300 font-mono">{totalMontantRapport.toLocaleString('fr-FR')} F</span>
                   </div>
-                  <div className="border-r border-emerald-700 pr-1">
-                    <span className="block text-[8px] text-emerald-200 uppercase">Frais</span>
+                  <div className="border-r border-emerald-700 pr-0.5">
+                    <span className="block text-[7px] text-emerald-200 uppercase">Frais</span>
                     <span className="text-emerald-300 font-mono">{totalFraisRapport.toLocaleString('fr-FR')} F</span>
                   </div>
                   <div>
-                    <span className="block text-[8px] text-emerald-200 uppercase">À verser</span>
+                    <span className="block text-[7px] text-emerald-200 uppercase">À verser</span>
                     <span className="text-orange-300 font-mono">{resteAVerserRapport.toLocaleString('fr-FR')} F</span>
                   </div>
                 </div>
@@ -2261,17 +2260,17 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       )}
 
       {vueActive === 'CREATION' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {documentEnLectureSeule && (
-            <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
+            <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[9px] uppercase shadow-xs">
               🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)
             </div>
           )}
 
-          <div className="bg-white p-3 rounded-xl shadow-md border border-slate-200 space-y-2.5">
-            <div className="grid grid-cols-12 gap-2">
+          <div className="bg-white p-2.5 rounded-xl shadow-md border border-slate-200 space-y-2">
+            <div className="grid grid-cols-12 gap-1.5">
               <div className="col-span-3">
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date *</label>
+                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">Date *</label>
                 <input
                   type="date"
                   required
@@ -2279,29 +2278,29 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   value={dateCommande}
                   onChange={(e) => handleChangementDate(e.target.value)}
                   onFocus={(e) => e.target.select()}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs disabled:opacity-70"
+                  className="w-full bg-white border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] shadow-xs disabled:opacity-70"
                 />
               </div>
 
               <div className="col-span-6">
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Partenaire *</label>
+                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">Partenaire *</label>
                 <button
                   type="button"
                   disabled={documentEnLectureSeule}
                   onClick={() => { if (documentEnLectureSeule) return; setRecherchePartenaireInput(''); setModalPartenaireOuverte(true); }}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs text-left flex justify-between items-center truncate disabled:opacity-70"
+                  className="w-full bg-white border border-slate-300 rounded p-1 font-extrabold text-slate-900 text-[10px] shadow-xs text-left flex justify-between items-center truncate disabled:opacity-70"
                 >
                   <span className="truncate">
                     {idPartenaire ? (partenaires.find(p => String(p.id) === String(idPartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(idPartenaire))?.nom || '') : ''}
                   </span>
-                  <span className="text-slate-400 shrink-0">🔍</span>
+                  <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
                 </button>
               </div>
 
               <div className="col-span-3">
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">N° CMD *</label>
+                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">N° CMD *</label>
                 <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                  <span className="bg-slate-100 px-1 py-1.5 text-[9px] font-black text-orange-600 border-r border-slate-300 shrink-0">
+                  <span className="bg-slate-100 px-1 py-1 text-[8px] font-black text-orange-600 border-r border-slate-300 shrink-0">
                     CMD-
                   </span>
                   <input
@@ -2312,7 +2311,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     onChange={(e) => setNumeroCommande(e.target.value.replace(/[^0-9]/g, ''))}
                     onFocus={(e) => e.target.select()}
                     placeholder=""
-                    className="w-full p-1.5 font-mono text-[10px] font-black text-slate-900 bg-white focus:outline-none disabled:opacity-70"
+                    className="w-full p-1 font-mono text-[9px] font-black text-slate-900 bg-white focus:outline-none disabled:opacity-70 text-center"
                   />
                 </div>
               </div>
@@ -2322,7 +2321,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <select
                 disabled
                 value={depotId}
-                className="w-full bg-slate-100 border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs cursor-not-allowed"
+                className="w-full bg-slate-100 border border-slate-300 rounded p-1 font-extrabold text-orange-700 text-xs shadow-xs cursor-not-allowed"
               >
                 <option value="AUCUN_DEPOT"></option>
                 {depots.map((d) => (
@@ -2333,10 +2332,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </select>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">
-                  N° Client * <span className={`text-[8px] font-bold ${numeroClient.trim().length === 9 ? 'text-emerald-600' : 'text-rose-600'}`}>({numeroClient.trim().length}/9)</span>
+                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">
+                  N° Client * <span className={`text-[7px] font-bold ${numeroClient.trim().length === 9 ? 'text-emerald-600' : 'text-rose-600'}`}>({numeroClient.trim().length}/9)</span>
                 </label>
                 <input
                   ref={inputNumeroClientRef}
@@ -2361,14 +2360,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   }}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className={`w-full bg-white border rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs font-mono disabled:opacity-70 ${
+                  className={`w-full bg-white border rounded p-1 font-bold text-slate-900 text-[10px] shadow-xs font-mono disabled:opacity-70 ${
                     numeroClient.trim().length === 9 ? 'border-emerald-500' : 'border-rose-300 focus:border-rose-500'
                   }`}
                 />
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Adresse *</label>
+                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Adresse *</label>
                 <input
                   ref={inputAdresseRef}
                   type="text"
@@ -2379,7 +2378,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   onChange={(e) => handleChangementAdresse(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase disabled:opacity-70"
+                  className="w-full bg-white border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] shadow-xs uppercase disabled:opacity-70"
                 />
                 <datalist id="liste-zones-commandes">
                   {grilleTarifaire.map((tarif) => (
@@ -2391,7 +2390,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Montant *</label>
+                <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Montant *</label>
                 <input
                   ref={inputMontantRef}
                   type="number"
@@ -2402,15 +2401,15 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   onChange={(e) => setMontantSaisi(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs disabled:opacity-70"
+                  className="w-full bg-white border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] shadow-xs disabled:opacity-70"
                 />
               </div>
             </div>
 
             {partenaireSansStockage && (
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-orange-700 uppercase">Point A (Départ) *</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-orange-700 uppercase">Point A (Départ) *</label>
                   <input
                     type="text"
                     required
@@ -2419,12 +2418,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     onChange={(e) => setPointADepart(e.target.value)}
                     onFocus={(e) => e.target.select()}
                     placeholder=""
-                    className="w-full bg-orange-50/50 border border-orange-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase disabled:opacity-70"
+                    className="w-full bg-orange-50/50 border border-orange-300 rounded p-1 font-bold text-slate-900 text-[10px] shadow-xs uppercase disabled:opacity-70"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nature colis</label>
+                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase">Nature colis</label>
                   <input
                     type="text"
                     disabled={documentEnLectureSeule}
@@ -2432,23 +2431,23 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     onChange={(e) => setNatureColis(e.target.value)}
                     onFocus={(e) => e.target.select()}
                     placeholder=""
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs uppercase disabled:opacity-70"
+                    className="w-full bg-white border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] shadow-xs uppercase disabled:opacity-70"
                   />
                 </div>
               </div>
             )}
           </div>
 
-          <div className="bg-blue-50/70 border-2 border-blue-200 p-3 rounded-xl shadow-md space-y-2">
+          <div className="bg-blue-50/70 border-2 border-blue-200 p-2.5 rounded-xl shadow-md space-y-1.5">
             <div className="flex items-center justify-between border-b border-blue-200 pb-1">
-              <span className="font-black text-blue-900 text-[10px] uppercase flex items-center gap-1">
+              <span className="font-black text-blue-900 text-[9px] uppercase flex items-center gap-1">
                 🔒 ZONE RÉSERVÉE AU SUPERVISEUR
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Frais</label>
+                <label className="block font-black mb-0.5 text-[8px] text-blue-900 uppercase truncate">Frais</label>
                 <input
                   type="number"
                   step="0.01"
@@ -2457,30 +2456,30 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   onChange={(e) => setFraisLivraisonSaisi(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   placeholder=""
-                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-bold text-blue-900 text-xs shadow-xs disabled:opacity-70"
+                  className="w-full bg-white border border-blue-300 rounded p-1 font-bold text-blue-900 text-[10px] shadow-xs disabled:opacity-70"
                 />
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Livreur</label>
+                <label className="block font-black mb-0.5 text-[8px] text-blue-900 uppercase truncate">Livreur</label>
                 <button
                   type="button"
                   disabled={documentEnLectureSeule}
                   onClick={() => { if (documentEnLectureSeule) return; setRechercheLivreurInput(''); setModalLivreurOuverte(true); }}
-                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-xs shadow-xs uppercase text-left flex justify-between items-center truncate disabled:opacity-70"
+                  className="w-full bg-white border border-blue-300 rounded p-1 font-extrabold text-blue-900 text-[9px] shadow-xs uppercase text-left flex justify-between items-center truncate disabled:opacity-70"
                 >
                   <span className="truncate">{livreurAssigne || ''}</span>
-                  <span className="text-slate-400 shrink-0">🔍</span>
+                  <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                 </button>
               </div>
 
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-blue-900 uppercase">Statut *</label>
+                <label className="block font-black mb-0.5 text-[8px] text-blue-900 uppercase truncate">Statut *</label>
                 <select
                   value={statutCommandeSaisi}
                   disabled={documentEnLectureSeule}
                   onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                  className="w-full bg-white border border-blue-300 rounded p-1.5 font-extrabold text-blue-900 text-[10px] shadow-xs cursor-pointer disabled:opacity-70"
+                  className="w-full bg-white border border-blue-300 rounded p-1 font-extrabold text-blue-900 text-[9px] shadow-xs cursor-pointer disabled:opacity-70"
                 >
                   <option value="EN ATTENTE">EN ATTENTE</option>
                   <option value="LIVRÉ">LIVRÉ</option>
@@ -2492,10 +2491,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           </div>
 
           {!partenaireSansStockage ? (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col space-y-2">
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col space-y-1.5">
                 <div className="flex justify-between items-center gap-1">
-                  <span className="font-black text-slate-900 uppercase text-[11px] truncate">
+                  <span className="font-black text-slate-900 uppercase text-[9.5px] truncate">
                     ARTICLE
                   </span>
                   {!documentEnLectureSeule && (
@@ -2503,23 +2502,23 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       type="button"
                       onClick={() => setModalArticleOuverte(true)}
                       disabled={!enteteValide}
-                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-2 py-1.5 rounded-md text-[10px] flex items-center justify-center gap-1 shadow-2xs transition disabled:opacity-50"
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center justify-center gap-0.5 shadow-2xs transition disabled:opacity-50 truncate"
                     >
-                      <span>🔍</span> Rechercher un article
+                      <span>🔍</span> Rechercher
                     </button>
                   )}
                 </div>
 
                 {!enteteValide ? (
-                  <div className="p-2 text-center text-amber-700 font-bold text-[10px] bg-amber-50 rounded-lg border border-amber-200">
-                    ⚠️ Remplir l'en-tête et un N° client à 9 chiffres d'abord.
+                  <div className="p-1.5 text-center text-amber-700 font-bold text-[9px] bg-amber-50 rounded-lg border border-amber-200">
+                    ⚠️ Remplir l'en-tête et client 9 chiffres.
                   </div>
                 ) : articlesFiltres.length === 0 ? (
-                  <div className="p-2 text-center text-slate-500 font-bold text-[10px] bg-slate-50 rounded-lg border border-slate-200">
-                    Aucun article disponible.
+                  <div className="p-1.5 text-center text-slate-500 font-bold text-[9px] bg-slate-50 rounded-lg border border-slate-200">
+                    Aucun article.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
+                  <div className="grid grid-cols-1 gap-1 overflow-y-auto max-h-[180px] pr-0.5">
                     {articlesFiltres.map((art) => {
                       const idArt = art.id_article;
 
@@ -2536,22 +2535,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 )}
               </div>
 
-              <div className="bg-white p-2.5 rounded-xl shadow-md flex flex-col justify-between space-y-2">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-                    <span className="font-black text-slate-900 uppercase text-[11px]">Panier</span>
+              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col justify-between space-y-1.5">
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
+                    <span className="font-black text-slate-900 uppercase text-[9.5px]">Panier</span>
                   </div>
 
                   {lignesSaisies.length === 0 ? (
-                    <div className="py-6 text-center text-slate-400 font-bold text-[10px] italic">
-                      Panier vide. Cliquez sur un article.
+                    <div className="py-4 text-center text-slate-400 font-bold text-[9px] italic">
+                      Panier vide.
                     </div>
                   ) : (
-                    <div className="space-y-1 overflow-y-auto max-h-[140px] pr-0.5">
+                    <div className="space-y-1 overflow-y-auto max-h-[120px] pr-0.5">
                       {lignesSaisies.map((l, index) => (
-                        <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1 rounded-md text-[10px]">
+                        <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1 rounded-md text-[9px]">
                           <div className="flex-1 truncate pr-1">
-                            <p className="font-black uppercase text-slate-900 truncate text-[9px]">{l.designation}</p>
+                            <p className="font-black uppercase text-slate-900 truncate text-[8.5px]">{l.designation}</p>
                           </div>
                           
                           <div className="flex items-center gap-0.5 shrink-0">
@@ -2559,25 +2558,25 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                               <button
                                 type="button"
                                 onClick={() => modifierQuantiteLigne(index, -1)}
-                                className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
+                                className="bg-slate-200 text-slate-800 font-black w-3 h-3 rounded flex items-center justify-center text-[8px]"
                               >
                                 -
                               </button>
                             )}
-                            <span className="font-black text-orange-600 w-4 text-center text-[9px]">{l.quantite}</span>
+                            <span className="font-black text-orange-600 w-3.5 text-center text-[8.5px]">{l.quantite}</span>
                             {!documentEnLectureSeule && (
                               <>
                                 <button
                                   type="button"
                                   onClick={() => modifierQuantiteLigne(index, 1)}
-                                  className="bg-slate-200 text-slate-800 font-black w-3.5 h-3.5 rounded flex items-center justify-center text-[9px]"
+                                  className="bg-slate-200 text-slate-800 font-black w-3 h-3 rounded flex items-center justify-center text-[8px]"
                                 >
                                   +
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => supprimerLignePanier(index)}
-                                  className="text-red-600 font-bold ml-0.5 text-[9px] px-0.5"
+                                  className="text-red-600 font-bold ml-0.5 text-[8px] px-0.5"
                                 >
                                   ✕
                                 </button>
@@ -2590,10 +2589,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   )}
                 </div>
 
-                <div className="space-y-1.5 pt-1.5 border-t border-slate-200">
-                  <div className="w-full bg-slate-100 px-2 py-1.5 rounded-md border border-slate-200 flex flex-col items-center justify-center text-center">
-                    <span className="font-black text-slate-900 text-[9px] uppercase">Net à payer</span>
-                    <span className="font-black text-emerald-700 text-[10px] font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                <div className="space-y-1 pt-1 border-t border-slate-200">
+                  <div className="w-full bg-slate-100 px-1.5 py-1 rounded-md border border-slate-200 flex flex-col items-center justify-center text-center">
+                    <span className="font-black text-slate-900 text-[8px] uppercase">Net à payer</span>
+                    <span className="font-black text-emerald-700 text-[9.5px] font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
                   </div>
 
                   <div className="flex items-center gap-1 w-full">
@@ -2607,7 +2606,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         setCommandeEnEdition(null);
                         setDocumentEnLectureSeule(false);
                       }}
-                      className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-1.5 px-1 rounded-md text-[9px] transition text-center disabled:opacity-50"
+                      className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-1 px-0.5 rounded text-[8.5px] transition text-center disabled:opacity-50 truncate"
                     >
                       Fermer
                     </button>
@@ -2617,7 +2616,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         type="button"
                         disabled={sauvegardeEnCours}
                         onClick={supprimerCommandeActuelle}
-                        className="bg-red-600 hover:bg-red-700 text-white font-black p-1.5 rounded-md text-[9px] transition shrink-0 disabled:opacity-50"
+                        className="bg-red-600 hover:bg-red-700 text-white font-black p-1 rounded text-[8.5px] transition shrink-0 disabled:opacity-50"
                         title="Supprimer"
                       >
                         🗑️
@@ -2629,9 +2628,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         type="button"
                         disabled={sauvegardeEnCours}
                         onClick={sauvegarderCommande}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-1 rounded-md text-[9px] transition text-center shadow-xs"
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1 px-0.5 rounded text-[8.5px] transition text-center shadow-xs truncate"
                       >
-                        {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
+                        {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
                       </button>
                     )}
                   </div>
@@ -2639,36 +2638,36 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               </div>
             </div>
           ) : (
-            <div className="bg-white p-3 rounded-xl shadow-md space-y-2.5">
-              <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs space-y-1">
+            <div className="bg-white p-2.5 rounded-xl shadow-md space-y-2">
+              <div className="bg-orange-50 border border-orange-200 p-2 rounded-lg text-[9.5px] space-y-0.5">
                 <span className="block font-black text-orange-900 uppercase">Résumé du Trajet :</span>
-                <p className="font-bold text-slate-800">
+                <p className="font-bold text-slate-800 truncate">
                   📍 Départ : <strong className="text-slate-900">{pointADepart || 'Non défini'}</strong>
                 </p>
-                <p className="font-bold text-slate-800">
+                <p className="font-bold text-slate-800 truncate">
                   🎯 Arrivée : <strong className="text-orange-600">{adresseLivraison || 'Non défini'}</strong>
                 </p>
                 {numeroClient && (
-                  <p className="font-bold text-slate-800">
+                  <p className="font-bold text-slate-800 truncate">
                     📞 Client : <strong className="text-blue-700 font-mono">{numeroClient}</strong>
                   </p>
                 )}
                 {natureColis && (
-                  <p className="font-bold text-slate-800">
+                  <p className="font-bold text-slate-800 truncate">
                     📦 Colis : <strong className="text-blue-700">{natureColis}</strong>
                   </p>
                 )}
-                <p className="font-bold text-slate-800">
+                <p className="font-bold text-slate-800 truncate">
                   🛵 Livreur : <strong className="text-blue-600 uppercase">{livreurAssigne || 'Non assigné'}</strong>
                 </p>
               </div>
 
-              <div className="w-full bg-slate-100 px-3 py-2 rounded-lg border border-slate-200 flex items-center justify-between">
-                <span className="font-black text-slate-900 text-xs uppercase">Net à payer :</span>
-                <span className="font-black text-emerald-700 text-sm font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+              <div className="w-full bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200 flex items-center justify-between text-[10px]">
+                <span className="font-black text-slate-900 uppercase">Net à payer :</span>
+                <span className="font-black text-emerald-700 font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
               </div>
 
-              <div className="flex gap-2 w-full pt-1">
+              <div className="flex gap-1 w-full pt-0.5">
                 <button
                   type="button"
                   disabled={sauvegardeEnCours}
@@ -2679,7 +2678,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     setCommandeEnEdition(null);
                     setDocumentEnLectureSeule(false);
                   }}
-                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2 px-2 rounded-lg text-xs transition text-center disabled:opacity-50"
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-1.5 px-1 rounded-lg text-[9px] transition text-center disabled:opacity-50"
                 >
                   Fermer
                 </button>
@@ -2689,10 +2688,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     type="button"
                     disabled={sauvegardeEnCours}
                     onClick={supprimerCommandeActuelle}
-                    className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs transition shadow-xs disabled:opacity-50"
+                    className="bg-red-600 hover:bg-red-700 text-white font-black px-2 py-1.5 rounded-lg text-[9px] transition shadow-xs disabled:opacity-50"
                     title="Supprimer"
                   >
-                    🗑️ Supprimer
+                    🗑️
                   </button>
                 )}
 
@@ -2701,9 +2700,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     type="button"
                     disabled={sauvegardeEnCours}
                     onClick={sauvegarderCommande}
-                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-2 px-4 rounded-lg text-xs transition shadow-xs text-center"
+                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-3 rounded-lg text-[9px] transition shadow-xs text-center truncate"
                   >
-                    {sauvegardeEnCours ? 'Enregistrement en cours...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
+                    {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
                   </button>
                 )}
               </div>
@@ -2823,10 +2822,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       )}
 
       {vueActive === 'LISTE' && (
-        <div className="space-y-3">
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-              <span className="font-black text-slate-900 uppercase text-[10px] flex items-center gap-1">
+        <div className="space-y-2">
+          <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-1">
+              <span className="font-black text-slate-900 uppercase text-[9px] flex items-center gap-1">
                 🔍 FILTRER LES COMMANDES
               </span>
               {(filtrePartenaire || filtreLivreur || filtreZone || filtreDateDebut !== dateDuJourStr || filtreDateFin !== dateDuJourStr || filtreStatut) && (
@@ -2840,85 +2839,85 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     setFiltreDateFin(dateDuJourStr);
                     setFiltreStatut('');
                   }}
-                  className="text-orange-600 hover:text-orange-700 font-bold text-[10px] underline"
+                  className="text-orange-600 hover:text-orange-700 font-bold text-[8.5px] underline"
                 >
                   Réinitialiser
                 </button>
               )}
             </div>
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-1.5">
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-3 gap-1">
                 <div>
-                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Date Début</label>
+                  <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Début</label>
                   <input
                     type="date"
                     value={filtreDateDebut}
                     onChange={(e) => setFiltreDateDebut(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px]"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Date Fin</label>
+                  <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Fin</label>
                   <input
                     type="date"
                     value={filtreDateFin}
                     onChange={(e) => setFiltreDateFin(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px]"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Partenaire</label>
+                  <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Partenaire</label>
                   <button
                     type="button"
                     onClick={() => { setRechercheFiltrePartenaireInput(''); setModalFiltrePartenaireOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] text-left flex justify-between items-center truncate"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px] text-left flex justify-between items-center truncate"
                   >
                     <span className="truncate">
                       {filtrePartenaire ? (partenaires.find(p => String(p.id) === String(filtrePartenaire))?.nom_fournisseur || partenaires.find(p => String(p.id) === String(filtrePartenaire))?.nom || 'Tous') : 'Tous'}
                     </span>
-                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-1">
                 <div>
-                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Livreur</label>
+                  <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Livreur</label>
                   <button
                     type="button"
                     onClick={() => { setRechercheFiltreLivreurInput(''); setModalFiltreLivreurOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px] uppercase text-left flex justify-between items-center truncate"
                   >
                     <span className="truncate">{filtreLivreur || 'Tous'}</span>
-                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                   </button>
                 </div>
 
                 <div>
-                  <label className="block font-black mb-0.5 text-[8px] text-slate-700 uppercase truncate">Zone / Quartier</label>
+                  <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Zone / Quartier</label>
                   <button
                     type="button"
                     onClick={() => { setRechercheFiltreZoneInput(''); setModalFiltreZoneOuverte(true); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[10px] uppercase text-left flex justify-between items-center truncate"
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-1 font-bold text-slate-900 text-[9px] uppercase text-left flex justify-between items-center truncate"
                   >
-                    <span className="truncate">{filtreZone || 'Toutes les zones'}</span>
-                    <span className="text-slate-400 shrink-0 text-[8px]">🔍</span>
+                    <span className="truncate">{filtreZone || 'Toutes zones'}</span>
+                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="block font-black mb-1 text-[8px] text-slate-700 uppercase truncate">Statut</label>
-                <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                <label className="block font-black mb-0.5 text-[7.5px] text-slate-700 uppercase truncate">Statut</label>
+                <div className="grid grid-cols-5 gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                   <button
                     type="button"
                     onClick={() => setFiltreStatut('')}
-                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                    className={`py-1 px-0.5 rounded font-extrabold text-[7.5px] uppercase transition shadow-2xs truncate text-center ${
                       filtreStatut === '' ? 'bg-slate-900 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
                     }`}
                   >
@@ -2927,16 +2926,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <button
                     type="button"
                     onClick={() => setFiltreStatut('EN ATTENTE')}
-                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                    className={`py-1 px-0.5 rounded font-extrabold text-[7.5px] uppercase transition shadow-2xs truncate text-center ${
                       filtreStatut === 'EN ATTENTE' ? 'bg-amber-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
                     }`}
                   >
-                    En attente
+                    Attente
                   </button>
                   <button
                     type="button"
                     onClick={() => setFiltreStatut('LIVRÉ')}
-                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                    className={`py-1 px-0.5 rounded font-extrabold text-[7.5px] uppercase transition shadow-2xs truncate text-center ${
                       filtreStatut === 'LIVRÉ' ? 'bg-emerald-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
                     }`}
                   >
@@ -2945,16 +2944,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <button
                     type="button"
                     onClick={() => setFiltreStatut('REPORTÉ')}
-                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                    className={`py-1 px-0.5 rounded font-extrabold text-[7.5px] uppercase transition shadow-2xs truncate text-center ${
                       filtreStatut === 'REPORTÉ' ? 'bg-blue-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
                     }`}
                   >
-                    Reporté
+                    Report
                   </button>
                   <button
                     type="button"
                     onClick={() => setFiltreStatut('ANNULÉ')}
-                    className={`py-1 px-1 rounded font-extrabold text-[8px] uppercase transition shadow-2xs truncate text-center ${
+                    className={`py-1 px-0.5 rounded font-extrabold text-[7.5px] uppercase transition shadow-2xs truncate text-center ${
                       filtreStatut === 'ANNULÉ' ? 'bg-rose-600 text-white' : 'bg-white hover:bg-slate-50 text-slate-700'
                     }`}
                   >
@@ -2965,18 +2964,18 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             </div>
           </div>
 
-          <div className="bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800 shadow-2xs flex justify-between items-center text-[10px] font-black">
+          <div className="bg-slate-900 text-white px-2 py-1.5 rounded-xl border border-slate-800 shadow-2xs flex justify-between items-center text-[9px] font-black">
             <span>Commandes affichées ({commandesAffichees.length} / {commandesFiltrees.length})</span>
           </div>
 
           {chargement && commandes.length === 0 ? (
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : commandesFiltrees.length === 0 ? (
-            <div className="p-6 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
+            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold text-[9.5px]">
               Aucune commande ne correspond aux filtres.
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {commandesAffichees.map((cmd) => {
                 const statut = cmd.statut || cmd.statut_commande || 'LIVRÉ';
                 let badgeColor = 'bg-amber-100 text-amber-800 border-amber-300';
@@ -3004,19 +3003,19 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <div
                     key={cmd.id}
                     onClick={() => ouvrirCommandePourModification(cmd)}
-                    className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1.5"
+                    className="bg-white border border-slate-200 p-2 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1"
                   >
-                    <div className="flex justify-between items-center gap-1.5">
+                    <div className="flex justify-between items-center gap-1">
                       <div className="flex items-center gap-1 min-w-0 shrink-0">
-                        <span className="font-mono font-black text-orange-600 text-[10px] shrink-0">{cmd.numero_commande}</span>
-                        <span className="text-slate-300 text-[9px]">•</span>
-                        <span className="font-extrabold text-slate-900 text-[9px] uppercase truncate max-w-[85px]">{cmd.nom_partenaire}</span>
-                        <span className="text-slate-300 text-[9px]">•</span>
-                        <span className="text-slate-600 text-[9px] font-bold whitespace-nowrap">📅 {formaterDateCourte(cmd.date_commande)}</span>
+                        <span className="font-mono font-black text-orange-600 text-[9.5px] shrink-0">{cmd.numero_commande}</span>
+                        <span className="text-slate-300 text-[8px]">•</span>
+                        <span className="font-extrabold text-slate-900 text-[8.5px] uppercase truncate max-w-[75px]">{cmd.nom_partenaire}</span>
+                        <span className="text-slate-300 text-[8px]">•</span>
+                        <span className="text-slate-600 text-[8.5px] font-bold whitespace-nowrap">{formaterDateCourte(cmd.date_commande)}</span>
                       </div>
                       
                       <div className="flex items-center gap-1 shrink-0">
-                        <span className="font-extrabold text-blue-700 uppercase text-[9px] truncate max-w-[90px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
+                        <span className="font-extrabold text-blue-700 uppercase text-[8.5px] truncate max-w-[75px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
                           🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
                         </span>
 
@@ -3031,16 +3030,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                               }
                               setMenuStatutOuvertId(menuStatutOuvertId === cmd.id ? null : cmd.id);
                             }}
-                            className={`text-[7px] font-black px-1.5 py-0.5 rounded-full border truncate whitespace-nowrap flex items-center gap-0.5 shadow-2xs cursor-pointer hover:opacity-80 transition ${badgeColor}`}
+                            className={`text-[7px] font-black px-1.5 py-0.2 rounded-full border truncate whitespace-nowrap flex items-center gap-0.5 shadow-2xs cursor-pointer hover:opacity-80 transition ${badgeColor}`}
                             title="Changer le statut"
                           >
                             <span>{statut}</span>
-                            <span className="text-[6px]">▼</span>
+                            <span className="text-[5px]">▼</span>
                           </button>
 
                           {menuStatutOuvertId === cmd.id && (
-                            <div className="absolute right-0 mt-1 w-32 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden py-1 text-[9px]">
-                              <div className="px-2 py-1 text-[8px] font-bold text-slate-400 uppercase border-b border-slate-100">
+                            <div className="absolute right-0 mt-1 w-32 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden py-1 text-[8.5px]">
+                              <div className="px-2 py-1 text-[7.5px] font-bold text-slate-400 uppercase border-b border-slate-100">
                                 Changer le statut
                               </div>
                               {['EN ATTENTE', 'LIVRÉ', 'REPORTÉ', 'ANNULÉ'].map((st) => (
@@ -3048,7 +3047,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                                   key={st}
                                   type="button"
                                   onClick={() => changerStatutRapide(cmd, st)}
-                                  className={`w-full text-left px-3 py-1.5 font-black uppercase hover:bg-slate-100 transition flex items-center justify-between ${
+                                  className={`w-full text-left px-3 py-1 font-black uppercase hover:bg-slate-100 transition flex items-center justify-between ${
                                     (statut === st || (statut === 'LIVRE' && st === 'LIVRÉ')) ? 'text-orange-600 bg-orange-50/50' : 'text-slate-700'
                                   }`}
                                 >
@@ -3062,7 +3061,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    <div className="border-t border-slate-100 pt-1.5 flex justify-between items-center gap-2 text-[10px]">
+                    <div className="border-t border-slate-100 pt-1 flex justify-between items-center gap-1.5 text-[9px]">
                       <div className="text-slate-800 font-bold truncate">
                         {cmd.point_a ? (
                           <span className="truncate">
@@ -3079,30 +3078,30 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         )}
                       </div>
 
-                      <div className="text-right shrink-0 flex items-baseline gap-1.5">
+                      <div className="text-right shrink-0 flex items-baseline gap-1">
                         {Number(cmd.frais_livraison || 0) > 0 && (
-                          <span className="font-bold text-slate-400 text-[9px] font-mono">
-                            Frais: {Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')} F
+                          <span className="font-bold text-slate-400 text-[8px] font-mono">
+                            Frais:{Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')}F
                           </span>
                         )}
-                        <span className="font-black text-emerald-700 text-[10px] font-mono">
-                          {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')} F
+                        <span className="font-black text-emerald-700 text-[9.5px] font-mono">
+                          {Number(cmd.montant_commande || 0).toLocaleString('fr-FR')}F
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center gap-2 pt-0.5 text-[9px]">
+                    <div className="flex justify-between items-center gap-1.5 pt-0.5 text-[8.5px]">
                       <div className="text-slate-600 font-medium truncate">
                         {lignesCmd.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 truncate">
+                          <div className="flex flex-wrap gap-0.5 truncate">
                             {lignesCmd.map((l, idx) => (
-                              <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1 py-0.5 rounded text-[8px]">
+                              <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1 py-0.2 rounded text-[8px] truncate max-w-[120px]">
                                 {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
                               </span>
                             ))}
                           </div>
                         ) : cmd.nature_colis ? (
-                          <span className="text-blue-700 font-bold">📦 {cmd.nature_colis}</span>
+                          <span className="text-blue-700 font-bold truncate">📦 {cmd.nature_colis}</span>
                         ) : (
                           <span className="text-slate-400 italic">Aucun article</span>
                         )}
@@ -3114,23 +3113,23 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 px-1 py-0.5 rounded text-[10px] font-black transition flex items-center gap-0.5 shadow-2xs"
+                            className="bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 px-1 py-0.2 rounded text-[8px] font-black transition flex items-center gap-0.5 shadow-2xs"
                             title={`WhatsApp ${cmd.numero_client}`}
                           >
                             <span>💬</span>
-                            <span className="text-[9px]">WhatsApp</span>
+                            <span>WA</span>
                           </a>
                           <a
                             href={`tel:${cmd.numero_client}`}
                             onClick={() => {
                               setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
                             }}
-                            className={`font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition shadow-sm text-[10px] font-black ${styleNumero} ${
+                            className={`font-mono px-1 py-0.2 rounded border flex items-center gap-0.5 transition shadow-sm text-[8.5px] font-black ${styleNumero} ${
                               estEnAttente 
                                 ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
                                 : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
                             }`}
-                            title={`Appeler le client ${cmd.numero_client}`}
+                            title={`Appeler ${cmd.numero_client}`}
                           >
                             <span>📞</span> 
                             <span className="tracking-wide">{cmd.numero_client}</span>
@@ -3143,11 +3142,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               })}
 
               {limiteCommandes < commandesFiltrees.length && (
-                <div className="text-center pt-2 pb-4">
+                <div className="text-center pt-1.5 pb-3">
                   <button
                     type="button"
                     onClick={() => setLimiteCommandes(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300"
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[9px] transition shadow-xs border border-slate-300 w-full"
                   >
                     📥 Charger 20 commandes de plus ({commandesFiltrees.length - limiteCommandes} restantes)
                   </button>
@@ -3331,15 +3330,15 @@ function ArticleItemStockCard({ art, onSelect, chargerStock }) {
   return (
     <div
       onClick={onSelect}
-      className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
+      className={`p-1.5 rounded-lg border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
         estEpuise 
           ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
           : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer'
       }`}
     >
-      <h5 className={`font-black uppercase text-[10px] truncate ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
-      <span className={`font-black text-[9px] mt-1 ${estEpuise ? 'text-rose-600' : 'text-emerald-700'}`}>
-        {estSuivi === false || estSuivi === 0 ? 'Stock : Illimité (Service)' : `Stock : ${chargementStock ? '...' : stock}`}
+      <h5 className={`font-black uppercase text-[9px] truncate ${estEpuise ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{designation}</h5>
+      <span className={`font-black text-[8px] mt-0.5 ${estEpuise ? 'text-rose-600' : 'text-emerald-700'}`}>
+        {estSuivi === false || estSuivi === 0 ? 'Stock : Illimité' : `Stock : ${chargementStock ? '...' : stock}`}
       </span>
     </div>
   );

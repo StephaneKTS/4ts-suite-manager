@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import MenuExplorer from '../dashboard/components/MenuExplorer'; // ✅ Chemin relatif corrigé
+import MenuExplorer from '../dashboard/components/MenuExplorer';
 
 export default function EspaceClientBoutique() {
   const searchParams = useSearchParams();
@@ -19,7 +19,12 @@ export default function EspaceClientBoutique() {
   const [numeroCommande, setNumeroCommande] = useState('');
 
   const [vuePanier, setVuePanier] = useState(false);
-  const [ongletActif, setOngletActif] = useState('BOUTIQUE'); // 'BOUTIQUE' ou 'EXPLORER'
+  const [ongletActif, setOngletActif] = useState('BOUTIQUE'); // 'BOUTIQUE', 'SUIVI', ou 'EXPLORER'
+
+  // Gestion du suivi des commandes client par téléphone
+  const [telephoneRecherche, setTelephoneRecherche] = useState('');
+  const [mesCommandesClient, setMesCommandesClient] = useState([]);
+  const [commandeEnCoursModification, setCommandeEnCoursModification] = useState(null);
 
   const [client, setClient] = useState({
     nom: '',
@@ -170,31 +175,108 @@ export default function EspaceClientBoutique() {
       return;
     }
 
-    const numCmd = `CMD-${Math.floor(100000 + Math.random() * 900000)}`;
-    
     try {
-      const payloadCommande = {
-        id_entreprise: entrepriseId,
-        module: 'BOUTIQUE',
-        motif_remarque: numCmd,
-        reference: `CLIENT: ${client.nom} (${client.telephone}) - Table/Info: ${client.table || 'Non spécifiée'}`,
-        details_articles: JSON.stringify(panier),
-        montant_total: totalPanier,
-        statut: 'EN_ATTENTE',
-        created_at: new Date().toISOString()
-      };
+      if (commandeEnCoursModification) {
+        const montantTotalModif = panier.reduce((acc, item) => acc + (item.prix * item.quantite), 0);
+        const { error } = await supabase
+          .from('commandes_clients_qr')
+          .update({
+            details_articles: JSON.stringify(panier),
+            montant_total: montantTotalModif,
+            numero_table: client.table || 'N/A'
+          })
+          .eq('id', commandeEnCoursModification.id)
+          .eq('statut', 'EN_ATTENTE');
 
-      const { error } = await supabase
-        .from('bons_commande_fournisseurs')
-        .insert([payloadCommande]);
+        if (error) throw error;
 
-      if (error) throw error;
+        alert('Commande modifiée avec succès !');
+        setNumeroCommande(commandeEnCoursModification.numero_commande);
+        setCommandeEnCoursModification(null);
+        setPanier([]);
+        setValide(true);
+      } else {
+        const maintenant = new Date();
+        const annee = maintenant.getFullYear();
+        const mois = String(maintenant.getMonth() + 1).padStart(2, '0');
+        const jour = String(maintenant.getDate()).padStart(2, '0');
+        const heure = String(maintenant.getHours()).padStart(2, '0');
+        const minute = String(maintenant.getMinutes()).padStart(2, '0');
+        const seconde = String(maintenant.getSeconds()).padStart(2, '0');
+        const codeUnique = Math.floor(100 + Math.random() * 900);
 
-      setNumeroCommande(numCmd);
-      setValide(true);
-      setPanier([]);
+        const nomClientClean = client.nom.trim().replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+        const numCmd = `${annee}${mois}${jour}-${heure}${minute}${seconde}-${nomClientClean}-${codeUnique}`;
+        
+        const payloadCommande = {
+          id_entreprise: entrepriseId,
+          numero_commande: numCmd,
+          nom_client: client.nom.toUpperCase(),
+          telephone_client: client.telephone,
+          numero_table: client.table || 'N/A',
+          details_articles: JSON.stringify(panier),
+          montant_total: totalPanier,
+          statut: 'EN_ATTENTE',
+          created_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+          .from('commandes_clients_qr')
+          .insert([payloadCommande]);
+
+        if (error) throw error;
+
+        setNumeroCommande(numCmd);
+        setValide(true);
+        setPanier([]);
+      }
     } catch (err) {
       alert('Erreur lors de la validation de la commande : ' + err.message);
+    }
+  };
+
+  const rechercherMesCommandes = async (e) => {
+    if (e) e.preventDefault();
+    if (!telephoneRecherche.trim()) {
+      alert('Veuillez entrer votre numéro de téléphone.');
+      return;
+    }
+    setChargement(true);
+    try {
+      const { data, error } = await supabase
+        .from('commandes_clients_qr')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('telephone_client', telephoneRecherche.trim())
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setMesCommandesClient(data || []);
+    } catch (err) {
+      console.error('Erreur recherche commandes :', err.message);
+    } finally {
+      setChargement(false);
+    }
+  };
+
+  const preparerModification = (cmd) => {
+    if (cmd.statut !== 'EN_ATTENTE') {
+      alert('Cette commande est déjà prise en charge en cuisine et ne peut plus être modifiée.');
+      return;
+    }
+    try {
+      const articlesCmd = JSON.parse(cmd.details_articles || '[]');
+      setPanier(articlesCmd);
+      setClient({
+        nom: cmd.nom_client || '',
+        telephone: cmd.telephone_client || '',
+        table: cmd.numero_table || ''
+      });
+      setCommandeEnCoursModification(cmd);
+      setOngletActif('BOUTIQUE');
+      setVuePanier(true);
+    } catch (e) {
+      alert('Erreur lors du chargement des articles de la commande.');
     }
   };
 
@@ -213,14 +295,22 @@ export default function EspaceClientBoutique() {
       <div className="w-full min-h-screen bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center">
         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-xs">✅</div>
         <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
-        <p className="text-xs text-slate-600">Votre numéro de commande est : <strong className="text-orange-600 font-mono text-sm">{numeroCommande}</strong></p>
+        <p className="text-xs text-slate-600">Votre numéro de commande est : <strong className="text-orange-600 font-mono text-xs block mt-1">{numeroCommande}</strong></p>
         <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise en cuisine pour un service sur place.</p>
-        <button
-          onClick={() => { setValide(false); setVuePanier(false); setClient({ nom: '', telephone: '', table: '' }); }}
-          className="bg-orange-600 hover:bg-orange-500 text-white font-black px-6 py-3 rounded-2xl text-xs mt-4 shadow-md transition w-full max-w-xs"
-        >
-          Commander à nouveau 🍽️
-        </button>
+        <div className="flex gap-2 w-full max-w-xs mt-4">
+          <button
+            onClick={() => { setValide(false); setVuePanier(false); setCommandeEnCoursModification(null); setClient({ nom: '', telephone: '', table: '' }); }}
+            className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
+          >
+            Commander 🍽️
+          </button>
+          <button
+            onClick={() => { setValide(false); setVuePanier(false); setOngletActif('SUIVI'); }}
+            className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
+          >
+            Suivre l'état 👁️
+          </button>
+        </div>
       </div>
     );
   }
@@ -232,12 +322,14 @@ export default function EspaceClientBoutique() {
           <div className="bg-white px-4 py-3 border-b border-slate-100 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
             <button
               type="button"
-              onClick={() => setVuePanier(false)}
+              onClick={() => { setVuePanier(false); setCommandeEnCoursModification(null); }}
               className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-3 py-2 rounded-xl text-xs transition flex items-center gap-1 shadow-2xs"
             >
               <span>← Continuer mes achats</span>
             </button>
-            <h1 className="font-black text-slate-900 uppercase text-xs">mon panier ({nombreTotalArticlesPanier})</h1>
+            <h1 className="font-black text-slate-900 uppercase text-xs">
+              {commandeEnCoursModification ? 'Modifier ma commande' : `mon panier (${nombreTotalArticlesPanier})`}
+            </h1>
           </div>
 
           <div className="max-w-md mx-auto w-full p-4 space-y-4">
@@ -302,41 +394,43 @@ export default function EspaceClientBoutique() {
                       <input
                         type="text"
                         required
-                        placeholder="EX: JEAN DUPONT"
                         value={client.nom}
                         onChange={(e) => setClient({ ...client, nom: e.target.value.toUpperCase() })}
+                        onFocus={(e) => e.target.select()}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
                       />
                     </div>
 
-                    <div>
-                      <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de téléphone *</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="EX: 690000000"
-                        value={client.telephone}
-                        onChange={(e) => setClient({ ...client, telephone: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                      />
-                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de téléphone *</label>
+                        <input
+                          type="tel"
+                          required
+                          value={client.telephone}
+                          onChange={(e) => setClient({ ...client, telephone: e.target.value })}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table / Remarque</label>
-                      <input
-                        type="text"
-                        placeholder="EX: TABLE 04 OU TERRASSE"
-                        value={client.table}
-                        onChange={(e) => setClient({ ...client, table: e.target.value.toUpperCase() })}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                      />
+                      <div>
+                        <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table / Remarque</label>
+                        <input
+                          type="text"
+                          value={client.table}
+                          onChange={(e) => setClient({ ...client, table: e.target.value.toUpperCase() })}
+                          onFocus={(e) => e.target.select()}
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                        />
+                      </div>
                     </div>
 
                     <button
                       type="submit"
                       className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition mt-3 flex items-center justify-center gap-1.5"
                     >
-                      <span>Valider la commande ({totalPanier.toLocaleString()} F)</span>
+                      <span>{commandeEnCoursModification ? 'Enregistrer les modifications' : `Valider la commande (${totalPanier.toLocaleString()} F)`}</span>
                     </button>
                   </form>
                 </div>
@@ -354,34 +448,133 @@ export default function EspaceClientBoutique() {
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
         <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
         
-        <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+        <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
             onClick={() => setOngletActif('BOUTIQUE')}
-            className={`py-2 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+            className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
               ongletActif === 'BOUTIQUE' 
                 ? 'bg-orange-600 text-white shadow-xs' 
                 : 'bg-transparent text-slate-700 hover:bg-slate-200'
             }`}
           >
-            🛍️ Commander (Menu QR)
+            🛍️ COMMANDER
+          </button>
+          <button
+            type="button"
+            onClick={() => setOngletActif('SUIVI')}
+            className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
+              ongletActif === 'SUIVI' 
+                ? 'bg-orange-600 text-white shadow-xs' 
+                : 'bg-transparent text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            📋 MES COMMANDES
           </button>
           <button
             type="button"
             onClick={() => setOngletActif('EXPLORER')}
-            className={`py-2 rounded-lg font-black text-[10px] uppercase transition shadow-2xs ${
+            className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
               ongletActif === 'EXPLORER' 
                 ? 'bg-slate-900 text-white shadow-xs' 
                 : 'bg-transparent text-slate-700 hover:bg-slate-200'
             }`}
           >
-            🧭 Menu Explorer (4TS)
+            🧭 EXPLORER
           </button>
         </div>
       </div>
 
       {ongletActif === 'EXPLORER' ? (
         <MenuExplorer entrepriseId={entrepriseId} />
+      ) : ongletActif === 'SUIVI' ? (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <h2 className="font-black text-slate-900 uppercase text-xs">Suivre mes commandes en temps réel</h2>
+            <form onSubmit={rechercherMesCommandes} className="space-y-2">
+              <div>
+                <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Votre numéro de téléphone</label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="Ex: 655597099"
+                  value={telephoneRecherche}
+                  onChange={(e) => setTelephoneRecherche(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow-md transition"
+              >
+                Rechercher mes commandes 🔍
+              </button>
+            </form>
+          </div>
+
+          <div className="space-y-3">
+            {chargement ? (
+              <p className="text-center text-slate-400 py-6 font-bold">Chargement...</p>
+            ) : mesCommandesClient.length === 0 ? (
+              <p className="text-center text-slate-400 py-6 italic font-bold">Aucune commande trouvée pour ce numéro.</p>
+            ) : (
+              mesCommandesClient.map((cmd) => {
+                let detailsArticles = [];
+                try {
+                  detailsArticles = JSON.parse(cmd.details_articles || '[]');
+                } catch (e) {}
+
+                let badgeColor = 'bg-orange-100 text-orange-800 border-orange-300';
+                if (cmd.statut === 'EN_COURS') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
+                if (cmd.statut === 'SERVI') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+
+                return (
+                  <div key={cmd.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+                    <div className="flex justify-between items-start border-b pb-2">
+                      <div>
+                        <span className="font-mono font-black text-orange-600 text-xs block">{cmd.numero_commande}</span>
+                        <span className="text-[9px] text-slate-400 font-bold">
+                          {new Date(cmd.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(cmd.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full font-black text-[9px] border uppercase ${badgeColor}`}>
+                        {cmd.statut === 'EN_ATTENTE' ? 'En attente (Modifiable)' : cmd.statut === 'EN_COURS' ? 'En cours en cuisine 🍳' : 'Servi ✅'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="font-bold text-slate-700 text-[10px]">📍 Table : <strong className="text-slate-900">{cmd.numero_table}</strong></p>
+                      <div className="divide-y divide-slate-100 max-h-24 overflow-y-auto">
+                        {detailsArticles.map((art, idx) => (
+                          <div key={idx} className="flex justify-between items-center py-1 text-[10px]">
+                            <span className="font-bold text-slate-700">{art.designation} x{art.quantite}</span>
+                            <span className="font-mono font-bold text-slate-900">{(art.prix * art.quantite).toLocaleString()} F</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t flex justify-between items-center">
+                      <span className="font-black text-slate-900 text-xs">Total : <strong className="text-emerald-600">{Number(cmd.montant_total).toLocaleString()} FCFA</strong></span>
+                      
+                      {cmd.statut === 'EN_ATTENTE' ? (
+                        <button
+                          type="button"
+                          onClick={() => preparerModification(cmd)}
+                          className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
+                        >
+                          Modifier ✏️
+                        </button>
+                      ) : (
+                        <span className="text-[9px] font-bold text-slate-400 italic">🔒 Verrouillé (En cuisine/Servi)</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       ) : (
         <div className="space-y-4">
           {panier.length > 0 && (
