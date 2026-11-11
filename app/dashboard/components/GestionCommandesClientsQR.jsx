@@ -9,49 +9,62 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [filtreStatut, setFiltreStatut] = useState('TOUT');
   const dernierNombreCommandes = useRef(null);
 
-  // Fonction pour faire vibrer le téléphone (patte de vibration pour alertes)
+  // Vibration forte et rythmée
   const declencherVibration = () => {
     if (typeof window !== 'undefined' && navigator.vibrate) {
       try {
-        // Vibreur : 3 impulsions (vibre 300ms, pause 150ms, vibre 300ms, pause 150ms, vibre 500ms)
-        navigator.vibrate([300, 150, 300, 150, 500]);
+        navigator.vibrate([500, 200, 500, 200, 800, 200, 800]);
       } catch (e) {
-        console.log("Vibration non supportée ou bloquée");
+        console.log("Vibration non supportée");
       }
     }
   };
 
-  // Fonction pour l'alerte vocale (Text-to-Speech)
+  // Annonce vocale renforcée et débloquée
   const annoncervocalement = (texte) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
-        window.speechSynthesis.cancel(); // Arrêter toute parole précédente
+        window.speechSynthesis.resume(); // Débloque l'audio si mis en pause par le navigateur
+        window.speechSynthesis.cancel(); // Annule la file d'attente précédente
+        
         const utterance = new SpeechSynthesisUtterance(texte);
         utterance.lang = 'fr-FR';
-        utterance.rate = 1.0; // Vitesse normale
-        utterance.pitch = 1.0; // Ton normal
+        utterance.rate = 0.95; // Vitesse claire
+        utterance.pitch = 1.1;  // Ton un peu plus aigu pour attirer l'attention
+        utterance.volume = 1.0; // Volume au maximum
+        
         window.speechSynthesis.speak(utterance);
       } catch (e) {
-        console.log("Synthèse vocale non supportée");
+        console.log("Erreur synthèse vocale :", e);
       }
     }
   };
 
-  const jouerSonAlerte = (frequence = 587.33) => {
+  // Son d'alarme beaucoup plus fort, long et percutant (Séquence de bips répétés)
+  const jouerSonAlerteFort = () => {
     try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(frequence, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.8);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.8);
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContext();
+      
+      // Séquence de 3 bips puissants répétés
+      [0, 0.4, 0.8, 1.2].forEach((delay) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sawtooth'; // Son plus fort et percutant qu'un simple 'sine'
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay); // Note aiguë (La5)
+        
+        gain.gain.setValueAtTime(0.7, audioCtx.currentTime + delay); // Volume élevé (0.7)
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.3);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start(audioCtx.currentTime + delay);
+        osc.stop(audioCtx.currentTime + delay + 0.3);
+      });
     } catch (e) {
-      console.log("Audio non pris en charge");
+      console.log("Audio non pris en charge ou bloqué :", e);
     }
   };
 
@@ -69,14 +82,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       
       if (verifierNouveau && dernierNombreCommandes.current !== null) {
         if (nouvellesCommandes.length > dernierNombreCommandes.current) {
-          // Nouvelle commande détectée !
-          jouerSonAlerte(587.33);
+          // Nouvelle commande détectée : Alerte forte, vibrations et voix
+          jouerSonAlerteFort();
           declencherVibration();
           
-          // Récupérer la dernière commande pour l'annonce vocale personnalisée
           const derniereCmd = nouvellesCommandes[0];
           if (derniereCmd) {
-            const messageVocal = `Nouvelle commande reçue ! Client ${derniereCmd.nom_client || 'Anonyme'}, table ${derniereCmd.numero_table || 'non spécifiée'}.`;
+            const messageVocal = `Attention ! Nouvelle commande reçue. Client ${derniereCmd.nom_client || 'Anonyme'}, table ${derniereCmd.numero_table || 'non spécifiée'}.`;
             annoncervocalement(messageVocal);
           }
         }
@@ -100,14 +112,14 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         chargerCommandesQR(true);
       }, 6000);
 
-      // Alerte sonore et vocale de rappel toutes les 5 minutes (300 000 ms) pour les commandes SERVIE mais NON_PAYE
+      // Rappel toutes les 5 minutes pour les commandes servies mais non payées
       const intervalRappelPaiement = setInterval(() => {
         setCommandes(prevCommandes => {
           const impayesServis = prevCommandes.some(c => c.statut === 'SERVI' && c.statut_paiement !== 'PAYE');
           if (impayesServis) {
-            jouerSonAlerte(440);
+            jouerSonAlerteFort();
             declencherVibration();
-            annoncervocalement("Alerte ! Une commande servie n'a pas encore été payée.");
+            annoncervocalement("Alerte impayé ! Une commande servie n'a pas encore été réglée.");
           }
           return prevCommandes;
         });
@@ -170,13 +182,18 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse inline-block"></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">Suivi en direct, Alertes vocales & Vibrations</p>
+            <p className="text-[9px] text-slate-500 font-bold">Suivi en direct & Alertes Fortes</p>
           </div>
           <button
-            onClick={() => chargerCommandesQR(false)}
+            onClick={() => {
+              // Permet aussi de débloquer l'audio d'un simple clic si nécessaire
+              jouerSonAlerteFort();
+              annoncervocalement("Système audio activé.");
+              chargerCommandesQR(false);
+            }}
             className="bg-orange-100 hover:bg-orange-200 text-orange-800 font-bold px-2 py-1 rounded-lg text-[9px] transition"
           >
-            🔄 Actualiser
+            🔊 Tester / Actualiser
           </button>
         </div>
 
@@ -252,7 +269,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                       </span>
                       <button
                         type="button"
-                        onClick={() => basculerPaiement(cmd.id, cmd.statttut_paiement || cmd.statut_paiement)}
+                        onClick={() => basculerPaiement(cmd.id, cmd.statut_paiement)}
                         className={`px-2 py-0.5 rounded-md font-black text-[8px] uppercase border transition ${
                           estPaye 
                             ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' 
