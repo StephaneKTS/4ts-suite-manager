@@ -461,7 +461,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
-  // --- GESTION PERSISTANTE DES ANNONCES (LOCALSTORAGE) ---
+  // --- GESTION PERSISTANTE DES ANNONCES (SUPABASE & LOCALSTORAGE) ---
   const [bannières, setBannières] = useState([
     {
       id: 1,
@@ -481,45 +481,30 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
       badge: 'RÉSEAUX SOCIAUX',
       contientReseaux: true,
       modifiable: false
-    },
-    {
-      id: 3,
-      type: 'ANNONCE',
-      titre: '📦 ISMA LOGISTIQUE & SERVICES',
-      description: 'Besoin d’expédier vos colis et de gérer vos tournées en toute sérénité à Yaoundé et Douala ? Contactez-nous !',
-      couleur: 'from-red-900 to-slate-950',
-      badge: 'ANNONCE PARTENAIRE',
-      whatsapp: '+237600000000',
-      facebook: 'https://www.facebook.com',
-      modifiable: false
     }
   ]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const annoncesSauvegardées = localStorage.getItem('4ts_bannieres_annonces_persistantes');
-      if (annoncesSauvegardées) {
-        try {
-          const parsed = JSON.parse(annoncesSauvegardées);
-          const maintenant = Date.now();
-          const valides = parsed.filter(item => !item.expireAt || item.expireAt > maintenant);
-          setBannières(valides);
-        } catch (e) {
-          console.error("Erreur chargement annonces", e);
+    const chargerBannièresSupabase = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('bannieres')
+          .select('*')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          setBannières(data);
         }
+      } catch (err) {
+        console.error("Erreur chargement Supabase", err);
       }
-    }
+    };
+    chargerBannièresSupabase();
   }, []);
 
-  const sauvegarderBannièresStorage = (nouvellesBannières) => {
-    setBannières(nouvellesBannières);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('4ts_bannieres_annonces_persistantes', JSON.stringify(nouvellesBannières));
-    }
-  };
-
   useEffect(() => {
-    if (estEnPause) return;
+    if (estEnPause || bannières.length <= 1) return;
     const interval = setInterval(() => {
       setBanniereIndex((prev) => (prev + 1) % bannières.length);
     }, 4000);
@@ -583,7 +568,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     setModalAnnonceOuvert(true);
   };
 
-  const soumettreAnnonce = (e) => {
+  const soumettreAnnonce = async (e) => {
     e.preventDefault();
     if (!titreAnnonce || !descAnnonce) {
       alert('Veuillez remplir au moins le titre et la description de l’annonce.');
@@ -593,49 +578,30 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     const expirationMS = parseInt(dureeHeures) * 3600 * 1000;
     const expireAt = Date.now() + expirationMS;
 
-    if (annonceIdEnCoursDeModif) {
-      const misesAJour = bannières.map((item) =>
-        item.id === annonceIdEnCoursDeModif
-          ? {
-              ...item,
-              titre: titreAnnonce,
-              description: descAnnonce,
-              whatsapp: whatsappAnnonce,
-              facebook: facebookAnnonce,
-              tiktok: tiktokAnnonce,
-              youtube: youtubeAnnonce,
-              instagram: instagramAnnonce,
-              visuel: visuelPreview,
-              expireAt
-            }
-          : item
-      );
-      sauvegarderBannièresStorage(misesAJour);
-      alert(`✏️ Annonce modifiée et enregistrée avec succès !`);
-    } else {
-      const nouvelleBanniere = {
-        id: Date.now(),
+    try {
+      const nouvelleAnnonceDB = {
         type: 'ANNONCE_PERSO',
         titre: titreAnnonce,
         description: descAnnonce,
+        badge: 'ANNONCE PERSONNELLE',
+        couleur: 'from-amber-950 via-slate-900 to-red-950',
+        visuel: visuelPreview,
         whatsapp: whatsappAnnonce,
         facebook: facebookAnnonce,
-        tiktok: tiktokAnnonce,
-        youtube: youtubeAnnonce,
-        instagram: instagramAnnonce,
-        couleur: 'from-amber-950 via-slate-900 to-red-950',
-        badge: 'ANNONCE PERSONNELLE',
-        visuel: visuelPreview,
-        modifiable: true,
-        expireAt
+        expire_at: expireAt,
+        is_active: true
       };
 
-      sauvegarderBannièresStorage([nouvelleBanniere, ...bannières]);
-      setBanniereIndex(0);
-      alert(`✅ Annonce créée et diffusée pour une durée de ${dureeHeures}h !`);
-    }
+      const { error } = await supabase.from('bannieres').insert([nouvelleAnnonceDB]);
+      if (error) throw error;
 
-    setModalAnnonceOuvert(false);
+      alert(`✅ Annonce créée et diffusée en direct pour le grand public !`);
+      setModalAnnonceOuvert(false);
+      window.location.reload();
+    } catch (err) {
+      console.error("Erreur enregistrement annonce", err);
+      alert("Erreur lors de l'enregistrement de l'annonce dans Supabase.");
+    }
   };
 
   const modulesFormation = [
@@ -682,100 +648,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   return (
     <div className="space-y-4 font-sans text-xs pb-16">
       
-      {/* ================= 1. BANNIÈRE DÉFILANTE PRINCIPALE ================= */}
-      <div 
-        onMouseEnter={() => setEstEnPause(true)}
-        onMouseLeave={() => setEstEnPause(false)}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleTouchStart}
-        onMouseUp={handleTouchEnd}
-        className="relative overflow-hidden rounded-2xl shadow-xl border border-slate-800 bg-slate-950 text-white p-6 transition-all duration-700 select-none cursor-grab active:cursor-grabbing"
-      >
-        <div className={`absolute inset-0 bg-gradient-to-r ${banniereActuelle.couleur} opacity-90 transition-all duration-700`}></div>
-        
-        {banniereActuelle.visuel && (
-          <div className="absolute inset-0 z-0 opacity-30">
-            <img src={banniereActuelle.visuel} alt="Visuel Annonce" className="w-full h-full object-cover" />
-          </div>
-        )}
-
-        <div className="relative z-10 flex flex-col justify-between min-h-[160px] space-y-3">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <span className="bg-red-600 text-white text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-md">
-                {banniereActuelle.badge} {estEnPause && '⏸️ (Pause)'}
-              </span>
-
-              {estSuperAdmin && banniereActuelle.modifiable && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); ouvrirModalModification(banniereActuelle); }}
-                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-2.5 py-1 rounded-full text-[9px] uppercase shadow-md transition flex items-center gap-1"
-                >
-                  <span>✏️</span> Modifier
-                </button>
-              )}
-            </div>
-
-            <div className="flex gap-1.5">
-              {bannières.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={(e) => { e.stopPropagation(); setBanniereIndex(idx); }}
-                  className={`h-2 rounded-full transition-all duration-300 ${idx === banniereIndex ? 'w-6 bg-white' : 'w-2 bg-white/40'}`}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <h2 className="text-sm sm:text-base font-black uppercase tracking-wide drop-shadow-md">
-              {banniereActuelle.titre}
-            </h2>
-            <p className="text-[11px] text-slate-200 font-medium max-w-2xl leading-relaxed">
-              {banniereActuelle.description}
-            </p>
-
-            {(banniereActuelle.whatsapp || banniereActuelle.facebook || banniereActuelle.tiktok || banniereActuelle.youtube || banniereActuelle.instagram || banniereActuelle.contientReseaux) && (
-              <div className="pt-2 flex items-center gap-2 flex-wrap">
-                <a
-                  href={`https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition"
-                >
-                  <span>💬</span> WhatsApp
-                </a>
-                <a
-                  href={liensReseauxSociaux.facebook}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-xl font-black text-[9.5px] shadow-lg transition"
-                >
-                  <span>f</span> Facebook
-                </a>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-2 flex items-center justify-between flex-wrap gap-2">
-            <span className="text-[9px] text-slate-300 font-bold italic">💡 Glissez ou touchez pour naviguer, relâchez pour reprendre.</span>
-            {estSuperAdmin && (
-              <button
-                onClick={(e) => { e.stopPropagation(); ouvrirModalCreation(); }}
-                className="bg-white hover:bg-slate-100 text-slate-950 font-black px-4 py-1.5 rounded-xl text-[10px] uppercase shadow-lg transition"
-              >
-                ✨ Diffuser mon annonce
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ================= 2. BANNIÈRE "BESOIN D'AIDE ? NOUS CONTACTER" (100% VISIBLE POUR TOUS, OPTIMISÉE MOBILE) ================= */}
+      {/* ================= 1. BANNIÈRE "BESOIN D'AIDE ? NOUS CONTACTER" (POSITIONNÉE EN PREMIÈRE POSITION POUR ÊTRE 100% VISIBLE PARTOUT) ================= */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-xl shrink-0 shadow-inner">
@@ -817,6 +690,76 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             <span className="text-sm">🤖</span>
             <span>Chatbot ✨</span>
           </button>
+        </div>
+      </div>
+
+      {/* ================= 2. BANNIÈRE DÉFILANTE PRINCIPALE (CONNECTÉE À SUPABASE) ================= */}
+      <div 
+        onMouseEnter={() => setEstEnPause(true)}
+        onMouseLeave={() => setEstEnPause(false)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleTouchStart}
+        onMouseUp={handleTouchEnd}
+        className="relative overflow-hidden rounded-2xl shadow-xl border border-slate-800 bg-slate-950 text-white p-6 transition-all duration-700 select-none cursor-grab active:cursor-grabbing"
+      >
+        <div className={`absolute inset-0 bg-gradient-to-r ${banniereActuelle?.couleur || 'from-slate-900 via-red-950 to-slate-950'} opacity-90 transition-all duration-700`}></div>
+        
+        {banniereActuelle?.visuel && (
+          <div className="absolute inset-0 z-0 opacity-30">
+            <img src={banniereActuelle.visuel} alt="Visuel Annonce" className="w-full h-full object-cover" />
+          </div>
+        )}
+
+        <div className="relative z-10 flex flex-col justify-between min-h-[160px] space-y-3">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <span className="bg-red-600 text-white text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-md">
+                {banniereActuelle?.badge || 'INFO'} {estEnPause && '⏸️'}
+              </span>
+
+              {estSuperAdmin && banniereActuelle?.modifiable && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); ouvrirModalModification(banniereActuelle); }}
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-2.5 py-1 rounded-full text-[9px] uppercase shadow-md transition flex items-center gap-1"
+                >
+                  <span>✏️</span> Modifier
+                </button>
+              )}
+            </div>
+
+            <div className="flex gap-1.5">
+              {bannières.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => { e.stopPropagation(); setBanniereIndex(idx); }}
+                  className={`h-2 rounded-full transition-all duration-300 ${idx === banniereIndex ? 'w-6 bg-white' : 'w-2 bg-white/40'}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <h2 className="text-sm sm:text-base font-black uppercase tracking-wide drop-shadow-md">
+              {banniereActuelle?.titre}
+            </h2>
+            <p className="text-[11px] text-slate-200 font-medium max-w-2xl leading-relaxed">
+              {banniereActuelle?.description}
+            </p>
+          </div>
+
+          <div className="pt-2 flex items-center justify-between flex-wrap gap-2">
+            <span className="text-[9px] text-slate-300 font-bold italic">💡 Glissez ou touchez pour naviguer, relâchez pour reprendre.</span>
+            {estSuperAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); ouvrirModalCreation(); }}
+                className="bg-white hover:bg-slate-100 text-slate-950 font-black px-4 py-1.5 rounded-xl text-[10px] uppercase shadow-lg transition"
+              >
+                ✨ Diffuser mon annonce
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
