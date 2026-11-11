@@ -633,7 +633,7 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* 3. BARRE DE NAVIGATION INFÉRIEURE (FIGÉE AVEC LE MENU EXPLORER AJOUTÉ) */}
+      {/* 3. BARRE DE NAVIGATION INFÉRIEURE (ORDRE : Accueil -> Comptabilité -> Explorer -> Mon Profil) */}
       <div className={`bottom-0 left-0 right-0 z-30 ${bgHeaderNav} border-t py-2.5 px-6 flex justify-around items-center shadow-2xl shrink-0 w-full`}>
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
@@ -647,19 +647,6 @@ function DashboardContent() {
           <span className="text-[10px]">Accueil</span>
         </button>
 
-        {/* 🧭 Bouton EXPLORER ajouté ici */}
-        <button
-          onClick={() => { setOngletNavigation('explorer'); setModuleActif(null); }}
-          className={`flex flex-col items-center space-y-0.5 transition ${
-            ongletNavigation === 'explorer' && !moduleActif 
-              ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
-              : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
-          }`}
-        >
-          <span className="text-lg">🧭</span>
-          <span className="text-[10px]">Explorer</span>
-        </button>
-
         <button
           onClick={() => { setOngletNavigation('rapports'); setModuleActif(null); }}
           className={`flex flex-col items-center space-y-0.5 transition ${
@@ -670,6 +657,19 @@ function DashboardContent() {
         >
           <span className="text-lg">📊</span>
           <span className="text-[10px]">Comptabilité</span>
+        </button>
+
+        {/* 🧭 Bouton EXPLORER positionné entre Comptabilité et Mon Profil */}
+        <button
+          onClick={() => { setOngletNavigation('explorer'); setModuleActif(null); }}
+          className={`flex flex-col items-center space-y-0.5 transition ${
+            ongletNavigation === 'explorer' && !moduleActif 
+              ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
+              : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
+          }`}
+        >
+          <span className="text-lg">🧭</span>
+          <span className="text-[10px]">Explorer</span>
         </button>
 
         <button

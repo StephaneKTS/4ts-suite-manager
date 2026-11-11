@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
@@ -8,14 +8,19 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [moduleSelectionne, setModuleSelectionne] = useState(null);
   const [modalAnnonceOuvert, setModalAnnonceOuvert] = useState(false);
   const [modalCguOuvert, setModalCguOuvert] = useState(false);
+  const [estEnPause, setEstEnPause] = useState(false);
   
   // États pour le formulaire de création d'annonce payante
   const [titreAnnonce, setTitreAnnonce] = useState('');
   const [descAnnonce, setDescAnnonce] = useState('');
   const [contactAnnonce, setContactAnnonce] = useState('');
-  const [forfaitAnnonce, setForfaitAnnonce] = useState('5000'); // en XAF par exemple
+  const [forfaitAnnonce, setForfaitAnnonce] = useState('5000'); // en XAF
 
-  // Liste des bannières défilantes (Annonces entreprises & Publicités écosystème 4TS)
+  // Gestion du swipe tactile
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+
+  // Liste des bannières défilantes
   const bannières = [
     {
       id: 1,
@@ -43,13 +48,38 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     }
   ];
 
-  // Effet pour faire défiler automatiquement les bannières toutes les 5 secondes
+  // Défilement automatique ralenti (9 secondes) et mis en pause si l'utilisateur touche la bannière
   useEffect(() => {
+    if (estEnPause) return;
     const interval = setInterval(() => {
       setBanniereIndex((prev) => (prev + 1) % bannières.length);
-    }, 5000);
+    }, 9000);
     return () => clearInterval(interval);
-  }, [bannières.length]);
+  }, [bannières.length, estEnPause]);
+
+  // Fonctions de gestion du Swipe Tactile / Souris
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches ? e.touches[0].clientX : e.clientX;
+    setEstEnPause(true);
+  };
+
+  const handleTouchMove = (e) => {
+    touchEndX.current = e.touches ? e.touches[0].clientX : e.clientX;
+  };
+
+  const handleTouchEnd = () => {
+    const distance = touchStartX.current - touchEndX.current;
+    const seuilSwipe = 50; // Seuil minimal de glissement en pixels
+
+    if (distance > seuilSwipe) {
+      // Glissement vers la gauche -> Bannière suivante
+      setBanniereIndex((prev) => (prev + 1) % bannières.length);
+    } else if (distance < -seuilSwipe) {
+      // Glissement vers la droite -> Bannière précédente
+      setBanniereIndex((prev) => (prev - 1 + bannières.length) % bannières.length);
+    }
+    setEstEnPause(false);
+  };
 
   // Données des tutoriels / formation par module
   const modulesFormation = [
@@ -85,7 +115,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
       alert('Veuillez remplir tous les champs obligatoires de l’annonce.');
       return;
     }
-    // Simulation du processus de paiement en ligne / validation
     alert(`🎉 Annonce enregistrée avec succès !\nMontant à régler : ${forfaitAnnonce} XAF.\nVotre annonce sera diffusée dans le bandeau publicitaire après validation du paiement.`);
     setTitreAnnonce('');
     setDescAnnonce('');
@@ -96,20 +125,30 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   return (
     <div className="space-y-4 font-sans text-xs pb-10">
       
-      {/* ================= 1. BANNIÈRE DÉFILANTE ANIMÉE (Le cœur visuel) ================= */}
-      <div className="relative overflow-hidden rounded-2xl shadow-xl border border-slate-800 bg-slate-950 text-white p-6 transition-all duration-700">
+      {/* ================= 1. BANNIÈRE DÉFILANTE (AVEC PAUSE AU TOUCHER & SWIPE) ================= */}
+      <div 
+        onMouseEnter={() => setEstEnPause(true)}
+        onMouseLeave={() => setEstEnPause(false)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleTouchStart}
+        onMouseUp={handleTouchEnd}
+        className="relative overflow-hidden rounded-2xl shadow-xl border border-slate-800 bg-slate-950 text-white p-6 transition-all duration-700 select-none cursor-grab active:cursor-grabbing"
+        title="Maintenez ou touchez pour faire une pause, glissez pour changer de bannière"
+      >
         <div className={`absolute inset-0 bg-gradient-to-r ${bannières[banniereIndex].couleur} opacity-90 transition-all duration-700`}></div>
         
         <div className="relative z-10 flex flex-col justify-between min-h-[140px] space-y-3">
           <div className="flex justify-between items-center">
             <span className="bg-red-600 text-white text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-md">
-              {bannières[banniereIndex].badge}
+              {bannières[banniereIndex].badge} {estEnPause && '⏸️ (Pause)'}
             </span>
             <div className="flex gap-1.5">
               {bannières.map((_, idx) => (
                 <button
                   key={idx}
-                  onClick={() => setBanniereIndex(idx)}
+                  onClick={(e) => { e.stopPropagation(); setBanniereIndex(idx); }}
                   className={`h-2 rounded-full transition-all duration-300 ${idx === banniereIndex ? 'w-6 bg-white' : 'w-2 bg-white/40'}`}
                 />
               ))}
@@ -126,9 +165,9 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
           </div>
 
           <div className="pt-2 flex items-center justify-between flex-wrap gap-2">
-            <span className="text-[9px] text-slate-300 font-bold italic">💡 Astuce : Publiez votre propre annonce d’entreprise ici !</span>
+            <span className="text-[9px] text-slate-300 font-bold italic">💡 Astuce : Touchez ou glissez pour naviguer, relâchez pour reprendre.</span>
             <button
-              onClick={() => setModalAnnonceOuvert(true)}
+              onClick={(e) => { e.stopPropagation(); setModalAnnonceOuvert(true); }}
               className="bg-white hover:bg-slate-100 text-slate-950 font-black px-4 py-1.5 rounded-xl text-[10px] uppercase shadow-lg transition transform hover:scale-105"
             >
               ✨ Diffuser mon annonce (Payant)
@@ -137,7 +176,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* ================= 2. SECTION 4TS ACADEMY (Réseaux Sociaux & Vidéos) ================= */}
+      {/* ================= 2. SECTION 4TS ACADEMY ================= */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <div className="flex items-center gap-2">
@@ -150,7 +189,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Facebook */}
           <a
             href="https://www.facebook.com"
             target="_blank"
@@ -166,7 +204,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             </div>
           </a>
 
-          {/* TikTok */}
           <a
             href="https://www.tiktok.com"
             target="_blank"
@@ -182,7 +219,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             </div>
           </a>
 
-          {/* YouTube */}
           <a
             href="https://www.youtube.com"
             target="_blank"
@@ -251,7 +287,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </button>
       </div>
 
-      {/* ================= MODALE : GUIDE TEXTUEL DU MODULE SÉLECTIONNÉ ================= */}
+      {/* ================= MODALE : GUIDE TEXTUEL DU MODULE ================= */}
       {moduleSelectionne && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200">
@@ -392,7 +428,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* ================= MODALE : CONDITIONS GÉNÉRALES D'UTILISATION (CGU) ================= */}
+      {/* ================= MODALE : CGU ================= */}
       {modalCguOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in duration-200 max-h-[85vh] flex flex-col">
@@ -410,16 +446,16 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
 
             <div className="space-y-3 text-[10px] text-slate-700 overflow-y-auto pr-2 leading-relaxed font-medium">
               <h5 className="font-black text-slate-900 uppercase">1. Objet de l’écosystème 4TS Suite Manager</h5>
-              <p>4TS Suite Manager est une solution logicielle modulaire conçue pour la gestion commerciale, la comptabilité, le suivi des stocks, la caisse boutique et la gestion des flottes de livraison. Son utilisation implique le respect strict des présentes conditions.</p>
+              <p>4TS Suite Manager est une solution logicielle modulaire conçue pour la gestion commerciale, la comptabilité, le suivi des stocks, la caisse boutique et la gestion des flottes de livraison.</p>
 
               <h5 className="font-black text-slate-900 uppercase">2. Sécurité et Confidentialité des Données</h5>
-              <p>Chaque entreprise abonnée est responsable de la confidentialité de ses accès administrateur et opérateurs. Les données saisies (articles, mouvements, clients) sont stockées de manière sécurisée et ne sont en aucun cas revendues à des tiers.</p>
+              <p>Chaque entreprise abonnée est responsable de la confidentialité de ses accès administrateur et opérateurs.</p>
 
               <h5 className="font-black text-slate-900 uppercase">3. Annonces et Publicités</h5>
-              <p>Les annonces diffusées dans le menu Explorer par des entreprises tierces sont soumises à validation préalable et au paiement en ligne des forfaits correspondants. 4TS Suite Manager se réserve le droit de supprimer toute annonce non conforme aux bonnes mœurs ou aux lois en vigueur.</p>
+              <p>Les annonces diffusées dans le menu Explorer par des entreprises tierces sont soumises à validation préalable et au paiement en ligne des forfaits correspondants.</p>
 
               <h5 className="font-black text-slate-900 uppercase">4. Propriété Intellectuelle</h5>
-              <p>L’ensemble des interfaces, codes sources, graphismes et contenus pédagogiques de la 4TS Academy sont protégés par les lois sur la propriété intellectuelle. Toute reproduction non autorisée est strictement interdite.</p>
+              <p>L’ensemble des interfaces, codes sources et contenus pédagogiques de la 4TS Academy sont protégés par les lois sur la propriété intellectuelle.</p>
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex justify-end">
