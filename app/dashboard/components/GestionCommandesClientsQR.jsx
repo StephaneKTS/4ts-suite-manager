@@ -12,7 +12,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [audioActive, setAudioActive] = useState(true);
   const dernierNombreCommandes = useRef(null);
 
-  // File d'attente audio pour éviter les superpositions
+  // File d'attente audio pour éviter les superpositions et respecter l'ordre exact
   const fileDAbsolueAudio = useRef([]);
   const enTrainDeJouerAudio = useRef(false);
 
@@ -23,14 +23,70 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   }, []);
 
-  // Fonction principale qui gère la lecture séquentielle de la file d'attente
+  // Utilitaire pour convertir la clé VAPID au format Uint8Array requis par le navigateur
+  const urlBase64ToUint8Array = (base64String) => {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  // Fonction pour activer les notifications Push avec gestion détaillée des erreurs
+  const sAbonnerAuxNotifications = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert("Les notifications Push ne sont pas supportées par ce navigateur.");
+      return;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        alert("Permission de notification refusée.");
+        return;
+      }
+
+      // Clé VAPID publique de test
+      const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'; 
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+      });
+
+      const subJson = subscription.toJSON();
+
+      const { error } = await supabase
+        .from('push_subscriptions')
+        .upsert({
+          id_entreprise: entrepriseId,
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys?.p256dh || '',
+          auth: subJson.keys?.auth || ''
+        }, { onConflict: 'endpoint' });
+
+      if (error) throw error;
+      alert("Notifications push activées avec succès ! Ce téléphone pourra recevoir des alertes en veille.");
+    } catch (err) {
+      console.error("Erreur détaillée push :", err);
+      alert("Erreur Push : " + (err.message || err.name || "Erreur inconnue (Vérifiez si vous êtes en HTTPS ou localhost)"));
+    }
+  };
+
+  // Gestion de la file d'attente séquentielle
   const traiterFileDAbsolue = async () => {
     if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActive) {
       return;
     }
 
     enTrainDeJouerAudio.current = true;
-    const tacheCourante = fileDAbsolueAudio.current.shift(); // Récupère la première tâche
+    const tacheCourante = fileDAbsolueAudio.current.shift();
 
     try {
       if (tacheCourante.type === 'ALERTE_SONORE') {
@@ -42,21 +98,18 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       console.log("Erreur lecture audio :", e);
     } finally {
       enTrainDeJouerAudio.current = false;
-      // Passer à l'élément suivant dans la file s'il y en a
       if (fileDAbsolueAudio.current.length > 0) {
-        setTimeout(traiterFileDAbsolue, 300); // Petite pause de 300ms entre les sons
+        setTimeout(traiterFileDAbsolue, 300);
       }
     }
   };
 
-  // Ajouter une alerte ou une voix dans la file d'attente
   const ajouterFichierAudio = (type, texte = '') => {
     if (!audioActive) return;
     fileDAbsolueAudio.current.push({ type, texte });
     traiterFileDAbsolue();
   };
 
-  // Exécution physique du son d'alarme (jusqu'à sa fin)
   const executerSonFort = () => {
     return new Promise((resolve) => {
       try {
@@ -67,7 +120,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           audioCtx.resume();
         }
         
-        const dureeTotaleMs = 1600; // Durée totale des bips (environ 1.6 seconde)
+        const dureeTotaleMs = 1600;
         [0, 0.4, 0.8, 1.2].forEach((delay) => {
           const osc = audioCtx.createOscillator();
           const gain = audioCtx.createGain();
@@ -87,13 +140,11 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
         setTimeout(resolve, dureeTotaleMs);
       } catch (e) {
-        console.log("Erreur son :", e);
         resolve();
       }
     });
   };
 
-  // Exécution physique de la voix (attend que la parole soit finie)
   const executerVoix = (texte) => {
     return new Promise((resolve) => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -107,12 +158,11 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
           
-          utterance.onend = () => resolve(); // Libère la file quand la voix a fini de parler
+          utterance.onend = () => resolve();
           utterance.onerror = () => resolve();
 
           window.speechSynthesis.speak(utterance);
         } catch (e) {
-          console.log("Erreur voix :", e);
           resolve();
         }
       } else {
@@ -127,9 +177,9 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     localStorage.setItem('4ts_audio_active', nouvelEtat);
 
     if (nouvelEtat) {
-      fileDAbsolueAudio.current = []; // Vider la file en cas de réactivation
-      ajouterFichierAudio('ALERTE_SONORE');
-      ajouterFichierAudio('ANNONCE_VOCALE', "Système audio et vocal activé.");
+      fileDAbsolueAudio.current = [];
+      await executerSonFort();
+      executerVoix("Système audio et vocal activé.");
     } else {
       fileDAbsolueAudio.current = [];
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -164,7 +214,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           if (audioActive) {
             declencherVibration();
             
-            // S'il y a plusieurs commandes arrivées en même temps, on les enfile proprement une par une
             const nbNouvelles = nouvellesCommandes.length - dernierNombreCommandes.current;
             const commandesAjoutees = nouvellesCommandes.slice(nouvellesCommandes.length - nbNouvelles);
 
@@ -280,19 +329,29 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               <span className={`w-2 h-2 rounded-full ${audioActive ? 'bg-emerald-600 animate-pulse' : 'bg-red-500'} inline-block`}></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">File d'attente audio intelligente & Suivi instantané</p>
+            <p className="text-[9px] text-slate-500 font-bold">File d'attente audio intelligente & Push</p>
           </div>
           
-          <button
-            onClick={toggleAudio}
-            className={`font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs flex items-center gap-1 ${
-              audioActive 
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
-                : 'bg-slate-300 hover:bg-slate-400 text-slate-800'
-            }`}
-          >
-            {audioActive ? '🔊 Audio : ACTIVÉ' : '🔇 Audio : DÉSACTIVÉ'}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={sAbonnerAuxNotifications}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs"
+              title="Activer les notifications push en arrière-plan"
+            >
+              🔔 Push
+            </button>
+
+            <button
+              onClick={toggleAudio}
+              className={`font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-xs flex items-center gap-1 ${
+                audioActive 
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
+                  : 'bg-slate-300 hover:bg-slate-400 text-slate-800'
+              }`}
+            >
+              {audioActive ? '🔊 Audio : ACTIF' : '🔇 Audio : COUPÉ'}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-4 gap-1 bg-orange-50/80 p-1 rounded-lg border border-orange-100">
