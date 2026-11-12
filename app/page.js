@@ -9,6 +9,7 @@ export default function PageRacine({ searchParams }) {
     redirect(`/client?entrepriseId=${entrepriseId}`);
   }
 
-  // 2. Sinon, redirection automatique vers le Dashboard centralisé de l'administration
-  redirect('/dashboard');
+  // 2. SÉCURITÉ CRITIQUE PWA : Si l'application s'ouvre depuis l'écran d'accueil sans QR code,
+  // on redirige vers la page de connexion au lieu d'envoyer directement sur le dashboard admin.
+  redirect('/connexion');
 }
