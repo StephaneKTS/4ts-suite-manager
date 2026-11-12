@@ -14,12 +14,34 @@ export default function ConnexionEntreprise() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    localStorage.removeItem('utilisateurConnecte');
-    localStorage.removeItem('emailConnecte');
-    localStorage.removeItem('entrepriseId');
-    localStorage.removeItem('utilisateur_connecte');
-    localStorage.removeItem('permissions_utilisateur'); // Nettoyage de l'ancienne session de permissions
+    // 1. PURGE RADICALE : Suppression de toutes les clés de session locale
+    const clesASupprimer = [
+      'utilisateurConnecte',
+      'emailConnecte',
+      'entrepriseId',
+      'utilisateur_connecte',
+      'permissions_utilisateur'
+    ];
+    clesASupprimer.forEach(cle => localStorage.removeItem(cle));
 
+    // 2. Suppression de tous les tokens d'authentification Supabase stockés dans le navigateur
+    try {
+      Object.keys(localStorage).forEach(cle => {
+        if (cle.startsWith('sb-') && cle.endsWith('-auth-token')) {
+          localStorage.removeItem(cle);
+        }
+      });
+    } catch (e) {}
+
+    // 3. Déconnexion explicite de l'instance Supabase Auth
+    async function purgerSessionSupabase() {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {}
+    }
+    purgerSessionSupabase();
+
+    // Gestion de l'historique pour empêcher le retour arrière non autorisé
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
@@ -83,7 +105,7 @@ export default function ConnexionEntreprise() {
           entrepriseIdCible = utilisateurTrouve.id_entreprise;
           nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
 
-          // Récupération des permissions de l'utilisateur (via son rôle lié id_role ou permissions directes)
+          // Récupération des permissions de l'utilisateur
           if (utilisateurTrouve.id_role) {
             const { data: roleData, error: errRole } = await supabase
               .from('roles')
@@ -137,11 +159,8 @@ export default function ConnexionEntreprise() {
             
             if (!mdpBase || mdpBase === cleanPin) {
               entrepriseIdCible = entrepriseTrouvee.id_entreprise;
-              
-              // Utilisation directe des informations de l'entreprise trouvée sans forçage arbitraire global
               nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-              matrixPermissions = { _plein_acces: true }; // Par défaut l'admin d'entreprise a tous les accès
-              
+              matrixPermissions = { _plein_acces: true };
               authenticated = true;
             } else {
               throw new Error("Mot de passe ou code PIN incorrect.");
@@ -154,7 +173,7 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant, e-mail ou numéro de téléphone introuvable dans le système. Accès non autorisé.");
       }
 
-      // Sauvegarde de la session et des permissions locales (chargement unique à la connexion)
+      // Sauvegarde de la nouvelle session validée
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
