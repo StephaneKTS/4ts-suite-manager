@@ -40,17 +40,6 @@ export default function ConnexionEntreprise() {
       } catch (e) {}
     }
     purgerSessionSupabase();
-
-    // Gestion de l'historique pour empêcher le retour arrière non autorisé
-    window.history.pushState(null, '', window.location.href);
-    const handlePopState = () => {
-      window.history.pushState(null, '', window.location.href);
-    };
-    window.addEventListener('popstate', handlePopState);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
   }, []);
 
   const handleConnexion = async (e) => {
@@ -179,7 +168,8 @@ export default function ConnexionEntreprise() {
       localStorage.setItem('entrepriseId', entrepriseIdCible);
       localStorage.setItem('permissions_utilisateur', JSON.stringify(matrixPermissions));
 
-      window.location.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
+      // Utilisation de router.push ou router.replace propre
+      router.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
 
     } catch (err) {
       console.error('Erreur attrapée :', err);

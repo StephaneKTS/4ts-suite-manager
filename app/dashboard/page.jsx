@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, Suspense, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/usePermissions'; 
 import SimulateurCadre from './components/SimulateurCadre';
@@ -28,17 +28,19 @@ import GrilleTarifaireLivraison from './components/GrilleTarifaireLivraison';
 import MonProfil from './components/MonProfil';
 import ModuleLivraison from './livraison/page';
 import GestionTaxesRistournes from './components/GestionTaxesRistournes';
-import MenuExplorer from './components/MenuExplorer'; // 🧭 Importation du menu Explorer
-import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; // 📱 Importation du suivi des commandes QR Code Boutique
+import MenuExplorer from './components/MenuExplorer'; 
+import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; 
 
 function DashboardContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   
-  const entrepriseIdUrl = searchParams.get('entreprise') || 
-    (typeof window !== 'undefined' ? localStorage.getItem('entrepriseId') : null) || 
-    '4TS-234321';
-
   const [mounted, setMounted] = useState(false);
+  const [authentifie, setAuthentifie] = useState(false);
+
+  const entrepriseIdUrl = searchParams.get('entreprise') || 
+    (typeof window !== 'undefined' ? localStorage.getItem('entrepriseId') : null);
+
   const [entrepriseId, setEntrepriseId] = useState(entrepriseIdUrl);
   const [infosEntreprise, setInfosEntreprise] = useState({
     nom_entreprise: 'CHARGEMENT...',
@@ -54,47 +56,39 @@ function DashboardContent() {
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   const [moduleCourant, setModuleCourant] = useState('BOUTIQUE');
   
-  const [utilisateurConnecte, setUtilisateurConnecte] = useState('STEPHANE KTS');
-  const [emailConnecte, setEmailConnecte] = useState('stephs7352@gmail.com');
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
+  const [emailConnecte, setEmailConnecte] = useState('');
   const [logoEntreprise, setLogoEntreprise] = useState('');
 
-  // État pour le mode sombre (Nuit = Bleu, Jour = Gris)
   const [isDarkMode, setIsDarkMode] = useState(false);
-
   const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
 
+  // 🔒 GARDE-FOU DE SÉCURITÉ ABSOLUE : Vérification de la session au montage
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
-      const ancienneCleCacheGlobal = '4ts_cache_global_legacy';
-      if (localStorage.getItem(ancienneCleCacheGlobal)) {
-        localStorage.removeItem(ancienneCleCacheGlobal);
+      const userLocal = localStorage.getItem('utilisateurConnecte');
+      const emailLocal = localStorage.getItem('emailConnecte');
+      const entLocal = localStorage.getItem('entrepriseId');
+
+      // SI AUCUN UTILISATEUR OU ENTREPRISE N'EST ENREGISTRÉ DANS LA SESSION : ACCÈS INTERDIT -> REDIRECTION CONNEXION
+      if (!userLocal || !emailLocal || !entLocal) {
+        localStorage.clear();
+        router.replace('/connexion');
+        return;
       }
 
-      // Charger la préférence de thème (Nuit/Jour)
+      setAuthentifie(true);
+      setUtilisateurConnecte(userLocal.toUpperCase());
+      setEmailConnecte(emailLocal);
+
       const themeLocal = localStorage.getItem('4ts_theme_mode');
       if (themeLocal) {
         setIsDarkMode(themeLocal === 'dark');
       }
-
-      const userLocal = localStorage.getItem('utilisateurConnecte');
-      const emailLocal = localStorage.getItem('emailConnecte');
-      if (userLocal && userLocal !== 'UTILISATEUR') {
-        setUtilisateurConnecte(userLocal.toUpperCase());
-      } else {
-        setUtilisateurConnecte('STEPHANE KTS');
-        localStorage.setItem('utilisateurConnecte', 'STEPHANE KTS');
-      }
-
-      if (emailLocal) {
-        setEmailConnecte(emailLocal);
-      } else {
-        setEmailConnecte('stephs7352@gmail.com');
-        localStorage.setItem('emailConnecte', 'stephs7352@gmail.com');
-      }
     }
-  }, []);
+  }, [router]);
 
   const basculerTheme = () => {
     const nouveauMode = !isDarkMode;
@@ -105,6 +99,8 @@ function DashboardContent() {
   };
 
   useEffect(() => {
+    if (!authentifie || !entrepriseIdUrl) return;
+
     async function fetchEntrepriseData() {
       const cleCacheDashboard = `4ts_dashboard_cache_${entrepriseIdUrl}`;
       try {
@@ -141,26 +137,17 @@ function DashboardContent() {
               localStorage.setItem('module_actif', entData.module_actif.toUpperCase());
             }
           }
-
-          if (entrepriseIdUrl === '4TS-234321') {
-            setUtilisateurConnecte('STEPHANE KTS');
-            localStorage.setItem('utilisateurConnecte', 'STEPHANE KTS');
-            setEmailConnecte('stephs7352@gmail.com');
-            localStorage.setItem('emailConnecte', 'stephs7352@gmail.com');
-          }
         }
       } catch (err) {
         console.error("Erreur de récupération entreprise :", err);
       }
     }
 
-    if (entrepriseIdUrl) {
-      fetchEntrepriseData();
-    }
-  }, [entrepriseIdUrl]);
+    fetchEntrepriseData();
+  }, [authentifie, entrepriseIdUrl]);
 
   const estModeLivraison = moduleCourant === 'LIVRAISON';
-  const emailActuel = emailConnecte || infosEntreprise.email || 'stephs7352@gmail.com';
+  const emailActuel = emailConnecte || infosEntreprise.email || '';
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
   const { chargementPermissions, verifierPermission: verifierPermissionBrute } = usePermissions(
@@ -314,15 +301,14 @@ function DashboardContent() {
     }
   };
 
-  if (!mounted) {
+  if (!mounted || !authentifie) {
     return (
-      <div className="h-screen bg-slate-100 text-slate-800 flex items-center justify-center font-sans text-xs">
-        Chargement instantané de la suite 4TS...
+      <div className="h-screen bg-slate-900 text-slate-100 flex items-center justify-center font-sans text-xs">
+        Vérification des droits d'accès sécurisés...
       </div>
     );
   }
 
-  // Styles dynamiques selon le mode Nuit (Bleu) ou Jour (Gris)
   const bgPrincipal = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-slate-900';
   const bgHeaderNav = isDarkMode 
     ? 'bg-gradient-to-r from-[#0a1931] via-[#0d2347] to-[#0a1931] border-cyan-500/30 text-white shadow-cyan-950/40' 
@@ -358,10 +344,9 @@ function DashboardContent() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* BOUTON INTERRUPTEUR MODE NUIT / MODE JOUR */}
           <button
             onClick={basculerTheme}
-            title={isDarkMode ? "Passer en mode Jour (Gris)" : "Passer en mode Nuit (Bleu)"}
+            title={isDarkMode ? "Passer en mode Jour" : "Passer en mode Nuit"}
             className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition flex items-center gap-1 border shadow-2xs ${
               isDarkMode 
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30' 
@@ -394,7 +379,7 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* 2. ZONE CENTRALE STABILISÉE (DÉFILEMENT INDÉPENDANT) */}
+      {/* 2. ZONE CENTRALE */}
       <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 overflow-y-auto w-full max-w-7xl mx-auto flex flex-col min-h-0">
         {ongletNavigation === 'explorer' && !moduleActif ? (
           <div className="w-full flex-1">
@@ -441,7 +426,7 @@ function DashboardContent() {
               <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60' : 'bg-white border-blue-600/30'} p-3 rounded-xl border shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3`}>
                 <div>
                   <h3 className={`font-black uppercase text-xs ${isDarkMode ? 'text-cyan-400' : 'text-blue-700'}`}>🛡️ Espace Super-Admin Global</h3>
-                  <p className={`text-[10px] ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Panneau d'administration centralisé de toutes les entreprises de la plateforme 4TS.</p>
+                  <p className={`text-[10px] ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Panneau d'administration centralisé de toutes les entreprises.</p>
                 </div>
                 <button
                   onClick={() => setModuleActif(moduleActif === 'super_admin_panel' ? null : 'super_admin_panel')}
@@ -466,7 +451,6 @@ function DashboardContent() {
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
               
-              {/* ✅ BOUTON EXCLUSIF BOUTIQUE : COMMANDES QR CODE */}
               <div 
                 onClick={() => setModuleActif('commandes_clients_qr')} 
                 className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-orange-500/50`}
@@ -648,7 +632,7 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* 3. BARRE DE NAVIGATION INFÉRIEURE (ORDRE : Accueil -> Comptabilité -> Explorer -> Mon Profil) */}
+      {/* 3. BARRE DE NAVIGATION INFÉRIEURE */}
       <div className={`bottom-0 left-0 right-0 z-30 ${bgHeaderNav} border-t py-2.5 px-6 flex justify-around items-center shadow-2xl shrink-0 w-full`}>
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
@@ -674,7 +658,6 @@ function DashboardContent() {
           <span className="text-[10px]">Comptabilité</span>
         </button>
 
-        {/* 🧭 Bouton EXPLORER positionné entre Comptabilité et Mon Profil */}
         <button
           onClick={() => { setOngletNavigation('explorer'); setModuleActif(null); }}
           className={`flex flex-col items-center space-y-0.5 transition ${
@@ -719,7 +702,7 @@ function DashboardContent() {
 
 export default function DashboardPrincipal() {
   return (
-    <Suspense fallback={<link rel="stylesheet" href="" />}>
+    <Suspense fallback={<div className="h-screen bg-slate-900 text-white flex items-center justify-center">Chargement...</div>}>
       <DashboardContent />
     </Suspense>
   );
