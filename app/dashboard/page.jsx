@@ -60,11 +60,12 @@ function DashboardContent() {
   const [emailConnecte, setEmailConnecte] = useState('');
   const [logoEntreprise, setLogoEntreprise] = useState('');
 
+  // Initialisation à false pour éviter l'erreur d'hydratation SSR/Client
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
 
-  // 🔒 GARDE-FOU DE SÉCURITÉ ABSOLUE : Vérification de la session au montage
+  // 🔒 GARDE-FOU DE SÉCURITÉ ABSOLUE & MONTAGE
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
@@ -72,7 +73,6 @@ function DashboardContent() {
       const emailLocal = localStorage.getItem('emailConnecte');
       const entLocal = localStorage.getItem('entrepriseId');
 
-      // SI AUCUN UTILISATEUR OU ENTREPRISE N'EST ENREGISTRÉ DANS LA SESSION : ACCÈS INTERDIT -> REDIRECTION CONNEXION
       if (!userLocal || !emailLocal || !entLocal) {
         localStorage.clear();
         router.replace('/connexion');
