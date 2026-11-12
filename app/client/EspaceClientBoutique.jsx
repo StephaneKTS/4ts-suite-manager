@@ -9,6 +9,7 @@ export default function EspaceClientBoutique() {
   const searchParams = useSearchParams();
   const entrepriseId = searchParams.get('entrepriseId');
 
+  const [estMonte, setEstMonte] = useState(false);
   const [articles, setArticles] = useState([]);
   const [mouvements, setMouvements] = useState([]);
   const [approvisionnements, setApprovisionnements] = useState([]);
@@ -20,12 +21,11 @@ export default function EspaceClientBoutique() {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [vuePanier, setVuePanier] = useState(false);
-  const [ongletActif, setOngletActif] = useState('BOUTIQUE'); // 'BOUTIQUE', 'SUIVI', ou 'EXPLORER'
+  const [ongletActif, setOngletActif] = useState('BOUTIQUE');
 
-  // Gestion de la recherche dynamique d'articles
+  const [restaurantsRecents, setRestaurantsRecents] = useState([]);
   const [rechercheArticle, setRechercheArticle] = useState('');
 
-  // Gestion du suivi des commandes client par téléphone
   const [telephoneRecherche, setTelephoneRecherche] = useState('');
   const [mesCommandesClient, setMesCommandesClient] = useState([]);
   const [commandeEnCoursModification, setCommandeEnCoursModification] = useState(null);
@@ -38,46 +38,54 @@ export default function EspaceClientBoutique() {
   });
 
   useEffect(() => {
-    async function chargerDonneesBoutiqueUniverselle() {
+    setEstMonte(true);
+    try {
+      const stockFavoris = localStorage.getItem('4ts_restaurants_recents');
+      if (stockFavoris) {
+        setRestaurantsRecents(JSON.parse(stockFavoris));
+      }
+      const telSauve = localStorage.getItem('4ts_client_telephone');
+      if (telSauve) {
+        setTelephoneRecherche(telSauve);
+        setClient(prev => ({ ...prev, telephone: telSauve }));
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    async function chargerDonneesBoutiqueOptimise() {
       if (!entrepriseId) {
         setChargement(false);
         return;
       }
       setChargement(true);
       try {
-        const { data: dataEnt } = await supabase
-          .from('entreprises')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .maybeSingle();
+        const [resEnt, resArt] = await Promise.all([
+          supabase.from('entreprises').select('*').eq('id_entreprise', entrepriseId).maybeSingle(),
+          supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', 'BOUTIQUE').eq('Disponible_Menu_QR', true)
+        ]);
 
-        if (dataEnt) {
-          setNomEntreprise(dataEnt.nom_entreprise || dataEnt.nom || 'RESTAURANT');
+        if (resEnt.data) {
+          const nomEnt = resEnt.data.nom_entreprise || resEnt.data.nom || 'RESTAURANT';
+          setNomEntreprise(nomEnt);
+
+          setRestaurantsRecents(prev => {
+            const listeFiltree = prev.filter(r => r.id !== entrepriseId);
+            const nouvelleListe = [{ id: entrepriseId, nom: nomEnt, date: new Date().toISOString() }, ...listeFiltree];
+            try {
+              localStorage.setItem('4ts_restaurants_recents', JSON.stringify(nouvelleListe));
+            } catch (e) {}
+            return nouvelleListe;
+          });
         }
 
-        const { data: dataArt, error: errArt } = await supabase
-          .from('articles_stock')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', 'BOUTIQUE')
-          .eq('Disponible_Menu_QR', true);
+        setArticles(Array.isArray(resArt.data) ? resArt.data : []);
 
-        if (errArt) throw errArt;
-        setArticles(Array.isArray(dataArt) ? dataArt : []);
+        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', 'BOUTIQUE')
+          .then(({ data }) => setMouvements(data || []));
 
-        const { data: dataMouv } = await supabase
-          .from('mouvements_stock')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', 'BOUTIQUE');
-        setMouvements(dataMouv || []);
-
-        const { data: dataAppro } = await supabase
-          .from('approvisionnements')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', 'BOUTIQUE');
-        setApprovisionnements(dataAppro || []);
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', 'BOUTIQUE')
+          .then(({ data }) => setApprovisionnements(data || []));
 
       } catch (err) {
         console.error('Erreur chargement catalogue :', err.message);
@@ -86,13 +94,12 @@ export default function EspaceClientBoutique() {
       }
     }
 
-    chargerDonneesBoutiqueUniverselle();
+    chargerDonneesBoutiqueOptimise();
   }, [entrepriseId]);
 
-  // Actualisation automatique des commandes du client en arrière-plan (toutes les 5 secondes si le numéro est renseigné)
   useEffect(() => {
     if (ongletActif === 'SUIVI' && telephoneRecherche.trim()) {
-      const interval = setInterval(async () => {
+      const chargerCommandesAutomatique = async () => {
         try {
           const { data } = await supabase
             .from('commandes_clients_qr')
@@ -103,8 +110,10 @@ export default function EspaceClientBoutique() {
 
           if (data) setMesCommandesClient(data);
         } catch (e) {}
-      }, 5000);
+      };
 
+      chargerCommandesAutomatique();
+      const interval = setInterval(chargerCommandesAutomatique, 5000);
       return () => clearInterval(interval);
     }
   }, [ongletActif, telephoneRecherche, entrepriseId]);
@@ -204,6 +213,11 @@ export default function EspaceClientBoutique() {
       return;
     }
 
+    try {
+      localStorage.setItem('4ts_client_telephone', client.telephone.trim());
+      setTelephoneRecherche(client.telephone.trim());
+    } catch (e) {}
+
     setEnTrainDeSauvegarder(true);
     try {
       if (commandeEnCoursModification) {
@@ -243,7 +257,7 @@ export default function EspaceClientBoutique() {
           id_entreprise: entrepriseId,
           numero_commande: numCmd,
           nom_client: client.nom.toUpperCase(),
-          telephone_client: client.telephone,
+          telephone_client: client.telephone.trim(),
           numero_table: client.table || 'N/A',
           details_articles: JSON.stringify(panier),
           montant_total: totalPanier,
@@ -272,17 +286,22 @@ export default function EspaceClientBoutique() {
 
   const rechercherMesCommandes = async (e) => {
     if (e) e.preventDefault();
-    if (!telephoneRecherche.trim()) {
+    const telTrim = telephoneRecherche.trim();
+    if (!telTrim) {
       alert('Veuillez entrer votre numéro de téléphone.');
       return;
     }
+    try {
+      localStorage.setItem('4ts_client_telephone', telTrim);
+    } catch (e) {}
+
     setChargement(true);
     try {
       const { data, error } = await supabase
         .from('commandes_clients_qr')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .eq('telephone_client', telephoneRecherche.trim())
+        .eq('telephone_client', telTrim)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -316,11 +335,39 @@ export default function EspaceClientBoutique() {
     }
   };
 
-  // Filtrage dynamique des articles selon la recherche saisie
+  const annulerCommandeClient = async (cmd) => {
+    if (cmd.statut !== 'EN_ATTENTE') {
+      alert("Cette commande ne peut plus être annulée car elle est déjà en cours ou servie.");
+      return;
+    }
+
+    const confirmer = window.confirm("Voulez-vous vraiment annuler cette commande ?");
+    if (!confirmer) return;
+
+    try {
+      const { error } = await supabase
+        .from('commandes_clients_qr')
+        .update({ statut: 'ANNULE' })
+        .eq('id', cmd.id)
+        .eq('id_entreprise', entrepriseId);
+
+      if (error) throw error;
+
+      alert("Commande annulée avec succès.");
+      rechercherMesCommandes();
+    } catch (err) {
+      alert("Erreur lors de l'annulation : " + err.message);
+    }
+  };
+
   const articlesFiltres = articles.filter(art => {
     const designation = (art.Designation || art.designation || '').toLowerCase();
     return designation.includes(rechercheArticle.trim().toLowerCase());
   });
+
+  if (!estMonte) {
+    return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-400">Chargement de l'espace...</div>;
+  }
 
   if (!entrepriseId) {
     return (
@@ -328,6 +375,23 @@ export default function EspaceClientBoutique() {
         <div className="text-red-500 text-3xl">⚠️</div>
         <h2 className="text-sm font-black uppercase text-slate-900">Restaurant non identifié</h2>
         <p className="text-xs text-slate-500">Veuillez scanner un QR code valide sur votre table.</p>
+        
+        {restaurantsRecents.length > 0 && (
+          <div className="mt-6 space-y-2 text-left max-w-xs mx-auto">
+            <h3 className="font-black text-slate-700 text-[10px] uppercase">Mes restaurants récents :</h3>
+            <div className="space-y-1.5">
+              {restaurantsRecents.map((rest) => (
+                <a
+                  key={rest.id}
+                  href={`?entrepriseId=${rest.id}`}
+                  className="block p-3 bg-white border border-slate-200 rounded-xl font-black text-slate-900 hover:border-orange-500 transition shadow-2xs"
+                >
+                  🍽️ {rest.nom}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -341,13 +405,13 @@ export default function EspaceClientBoutique() {
         <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise pour un service sur place.</p>
         <div className="flex gap-2 w-full max-w-xs mt-4">
           <button
-            onClick={() => { setValide(false); setVuePanier(false); setCommandeEnCoursModification(null); setClient({ nom: '', telephone: '', table: '', modePaiement: 'ESPECES' }); }}
+            onClick={() => { setValide(false); setVuePanier(false); setCommandeEnCoursModification(null); setClient({ nom: '', telephone: telephoneRecherche, table: '', modePaiement: 'ESPECES' }); }}
             className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
           >
             Commander 🍽️
           </button>
           <button
-            onClick={() => { setValide(false); setVuePanier(false); setOngletActif('SUIVI'); }}
+            onClick={() => { setValide(false); setVuePanier(false); setOngletActif('SUIVI'); if (telephoneRecherche) rechercherMesCommandes(); }}
             className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
           >
             Suivre l'état 👁️
@@ -519,48 +583,129 @@ export default function EspaceClientBoutique() {
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
         <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
         
-        <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
+        <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1 rounded-xl">
           <button
             type="button"
             disabled={enTrainDeSauvegarder}
             onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('BOUTIQUE'); }}
-            className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
-              ongletActif === 'BOUTIQUE' 
-                ? 'bg-orange-600 text-white shadow-xs' 
-                : 'bg-transparent text-slate-700 hover:bg-slate-200'
+            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
+              ongletActif === 'BOUTIQUE' ? 'bg-orange-600 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
             }`}
           >
-            🛍️ COMMANDER
+            🛍️ MENU
           </button>
           <button
             type="button"
             disabled={enTrainDeSauvegarder}
-            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('SUIVI'); }}
-            className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
-              ongletActif === 'SUIVI' 
-                ? 'bg-orange-600 text-white shadow-xs' 
-                : 'bg-transparent text-slate-700 hover:bg-slate-200'
+            onClick={() => { 
+              if (!enTrainDeSauvegarder) {
+                setOngletActif('SUIVI');
+                if (telephoneRecherche.trim() && mesCommandesClient.length === 0) rechercherMesCommandes();
+              }
+            }}
+            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
+              ongletActif === 'SUIVI' ? 'bg-orange-600 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
             }`}
           >
-            📋 MES COMMANDES
+            📋 SUIVI
+          </button>
+          <button
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('RESTAURANTS'); }}
+            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
+              ongletActif === 'RESTAURANTS' ? 'bg-slate-900 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            🏪 RESTOS
           </button>
           <button
             type="button"
             disabled={enTrainDeSauvegarder}
             onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('EXPLORER'); }}
-            className={`py-2 rounded-lg font-black text-[9px] uppercase transition shadow-2xs ${
-              ongletActif === 'EXPLORER' 
-                ? 'bg-slate-900 text-white shadow-xs' 
-                : 'bg-transparent text-slate-700 hover:bg-slate-200'
+            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
+              ongletActif === 'EXPLORER' ? 'bg-slate-900 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
             }`}
           >
             🧭 EXPLORER
           </button>
+          <button
+            type="button"
+            disabled={enTrainDeSauvegarder}
+            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('SOUSCRIPTION'); }}
+            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
+              ongletActif === 'SOUSCRIPTION' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+            }`}
+          >
+            🚀 COMPTE
+          </button>
         </div>
       </div>
 
-      {ongletActif === 'EXPLORER' ? (
+      {ongletActif === 'SOUSCRIPTION' ? (
+        <div className="space-y-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs text-center space-y-4">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+              🚀
+            </div>
+            <h2 className="font-black text-slate-900 uppercase text-sm">Ouvrez votre propre espace 4TS</h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Vous souhaitez digitaliser votre propre structure, restaurant ou service de logistique ? Accédez à notre interface unifiée de souscription en 4 étapes pour activer votre module.
+            </p>
+            
+            <a
+              href="/souscription"
+              className="block w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition text-center"
+            >
+              Lancer l'interface de souscription ➔
+            </a>
+          </div>
+        </div>
+      ) : ongletActif === 'EXPLORER' ? (
         <MenuExplorer entrepriseId={entrepriseId} />
+      ) : ongletActif === 'RESTAURANTS' ? (
+        <div className="space-y-3">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <h2 className="font-black text-slate-900 uppercase text-xs">Mes restaurants visités</h2>
+            <p className="text-[10px] text-slate-500">Retrouvez ci-dessous l'historique de tous les restaurants dont vous avez scanné le QR code.</p>
+          </div>
+
+          <div className="space-y-2">
+            {restaurantsRecents.length === 0 ? (
+              <p className="text-center text-slate-400 py-6 italic font-bold">Aucun restaurant enregistré pour le moment.</p>
+            ) : (
+              restaurantsRecents.map((rest) => {
+                const estActif = rest.id === entrepriseId;
+                return (
+                  <div 
+                    key={rest.id} 
+                    className={`bg-white rounded-2xl border p-3.5 shadow-xs flex items-center justify-between transition ${
+                      estActif ? 'border-orange-500 ring-2 ring-orange-200 bg-orange-50/20' : 'border-slate-200'
+                    }`}
+                  >
+                    <div>
+                      <h3 className="font-black text-slate-900 uppercase text-xs">🍽️ {rest.nom}</h3>
+                      <p className="text-[9px] text-slate-400 font-bold mt-0.5">ID : {rest.id}</p>
+                    </div>
+
+                    {estActif ? (
+                      <span className="bg-emerald-100 text-emerald-800 font-black px-3 py-1.5 rounded-xl text-[9px] uppercase">
+                        Actuel ✅
+                      </span>
+                    ) : (
+                      <a
+                        href={`?entrepriseId=${rest.id}`}
+                        className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3.5 py-1.5 rounded-xl text-[9px] uppercase shadow-2xs transition"
+                      >
+                        Commander ➔
+                      </a>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       ) : ongletActif === 'SUIVI' ? (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
@@ -590,7 +735,7 @@ export default function EspaceClientBoutique() {
             {chargement ? (
               <p className="text-center text-slate-400 py-6 font-bold">Chargement...</p>
             ) : mesCommandesClient.length === 0 ? (
-              <p className="text-center text-slate-400 py-6 italic font-bold">Aucune commande trouvée pour ce numéro.</p>
+              <p className="text-center text-slate-400 py-6 italic font-bold">Aucune commande trouvée pour ce numéro dans ce restaurant.</p>
             ) : (
               mesCommandesClient.map((cmd) => {
                 let detailsArticles = [];
@@ -601,6 +746,7 @@ export default function EspaceClientBoutique() {
                 let badgeColor = 'bg-orange-100 text-orange-800 border-orange-300';
                 if (cmd.statut === 'EN_COURS') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
                 if (cmd.statut === 'SERVI') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                if (cmd.statut === 'ANNULE') badgeColor = 'bg-red-100 text-red-800 border-red-300';
 
                 const estPaye = cmd.statut_paiement === 'PAYE';
 
@@ -614,7 +760,7 @@ export default function EspaceClientBoutique() {
                         </span>
                       </div>
                       <span className={`px-2.5 py-1 rounded-full font-black text-[9px] border uppercase ${badgeColor}`}>
-                        {cmd.statut === 'EN_ATTENTE' ? 'En attente' : cmd.statut === 'EN_COURS' ? 'Encours' : 'Servi ✅'}
+                        {cmd.statut === 'EN_ATTENTE' ? 'En attente' : cmd.statut === 'EN_COURS' ? 'Encours' : cmd.statut === 'SERVI' ? 'Servi ✅' : 'Annulé ❌'}
                       </span>
                     </div>
 
@@ -645,13 +791,22 @@ export default function EspaceClientBoutique() {
                       <span className="font-black text-slate-900 text-xs">Total : <strong className="text-emerald-600">{Number(cmd.montant_total).toLocaleString()} FCFA</strong></span>
                       
                       {cmd.statut === 'EN_ATTENTE' ? (
-                        <button
-                          type="button"
-                          onClick={() => preparerModification(cmd)}
-                          className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
-                        >
-                          Modifier ✏️
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => preparerModification(cmd)}
+                            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
+                          >
+                            Modifier ✏️
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => annulerCommandeClient(cmd)}
+                            className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
+                          >
+                            Annuler ❌
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-[9px] font-bold text-slate-400 italic">🔒 Verrouillé</span>
                       )}
@@ -686,7 +841,6 @@ export default function EspaceClientBoutique() {
             </div>
           )}
 
-          {/* Barre de recherche dynamique d'articles */}
           <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
             <input
               type="text"

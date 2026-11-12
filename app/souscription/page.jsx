@@ -16,11 +16,12 @@ const TARIFS_MODULES = {
 };
 
 export default function SouscriptionWizard() {
+  const [estMonte, setEstMonte] = useState(false);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const [typeOffre, setTypeOffre] = useState('entreprise'); // 'personnel' ou 'entreprise'
+  const [typeOffre, setTypeOffre] = useState('entreprise');
 
   const [formData, setFormData] = useState({
     entrepriseId: '',
@@ -46,6 +47,7 @@ export default function SouscriptionWizard() {
   const [paymentMethod, setPaymentMethod] = useState('');
 
   useEffect(() => {
+    setEstMonte(true);
     setFormData((prev) => ({ ...prev, entrepriseId: generateUniqueId() }));
   }, []);
 
@@ -62,8 +64,8 @@ export default function SouscriptionWizard() {
     let sousTotalMensuelPerUser = 0;
 
     if (typeOffre === 'personnel') {
-      sousTotalInstallation = 10000; // Frais fixes uniques pour l'offre perso
-      sousTotalMensuelPerUser = 3000; // Forfait mensuel allégé
+      sousTotalInstallation = 10000;
+      sousTotalMensuelPerUser = 3000;
     } else {
       Object.keys(modules).forEach((mod) => {
         if (modules[mod]) {
@@ -83,7 +85,7 @@ export default function SouscriptionWizard() {
     else if (nbMois >= 6) remiseDureePct = 0.10;
     else if (nbMois >= 3) remiseDureePct = 0.05;
 
-    let remiseUsersPct = typeOffre === 'personnel' ? 0 : 0;
+    let remiseUsersPct = 0;
     if (typeOffre === 'entreprise') {
       if (nbUsers >= 50) remiseUsersPct = 0.15;
       else if (nbUsers >= 20) remiseUsersPct = 0.10;
@@ -109,7 +111,6 @@ export default function SouscriptionWizard() {
 
   const facturation = calculerFacturation();
 
-  // Fonction utilitaire pour initialiser Supabase de manière sécurisée et isolée à chaque appel
   const getSupabaseClient = () => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -217,20 +218,31 @@ export default function SouscriptionWizard() {
       setStep(5);
     } catch (err) {
       console.error("Erreur enregistrement Supabase mobile:", err);
-      setErrorMsg("Erreur de connexion au serveur (Failed to fetch). Vérifiez votre signal mobile et réessayez.");
+      setErrorMsg("Erreur de connexion au serveur. Vérifiez votre signal et réessayez.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (!estMonte) {
+    return <div className="min-h-screen bg-slate-100 flex items-center justify-center font-bold text-slate-500">Chargement...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-3 sm:p-6 font-sans">
       <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl w-full max-w-2xl overflow-hidden">
         
         <div className="bg-[#005a5b] text-white text-center px-6 py-8 flex flex-col items-center justify-center relative">
-          <div className="bg-white text-[#005a5b] font-black text-xl px-4 py-2 rounded-2xl shadow-md mb-3 tracking-wider">
-            4TS
+          
+          {/* INTÉGRATION DU LOGO OFFICIEL (/logo-4ts.png) */}
+          <div className="mb-3 flex items-center justify-center">
+            <img 
+              src="/logo-4ts.png" 
+              alt="4TS Suite Manager Logo" 
+              className="h-14 w-auto object-contain bg-white/10 p-2 rounded-2xl shadow-md"
+            />
           </div>
+
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
             Suite Manager
           </h1>
@@ -386,8 +398,6 @@ export default function SouscriptionWizard() {
 
               {step === 3 && (
                 <form onSubmit={handleStep3Submit} className="space-y-5">
-                  
-                  {/* SÉLECTEUR DE TYPE D'OFFRE (Personnel vs Entreprise) */}
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-orange-600 mb-2">
                       Type d'utilisation <span className="text-orange-500">*</span>

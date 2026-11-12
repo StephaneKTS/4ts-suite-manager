@@ -76,7 +76,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // Traitement strictement séquentiel avec un intervalle de 4.5 secondes entre chaque annonce
   const traiterFileDAbsolue = async () => {
     if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActive) {
       return;
@@ -94,7 +93,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     } catch (e) {
       console.log("Erreur lecture audio :", e);
     } finally {
-      // Pause de sécurité de 4.5 secondes pour s'assurer que l'énoncé se termine entièrement sans se couper
       setTimeout(() => {
         enTrainDeJouerAudio.current = false;
         if (fileDAbsolueAudio.current.length > 0) {
@@ -153,7 +151,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           
           const utterance = new SpeechSynthesisUtterance(texte);
           utterance.lang = 'fr-FR';
-          utterance.rate = 0.90; // Vitesse posée pour une clarté parfaite
+          utterance.rate = 0.90;
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
           
@@ -220,7 +218,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     const nomClientPropre = (cmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
     const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${cmd.numero_table || 'non spécifiée'}.`;
     
-    // Alerte système native (réveille le téléphone en veille)
     afficherNotificationNATIVE(`🚨 Nouvelle Commande : ${cmd.numero_commande}`, `Client : ${cmd.nom_client} | Table : ${cmd.numero_table}`);
 
     if (audioActive) {
@@ -271,23 +268,28 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Écouter INSERT, UPDATE et DELETE pour répercuter l'annulation instantanément
           schema: 'public',
           table: 'commandes_clients_qr',
           filter: `id_entreprise=eq.${entrepriseId}`
         },
         (payload) => {
-          const nouvelleCmd = payload.new;
-          if (!idsCommandesConnues.current.has(nouvelleCmd.id)) {
-            idsCommandesConnues.current.add(nouvelleCmd.id);
-            setCommandes((prev) => [nouvelleCmd, ...prev]);
-            notifierNouvelleCommande(nouvelleCmd);
+          if (payload.eventType === 'INSERT') {
+            const nouvelleCmd = payload.new;
+            if (!idsCommandesConnues.current.has(nouvelleCmd.id)) {
+              idsCommandesConnues.current.add(nouvelleCmd.id);
+              setCommandes((prev) => [nouvelleCmd, ...prev]);
+              notifierNouvelleCommande(nouvelleCmd);
+            }
+          } else if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+            // Recharger instantanément si une commande est modifiée ou annulée par le client
+            chargerCommandesQR();
           }
         }
       )
       .subscribe();
 
-    // Polling haute fréquence (2 secondes) pour rattraper instantanément le retour de veille
+    // Polling haute fréquence (2 secondes) pour une synchro parfaite avec les annulations client
     const intervalSecours = setInterval(async () => {
       try {
         const { data } = await supabase
@@ -296,18 +298,8 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           .eq('id_entreprise', entrepriseId)
           .order('created_at', { ascending: false });
 
-        if (data && data.length > 0) {
-          setCommandes(prev => {
-            const nouvelles = data.filter(c => !idsCommandesConnues.current.has(c.id));
-            if (nouvelles.length > 0) {
-              nouvelles.forEach(c => {
-                idsCommandesConnues.current.add(c.id);
-                notifierNouvelleCommande(c);
-              });
-              return data;
-            }
-            return prev;
-          });
+        if (data) {
+          setCommandes(data);
         }
       } catch (e) {}
     }, 2000);
@@ -424,8 +416,9 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-1 bg-orange-50/80 p-1 rounded-lg border border-orange-100">
-          {['TOUT', 'EN_ATTENTE', 'EN_COURS', 'SERVI'].map((st) => (
+        {/* Filtres de statut mis à jour pour inclure ANNULE */}
+        <div className="grid grid-cols-5 gap-1 bg-orange-50/80 p-1 rounded-lg border border-orange-100">
+          {['TOUT', 'EN_ATTENTE', 'EN_COURS', 'SERVI', 'ANNULE'].map((st) => (
             <button
               key={st}
               type="button"
@@ -434,7 +427,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                 filtreStatut === st ? 'bg-orange-600 text-white shadow-xs' : 'text-slate-700 hover:bg-orange-100'
               }`}
             >
-              {st === 'TOUT' ? 'Toutes' : st.replace('_', ' ')}
+              {st === 'TOUT' ? 'Toutes' : st === 'ANNULE' ? 'Annulées ❌' : st.replace('_', ' ')}
             </button>
           ))}
         </div>
@@ -474,15 +467,17 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             let badgeColor = 'bg-orange-100 text-orange-800 border-orange-300';
             if (cmd.statut === 'EN_COURS') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
             if (cmd.statut === 'SERVI') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+            if (cmd.statut === 'ANNULE') badgeColor = 'bg-red-100 text-red-800 border-red-300';
 
             const estPaye = cmd.statut_paiement === 'PAYE';
+            const estAnnule = cmd.statut === 'ANNULE';
             const estServiImpaye = cmd.statut === 'SERVI' && !estPaye;
 
             return (
               <div 
                 key={cmd.id} 
                 className={`bg-white rounded-xl border p-2.5 shadow-2xs space-y-2 flex flex-col justify-between transition ${
-                  estServiImpaye ? 'border-red-500 ring-2 ring-red-400/50 bg-red-50/20' : 'border-slate-200'
+                  estAnnule ? 'border-red-300 bg-red-50/10 opacity-75' : estServiImpaye ? 'border-red-500 ring-2 ring-red-400/50 bg-red-50/20' : 'border-slate-200'
                 }`}
               >
                 <div className="space-y-1.5">
@@ -493,12 +488,18 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                         {new Date(cmd.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(cmd.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full font-black text-[8px] border uppercase ${badgeColor}`}>
-                      {cmd.statut?.replace('_', ' ')}
+                    <span className={`px-2.5 py-0.5 rounded-full font-black text-[8px] border uppercase ${badgeColor}`}>
+                      {cmd.statut === 'ANNULE' ? 'ANNULÉ ❌' : cmd.statut?.replace('_', ' ')}
                     </span>
                   </div>
 
-                  {estServiImpaye && (
+                  {estAnnule && (
+                    <div className="bg-red-600 text-white p-1 rounded-lg text-center font-black text-[9px] uppercase tracking-wider">
+                      ⚠️ CETTE COMMANDE A ÉTÉ ANNULÉE PAR LE CLIENT
+                    </div>
+                  )}
+
+                  {estServiImpaye && !estAnnule && (
                     <div className="bg-red-500 text-white p-1.5 rounded-lg text-center font-black text-[9px] uppercase tracking-wider animate-bounce">
                       🚨 ALERTE : COMMANDE SERVIE MAIS NON PAYÉE !
                     </div>
@@ -528,11 +529,12 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                       </span>
                       <button
                         type="button"
+                        disabled={estAnnule}
                         onClick={() => basculerPaiement(cmd.id, cmd.statut_paiement)}
                         className={`px-2 py-0.5 rounded-md font-black text-[8px] uppercase border transition ${
                           estPaye 
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' 
-                            : 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200 animate-pulse'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
+                            : 'bg-red-100 text-red-800 border-red-300'
                         }`}
                       >
                         {estPaye ? 'Payé 🟢' : 'Non Payé 🔴'}
@@ -563,7 +565,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                     <span className="text-emerald-600 font-mono text-xs">{Number(cmd.montant_total).toLocaleString()} FCFA</span>
                   </div>
 
-                  {cmd.statut === 'SERVI' ? (
+                  {estAnnule ? (
+                    <div className="text-center py-1 bg-red-50 border border-red-200 rounded-lg">
+                      <span className="font-black text-[8px] text-red-700 uppercase tracking-wide">
+                        🔒 Commande Annulée & Verrouillée ❌
+                      </span>
+                    </div>
+                  ) : cmd.statut === 'SERVI' ? (
                     <div className="text-center py-1 bg-emerald-50 border border-emerald-200 rounded-lg">
                       <span className="font-black text-[8px] text-emerald-700 uppercase tracking-wide">
                         🔒 Servie & Verrouillée ✅

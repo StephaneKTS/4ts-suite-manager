@@ -70,9 +70,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   };
 
   const [modeVue, setModeVue] = useState('catalogue');
-  // Initialisé à vide pour qu'aucun article ne soit sélectionné par défaut dans l'onglet Stat
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
+  const [emplacementStatFiltre, setEmplacementStatFiltre] = useState('TOUS');
   const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
 
   const designationInputRef = useRef(null);
@@ -134,6 +134,36 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   const toutesLesSuggestionsArticles = Array.from(
     new Set(articles.map(art => (art.Designation || art.designation || '').trim().toUpperCase()))
   ).sort();
+
+  const obtenirNomEmplacementParId = (empId) => {
+    if (!empId) return '-';
+    const emp = emplacements.find(e => String(e.id || e.id_emplacement) === String(empId));
+    if (emp) {
+      return emp.nom_emplacement || emp.code_emplacement || emp.responsable_emplacement || '-';
+    }
+    return '-';
+  };
+
+  const obtenirNomDepotParId = (depotId) => {
+    if (!depotId) return '-';
+    const depotTrouve = depots.find(d => String(d.id) === String(depotId));
+    if (depotTrouve) return depotTrouve.nom_depot || depotTrouve.Nom_Depot || depotId;
+    return depotId;
+  };
+
+  const obtenirNomDestinationParMvt = (mvt) => {
+    if (!mvt) return '-';
+    if (mvt.id_emplacement_destination) {
+      return obtenirNomEmplacementParId(mvt.id_emplacement_destination);
+    }
+    if (mvt.id_depot_destination) {
+      return obtenirNomDepotParId(mvt.id_depot_destination);
+    }
+    if (mvt.id_emplacement_source) {
+      return obtenirNomEmplacementParId(mvt.id_emplacement_source);
+    }
+    return '-';
+  };
 
   const chargerDonneesReference = async () => {
     const familleLocale = localSync.recupererDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`);
@@ -435,10 +465,16 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
     let evenements = [];
     const dCible = depotStatFiltre;
+    const eCible = emplacementStatFiltre;
 
     approvisionnements.forEach(app => {
       const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
       if (!matchDepot) return;
+
+      if (eCible !== 'TOUS') {
+        const matchEmpApp = String(app.id_emplacement_destination || app.id_emplacement || '') === String(eCible);
+        if (!matchEmpApp) return;
+      }
 
       let listArt = [];
       if (typeof app.details_articles === 'string') {
@@ -449,11 +485,18 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
       listArt.forEach(item => {
         if (String(item.id_article || item.article_id) === String(articleId)) {
+          const motifRef = (app.reference || app.motif || app.motif_remarque || '').trim();
+          const estLivraison = (app.type_mouvement || '').toUpperCase() === 'LIVRAISON' || motifRef.toUpperCase().includes('LIVRAISON');
+          const motifAffichage = estLivraison ? 'LIVRAISON' : (motifRef !== '' ? motifRef : 'APPROVISIONNEMENT');
+
           evenements.push({
             date: app.created_at || '',
             typeAbr: 'APP',
+            motifLigne: motifAffichage,
+            emplacementDest: obtenirNomDestinationParMvt(app),
             quantiteMouvementee: parseInt(item.quantite || 0),
-            impactStock: parseInt(item.quantite || 0)
+            impactStock: parseInt(item.quantite || 0),
+            prioriteOrdre: 0 // Entrées / Approvisionnements prioritaires
           });
         }
       });
@@ -469,13 +512,32 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
       if (dCible !== 'TOUS' && !estSource && !estDestination) return;
 
-      const typeAbr = formaterTypeMouvementAffichage(m);
-      let impact = 0;
+      const empSource = String(m.id_emplacement_source || '');
+      const empDest = String(m.id_emplacement_destination || '');
+      const matchEmplacementStat = eCible === 'TOUS' || empSource === String(eCible) || empDest === String(eCible);
+      if (!matchEmplacementStat) return;
 
-      if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+      const typeAbr = formaterTypeMouvementAffichage(m);
+      const emplacementDestNom = obtenirNomDestinationParMvt(m);
+
+      const motifRemarque = (m.motif_remarque || '').trim();
+      const referenceMvt = (m.reference || '').trim();
+      
+      const estLivraison = typeMvt === 'LIVRAISON' || motifRemarque.toUpperCase().includes('LIVRAISON') || referenceMvt.toUpperCase().includes('LIVRAISON');
+      const motifAffichage = estLivraison ? 'LIVRAISON' : (referenceMvt !== '' ? referenceMvt : (motifRemarque !== '' ? motifRemarque : typeMvt));
+
+      let impact = 0;
+      let prioriteOrdre = 1;
+
+      if (typeMvt === 'INVENTAIRE') {
         impact = qte;
+        prioriteOrdre = 0;
+      } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+        impact = qte;
+        prioriteOrdre = 0;
       } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
         impact = -qte;
+        prioriteOrdre = 2; // Sorties et livraisons après les entrées
       } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
         const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
         if (memeDepot) {
@@ -488,6 +550,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
             if (estDestination) impact = qte;
           }
         }
+        prioriteOrdre = 1;
       } else {
         impact = qte;
       }
@@ -495,12 +558,30 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       evenements.push({
         date: m.created_at || '',
         typeAbr: typeAbr,
+        motifLigne: motifAffichage,
+        emplacementDest: emplacementDestNom,
         quantiteMouvementee: qte,
-        impactStock: impact
+        impactStock: impact,
+        prioriteOrdre: prioriteOrdre
       });
     });
 
-    evenements.sort((a, b) => new Date(a.date) - new Date(b.date));
+    // Tri strict et infaillible :
+    // 1. Par date (du plus ancien au plus récent)
+    // 2. Si même jour, les entrées/appro (priorite 0) passent AVANT les transferts (1) et les sorties/livraisons (2)
+    evenements.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      const jourA = (a.date || '').split('T')[0];
+      const jourB = (b.date || '').split('T')[0];
+
+      if (jourA === jourB) {
+        if (a.prioriteOrdre !== b.prioriteOrdre) {
+          return a.prioriteOrdre - b.prioriteOrdre;
+        }
+      }
+      return dateA - dateB;
+    });
 
     let stockCourant = 0;
     let lignesResultat = [];
@@ -867,6 +948,17 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         });
       });
 
+  const emplacementsStatDisponibles = depotStatFiltre === 'TOUS'
+    ? emplacements
+    : emplacements.filter(emp => {
+        const empId = String(emp.id || '');
+        return mouvements.some(m => {
+          const matchDepot = String(m.id_depot_source || '') === String(depotStatFiltre) || String(m.id_depot_destination || '') === String(depotStatFiltre);
+          const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
+          return matchDepot && matchEmplacement;
+        });
+      });
+
   const emplacementsTableau = emplacementFiltre !== 'TOUS'
     ? emplacements.filter(emp => String(emp.id || emp.id_emplacement || '') === String(emplacementFiltre))
     : emplacementsDisponibles;
@@ -997,7 +1089,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       `;
     } else if (modeVue === 'statistiques') {
       const depObj = depots.find(d => String(d.id) === String(depotStatFiltre));
+      const empObj = emplacements.find(e => String(e.id) === String(emplacementStatFiltre));
       const nomDepotPartenaire = depObj ? (depObj.nom_depot || depObj.Nom_Depot) : (moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts');
+      const nomLivreurEmplacement = empObj ? empObj.nom_emplacement : 'Tous';
       
       const periodeTexte = (dateDebutStat && dateFinStat)
         ? `Du ${formatIsoDateFr(dateDebutStat)} au ${formatIsoDateFr(dateFinStat)}`
@@ -1006,6 +1100,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       infosFiltresHtml = `
         <div class="meta-info">
           <span><strong>${libelleDepotRapport} :</strong> ${nomDepotPartenaire}</span>
+          <span><strong>${libelleLivreurOuEmplacement} :</strong> ${nomLivreurEmplacement}</span>
           <span><strong>Période :</strong> ${periodeTexte}</span>
         </div>
       `;
@@ -1506,7 +1601,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                   </div>
 
                   <div>
-                    {/* Libellé dynamique : Emplacement en mode boutique, Livreur en mode livraison */}
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">
                       {libelleLivreurOuEmplacement}
                     </label>
@@ -1711,7 +1805,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                   <select
                     disabled={enTrainDeSauvegarder}
                     value={depotStatFiltre}
-                    onChange={(e) => setDepotStatFiltre(e.target.value)}
+                    onChange={(e) => { setDepotStatFiltre(e.target.value); setEmplacementStatFiltre('TOUS'); }}
                     className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
                   >
                     <option value="TOUS">{moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts'}</option>
@@ -1724,20 +1818,39 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 </div>
 
                 <div>
-                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Article</label>
-                  <div
-                    onClick={() => {
-                      if (enTrainDeSauvegarder) return;
-                      setRechercheModalArticle('');
-                      setAfficherModalSelectionArticle(true);
-                    }}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">
+                    {libelleLivreurOuEmplacement}
+                  </label>
+                  <select
+                    disabled={enTrainDeSauvegarder}
+                    value={emplacementStatFiltre}
+                    onChange={(e) => setEmplacementStatFiltre(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
                   >
-                    <span className="truncate uppercase">
-                      {artObj ? nomArticle : '-- Sélectionner un article --'}
-                    </span>
-                    <span className="text-[10px] text-slate-400">🔍</span>
-                  </div>
+                    <option value="TOUS">Tous</option>
+                    {emplacementsStatDisponibles.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.nom_emplacement}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Article</label>
+                <div
+                  onClick={() => {
+                    if (enTrainDeSauvegarder) return;
+                    setRechercheModalArticle('');
+                    setAfficherModalSelectionArticle(true);
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+                >
+                  <span className="truncate uppercase">
+                    {artObj ? nomArticle : '-- Sélectionner un article --'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">🔍</span>
                 </div>
               </div>
             </div>
@@ -1761,16 +1874,17 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black">
                         <th className="p-2.5">Date</th>
-                        <th className="p-2.5">Nom de l'article</th>
+                        <th className="p-2.5">Motif</th>
                         <th className="p-2.5 text-center">Type Mvt</th>
+                        <th className="p-2.5 text-center">Livreur</th>
                         <th className="p-2.5 text-center">Quantité</th>
-                        <th className="p-2.5 text-center text-blue-700">Stock Progressif</th>
+                        <th className="p-2.5 text-center text-blue-700">Cumul</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-[10.5px]">
                       {stats.lignes.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré sur cette période.</td>
+                          <td colSpan="6" className="p-4 text-center text-slate-500 font-bold">Aucun mouvement enregistré sur cette période.</td>
                         </tr>
                       ) : (
                         stats.lignes.map((ligne, idx) => (
@@ -1778,7 +1892,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                             <td className="p-2.5 font-mono font-bold text-slate-700 whitespace-nowrap">
                               {ligne.date ? new Date(ligne.date).toLocaleDateString('fr-FR') : '-'}
                             </td>
-                            <td className="p-2.5 font-black uppercase text-slate-900">{nomArticle}</td>
+                            <td className="p-2.5 font-black uppercase text-slate-900">{ligne.motifLigne || '-'}</td>
                             <td className="p-2.5 text-center">
                               <span className={`px-2 py-0.5 rounded font-black text-[9.5px] ${
                                 ligne.typeAbr === 'APP' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
@@ -1790,6 +1904,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                                 {ligne.typeAbr}
                               </span>
                             </td>
+                            <td className="p-2.5 text-center font-bold text-slate-700 uppercase">{ligne.emplacementDest || '-'}</td>
                             <td className={`p-2.5 text-center font-black ${ligne.impactStock < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                               {ligne.impactStock > 0 ? `+${ligne.quantiteMouvementee}` : ligne.impactStock < 0 ? `-${ligne.quantiteMouvementee}` : ligne.quantiteMouvementee}
                             </td>
