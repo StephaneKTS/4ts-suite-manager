@@ -138,6 +138,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const [enTeteDoc, setEnTeteDoc] = useState({
     numeroDoc: '',
+    numeroAffichage: '', // 🌟 Numéro séquentiel d'affichage (ex: TR-13)
     dateDoc: new Date().toISOString().split('T')[0],
     id_depot_source: '',
     id_emplacement_source: '',
@@ -494,6 +495,71 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return Math.max(0, stockDepot);
   };
 
+  // 🌟 CALCULATEUR GLOBAL DES DOCUMENTS GROUPÉS (Identique à la liste pour garantir la correspondance exacte des numéros TR-XX)
+  const documentsGroupes = useMemo(() => {
+    const documentsBruts = Object.values(
+      mouvements
+        .filter((mvt) => {
+          const motif = (mvt.motif_remarque || '').trim().toUpperCase();
+          return (
+            !motif.includes('CMD-') && 
+            !motif.includes('LIVRAISON') && 
+            !motif.includes('RESTITUTION') &&
+            !motif.includes('VENTE') &&
+            !motif.includes('VENTE TICKET')
+          );
+        })
+        .reduce((acc, mvt) => {
+          const numDocBrut = mvt.motif_remarque || 'SANS-REF';
+          
+          if (!acc[numDocBrut]) { 
+            const operateurEnBase = mvt.operateur;
+            const operateurAffiche = (operateurEnBase && String(operateurEnBase).trim() !== '' && String(operateurEnBase).trim().toLowerCase() !== 'utilisateur' && String(operateurEnBase).trim() !== 'Utilisateur Inconnu') 
+              ? String(operateurEnBase).trim().toUpperCase() 
+              : obtenirNomOperateurConnecte();
+
+            const refDocAssociee = mvt.reference || '';
+
+            acc[numDocBrut] = { 
+              numeroDocBrut: numDocBrut,
+              referenceDoc: refDocAssociee,
+              date: mvt.created_at || '', 
+              type: (mvt.type_mouvement || 'TRANSFERT').toUpperCase(), 
+              depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
+              depotDestNom: obtenirNomDestinationParMvt(mvt),
+              operateur: operateurAffiche, 
+              lignesCount: 0 
+            }; 
+          }
+          if (!acc[numDocBrut].referenceDoc && mvt.reference) {
+            acc[numDocBrut].referenceDoc = mvt.reference;
+          }
+          acc[numDocBrut].lignesCount += 1;
+          return acc;
+        }, {})
+    );
+
+    documentsBruts.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const compteursParType = {};
+    return documentsBruts.map((doc) => {
+      const typeMvt = doc.type;
+      const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+      const prefix = prefixes[typeMvt] || 'TR';
+
+      if (!compteursParType[prefix]) {
+        compteursParType[prefix] = 0;
+      }
+      compteursParType[prefix] += 1;
+      const numeroSequentiel = `${prefix}-${String(compteursParType[prefix]).padStart(2, '0')}`;
+
+      return {
+        ...doc,
+        numeroDoc: numeroSequentiel
+      };
+    });
+  }, [mouvements, depots, emplacements]);
+
   // 🛡️ FILTRAGE STRICT DES ARTICLES (Entreprise, Module, Partenaire et Emplacement/Livreur)
   const articlesPopupFiltres = articles.filter((art) => {
     const designation = (art.Designation || art.designation || '').toLowerCase();
@@ -609,7 +675,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       return; 
     }
 
-    // Activation immédiate du verrou anti-double clic
     setEnTrainDInsertion(true);
 
     const artId = String(articleSelectionneTemp.id_article || articleSelectionneTemp.id);
@@ -657,7 +722,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     
     setTimeout(() => { 
       if (boutonSelectionArticleRef.current) boutonSelectionArticleRef.current.focus(); 
-      setEnTrainDInsertion(false); // Libération du verrou après 400ms
+      setEnTrainDInsertion(false); 
     }, 400);
   };
 
@@ -683,6 +748,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       ...prev,
       referenceDoc: '',
       numeroDoc: genererNumeroDocSecurise(typeOperation),
+      numeroAffichage: '',
       operateur: obtenirNomOperateurConnecte()
     }));
     setModeAffichage('LISTE_DOCS');
@@ -725,7 +791,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       return;
     }
 
-    if (!confirm(`Voulez-vous vraiment supprimer définitivement ce document (${enTeteDoc.numeroDoc}) ?`)) return;
+    if (!confirm(`Voulez-vous vraiment supprimer définitivement ce document (${enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}) ?`)) return;
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -752,6 +818,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         ...prev,
         referenceDoc: '',
         numeroDoc: genererNumeroDocSecurise(typeOperation),
+        numeroAffichage: '',
         operateur: obtenirNomOperateurConnecte()
       }));
       await chargerDonnees(true);
@@ -849,6 +916,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         ...prev, 
         referenceDoc: '', 
         numeroDoc: genererNumeroDocSecurise(typeOperation),
+        numeroAffichage: '',
         operateur: obtenirNomOperateurConnecte() 
       }));
       await chargerDonnees(true);
@@ -867,6 +935,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (lignesAssociees.length === 0) return;
     const premier = lignesAssociees[0];
     
+    // 🌟 Retrouver le numéro d'affichage séquentiel correspondant (ex: TR-13) depuis documentsGroupes
+    const docGroupeTrouve = documentsGroupes.find(d => String(d.numeroDocBrut) === String(numeroDocUnique));
+    const numeroAffichageEffectif = docGroupeTrouve ? docGroupeTrouve.numeroDoc : '';
+    
     // 🛡️ MODE CONSULTATION SEULE POUR LES JOURNÉES PASSÉES
     const dateDocStr = premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
     const dateDuJour = new Date().toISOString().split('T')[0];
@@ -884,6 +956,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const nouvelEnTete = { 
       ...enTeteDoc, 
       numeroDoc: numeroDocUnique, 
+      numeroAffichage: numeroAffichageEffectif,
       dateDoc: dateDocStr, 
       id_depot_source: premier.id_depot_source || '', 
       id_emplacement_source: premier.id_emplacement_source || '',
@@ -918,70 +991,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const lignesModifiees = JSON.stringify(lignesPanier) !== JSON.stringify(etatInitialEdition.lignes);
     return enTeteModifie || typeModifie || lignesModifiees;
   }, [mouvementEnEditionId, etatInitialEdition, enTeteDoc, typeOperation, lignesPanier]);
-
-  const documentsGroupes = useMemo(() => {
-    const documentsBruts = Object.values(
-      mouvements
-        .filter((mvt) => {
-          const motif = (mvt.motif_remarque || '').trim().toUpperCase();
-          return (
-            !motif.includes('CMD-') && 
-            !motif.includes('LIVRAISON') && 
-            !motif.includes('RESTITUTION') &&
-            !motif.includes('VENTE') &&
-            !motif.includes('VENTE TICKET')
-          );
-        })
-        .reduce((acc, mvt) => {
-          const numDocBrut = mvt.motif_remarque || 'SANS-REF';
-          
-          if (!acc[numDocBrut]) { 
-            const operateurEnBase = mvt.operateur;
-            const operateurAffiche = (operateurEnBase && String(operateurEnBase).trim() !== '' && String(operateurEnBase).trim().toLowerCase() !== 'utilisateur' && String(operateurEnBase).trim() !== 'Utilisateur Inconnu') 
-              ? String(operateurEnBase).trim().toUpperCase() 
-              : obtenirNomOperateurConnecte();
-
-            const refDocAssociee = mvt.reference || '';
-
-            acc[numDocBrut] = { 
-              numeroDocBrut: numDocBrut,
-              referenceDoc: refDocAssociee,
-              date: mvt.created_at || '', 
-              type: (mvt.type_mouvement || 'TRANSFERT').toUpperCase(), 
-              depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
-              depotDestNom: obtenirNomDestinationParMvt(mvt),
-              operateur: operateurAffiche, 
-              lignesCount: 0 
-            }; 
-          }
-          if (!acc[numDocBrut].referenceDoc && mvt.reference) {
-            acc[numDocBrut].referenceDoc = mvt.reference;
-          }
-          acc[numDocBrut].lignesCount += 1;
-          return acc;
-        }, {})
-    );
-
-    documentsBruts.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    const compteursParType = {};
-    return documentsBruts.map((doc) => {
-      const typeMvt = doc.type;
-      const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
-      const prefix = prefixes[typeMvt] || 'TR';
-
-      if (!compteursParType[prefix]) {
-        compteursParType[prefix] = 0;
-      }
-      compteursParType[prefix] += 1;
-      const numeroSequentiel = `${prefix}-${String(compteursParType[prefix]).padStart(2, '0')}`;
-
-      return {
-        ...doc,
-        numeroDoc: numeroSequentiel
-      };
-    });
-  }, [mouvements, depots, emplacements]);
 
   const documentsFiltresParDate = documentsGroupes.filter((doc) => {
     if (!doc.date) return true;
@@ -1032,7 +1041,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               setDocumentEnLectureSeule(false);
               setEtatInitialEdition(null);
               setLignesPanier([]); 
-              setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: obtenirNomOperateurConnecte() })); 
+              setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeOperation), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
             }} 
             className={`py-1 px-3 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-800'}`}
           >
@@ -1057,7 +1066,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          {/* 🌟 LIGNE ÉPURÉE : BOUTON RETOUR ET SÉLECTEUR DE MOUVEMENT CÔTE À CÔTE SANS DÉBORDEMENT */}
           <div className="grid grid-cols-2 gap-2 items-center">
             <button
               type="button"
@@ -1087,7 +1095,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   if (mouvementEnEditionId) return;
                   const nt = e.target.value; 
                   setTypeOperation(nt); 
-                  if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(nt), operateur: obtenirNomOperateurConnecte() })); 
+                  if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(nt), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
                 }} 
                 className="bg-slate-50 border rounded px-1.5 py-0.5 font-extrabold text-orange-600 text-[9px] truncate w-full"
               >
@@ -1110,7 +1118,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   OPÉRATEUR CONNECTÉ : <strong className="text-slate-800">{mouvementEnEditionId ? enTeteDoc.operateur : obtenirNomOperateurConnecte()}</strong>
                 </span>
               </div>
-              <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">{enTeteDoc.numeroDoc}</span>
+              {/* 🌟 AFFICHAGE CLAIR DU NUMÉRO SÉQUENTIEL (ex: TR-13) OU DU NUMÉRO DE SÉCURITÉ */}
+              <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">
+                {enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}
+              </span>
             </div>
             
             <div className="space-y-1.5 text-[9.5px]">
@@ -1526,7 +1537,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     <td colSpan="6" className="p-4 text-center text-slate-400 font-bold">Aucun document ne correspond à cette plage de dates.</td>
                   </tr>
                 ) : (
-                  documentsAffiches.map((doc, idx) => (
+                  documentsAffiches.main ? null : documentsAffiches.map((doc, idx) => (
                     <tr key={idx} onClick={() => !enTrainDeSauvegarder && ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
                       <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numeroDoc}</td>

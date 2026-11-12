@@ -464,28 +464,64 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     return calculerLigneRapportStockPourDepot(articleId, depotCible);
   };
 
-  const formaterTypeMouvementAffichage = (mvt) => {
-    const typeMvt = (mvt.type_mouvement || '').toUpperCase();
-    const motif = (mvt.motif_remarque || '').toUpperCase();
+  // 🌟 FONCTION DE RECONSTRUCTION DES NUMÉROS VISUELS DE DOCUMENTS IDENTIQUE À GESTION MOUVEMENTS
+  const obtenirNumeroDocVisuelPourMouvement = (mvtCible) => {
+    if (!mvtCible) return 'MVT';
+    const motifMvt = (mvtCible.motif_remarque || '').trim().toUpperCase();
+    
+    // Filtrer et trier tous les mouvements valides de la même manière que la liste de documents
+    const documentsBruts = Object.values(
+      mouvements
+        .filter((mvt) => {
+          const motif = (mvt.motif_remarque || '').trim().toUpperCase();
+          return (
+            !motif.includes('CMD-') && 
+            !motif.includes('LIVRAISON') && 
+            !motif.includes('RESTITUTION') &&
+            !motif.includes('VENTE') &&
+            !motif.includes('VENTE TICKET')
+          );
+        })
+        .reduce((acc, mvt) => {
+          const numDocBrut = mvt.motif_remarque || 'SANS-REF';
+          if (!acc[numDocBrut]) {
+            acc[numDocBrut] = {
+              numeroDocBrut: numDocBrut,
+              date: mvt.created_at || '',
+              type: (mvt.type_mouvement || 'TRANSFERT').toUpperCase(),
+            };
+          }
+          return acc;
+        }, {})
+    );
 
-    const matchTicket = motif.match(/(C\d+-\d+)/i);
-    if (matchTicket) {
-      return matchTicket[1];
-    }
+    documentsBruts.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-    if (typeMvt === 'ENTREE') return 'ME';
-    if (typeMvt === 'SORTIE') return 'MS';
-    if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') return 'TR';
-    if (typeMvt === 'APPROVISIONNEMENT') return 'APP';
+    const compteursParType = {};
+    for (const doc of documentsBruts) {
+      const typeMvt = doc.type;
+      const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+      const prefix = prefixes[typeMvt] || 'TR';
 
-    if (motif.includes('VENTE') || motif.includes('TICKET')) {
-      const parts = motif.split(' ');
-      for (const p of parts) {
-        if (/C\d+-\d+/i.test(p)) return p;
+      if (!compteursParType[prefix]) {
+        compteursParType[prefix] = 0;
+      }
+      compteursParType[prefix] += 1;
+      const numeroSequentiel = `${prefix}-${String(compteursParType[prefix]).padStart(2, '0')}`;
+
+      if (doc.numeroDocBrut === motifMvt) {
+        return numeroSequentiel;
       }
     }
 
-    return typeMvt.substring(0, 3) || 'MVT';
+    // Fallback si non trouvé dans les regroupements
+    const typeMvt = (mvtCible.type_mouvement || '').toUpperCase();
+    if (typeMvt === 'ENTREE') return 'ME';
+    if (typeMvt === 'SORTIE') return 'MS';
+    if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') return 'TR';
+    if (typeMvt === 'AVARIES') return 'AV';
+    if (typeMvt === 'INVENTAIRE') return 'INV';
+    return typeMvt.substring(0, 3) || 'TR';
   };
 
   const obtenirHistoriqueChronologiqueStat = (articleId) => {
@@ -495,104 +531,210 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     const dCible = depotStatFiltre;
     const eCible = emplacementStatFiltre;
 
-    approvisionnements.forEach(app => {
-      const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
-      if (!matchDepot) return;
+    if (eCible === 'TOUS') {
+      // --- CAS 1 : TOUS LES LIVREURS -> CUMUL DU DÉPÔT / PARTENAIRE ---
+      approvisionnements.forEach(app => {
+        const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
+        if (!matchDepot) return;
 
-      if (eCible !== 'TOUS') {
+        let listArt = [];
+        if (typeof app.details_articles === 'string') {
+          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+        } else if (Array.isArray(app.details_articles)) {
+          listArt = app.details_articles;
+        }
+
+        listArt.forEach(item => {
+          if (String(item.id_article || item.article_id) === String(articleId)) {
+            const motifRef = (app.reference || app.motif || app.motif_remarque || '').trim();
+            const estLivraison = (app.type_mouvement || '').toUpperCase() === 'LIVRAISON' || motifRef.toUpperCase().includes('LIVRAISON');
+            const motifAffichage = estLivraison ? 'LIVRAISON' : (motifRef !== '' ? motifRef : 'APPROVISIONNEMENT');
+
+            evenements.push({
+              date: app.created_at || '',
+              typeAbr: 'APP',
+              motifLigne: motifAffichage,
+              emplacementDest: obtenirNomDestinationParMvt(app),
+              quantiteMouvementee: parseInt(item.quantite || 0),
+              impactStock: parseInt(item.quantite || 0),
+              prioriteOrdre: 0,
+              estTypeInventaire: false,
+              valeurInventaire: 0
+            });
+          }
+        });
+      });
+
+      mouvements.forEach(m => {
+        if (String(m.id_article) !== String(articleId)) return;
+        
+        const qte = parseInt(m.quantite || 0);
+        const typeMvt = (m.type_mouvement || '').toUpperCase();
+        const estSource = String(m.id_depot_source) === String(dCible);
+        const estDestination = String(m.id_depot_destination) === String(dCible);
+
+        if (dCible !== 'TOUS' && !estSource && !estDestination) return;
+
+        // 🌟 UTILISATION DU NUMÉRO VISUEL EXACT DU DOCUMENT ICI
+        const typeAbr = obtenirNumeroDocVisuelPourMouvement(m);
+        const emplacementDestNom = obtenirNomDestinationParMvt(m);
+
+        const motifRemarque = (m.motif_remarque || '').trim();
+        const referenceMvt = (m.reference || '').trim();
+        
+        const estLivraison = typeMvt === 'LIVRAISON' || motifRemarque.toUpperCase().includes('LIVRAISON') || referenceMvt.toUpperCase().includes('LIVRAISON');
+        const motifAffichage = estLivraison ? 'LIVRAISON' : (referenceMvt !== '' ? referenceMvt : (motifRemarque !== '' ? motifRemarque : typeMvt));
+
+        let impact = 0;
+        let prioriteOrdre = 1;
+        let estTypeInventaire = false;
+
+        if (typeMvt === 'INVENTAIRE') {
+          impact = qte;
+          estTypeInventaire = true;
+          prioriteOrdre = 0;
+        } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          impact = qte;
+          prioriteOrdre = 0;
+        } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          impact = -qte;
+          prioriteOrdre = 2;
+        } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
+          if (memeDepot) {
+            impact = 0;
+            prioriteOrdre = 1;
+          } else {
+            if (dCible === 'TOUS') {
+              impact = 0;
+              prioriteOrdre = 1;
+            } else {
+              if (estSource) {
+                impact = -qte;
+                prioriteOrdre = 2;
+              }
+              if (estDestination) {
+                impact = qte;
+                prioriteOrdre = 0;
+              }
+            }
+          }
+        } else {
+          impact = qte;
+          prioriteOrdre = 1;
+        }
+
+        evenements.push({
+          date: m.created_at || '',
+          typeAbr: typeAbr,
+          motifLigne: motifAffichage,
+          emplacementDest: emplacementDestNom,
+          quantiteMouvementee: qte,
+          impactStock: impact,
+          prioriteOrdre: prioriteOrdre,
+          estTypeInventaire: estTypeInventaire,
+          valeurInventaire: qte
+        });
+      });
+
+    } else {
+      // --- CAS 2 : UN LIVREUR SPÉCIFIQUE SÉLECTIONNÉ -> CUMUL DU LIVREUR ---
+      approvisionnements.forEach(app => {
+        const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
+        if (!matchDepot) return;
+
         const matchEmpApp = String(app.id_emplacement_destination || app.id_emplacement || '') === String(eCible);
         if (!matchEmpApp) return;
-      }
 
-      let listArt = [];
-      if (typeof app.details_articles === 'string') {
-        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-      } else if (Array.isArray(app.details_articles)) {
-        listArt = app.details_articles;
-      }
-
-      listArt.forEach(item => {
-        if (String(item.id_article || item.article_id) === String(articleId)) {
-          const motifRef = (app.reference || app.motif || app.motif_remarque || '').trim();
-          const estLivraison = (app.type_mouvement || '').toUpperCase() === 'LIVRAISON' || motifRef.toUpperCase().includes('LIVRAISON');
-          const motifAffichage = estLivraison ? 'LIVRAISON' : (motifRef !== '' ? motifRef : 'APPROVISIONNEMENT');
-
-          evenements.push({
-            date: app.created_at || '',
-            typeAbr: 'APP',
-            motifLigne: motifAffichage,
-            emplacementDest: obtenirNomDestinationParMvt(app),
-            quantiteMouvementee: parseInt(item.quantite || 0),
-            impactStock: parseInt(item.quantite || 0),
-            prioriteOrdre: 0
-          });
+        let listArt = [];
+        if (typeof app.details_articles === 'string') {
+          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+        } else if (Array.isArray(app.details_articles)) {
+          listArt = app.details_articles;
         }
-      });
-    });
 
-    mouvements.forEach(m => {
-      if (String(m.id_article) !== String(articleId)) return;
-      
-      const qte = parseInt(m.quantite || 0);
-      const typeMvt = (m.type_mouvement || '').toUpperCase();
-      const estSource = String(m.id_depot_source) === String(dCible);
-      const estDestination = String(m.id_depot_destination) === String(dCible);
+        listArt.forEach(item => {
+          if (String(item.id_article || item.article_id) === String(articleId)) {
+            const motifRef = (app.reference || app.motif || app.motif_remarque || '').trim();
+            const estLivraison = (app.type_mouvement || '').toUpperCase() === 'LIVRAISON' || motifRef.toUpperCase().includes('LIVRAISON');
+            const motifAffichage = estLivraison ? 'LIVRAISON' : (motifRef !== '' ? motifRef : 'APPROVISIONNEMENT');
 
-      if (dCible !== 'TOUS' && !estSource && !estDestination) return;
-
-      const empSource = String(m.id_emplacement_source || '');
-      const empDest = String(m.id_emplacement_destination || '');
-      const matchEmplacementStat = eCible === 'TOUS' || empSource === String(eCible) || empDest === String(eCible);
-      if (!matchEmplacementStat) return;
-
-      const typeAbr = formaterTypeMouvementAffichage(m);
-      const emplacementDestNom = obtenirNomDestinationParMvt(m);
-
-      const motifRemarque = (m.motif_remarque || '').trim();
-      const referenceMvt = (m.reference || '').trim();
-      
-      const estLivraison = typeMvt === 'LIVRAISON' || motifRemarque.toUpperCase().includes('LIVRAISON') || referenceMvt.toUpperCase().includes('LIVRAISON');
-      const motifAffichage = estLivraison ? 'LIVRAISON' : (referenceMvt !== '' ? referenceMvt : (motifRemarque !== '' ? motifRemarque : typeMvt));
-
-      let impact = 0;
-      let prioriteOrdre = 1;
-
-      if (typeMvt === 'INVENTAIRE') {
-        impact = qte;
-        prioriteOrdre = 0;
-      } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
-        impact = qte;
-        prioriteOrdre = 0;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
-        impact = -qte;
-        prioriteOrdre = 2;
-      } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
-        const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
-        if (memeDepot) {
-          impact = 0;
-        } else {
-          if (dCible === 'TOUS') {
-            impact = 0;
-          } else {
-            if (estSource) impact = -qte;
-            if (estDestination) impact = qte;
+            evenements.push({
+              date: app.created_at || '',
+              typeAbr: 'APP',
+              motifLigne: motifAffichage,
+              emplacementDest: obtenirNomDestinationParMvt(app),
+              quantiteMouvementee: parseInt(item.quantite || 0),
+              impactStock: parseInt(item.quantite || 0),
+              prioriteOrdre: 0,
+              estTypeInventaire: false,
+              valeurInventaire: 0
+            });
           }
-        }
-        prioriteOrdre = 1;
-      } else {
-        impact = qte;
-      }
-
-      evenements.push({
-        date: m.created_at || '',
-        typeAbr: typeAbr,
-        motifLigne: motifAffichage,
-        emplacementDest: emplacementDestNom,
-        quantiteMouvementee: qte,
-        impactStock: impact,
-        prioriteOrdre: prioriteOrdre
+        });
       });
-    });
+
+      mouvements.forEach(m => {
+        if (String(m.id_article) !== String(articleId)) return;
+
+        if (dCible !== 'TOUS') {
+          const matchDepSource = String(m.id_depot_source || '') === String(dCible);
+          const matchDepDest = String(m.id_depot_destination || '') === String(dCible);
+          if (!matchDepSource && !matchDepDest) return;
+        }
+
+        const qte = parseInt(m.quantite || 0);
+        const typeMvt = (m.type_mouvement || '').toUpperCase();
+        
+        const empSource = String(m.id_emplacement_source || '');
+        const empDest = String(m.id_emplacement_destination || '');
+
+        const matchSource = empSource === String(eCible);
+        const matchDest = empDest === String(eCible);
+
+        if (!matchSource && !matchDest) return;
+
+        // 🌟 UTILISATION DU NUMÉRO VISUEL EXACT DU DOCUMENT ICI AUSSI
+        const typeAbr = obtenirNumeroDocVisuelPourMouvement(m);
+        const emplacementDestNom = obtenirNomDestinationParMvt(m);
+
+        const motifRemarque = (m.motif_remarque || '').trim();
+        const referenceMvt = (m.reference || '').trim();
+        
+        const estLivraison = typeMvt === 'LIVRAISON' || motifRemarque.toUpperCase().includes('LIVRAISON') || referenceMvt.toUpperCase().includes('LIVRAISON');
+        const motifAffichage = estLivraison ? 'LIVRAISON' : (referenceMvt !== '' ? referenceMvt : (motifRemarque !== '' ? motifRemarque : typeMvt));
+
+        let impact = 0;
+        let prioriteOrdre = 1;
+        let estTypeInventaire = false;
+
+        if (typeMvt === 'INVENTAIRE' && matchSource) {
+          estTypeInventaire = true;
+          prioriteOrdre = 0;
+        } else if (matchDest && !matchSource) {
+          impact = qte; 
+          prioriteOrdre = 0; 
+        } else if (matchSource && !matchDest) {
+          impact = -qte; 
+          prioriteOrdre = 2; 
+        } else if (matchSource && matchDest) {
+          impact = 0;
+          prioriteOrdre = 1;
+        }
+
+        evenements.push({
+          date: m.created_at || '',
+          typeAbr: typeAbr,
+          motifLigne: motifAffichage,
+          emplacementDest: emplacementDestNom,
+          quantiteMouvementee: qte,
+          impactStock: impact,
+          prioriteOrdre: prioriteOrdre,
+          estTypeInventaire: estTypeInventaire,
+          valeurInventaire: qte
+        });
+      });
+    }
 
     evenements.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
@@ -615,17 +757,22 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       const dateEv = (ev.date || '').split('T')[0];
       const estAvantPeriode = dateDebutStat && dateEv && dateEv < dateDebutStat;
 
-      if (estAvantPeriode) {
-        stockCourant += ev.impactStock;
-      } else if ((!dateDebutStat || !dateEv || dateEv >= dateDebutStat) && (!dateFinStat || !dateEv || dateEv <= dateFinStat)) {
-        stockCourant += ev.impactStock;
-        lignesResultat.push({
-          ...ev,
-          date: ev.date,
-          stockProgressif: Math.max(0, stockCourant)
-        });
+      if (ev.estTypeInventaire) {
+        stockCourant = ev.valeurInventaire;
+        if (!estAvantPeriode && ((!dateDebutStat || !dateEv || dateEv >= dateDebutStat) && (!dateFinStat || !dateEv || dateEv <= dateFinStat))) {
+          lignesResultat.push({
+            ...ev,
+            stockProgressif: Math.max(0, stockCourant)
+          });
+        }
       } else {
         stockCourant += ev.impactStock;
+        if (!estAvantPeriode && ((!dateDebutStat || !dateEv || dateEv >= dateDebutStat) && (!dateFinStat || !dateEv || dateEv <= dateFinStat))) {
+          lignesResultat.push({
+            ...ev,
+            stockProgressif: Math.max(0, stockCourant)
+          });
+        }
       }
     });
 
@@ -973,7 +1120,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         });
       });
 
-  // Pour l'onglet Catalogue (Articles)
   const emplacementsCatDisponibles = depotFiltre === 'TOUS'
     ? emplacements
     : emplacements.filter(emp => {
@@ -1015,7 +1161,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     ...emplacementsStatDisponibles.filter(e => (e.nom_emplacement || '').toLowerCase().includes(rechercheModalEmp.toLowerCase()))
   ];
 
-  // Listes filtrées pour les modales du catalogue (Articles)
   const famillesCatModalFiltres = [
     { id: 'TOUTES', nom_famille: 'Toutes' },
     ...familles.filter(f => (f.nom_famille || f.Nom_Famille || '').toLowerCase().includes(rechercheModalFamilleCat.toLowerCase()))
@@ -1857,7 +2002,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 </div>
               </div>
 
-              {/* Ligne unique pour Partenaire/Dépôt, Livreur/Emplacement et Article */}
               <div className="grid grid-cols-3 gap-1.5">
                 <div>
                   <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">{libelleDepotPartenaire}</label>
@@ -1949,9 +2093,11 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                             <td className="p-2.5 text-center">
                               <span className={`px-2 py-0.5 rounded font-black text-[9.5px] ${
                                 ligne.typeAbr === 'APP' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
-                                ligne.typeAbr === 'ME' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                                ligne.typeAbr === 'MS' ? 'bg-red-100 text-red-800 border border-red-200' :
-                                ligne.typeAbr === 'TR' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                ligne.typeAbr.startsWith('ME') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                ligne.typeAbr.startsWith('MS') ? 'bg-red-100 text-red-800 border border-red-200' :
+                                ligne.typeAbr.startsWith('TR') ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                ligne.typeAbr.startsWith('AV') ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                ligne.typeAbr.startsWith('INV') ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' :
                                 'bg-blue-100 text-blue-800 border border-blue-200'
                               }`}>
                                 {ligne.typeAbr}
@@ -2034,7 +2180,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                   disabled={enTrainDeSauvegarder}
                   value={rechercheRapportInput}
                   onFocus={(e) => e.target.select()}
-                  onChange={(e) => setRechercheRapportInput(e.target.value)}
+                  onChange={(e) => setSearchRapportInput(e.target.value)}
                   placeholder=""
                   style={{ textTransform: 'uppercase' }}
                   className="w-full bg-white border border-slate-300 rounded-lg p-1.5 pl-7 font-extrabold text-slate-900 text-[10px] shadow-xs uppercase focus:ring-2 focus:ring-orange-500 focus:outline-none"
