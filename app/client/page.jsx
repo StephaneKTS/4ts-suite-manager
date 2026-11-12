@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function PageRacineAdmin() {
+function ContenuRacineAdmin() {
   const searchParams = useSearchParams();
   const entrepriseId = searchParams.get('entrepriseId');
   const [estAdminAuthentifie, setEstAdminAuthentifie] = useState(false);
@@ -55,19 +55,27 @@ export default function PageRacineAdmin() {
           Veuillez scanner le QR code posé sur votre table dans un restaurant partenaire pour accéder directement au menu de commande.
         </p>
         <a
-          href="/client"
+          href="/connexion"
           className="bg-orange-600 hover:bg-orange-500 text-white font-black px-6 py-3 rounded-2xl text-xs uppercase shadow-md transition"
         >
-          Accéder à un menu ➔
+          Connexion Administrateur ➔
         </a>
       </div>
     );
   }
 
-  // SI C'EST BIEN VOUS (L'ADMINISTRATEUR CONNECTÉ), AFFICHER LE TABLEAU DE BORD HABITUEL :
+  // SI C'EST BIEN VOUS (L'ADMINISTRATEUR CONNECTÉ) :
   return (
-    <div>
-      {/* Insérez ici le contenu de votre tableau de bord administrateur habituel */}
+    <div className="p-6 text-center">
+      <h1 className="text-sm font-bold">Redirection vers votre espace...</h1>
     </div>
+  );
+}
+
+export default function PageRacineAdmin() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-bold text-slate-400">Chargement...</div>}>
+      <ContenuRacineAdmin />
+    </Suspense>
   );
 }
