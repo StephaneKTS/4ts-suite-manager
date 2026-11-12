@@ -11,9 +11,10 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   
   const [audioActive, setAudioActive] = useState(true);
 
-  // File d'attente audio pour éviter les superpositions
+  // File d'attente audio et vocale strictement séquentielle
   const fileDAbsolueAudio = useRef([]);
   const enTrainDeJouerAudio = useRef(false);
+  const idsCommandesConnues = useRef(new Set());
 
   useEffect(() => {
     const preferenceAudio = localStorage.getItem('4ts_audio_active');
@@ -45,7 +46,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        alert("Permission de notification refusée.");
+        alert("Permission de notification refusée. Veuillez l'autoriser dans les paramètres du téléphone.");
         return;
       }
 
@@ -68,13 +69,14 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         }, { onConflict: 'endpoint' });
 
       if (error) throw error;
-      alert("Notifications push activées avec succès !");
+      alert("🔔 Notifications push activées ! Votre téléphone est configuré pour sonner même en veille.");
     } catch (err) {
       console.error("Erreur détaillée push :", err);
       alert("Erreur Push : " + (err.message || err.name || "Erreur inconnue"));
     }
   };
 
+  // Traitement strictement séquentiel avec un intervalle de 4.5 secondes entre chaque annonce
   const traiterFileDAbsolue = async () => {
     if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActive) {
       return;
@@ -92,31 +94,34 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     } catch (e) {
       console.log("Erreur lecture audio :", e);
     } finally {
-      enTrainDeJouerAudio.current = false;
-      if (fileDAbsolueAudio.current.length > 0) {
-        setTimeout(traiterFileDAbsolue, 200);
-      }
+      // Pause de sécurité de 4.5 secondes pour s'assurer que l'énoncé se termine entièrement sans se couper
+      setTimeout(() => {
+        enTrainDeJouerAudio.current = false;
+        if (fileDAbsolueAudio.current.length > 0) {
+          traiterFileDAbsolue();
+        }
+      }, 4500);
     }
   };
 
-  const ajouterFichierAudio = (type, texte = '') => {
+  const ajouterFichierAudioUnique = (type, texte = '') => {
     if (!audioActive) return;
     fileDAbsolueAudio.current.push({ type, texte });
     traiterFileDAbsolue();
   };
 
   const executerSonFort = () => {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
         
         if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
+          await audioCtx.resume();
         }
         
-        const dureeTotaleMs = 1600;
-        [0, 0.4, 0.8, 1.2].forEach((delay) => {
+        const dureeTotaleMs = 1500;
+        [0, 0.4, 0.8].forEach((delay) => {
           const osc = audioCtx.createOscillator();
           const gain = audioCtx.createGain();
           
@@ -124,13 +129,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay);
           
           gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.3);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.25);
           
           osc.connect(gain);
           gain.connect(audioCtx.destination);
           
           osc.start(audioCtx.currentTime + delay);
-          osc.stop(audioCtx.currentTime + delay + 0.3);
+          osc.stop(audioCtx.currentTime + delay + 0.25);
         });
 
         setTimeout(resolve, dureeTotaleMs);
@@ -145,11 +150,10 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try {
           window.speechSynthesis.resume();
-          window.speechSynthesis.cancel();
           
           const utterance = new SpeechSynthesisUtterance(texte);
           utterance.lang = 'fr-FR';
-          utterance.rate = 0.95;
+          utterance.rate = 0.90; // Vitesse posée pour une clarté parfaite
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
           
@@ -187,12 +191,45 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     if (!audioActive) return;
     if (typeof window !== 'undefined' && navigator.vibrate) {
       try {
-        navigator.vibrate([400, 150, 400, 150, 600]);
+        navigator.vibrate([500, 200, 500, 200, 800]);
       } catch (e) {}
     }
   };
 
-  // Chargement initial des commandes
+  const afficherNotificationNATIVE = (titre, corps) => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.showNotification(titre, {
+            body: corps,
+            icon: '/icon.png',
+            badge: '/icon.png',
+            vibrate: [500, 200, 500],
+            tag: 'nouvelle-commande-qr',
+            renotify: true,
+            requireInteraction: true
+          });
+        });
+      } catch (e) {
+        new Notification(titre, { body: corps });
+      }
+    }
+  };
+
+  const notifierNouvelleCommande = (cmd) => {
+    const nomClientPropre = (cmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
+    const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${cmd.numero_table || 'non spécifiée'}.`;
+    
+    // Alerte système native (réveille le téléphone en veille)
+    afficherNotificationNATIVE(`🚨 Nouvelle Commande : ${cmd.numero_commande}`, `Client : ${cmd.nom_client} | Table : ${cmd.numero_table}`);
+
+    if (audioActive) {
+      declencherVibration();
+      ajouterFichierAudioUnique('ALERTE_SONORE');
+      ajouterFichierAudioUnique('ANNONCE_VOCALE', messageVocal);
+    }
+  };
+
   const chargerCommandesQR = async () => {
     try {
       const { data, error } = await supabase
@@ -202,7 +239,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCommandes(data || []);
+      const liste = data || [];
+      
+      if (idsCommandesConnues.current.size === 0) {
+        liste.forEach(c => idsCommandesConnues.current.add(c.id));
+      }
+
+      setCommandes(liste);
     } catch (err) {
       console.error('Erreur chargement commandes :', err.message);
     } finally {
@@ -210,14 +253,21 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // Abonnement Realtime Supabase (Zéro délai d'attente dès qu'une commande est insérée)
   useEffect(() => {
     if (!entrepriseId) return;
 
     chargerCommandesQR();
 
+    const nomCanal = `commandes-realtime-${entrepriseId}`;
+
+    supabase.getChannels().forEach((c) => {
+      if (c.topic.includes(nomCanal)) {
+        supabase.removeChannel(c);
+      }
+    });
+
     const canalRealtime = supabase
-      .channel(`commandes-realtime-${entrepriseId}`)
+      .channel(nomCanal)
       .on(
         'postgres_changes',
         {
@@ -228,39 +278,43 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         },
         (payload) => {
           const nouvelleCmd = payload.new;
-          
-          // Mettre à jour instantanément la liste des commandes à l'écran
-          setCommandes((prev) => [nouvelleCmd, ...prev]);
-
-          // Déclencher l'alerte sonore et vocale immédiatement
-          if (audioActive) {
-            declencherVibration();
-            const nomClientPropre = (nouvelleCmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
-            const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${nouvelleCmd.numero_table || 'non spécifiée'}.`;
-            
-            ajouterFichierAudio('ALERTE_SONORE');
-            ajouterFichierAudio('ANNONCE_VOCALE', messageVocal);
+          if (!idsCommandesConnues.current.has(nouvelleCmd.id)) {
+            idsCommandesConnues.current.add(nouvelleCmd.id);
+            setCommandes((prev) => [nouvelleCmd, ...prev]);
+            notifierNouvelleCommande(nouvelleCmd);
           }
         }
       )
       .subscribe();
 
-    // Vérification périodique de sécurité pour les impayés (toutes les 5 minutes)
-    const intervalRappelPaiement = setInterval(() => {
-      setCommandes(prevCommandes => {
-        const impayesServis = prevCommandes.some(c => c.statut === 'SERVI' && c.statut_paiement !== 'PAYE');
-        if (impayesServis && audioActive) {
-          declencherVibration();
-          ajouterFichierAudio('ALERTE_SONORE');
-          ajouterFichierAudio('ANNONCE_VOCALE', "Alerte impayé ! Une commande servie n'a pas encore été réglée.");
+    // Polling haute fréquence (2 secondes) pour rattraper instantanément le retour de veille
+    const intervalSecours = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('commandes_clients_qr')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .order('created_at', { ascending: false });
+
+        if (data && data.length > 0) {
+          setCommandes(prev => {
+            const nouvelles = data.filter(c => !idsCommandesConnues.current.has(c.id));
+            if (nouvelles.length > 0) {
+              nouvelles.forEach(c => {
+                idsCommandesConnues.current.add(c.id);
+                notifierNouvelleCommande(c);
+              });
+              return data;
+            }
+            return prev;
+          });
         }
-        return prevCommandes;
-      });
-    }, 300000);
+      } catch (e) {}
+    }, 2000);
 
     return () => {
       supabase.removeChannel(canalRealtime);
-      clearInterval(intervalRappelPaiement);
+      clearInterval(intervalSecours);
     };
   }, [entrepriseId, audioActive]);
 
@@ -349,14 +403,15 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           
           <div className="flex items-center gap-1 shrink-0">
             <button
+              type="button"
               onClick={sAbonnerAuxNotifications}
-              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-2 py-1 rounded text-[8px] uppercase tracking-wide transition shadow-xs whitespace-nowrap"
-              title="Activer les notifications push"
+              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-2 py-1 rounded text-[8px] uppercase tracking-wide transition shadow-xs whitespace-nowrap animate-pulse"
             >
-              🔔 Push
+              🔔 Activer Push Veille
             </button>
 
             <button
+              type="button"
               onClick={toggleAudio}
               className={`font-black px-2.5 py-1 rounded text-[8px] uppercase tracking-wide transition shadow-xs whitespace-nowrap ${
                 audioActive 
@@ -458,7 +513,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                           <a 
                             href={`tel:${cmd.telephone_client.replace(/[^0-9+]/g, '')}`} 
                             className="text-blue-600 hover:underline font-mono"
-                            title="Cliquer pour appeler"
                           >
                             {cmd.telephone_client}
                           </a>
