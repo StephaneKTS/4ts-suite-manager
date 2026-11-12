@@ -29,6 +29,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   const moduleActuel = obtenirModuleActuel();
   const estModeBoutique = moduleActuel === 'BOUTIQUE';
   const libelleLivreurOuEmplacement = estModeBoutique ? 'Emplacement' : 'Livreur';
+  const libelleDepotPartenaire = moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt';
 
   const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
 
@@ -71,8 +72,21 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
+  
+  // États des filtres pour l'onglet Stat
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
   const [emplacementStatFiltre, setEmplacementStatFiltre] = useState('TOUS');
+  
+  // Modales de sélection (Partenaire / Livreur / Article)
+  const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
+  const [rechercheModalArticle, setRechercheModalArticle] = useState('');
+
+  const [afficherModalSelectionDepot, setAfficherModalSelectionDepot] = useState(false);
+  const [rechercheModalDepot, setRechercheModalDepot] = useState('');
+
+  const [afficherModalSelectionEmp, setAfficherModalSelectionEmp] = useState(false);
+  const [rechercheModalEmp, setRechercheModalEmp] = useState('');
+
   const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
 
   const designationInputRef = useRef(null);
@@ -97,9 +111,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const [dateDebutStat, setDateDebutStat] = useState(obtenirPremierJourDuMois());
   const [dateFinStat, setDateFinStat] = useState(obtenirDernierJourDuMois());
-
-  const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
-  const [rechercheModalArticle, setRechercheModalArticle] = useState('');
 
   const [chargement, setChargement] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -136,7 +147,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   ).sort();
 
   const obtenirNomEmplacementParId = (empId) => {
-    if (!empId) return '-';
+    if (!empId || empId === 'TOUS') return moduleActuel === 'LIVRAISON' ? 'Tous les livreurs' : 'Tous les emplacements';
     const emp = emplacements.find(e => String(e.id || e.id_emplacement) === String(empId));
     if (emp) {
       return emp.nom_emplacement || emp.code_emplacement || emp.responsable_emplacement || '-';
@@ -145,7 +156,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   };
 
   const obtenirNomDepotParId = (depotId) => {
-    if (!depotId) return '-';
+    if (!depotId || depotId === 'TOUS') return moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts';
     const depotTrouve = depots.find(d => String(d.id) === String(depotId));
     if (depotTrouve) return depotTrouve.nom_depot || depotTrouve.Nom_Depot || depotId;
     return depotId;
@@ -496,7 +507,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
             emplacementDest: obtenirNomDestinationParMvt(app),
             quantiteMouvementee: parseInt(item.quantite || 0),
             impactStock: parseInt(item.quantite || 0),
-            prioriteOrdre: 0 // Entrées / Approvisionnements prioritaires
+            prioriteOrdre: 0
           });
         }
       });
@@ -537,7 +548,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         prioriteOrdre = 0;
       } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
         impact = -qte;
-        prioriteOrdre = 2; // Sorties et livraisons après les entrées
+        prioriteOrdre = 2;
       } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
         const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
         if (memeDepot) {
@@ -566,9 +577,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
       });
     });
 
-    // Tri strict et infaillible :
-    // 1. Par date (du plus ancien au plus récent)
-    // 2. Si même jour, les entrées/appro (priorite 0) passent AVANT les transferts (1) et les sorties/livraisons (2)
     evenements.sort((a, b) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
@@ -937,23 +945,23 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const articlesAffiches = articlesTries.slice(0, limiteArticles);
 
-  const emplacementsDisponibles = depotFiltre === 'TOUS' 
-    ? emplacements 
-    : emplacements.filter(emp => {
-        const empId = String(emp.id || '');
-        return mouvements.some(m => {
-          const matchDepot = String(m.id_depot_source || '') === String(depotFiltre) || String(m.id_depot_destination || '') === String(depotFiltre);
-          const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
-          return matchDepot && matchEmplacement;
-        });
-      });
-
   const emplacementsStatDisponibles = depotStatFiltre === 'TOUS'
     ? emplacements
     : emplacements.filter(emp => {
         const empId = String(emp.id || '');
         return mouvements.some(m => {
           const matchDepot = String(m.id_depot_source || '') === String(depotStatFiltre) || String(m.id_depot_destination || '') === String(depotStatFiltre);
+          const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
+          return matchDepot && matchEmplacement;
+        });
+      });
+
+  const emplacementsDisponibles = depotFiltre === 'TOUS' 
+    ? emplacements 
+    : emplacements.filter(emp => {
+        const empId = String(emp.id || '');
+        return mouvements.some(m => {
+          const matchDepot = String(m.id_depot_source || '') === String(depotFiltre) || String(m.id_depot_destination || '') === String(depotFiltre);
           const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
           return matchDepot && matchEmplacement;
         });
@@ -967,6 +975,16 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     const nom = (art.Designation || art.designation || '').toLowerCase();
     return nom.includes(rechercheModalArticle.toLowerCase());
   });
+
+  const depotsModalFiltres = [
+    { id: 'TOUS', nom_depot: moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts' },
+    ...depots.filter(d => (d.nom_depot || d.Nom_Depot || '').toLowerCase().includes(rechercheModalDepot.toLowerCase()))
+  ];
+
+  const emplacementsModalFiltres = [
+    { id: 'TOUS', nom_emplacement: moduleActuel === 'LIVRAISON' ? 'Tous les livreurs' : 'Tous les emplacements' },
+    ...emplacementsStatDisponibles.filter(e => (e.nom_emplacement || '').toLowerCase().includes(rechercheModalEmp.toLowerCase()))
+  ];
 
   const articleStatObjet = articles.find(a => String(a.id_article || a.id) === String(articleSelectionneStatId));
 
@@ -1583,7 +1601,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">
-                      {moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt'}
+                      {libelleDepotPartenaire}
                     </label>
                     <select
                       disabled={enTrainDeSauvegarder}
@@ -1770,6 +1788,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         const nomArticle = artObj ? (artObj.Designation || artObj.designation || '') : '';
         const stats = artObj ? obtenirHistoriqueChronologiqueStat(artObj.id_article || artObj.id) : { lignes: [], stockFinal: 0 };
 
+        const nomDepotActuel = obtenirNomDepotParId(depotStatFiltre);
+        const nomEmpActuel = obtenirNomEmplacementParId(emplacementStatFiltre);
+
         return (
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-3">
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
@@ -1797,60 +1818,53 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              {/* Ligne unique pour Partenaire/Dépôt, Livreur/Emplacement et Article */}
+              <div className="grid grid-cols-3 gap-1.5">
                 <div>
-                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">
-                    {moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt'}
-                  </label>
-                  <select
-                    disabled={enTrainDeSauvegarder}
-                    value={depotStatFiltre}
-                    onChange={(e) => { setDepotStatFiltre(e.target.value); setEmplacementStatFiltre('TOUS'); }}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">{libelleDepotPartenaire}</label>
+                  <div
+                    onClick={() => {
+                      if (enTrainDeSauvegarder) return;
+                      setRechercheModalDepot('');
+                      setAfficherModalSelectionDepot(true);
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
                   >
-                    <option value="TOUS">{moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts'}</option>
-                    {depots.map((dep) => (
-                      <option key={dep.id} value={dep.id}>
-                        {dep.nom_depot || dep.Nom_Depot}
-                      </option>
-                    ))}
-                  </select>
+                    <span className="truncate uppercase">{nomDepotActuel}</span>
+                    <span className="text-[10px] text-slate-400">🔍</span>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">
-                    {libelleLivreurOuEmplacement}
-                  </label>
-                  <select
-                    disabled={enTrainDeSauvegarder}
-                    value={emplacementStatFiltre}
-                    onChange={(e) => setEmplacementStatFiltre(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs"
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">{libelleLivreurOuEmplacement}</label>
+                  <div
+                    onClick={() => {
+                      if (enTrainDeSauvegarder) return;
+                      setRechercheModalEmp('');
+                      setAfficherModalSelectionEmp(true);
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
                   >
-                    <option value="TOUS">Tous</option>
-                    {emplacementsStatDisponibles.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.nom_emplacement}
-                      </option>
-                    ))}
-                  </select>
+                    <span className="truncate uppercase">{nomEmpActuel}</span>
+                    <span className="text-[10px] text-slate-400">🔍</span>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Article</label>
-                <div
-                  onClick={() => {
-                    if (enTrainDeSauvegarder) return;
-                    setRechercheModalArticle('');
-                    setAfficherModalSelectionArticle(true);
-                  }}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
-                >
-                  <span className="truncate uppercase">
-                    {artObj ? nomArticle : '-- Sélectionner un article --'}
-                  </span>
-                  <span className="text-[10px] text-slate-400">🔍</span>
+                <div>
+                  <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5 truncate">Article</label>
+                  <div
+                    onClick={() => {
+                      if (enTrainDeSauvegarder) return;
+                      setRechercheModalArticle('');
+                      setAfficherModalSelectionArticle(true);
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
+                  >
+                    <span className="truncate uppercase">
+                      {artObj ? nomArticle : '-- Choisir --'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">🔍</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1920,7 +1934,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
               </div>
             ) : (
               <div className="p-8 text-center text-slate-400 font-bold italic text-xs">
-                👆 Veuillez cliquer sur le champ ci-dessus pour sélectionner un article et afficher ses statistiques.
+                👆 Veuillez cliquer sur le champ "Article" ci-dessus pour sélectionner un article et afficher ses statistiques.
               </div>
             )}
           </div>
@@ -1955,7 +1969,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
               <div>
                 <label className="block font-black uppercase text-[8.5px] text-slate-700 mb-0.5">
-                  {moduleActuel === 'LIVRAISON' ? 'Partenaire' : 'Dépôt'}
+                  {libelleDepotPartenaire}
                 </label>
                 <select
                   disabled={enTrainDeSauvegarder}
@@ -2057,6 +2071,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         </div>
       )}
 
+      {/* Modal de sélection d'Article */}
       {afficherModalSelectionArticle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -2103,6 +2118,121 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                         className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
                       >
                         <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomArt}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de sélection de Partenaire / Dépôt */}
+      {afficherModalSelectionDepot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleDepotPartenaire}</span>
+              <button
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setAfficherModalSelectionDepot(false)}
+                className="text-slate-300 hover:text-white font-black text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 space-y-2 overflow-y-auto bg-slate-50">
+              <input
+                type="text"
+                autoFocus
+                disabled={enTrainDeSauvegarder}
+                value={rechercheModalDepot}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setRechercheModalDepot(e.target.value.toUpperCase())}
+                placeholder=""
+                style={{ textTransform: 'uppercase' }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
+              />
+
+              <div className="space-y-1.5 pt-1">
+                {depotsModalFiltres.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
+                ) : (
+                  depotsModalFiltres.map((dep) => {
+                    const idD = String(dep.id);
+                    const nomD = dep.nom_depot || dep.Nom_Depot || '';
+
+                    return (
+                      <div
+                        key={idD}
+                        onClick={() => {
+                          if (enTrainDeSauvegarder) return;
+                          setDepotStatFiltre(idD);
+                          setEmplacementStatFiltre('TOUS');
+                          setAfficherModalSelectionDepot(false);
+                        }}
+                        className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomD}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de sélection de Livreur / Emplacement */}
+      {afficherModalSelectionEmp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleLivreurOuEmplacement}</span>
+              <button
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setAfficherModalSelectionEmp(false)}
+                className="text-slate-300 hover:text-white font-black text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 space-y-2 overflow-y-auto bg-slate-50">
+              <input
+                type="text"
+                autoFocus
+                disabled={enTrainDeSauvegarder}
+                value={rechercheModalEmp}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setRechercheModalEmp(e.target.value.toUpperCase())}
+                placeholder=""
+                style={{ textTransform: 'uppercase' }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
+              />
+
+              <div className="space-y-1.5 pt-1">
+                {emplacementsModalFiltres.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
+                ) : (
+                  emplacementsModalFiltres.map((emp) => {
+                    const idE = String(emp.id);
+                    const nomE = emp.nom_emplacement || '';
+
+                    return (
+                      <div
+                        key={idE}
+                        onClick={() => {
+                          if (enTrainDeSauvegarder) return;
+                          setEmplacementStatFiltre(idE);
+                          setAfficherModalSelectionEmp(false);
+                        }}
+                        className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomE}</span>
                       </div>
                     );
                   })
