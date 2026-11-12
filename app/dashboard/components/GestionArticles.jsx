@@ -77,7 +77,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
   const [emplacementStatFiltre, setEmplacementStatFiltre] = useState('TOUS');
   
-  // Modales de sélection (Partenaire / Livreur / Article)
+  // Modales de sélection (Partenaire / Livreur / Article / Famille / Dépôt Catalogue)
   const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
   const [rechercheModalArticle, setRechercheModalArticle] = useState('');
 
@@ -86,6 +86,16 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
 
   const [afficherModalSelectionEmp, setAfficherModalSelectionEmp] = useState(false);
   const [rechercheModalEmp, setRechercheModalEmp] = useState('');
+
+  // Nouveaux états modales pour l'onglet Catalogue (Articles)
+  const [afficherModalFamilleCat, setAfficherModalFamilleCat] = useState(false);
+  const [rechercheModalFamilleCat, setRechercheModalFamilleCat] = useState('');
+
+  const [afficherModalDepotCat, setAfficherModalDepotCat] = useState(false);
+  const [rechercheModalDepotCat, setRechercheModalDepotCat] = useState('');
+
+  const [afficherModalEmpCat, setAfficherModalEmpCat] = useState(false);
+  const [rechercheModalEmpCat, setRechercheModalEmpCat] = useState('');
 
   const [depotRapportFiltre, setDepotRapportFiltre] = useState('TOUS');
 
@@ -160,6 +170,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
     const depotTrouve = depots.find(d => String(d.id) === String(depotId));
     if (depotTrouve) return depotTrouve.nom_depot || depotTrouve.Nom_Depot || depotId;
     return depotId;
+  };
+
+  const obtenirNomFamilleParId = (famId) => {
+    if (!famId || famId === 'TOUTES') return 'Toutes';
+    const fam = familles.find(f => String(f.id) === String(famId));
+    if (fam) return fam.nom_famille || fam.Nom_Famille || famId;
+    return famId;
   };
 
   const obtenirNomDestinationParMvt = (mvt) => {
@@ -956,6 +973,18 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
         });
       });
 
+  // Pour l'onglet Catalogue (Articles)
+  const emplacementsCatDisponibles = depotFiltre === 'TOUS'
+    ? emplacements
+    : emplacements.filter(emp => {
+        const empId = String(emp.id || '');
+        return mouvements.some(m => {
+          const matchDepot = String(m.id_depot_source || '') === String(depotFiltre) || String(m.id_depot_destination || '') === String(depotFiltre);
+          const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
+          return matchDepot && matchEmplacement;
+        });
+      });
+
   const emplacementsDisponibles = depotFiltre === 'TOUS' 
     ? emplacements 
     : emplacements.filter(emp => {
@@ -984,6 +1013,22 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
   const emplacementsModalFiltres = [
     { id: 'TOUS', nom_emplacement: moduleActuel === 'LIVRAISON' ? 'Tous les livreurs' : 'Tous les emplacements' },
     ...emplacementsStatDisponibles.filter(e => (e.nom_emplacement || '').toLowerCase().includes(rechercheModalEmp.toLowerCase()))
+  ];
+
+  // Listes filtrées pour les modales du catalogue (Articles)
+  const famillesCatModalFiltres = [
+    { id: 'TOUTES', nom_famille: 'Toutes' },
+    ...familles.filter(f => (f.nom_famille || f.Nom_Famille || '').toLowerCase().includes(rechercheModalFamilleCat.toLowerCase()))
+  ];
+
+  const depotsCatModalFiltres = [
+    { id: 'TOUS', nom_depot: moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts' },
+    ...depots.filter(d => (d.nom_depot || d.Nom_Depot || '').toLowerCase().includes(rechercheModalDepotCat.toLowerCase()))
+  ];
+
+  const emplacementsCatModalFiltres = [
+    { id: 'TOUS', nom_emplacement: moduleActuel === 'LIVRAISON' ? 'Tous les livreurs' : 'Tous les emplacements' },
+    ...emplacementsCatDisponibles.filter(e => (e.nom_emplacement || '').toLowerCase().includes(rechercheModalEmpCat.toLowerCase()))
   ];
 
   const articleStatObjet = articles.find(a => String(a.id_article || a.id) === String(articleSelectionneStatId));
@@ -1584,57 +1629,51 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                 <div className="grid grid-cols-3 gap-1">
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">Famille</label>
-                    <select
-                      disabled={enTrainDeSauvegarder}
-                      value={familleFiltre}
-                      onChange={(e) => setFamilleFiltre(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
+                    <div
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setRechercheModalFamilleCat('');
+                        setAfficherModalFamilleCat(true);
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-extrabold text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
                     >
-                      <option value="TOUTES">Toutes</option>
-                      {familles.map((fam) => (
-                        <option key={fam.id} value={fam.id}>
-                          {fam.nom_famille || fam.Nom_Famille}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate uppercase">{obtenirNomFamilleParId(familleFiltre)}</span>
+                      <span className="text-[10px] text-slate-400">🔍</span>
+                    </div>
                   </div>
 
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">
                       {libelleDepotPartenaire}
                     </label>
-                    <select
-                      disabled={enTrainDeSauvegarder}
-                      value={depotFiltre}
-                      onChange={(e) => { setDepotFiltre(e.target.value); setEmplacementFiltre('TOUS'); }}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
+                    <div
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setRechercheModalDepotCat('');
+                        setAfficherModalDepotCat(true);
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-extrabold text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
                     >
-                      <option value="TOUS">Tous</option>
-                      {depots.map((dep) => (
-                        <option key={dep.id} value={dep.id}>
-                          {dep.nom_depot || dep.Nom_Depot}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate uppercase">{obtenirNomDepotParId(depotFiltre)}</span>
+                      <span className="text-[10px] text-slate-400">🔍</span>
+                    </div>
                   </div>
 
                   <div>
                     <label className="block font-black text-[8.5px] uppercase text-slate-700 mb-0.5 truncate">
                       {libelleLivreurOuEmplacement}
                     </label>
-                    <select
-                      disabled={enTrainDeSauvegarder}
-                      value={emplacementFiltre}
-                      onChange={(e) => setEmplacementFiltre(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
+                    <div
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setRechercheModalEmpCat('');
+                        setAfficherModalEmpCat(true);
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-extrabold text-slate-900 shadow-xs cursor-pointer flex justify-between items-center"
                     >
-                      <option value="TOUS">Tous</option>
-                      {emplacementsDisponibles.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.nom_emplacement}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate uppercase">{obtenirNomEmplacementParId(emplacementFiltre)}</span>
+                      <span className="text-[10px] text-slate-400">🔍</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2229,6 +2268,178 @@ export default function GestionArticles({ entrepriseId = '4TS-234321' }) {
                           if (enTrainDeSauvegarder) return;
                           setEmplacementStatFiltre(idE);
                           setAfficherModalSelectionEmp(false);
+                        }}
+                        className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomE}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de sélection de Famille (Catalogue) */}
+      {afficherModalFamilleCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase">SÉLECTIONNER UNE FAMILLE</span>
+              <button
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setAfficherModalFamilleCat(false)}
+                className="text-slate-300 hover:text-white font-black text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 space-y-2 overflow-y-auto bg-slate-50">
+              <input
+                type="text"
+                autoFocus
+                disabled={enTrainDeSauvegarder}
+                value={rechercheModalFamilleCat}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setRechercheModalFamilleCat(e.target.value.toUpperCase())}
+                placeholder=""
+                style={{ textTransform: 'uppercase' }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
+              />
+
+              <div className="space-y-1.5 pt-1">
+                {famillesCatModalFiltres.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
+                ) : (
+                  famillesCatModalFiltres.map((fam) => {
+                    const idF = String(fam.id);
+                    const nomF = fam.nom_famille || fam.Nom_Famille || 'Toutes';
+
+                    return (
+                      <div
+                        key={idF}
+                        onClick={() => {
+                          if (enTrainDeSauvegarder) return;
+                          setFamilleFiltre(idF);
+                          setAfficherModalFamilleCat(false);
+                        }}
+                        className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomF}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de sélection de Dépôt / Partenaire (Catalogue) */}
+      {afficherModalDepotCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleDepotPartenaire}</span>
+              <button
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setAfficherModalDepotCat(false)}
+                className="text-slate-300 hover:text-white font-black text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 space-y-2 overflow-y-auto bg-slate-50">
+              <input
+                type="text"
+                autoFocus
+                disabled={enTrainDeSauvegarder}
+                value={rechercheModalDepotCat}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setRechercheModalDepotCat(e.target.value.toUpperCase())}
+                placeholder=""
+                style={{ textTransform: 'uppercase' }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
+              />
+
+              <div className="space-y-1.5 pt-1">
+                {depotsCatModalFiltres.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
+                ) : (
+                  depotsCatModalFiltres.map((dep) => {
+                    const idD = String(dep.id);
+                    const nomD = dep.nom_depot || dep.Nom_Depot || '';
+
+                    return (
+                      <div
+                        key={idD}
+                        onClick={() => {
+                          if (enTrainDeSauvegarder) return;
+                          setDepotFiltre(idD);
+                          setEmplacementFiltre('TOUS');
+                          setAfficherModalDepotCat(false);
+                        }}
+                        className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <span className="font-black text-slate-900 text-xs truncate mr-2 uppercase">{nomD}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de sélection d'Emplacement / Livreur (Catalogue) */}
+      {afficherModalEmpCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleLivreurOuEmplacement}</span>
+              <button
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setAfficherModalEmpCat(false)}
+                className="text-slate-300 hover:text-white font-black text-xs p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 space-y-2 overflow-y-auto bg-slate-50">
+              <input
+                type="text"
+                autoFocus
+                disabled={enTrainDeSauvegarder}
+                value={rechercheModalEmpCat}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setRechercheModalEmpCat(e.target.value.toUpperCase())}
+                placeholder=""
+                style={{ textTransform: 'uppercase' }}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-xs font-black text-slate-900 shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase"
+              />
+
+              <div className="space-y-1.5 pt-1">
+                {emplacementsCatModalFiltres.length === 0 ? (
+                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
+                ) : (
+                  emplacementsCatModalFiltres.map((emp) => {
+                    const idE = String(emp.id);
+                    const nomE = emp.nom_emplacement || '';
+
+                    return (
+                      <div
+                        key={idE}
+                        onClick={() => {
+                          if (enTrainDeSauvegarder) return;
+                          setEmplacementFiltre(idE);
+                          setAfficherModalEmpCat(false);
                         }}
                         className="bg-white hover:bg-orange-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-2xs"
                       >

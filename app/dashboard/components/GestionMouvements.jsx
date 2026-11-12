@@ -117,6 +117,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+  const [enTrainDInsertion, setEnTrainDInsertion] = useState(false); // 🛡️ Verrou anti-double clic
 
   const [roleNom, setRoleNom] = useState('');
   const [emailConnecteUser, setEmailConnecteUser] = useState('');
@@ -589,20 +590,34 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50);
   };
 
+  // 🛡️ AJOUT D'ARTICLE SÉCURISÉ AVEC DÉSACTIVATION PROVISOIRE DU BOUTON OK
   const ajouterArticleAuPanier = () => {
-    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+    if (enTrainDeSauvegarder || documentEnLectureSeule || enTrainDInsertion) return;
+    
     if (!permissions.peut_creer && !mouvementEnEditionId) {
       alert('⛔ Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.');
       return;
     }
-    if (!verifierEnTeteAvantSaisie() || !articleSelectionneTemp) { if (!articleSelectionneTemp) alert('Sélectionnez un article.'); return; }
+    if (!verifierEnTeteAvantSaisie() || !articleSelectionneTemp) { 
+      if (!articleSelectionneTemp) alert('Sélectionnez un article.'); 
+      return; 
+    }
+    
     const qte = parseInt(quantiteSaisie);
-    if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { alert('Quantité invalide.'); return; }
+    if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { 
+      alert('Quantité invalide.'); 
+      return; 
+    }
 
-    const artId = articleSelectionneTemp.id_article || articleSelectionneTemp.id;
+    // Activation immédiate du verrou anti-double clic
+    setEnTrainDInsertion(true);
+
+    const artId = String(articleSelectionneTemp.id_article || articleSelectionneTemp.id);
     const stockActuelDepot = calculerStockPourDepotActuel(artId);
+    
     if ((typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') && qte > stockActuelDepot) {
       alert(`⛔ Stock insuffisant (${stockActuelDepot} disp.).`);
+      setEnTrainDInsertion(false);
       return;
     }
 
@@ -611,19 +626,39 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     else if (typeOperation === 'SORTIE' || typeOperation === 'AVARIES' || typeOperation === 'TRANSFERT') stockReelPrevisionnel = Math.max(0, stockActuelDepot - qte);
     else if (typeOperation === 'INVENTAIRE') stockReelPrevisionnel = qte;
 
-    const dejaPresentIndex = lignesPanier.findIndex((l) => String(l.id_article) === String(artId));
-    if (dejaPresentIndex !== -1) {
-      const nouveauPanier = [...lignesPanier];
-      const nouvelleQte = typeOperation === 'INVENTAIRE' ? qte : nouveauPanier[dejaPresentIndex].quantite + qte;
-      nouveauPanier[dejaPresentIndex].quantite = nouvelleQte;
-      nouveauPanier[dejaPresentIndex].stockReel = stockReelPrevisionnel;
-      setLignesPanier(nouveauPanier);
-    } else {
-      setLignesPanier([...lignesPanier, { id_article: artId, designation: articleSelectionneTemp.Designation || articleSelectionneTemp.designation, quantite: qte, stockActuel: stockActuelDepot, stockReel: stockReelPrevisionnel }]);
-    }
+    setLignesPanier((prevPanier) => {
+      const dejaPresentIndex = prevPanier.findIndex((l) => String(l.id_article) === artId);
+
+      if (dejaPresentIndex !== -1) {
+        const nouveauPanier = [...prevPanier];
+        const nouvelleQte = typeOperation === 'INVENTAIRE' ? qte : Number(nouveauPanier[dejaPresentIndex].quantite) + qte;
+        nouveauPanier[dejaPresentIndex] = {
+          ...nouveauPanier[dejaPresentIndex],
+          quantite: nouvelleQte,
+          stockReel: stockReelPrevisionnel
+        };
+        return nouveauPanier;
+      } else {
+        return [
+          ...prevPanier, 
+          { 
+            id_article: artId, 
+            designation: articleSelectionneTemp.Designation || articleSelectionneTemp.designation, 
+            quantite: qte, 
+            stockActuel: stockActuelDepot, 
+            stockReel: stockReelPrevisionnel 
+          }
+        ];
+      }
+    });
+
     setArticleSelectionneTemp(null);
     setQuantiteSaisie(1);
-    setTimeout(() => { if (boutonSelectionArticleRef.current) boutonSelectionArticleRef.current.focus(); }, 50);
+    
+    setTimeout(() => { 
+      if (boutonSelectionArticleRef.current) boutonSelectionArticleRef.current.focus(); 
+      setEnTrainDInsertion(false); // Libération du verrou après 400ms
+    }, 400);
   };
 
   const gererKeyDownQuantite = (e) => {
@@ -1303,8 +1338,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 </div>
 
                 <div className="col-span-1">
-                  <button type="button" disabled={enTrainDeSauvegarder || (!permissions.peut_creer && !mouvementEnEditionId)} onClick={ajouterArticleAuPanier} className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" title="Valider l'article (ou Entrée)">
-                    OK
+                  <button 
+                    type="button" 
+                    disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
+                    onClick={ajouterArticleAuPanier} 
+                    className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" 
+                    title="Valider l'article (ou Entrée)"
+                  >
+                    {enTrainDInsertion ? '...' : 'OK'}
                   </button>
                 </div>
               </div>
@@ -1385,39 +1426,36 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               </div>
             )}
 
-            <div className="pt-1.5 flex items-center justify-between gap-1 flex-wrap">
-              <div className="flex items-center gap-1">
+            <div className="pt-1.5 flex items-center justify-between gap-1 flex-nowrap overflow-x-auto">
+              <div className="flex items-center gap-1 shrink-0">
                 {!documentEnLectureSeule && verifierDroitSuppressionEffectif() && (
                   <button 
                     type="button" 
                     disabled={enTrainDeSauvegarder} 
                     onClick={supprimerDocumentActuel} 
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2 py-1 rounded text-[9px] shadow-2xs"
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-1.5 py-1 rounded text-[8px] shadow-2xs whitespace-nowrap"
                     title="Supprimer définitivement ce document"
                   >
-                    🗑️ Supprimer
+                    🗑️ Suppr.
                   </button>
                 )}
               </div>
               
-              <div className="flex items-center gap-1 flex-wrap">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerOperation} className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2 py-1 rounded text-[9px]">
-                  {documentEnLectureSeule ? '← Retour' : '❌ Annuler'}
-                </button>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-2 py-1 rounded text-[9px]">🖨️ Imprimer</button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-1.5 py-1 rounded text-[8px] whitespace-nowrap">🖨️ Imp.</button>
                 
                 {!documentEnLectureSeule && ((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
                   <button 
                     type="button" 
                     onClick={validerDocumentMouvement} 
                     disabled={lignesPanier.length === 0 || enTrainDeSauvegarder || (mouvementEnEditionId && !documentModifie)} 
-                    className={`font-bold px-2.5 py-1 rounded text-[9px] ${
+                    className={`font-bold px-2 py-1 rounded text-[8px] whitespace-nowrap ${
                       lignesPanier.length > 0 && !enTrainDeSauvegarder && (!mouvementEnEditionId || documentModifie) 
                         ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     }`}
                   >
-                    {enTrainDeSauvegarder ? 'Validation...' : (mouvementEnEditionId && !documentModifie ? '🔒 Aucun changement' : '✅ Valider')}
+                    {enTrainDeSauvegarder ? 'Valid...' : (mouvementEnEditionId && !documentModifie ? '🔒 Modif.' : '✅ Valider')}
                   </button>
                 )}
               </div>
