@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function PageRacine() {
+function ContenuPageRacine() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const entrepriseId = searchParams.get('entrepriseId');
@@ -32,5 +32,17 @@ export default function PageRacine() {
     <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-100 font-sans text-xs">
       Chargement de l'application 4TS...
     </div>
+  );
+}
+
+export default function PageRacine() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-100 font-sans text-xs">
+        Chargement...
+      </div>
+    }>
+      <ContenuPageRacine />
+    </Suspense>
   );
 }
