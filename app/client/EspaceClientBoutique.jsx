@@ -78,7 +78,12 @@ export default function EspaceClientBoutique() {
       try {
         const [resEnt, resArt] = await Promise.all([
           supabase.from('entreprises').select('*').eq('id_entreprise', entrepriseId).maybeSingle(),
-          supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('Disponible_Menu_QR', true)
+          // Filtrage strict : Entreprise, QR code activé, et restriction exclusive au module boutique (exclusion des articles de type/module livraison)
+          supabase.from('articles_stock')
+            .select('*')
+            .eq('id_entreprise', entrepriseId)
+            .eq('Disponible_Menu_QR', true)
+            .eq('module', 'BOUTIQUE') // <-- Filtre strict sur le module boutique pour éviter de remonter la livraison
         ]);
 
         if (resEnt.data) {
