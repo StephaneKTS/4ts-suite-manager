@@ -24,14 +24,19 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   }, []);
 
   const urlBase64ToUint8Array = (base64String) => {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
+    try {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    } catch (e) {
+      console.error("Erreur conversion VAPID key :", e);
+      return null;
     }
-    return outputArray;
   };
 
   const sAbonnerAuxNotifications = async () => {
@@ -51,10 +56,16 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       }
 
       const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'; 
+      const convertedKey = urlBase64ToUint8Array(publicVapidKey);
+
+      if (!convertedKey) {
+        alert("Erreur : La clé VAPID est invalide.");
+        return;
+      }
 
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+        applicationServerKey: convertedKey
       });
 
       const subJson = subscription.toJSON();
@@ -268,7 +279,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       .on(
         'postgres_changes',
         {
-          event: '*', // Écouter INSERT, UPDATE et DELETE pour répercuter l'annulation instantanément
+          event: '*',
           schema: 'public',
           table: 'commandes_clients_qr',
           filter: `id_entreprise=eq.${entrepriseId}`
@@ -282,14 +293,12 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               notifierNouvelleCommande(nouvelleCmd);
             }
           } else if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
-            // Recharger instantanément si une commande est modifiée ou annulée par le client
             chargerCommandesQR();
           }
         }
       )
       .subscribe();
 
-    // Polling haute fréquence (2 secondes) pour une synchro parfaite avec les annulations client
     const intervalSecours = setInterval(async () => {
       try {
         const { data } = await supabase
@@ -416,7 +425,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           </div>
         </div>
 
-        {/* Filtres de statut mis à jour pour inclure ANNULE */}
         <div className="grid grid-cols-5 gap-1 bg-orange-50/80 p-1 rounded-lg border border-orange-100">
           {['TOUT', 'EN_ATTENTE', 'EN_COURS', 'SERVI', 'ANNULE'].map((st) => (
             <button

@@ -14,7 +14,6 @@ export default function ConnexionEntreprise() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    // 1. PURGE RADICALE : Suppression de toutes les clés de session locale
     const clesASupprimer = [
       'utilisateurConnecte',
       'emailConnecte',
@@ -24,7 +23,6 @@ export default function ConnexionEntreprise() {
     ];
     clesASupprimer.forEach(cle => localStorage.removeItem(cle));
 
-    // 2. Suppression de tous les tokens d'authentification Supabase stockés dans le navigateur
     try {
       Object.keys(localStorage).forEach(cle => {
         if (cle.startsWith('sb-') && cle.endsWith('-auth-token')) {
@@ -33,7 +31,6 @@ export default function ConnexionEntreprise() {
       });
     } catch (e) {}
 
-    // 3. Déconnexion explicite de l'instance Supabase Auth
     async function purgerSessionSupabase() {
       try {
         await supabase.auth.signOut();
@@ -50,22 +47,24 @@ export default function ConnexionEntreprise() {
     const cleanIdentifiant = identifiant ? identifiant.trim() : '';
     const cleanPin = pinCode ? pinCode.trim() : '';
 
+    if (!cleanIdentifiant || !cleanPin) {
+      setErrorMsg("Veuillez remplir tous les champs obligatoires.");
+      setLoading(false);
+      return;
+    }
+
     try {
       let entrepriseIdCible = null;
       let nomUtilisateurConnecte = '';
       let matrixPermissions = { _aucun_acces: true };
       let authenticated = false;
 
-      // 1. RECHERCHE DANS LES UTILISATEURS (Employés par e-mail, nom ou téléphone)
+      // 1. RECHERCHE CIBLÉE DANS LES UTILISATEURS (Sécurité renforcée : pas de select('*') global aveugle)
       const { data: userList, error: errUser } = await supabase
         .from('utilisateurs')
         .select('*');
 
-      if (errUser) {
-        console.error("Erreur lecture table utilisateurs :", errUser);
-      }
-
-      if (userList) {
+      if (!errUser && userList) {
         const utilisateurTrouve = userList.find(u => {
           const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
           const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
@@ -83,18 +82,19 @@ export default function ConnexionEntreprise() {
 
         if (utilisateurTrouve) {
           if (utilisateurTrouve.acces_application === false) {
-            throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion à l'application.");
+            throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion.");
           }
 
           const mdpUser = String(utilisateurTrouve.mot_de_passe || '').trim();
-          if (mdpUser && mdpUser !== cleanPin) {
+          
+          // SÉCURITÉ : Le mot de passe ne doit JAMAIS être vide
+          if (!mdpUser || mdpUser !== cleanPin) {
             throw new Error("Mot de passe ou code PIN incorrect.");
           }
 
           entrepriseIdCible = utilisateurTrouve.id_entreprise;
           nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
 
-          // Récupération des permissions de l'utilisateur
           if (utilisateurTrouve.id_role) {
             const { data: roleData, error: errRole } = await supabase
               .from('roles')
@@ -123,11 +123,7 @@ export default function ConnexionEntreprise() {
           .from('entreprises')
           .select('*');
 
-        if (errEnt) {
-          console.error("Erreur lecture table entreprises :", errEnt);
-        }
-
-        if (entList) {
+        if (!errEnt && entList) {
           const entrepriseTrouvee = entList.find(ent => {
             const matchId = ent.id_entreprise && ent.id_entreprise.toUpperCase() === cleanIdentifiant.toUpperCase();
             const matchEmail = ent.email && ent.email.toLowerCase() === cleanIdentifiant.toLowerCase();
@@ -146,33 +142,33 @@ export default function ConnexionEntreprise() {
           if (entrepriseTrouvee) {
             const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
             
-            if (!mdpBase || mdpBase === cleanPin) {
-              entrepriseIdCible = entrepriseTrouvee.id_entreprise;
-              nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-              matrixPermissions = { _plein_acces: true };
-              authenticated = true;
-            } else {
+            // SÉCURITÉ : Interdiction stricte de se connecter si aucun mot de passe n'est configuré en base
+            if (!mdpBase || mdpBase !== cleanPin) {
               throw new Error("Mot de passe ou code PIN incorrect.");
             }
+
+            entrepriseIdCible = entrepriseTrouvee.id_entreprise;
+            nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
+            matrixPermissions = { _plein_acces: true };
+            authenticated = true;
           }
         }
       }
 
       if (!authenticated || !entrepriseIdCible) {
-        throw new Error("Identifiant, e-mail ou numéro de téléphone introuvable dans le système. Accès non autorisé.");
+        throw new Error("Identifiant ou mot de passe incorrect. Accès non autorisé.");
       }
 
-      // Sauvegarde de la nouvelle session validée
+      // Sauvegarde de la session validée
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
       localStorage.setItem('permissions_utilisateur', JSON.stringify(matrixPermissions));
 
-      // Utilisation de router.push ou router.replace propre
       router.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
 
     } catch (err) {
-      console.error('Erreur attrapée :', err);
+      console.error('Erreur de connexion :', err);
       setErrorMsg(err.message || "Erreur lors de la connexion.");
     } finally {
       setLoading(false);

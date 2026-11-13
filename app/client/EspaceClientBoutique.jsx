@@ -40,43 +40,32 @@ export default function EspaceClientBoutique() {
   useEffect(() => {
     setEstMonte(true);
     
-    // PURGE RADICALE DE TOUTE SESSION ADMIN SUR L'ESPACE CLIENT
-    async function purgerSessionAdmin() {
-      try {
-        // 1. Déconnexion de l'instance Supabase Auth globale pour tuer le token gérant
-        await supabase.auth.signOut();
+    try {
+      const clesAdmin = [
+        'utilisateurConnecte', 'utilisateur_connecte', 
+        'emailConnecte', 'email_connecte', 
+        'supabase.auth.token'
+      ];
+      clesAdmin.forEach(cle => localStorage.removeItem(cle));
 
-        // 2. Nettoyage de toutes les clés de stockage liées à l'administration
-        const clesAdmin = [
-          'utilisateurConnecte', 'utilisateur_connecte', 
-          'emailConnecte', 'email_connecte', 
-          'supabase.auth.token'
-        ];
-        clesAdmin.forEach(cle => localStorage.removeItem(cle));
-
-        // Nettoyage de tous les tokens Supabase stockés automatiquement par le client JS
-        Object.keys(localStorage).forEach(cle => {
-          if (cle.startsWith('sb-') && cle.endsWith('-auth-token')) {
-            localStorage.removeItem(cle);
-          }
-        });
-
-        // Récupération sécurisée des favoris clients et téléphones
-        const stockFavoris = localStorage.getItem('4ts_restaurants_recents');
-        if (stockFavoris) {
-          setRestaurantsRecents(JSON.parse(stockFavoris));
+      Object.keys(localStorage).forEach(cle => {
+        if (cle.startsWith('sb-') && cle.endsWith('-auth-token')) {
+          localStorage.removeItem(cle);
         }
-        const telSauve = localStorage.getItem('4ts_client_telephone');
-        if (telSauve) {
-          setTelephoneRecherche(telSauve);
-          setClient(prev => ({ ...prev, telephone: telSauve }));
-        }
-      } catch (e) {
-        console.error("Erreur purge session :", e);
+      });
+
+      const stockFavoris = localStorage.getItem('4ts_restaurants_recents');
+      if (stockFavoris) {
+        setRestaurantsRecents(JSON.parse(stockFavoris));
       }
+      const telSauve = localStorage.getItem('4ts_client_telephone');
+      if (telSauve) {
+        setTelephoneRecherche(telSauve);
+        setClient(prev => ({ ...prev, telephone: telSauve }));
+      }
+    } catch (e) {
+      console.error("Erreur nettoyage session :", e);
     }
-
-    purgerSessionAdmin();
   }, []);
 
   useEffect(() => {
@@ -89,7 +78,7 @@ export default function EspaceClientBoutique() {
       try {
         const [resEnt, resArt] = await Promise.all([
           supabase.from('entreprises').select('*').eq('id_entreprise', entrepriseId).maybeSingle(),
-          supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', 'BOUTIQUE').eq('Disponible_Menu_QR', true)
+          supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('Disponible_Menu_QR', true)
         ]);
 
         if (resEnt.data) {
@@ -108,10 +97,10 @@ export default function EspaceClientBoutique() {
 
         setArticles(Array.isArray(resArt.data) ? resArt.data : []);
 
-        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', 'BOUTIQUE')
+        supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId)
           .then(({ data }) => setMouvements(data || []));
 
-        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId).eq('module', 'BOUTIQUE')
+        supabase.from('approvisionnements').select('*').eq('id_entreprise', entrepriseId)
           .then(({ data }) => setApprovisionnements(data || []));
 
       } catch (err) {
