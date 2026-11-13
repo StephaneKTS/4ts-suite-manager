@@ -12,7 +12,7 @@ export default function ConnexionEntreprise() {
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [dernierRestoId, setDernierRestoId] = useState('');
+  const [derniereBoutiqueId, setDerniereBoutiqueId] = useState('');
 
   useEffect(() => {
     const clesASupprimer = [
@@ -31,11 +31,12 @@ export default function ConnexionEntreprise() {
         }
       });
 
-      const stockFavoris = localStorage.getItem('4ts_restaurants_recents');
+      // Lecture des boutiques récentes (clé mise à jour sans terme restrictif)
+      const stockFavoris = localStorage.getItem('4ts_boutiques_recentes') || localStorage.getItem('4ts_restaurants_recents');
       if (stockFavoris) {
         const parsed = JSON.parse(stockFavoris);
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].id) {
-          setDernierRestoId(parsed[0].id);
+          setDerniereBoutiqueId(parsed[0].id);
         }
       }
     } catch (e) {}
@@ -208,12 +209,12 @@ export default function ConnexionEntreprise() {
           </div>
         )}
 
-        {dernierRestoId && (
+        {derniereBoutiqueId && (
           <div className="bg-orange-600/15 border border-orange-500/40 p-3.5 rounded-xl text-center space-y-2">
-            <p className="text-[11px] text-orange-200 font-bold">Vous êtes client et souhaitez simplement consulter le menu ?</p>
+            <p className="text-[11px] text-orange-200 font-bold">Vous êtes client et souhaitez simplement consulter le menu ou le catalogue ?</p>
             <button
               type="button"
-              onClick={() => router.push(`/client?entrepriseId=${dernierRestoId}`)}
+              onClick={() => router.push(`/client?entrepriseId=${derniereBoutiqueId}`)}
               className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-4 rounded-xl shadow-md transition uppercase tracking-wider text-xs"
             >
               🧭 ACCÉDER DIRECTEMENT AU MENU
