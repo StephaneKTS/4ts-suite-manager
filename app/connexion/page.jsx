@@ -12,6 +12,7 @@ export default function ConnexionEntreprise() {
   const [showPin, setShowPin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [dernierRestoId, setDernierRestoId] = useState('');
 
   useEffect(() => {
     const clesASupprimer = [
@@ -29,6 +30,15 @@ export default function ConnexionEntreprise() {
           localStorage.removeItem(cle);
         }
       });
+
+      // Récupérer le dernier restaurant visité pour permettre au client de y retourner directement
+      const stockFavoris = localStorage.getItem('4ts_restaurants_recents');
+      if (stockFavoris) {
+        const parsed = JSON.parse(stockFavoris);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].id) {
+          setDernierRestoId(parsed[0].id);
+        }
+      }
     } catch (e) {}
 
     async function purgerSessionSupabase() {
@@ -59,7 +69,7 @@ export default function ConnexionEntreprise() {
       let matrixPermissions = { _aucun_acces: true };
       let authenticated = false;
 
-      // 1. RECHERCHE CIBLÉE DANS LES UTILISATEURS (Sécurité renforcée : pas de select('*') global aveugle)
+      // 1. RECHERCHE CIBLÉE DANS LES UTILISATEURS
       const { data: userList, error: errUser } = await supabase
         .from('utilisateurs')
         .select('*');
@@ -87,7 +97,6 @@ export default function ConnexionEntreprise() {
 
           const mdpUser = String(utilisateurTrouve.mot_de_passe || '').trim();
           
-          // SÉCURITÉ : Le mot de passe ne doit JAMAIS être vide
           if (!mdpUser || mdpUser !== cleanPin) {
             throw new Error("Mot de passe ou code PIN incorrect.");
           }
@@ -117,7 +126,7 @@ export default function ConnexionEntreprise() {
         }
       }
 
-      // 2. RECHERCHE DANS LES ENTREPRISES (Administrateur / Gérant)
+      // 2. RECHERCHE DANS LES ENTREPRISES
       if (!authenticated) {
         const { data: entList, error: errEnt } = await supabase
           .from('entreprises')
@@ -142,7 +151,6 @@ export default function ConnexionEntreprise() {
           if (entrepriseTrouvee) {
             const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
             
-            // SÉCURITÉ : Interdiction stricte de se connecter si aucun mot de passe n'est configuré en base
             if (!mdpBase || mdpBase !== cleanPin) {
               throw new Error("Mot de passe ou code PIN incorrect.");
             }
@@ -159,7 +167,6 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant ou mot de passe incorrect. Accès non autorisé.");
       }
 
-      // Sauvegarde de la session validée
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
@@ -201,6 +208,20 @@ export default function ConnexionEntreprise() {
         {errorMsg && (
           <div className="p-3 bg-rose-500/25 border border-rose-500/60 text-rose-200 rounded-xl text-xs font-semibold text-center">
             {errorMsg}
+          </div>
+        )}
+
+        {/* Bouton d'accès direct pour le client (sans compte / sans connexion) */}
+        {dernierRestoId && (
+          <div className="bg-orange-600/15 border border-orange-500/40 p-3.5 rounded-xl text-center space-y-2">
+            <p className="text-[11px] text-orange-200 font-bold">Vous êtes client et souhaitez simplement consulter le menu ?</p>
+            <button
+              type="button"
+              onClick={() => router.push(`/client?entrepriseId=${dernierRestoId}`)}
+              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-4 rounded-xl shadow-md transition uppercase tracking-wider text-xs"
+            >
+              🧭 Accéder directement au Menu / Restaurant
+            </button>
           </div>
         )}
 
