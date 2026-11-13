@@ -31,6 +31,12 @@ import GestionTaxesRistournes from './components/GestionTaxesRistournes';
 import MenuExplorer from './components/MenuExplorer'; 
 import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; 
 
+// ➕ Importation des 4 composants du module Tontine
+import GestionTontineParticipants from './components/GestionTontineParticipants';
+import GestionTontineCycles from './components/GestionTontineCycles';
+import GestionTontineCotisations from './components/GestionTontineCotisations';
+import GestionTontineAttributions from './components/GestionTontineAttributions';
+
 function DashboardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -60,12 +66,10 @@ function DashboardContent() {
   const [emailConnecte, setEmailConnecte] = useState('');
   const [logoEntreprise, setLogoEntreprise] = useState('');
 
-  // Initialisation à false pour éviter l'erreur d'hydratation SSR/Client
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
 
-  // 🔒 GARDE-FOU DE SÉCURITÉ ABSOLUE & MONTAGE
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
@@ -147,6 +151,7 @@ function DashboardContent() {
   }, [authentifie, entrepriseIdUrl]);
 
   const estModeLivraison = moduleCourant === 'LIVRAISON';
+  const estModeTontine = moduleCourant === 'TONTINE';
   const emailActuel = emailConnecte || infosEntreprise.email || '';
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
@@ -196,6 +201,20 @@ function DashboardContent() {
 
     if (moduleActif === 'commandes_clients_qr') {
       return <GestionCommandesClientsQR entrepriseId={entrepriseId} />;
+    }
+
+    // ➕ Gestion des vues du module Tontine
+    if (moduleActif === 'tontine_participants') {
+      return <GestionTontineParticipants entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+    }
+    if (moduleActif === 'tontine_cycles') {
+      return <GestionTontineCycles entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+    }
+    if (moduleActif === 'tontine_cotisations') {
+      return <GestionTontineCotisations entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+    }
+    if (moduleActif === 'tontine_attributions') {
+      return <GestionTontineAttributions entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
     if (moduleActif === 'super_admin_panel') {
@@ -409,15 +428,6 @@ function DashboardContent() {
                   </div>
                 </div>
               )}
-              {estModeLivraison && verifierPermission('caisses') && (
-                <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                  <div>
-                    <h3 className="font-extrabold text-xs sm:text-sm">Création Caisse</h3>
-                    <p className={`text-[10px] mt-0.5 ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Création et gestion des caisses de livraison.</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         ) : ongletNavigation === 'profil' && !moduleActif ? (
@@ -444,7 +454,48 @@ function DashboardContent() {
           <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
             {rendreModuleActif()}
           </div>
+        ) : !moduleActif && estModeTontine ? (
+          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE */
+          <div className="space-y-2.5 w-full">
+            <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
+              ACCUEIL - MODULE TONTINE
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 w-full">
+              <div 
+                onClick={() => setModuleActif('tontine_participants')} 
+                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group border-2 border-orange-500/50`}
+              >
+                <span className="text-3xl group-hover:scale-110 transition">👥</span>
+                <span className="font-black text-xs leading-tight text-orange-500">Gestion des Participants</span>
+              </div>
+
+              <div 
+                onClick={() => setModuleActif('tontine_cycles')} 
+                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
+              >
+                <span className="text-3xl group-hover:scale-110 transition">🔄</span>
+                <span className="font-bold text-xs leading-tight">Cycles & Sessions</span>
+              </div>
+
+              <div 
+                onClick={() => setModuleActif('tontine_cotisations')} 
+                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
+              >
+                <span className="text-3xl group-hover:scale-110 transition">💰</span>
+                <span className="font-bold text-xs leading-tight">Suivi des Cotisations</span>
+              </div>
+
+              <div 
+                onClick={() => setModuleActif('tontine_attributions')} 
+                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
+              >
+                <span className="text-3xl group-hover:scale-110 transition">🏆</span>
+                <span className="font-bold text-xs leading-tight">Attributions & Cagnottes</span>
+              </div>
+            </div>
+          </div>
         ) : !moduleActif && !estModeLivraison ? (
+          /* ACCUEIL BOUTIQUE */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL
