@@ -532,6 +532,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               type: (mvt.type_mouvement || 'TRANSFERT').toUpperCase(), 
               depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
               depotDestNom: obtenirNomDestinationParMvt(mvt),
+              id_emplacement_source: mvt.id_emplacement_source,
+              id_emplacement_destination: mvt.id_emplacement_destination,
               operateur: operateurAffiche, 
               lignesCount: 0 
             }; 
@@ -1015,10 +1017,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const depotCibleNom = depotCibleObj ? (depotCibleObj.nom_depot || depotCibleObj.nom || '').toUpperCase() : filtrePartenaire.toUpperCase();
       if (!depotNomDoc.includes(depotCibleNom)) return false;
     }
-    // 3. Livreur / Opérateur
+    // 3. Livreur / Emplacement
     if (filtreLivreur) {
-      const opDoc = (doc.operateur || '').toUpperCase();
-      if (!opDoc.includes(filtreLivreur.toUpperCase())) return false;
+      const empCibleObj = emplacements.find(e => String(e.id) === String(filtreLivreur));
+      const empCibleNom = empCibleObj ? (empCibleObj.nom_emplacement || empCibleObj.code_emplacement || '').toUpperCase() : filtreLivreur.toUpperCase();
+
+      const matchSource = String(doc.id_emplacement_source) === String(filtreLivreur);
+      const matchDest = String(doc.id_emplacement_destination) === String(filtreLivreur);
+      const depotDestNom = (doc.depotDestNom || '').toUpperCase();
+
+      if (!matchSource && !matchDest && !depotDestNom.includes(empCibleNom)) return false;
     }
     return true;
   });
@@ -1552,13 +1560,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </button>
                 </div>
                 <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Livreur / Opérateur</label>
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">{libelleLivreur}</label>
                   <button
                     type="button"
                     onClick={() => { setRechercheFiltreModal(''); setModalFiltreLivreurOuvert(true); }}
                     className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] uppercase text-left truncate flex justify-between items-center"
                   >
-                    <span className="truncate">{filtreLivreur || 'Tous'}</span>
+                    <span className="truncate">
+                      {filtreLivreur ? (emplacements.find(e => String(e.id) === String(filtreLivreur))?.nom_emplacement || emplacements.find(e => String(e.id) === String(filtreLivreur))?.code_emplacement || filtreLivreur) : 'Tous'}
+                    </span>
                     <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
                   </button>
                 </div>
@@ -1644,31 +1654,35 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* Modale Filtre Livreur / Opérateur */}
+      {/* Modale Filtre Livreur / Emplacement */}
       {modalFiltreLivreurOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-              <h4 className="font-black text-slate-900 uppercase text-xs">FILTRER PAR LIVREUR / OPÉRATEUR</h4>
+              <h4 className="font-black text-slate-900 uppercase text-xs">FILTRER PAR {libelleLivreur.toUpperCase()}</h4>
               <button type="button" onClick={() => setModalFiltreLivreurOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
             </div>
             <input
               type="text"
               value={rechercheFiltreModal}
               onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())}
-              placeholder="RECHERCHER..."
+              placeholder={`RECHERCHER UN ${libelleLivreur.toUpperCase()}...`}
               autoFocus
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs"
             />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2">
               <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">
-                -- Tous les livreurs / opérateurs --
+                -- Tous les {libelleLivreur.toLowerCase()}s --
               </div>
-              {Array.from(new Set(documentsGroupes.map(d => d.operateur))).filter(op => op && op.toUpperCase().includes(rechercheFiltreModal)).map((op, idx) => (
-                <div key={idx} onClick={() => { setFiltreLivreur(op); setModalFiltreLivreurOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">
-                  {op}
-                </div>
-              ))}
+              {emplacements.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheFiltreModal)).map((emp) => {
+                const nomEmp = emp.nom_emplacement || emp.code_emplacement || '';
+                return (
+                  <div key={emp.id} onClick={() => { setFiltreLivreur(emp.id); setModalFiltreLivreurOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-white">
+                    <span className="font-black text-xs text-slate-900 uppercase truncate">{nomEmp}</span>
+                    {emp.responsable_emplacement && <span className="text-[9px] text-slate-500 font-bold mt-0.5">{emp.responsable_emplacement}</span>}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

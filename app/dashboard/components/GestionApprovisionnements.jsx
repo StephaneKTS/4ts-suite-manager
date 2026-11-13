@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
@@ -87,6 +87,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [approEnEditionId, setApproEnEditionId] = useState(null);
   const [docEnEditionObjet, setDocEnEditionObjet] = useState(null);
   const [documentEnLectureSeule, setDocumentEnLectureSeule] = useState(false);
+  const [etatInitialEdition, setEtatInitialEdition] = useState(null);
 
   const [limiteAppro, setLimiteAppro] = useState(20);
   const [limiteCommandes, setLimiteCommandes] = useState(20);
@@ -368,6 +369,42 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const montantTotalGlobal = lignesValidees.reduce((sum, item) => sum + (Number(item.quantite || 0) * Number(item.prix_achat || 0)), 0);
   const soldeRestant = statutPaiement === 'SOLDE' ? 0 : statutPaiement === 'CREDIT' ? montantTotalGlobal : Math.max(0, montantTotalGlobal - (parseFloat(montantPaye) || 0));
 
+  // 🛡️ COMPARAISON RIGOUREUSE : Vérifie si une information primaire a réellement changé en mode édition
+  const documentModifie = useMemo(() => {
+    if (!approEnEditionId || !etatInitialEdition) return false;
+
+    const norm = (val) => (val === null || val === undefined ? '' : String(val).trim());
+
+    const init = etatInitialEdition;
+    const enteteModifie = 
+      norm(dateDoc) !== norm(init.dateDoc) ||
+      norm(idFournisseur) !== norm(init.idFournisseur) ||
+      norm(referenceFournisseur) !== norm(init.referenceFournisseur) ||
+      norm(idDepotDestination) !== norm(init.idDepotDestination) ||
+      norm(delaiLivraison) !== norm(init.delaiLivraison) ||
+      norm(statutPaiement) !== norm(init.statutPaiement) ||
+      Number(montantPaye || 0) !== Number(init.montantPaye || 0);
+
+    const initLignes = init.lignes || [];
+    let lignesModifiees = lignesValidees.length !== initLignes.length;
+    if (!lignesModifiees) {
+      for (let i = 0; i < lignesValidees.length; i++) {
+        const cur = lignesValidees[i];
+        const ini = initLignes[i];
+        if (
+          norm(cur.id_article) !== norm(ini.id_article) ||
+          Number(cur.quantite) !== Number(ini.quantite) ||
+          Number(cur.prix_achat) !== Number(ini.prix_achat)
+        ) {
+          lignesModifiees = true;
+          break;
+        }
+      }
+    }
+
+    return enteteModifie || lignesModifiees;
+  }, [approEnEditionId, etatInitialEdition, dateDoc, idFournisseur, referenceFournisseur, idDepotDestination, delaiLivraison, statutPaiement, montantPaye, lignesValidees]);
+
   const verifierEnTeteAvantSaisie = () => {
     if (documentEnLectureSeule) {
       alert('🔒 Ce document est en lecture seule (journée clôturée).');
@@ -404,6 +441,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     setApproEnEditionId(null);
     setDocEnEditionObjet(null);
     setDocumentEnLectureSeule(false);
+    setEtatInitialEdition(null);
     setStatutPaiement('SOLDE');
     setMontantPaye(0);
     setIndexEnCoursModif(null);
@@ -526,6 +564,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       }
 
       localStorage.removeItem(cleCacheAppro);
+      setEtatInitialEdition(null);
       alert(`Approvisionnement ${numeroAffichageFinal} enregistré avec succès !`);
       setVueActive('liste');
       await chargerDonnees(true);
@@ -608,6 +647,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       }
 
       localStorage.removeItem(cleCacheCommandes);
+      setEtatInitialEdition(null);
       alert(`Bon de commande ${numeroAffichageFinal} enregistré avec succès !`);
       setVueActive('liste');
       await chargerDonnees(true);
@@ -685,6 +725,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
       localStorage.removeItem(cleCacheAppro);
       localStorage.removeItem(cleCacheCommandes);
+      setEtatInitialEdition(null);
       alert(`Succès ! Le bon a été transformé en approvisionnement : ${nouveauNumAffichage}`);
       setVueActive('liste');
       setOngletActif('APPRO');
@@ -721,9 +762,28 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       if (typeof doc.details_articles === 'string') { try { articlesDetails = JSON.parse(doc.details_articles); } catch (e) {} }
       else if (Array.isArray(doc.details_articles)) { articlesDetails = doc.details_articles; }
     }
-    setLignesValidees(articlesDetails.map(l => ({ id_article: l.id_article, designation: (l.designation || l.Designation || l.libelle || '').toUpperCase(), quantite: String(l.quantite || l.Quantite || 1), prix_achat: String(l.prix_achat || l.Prix_Achat || l.prix_estime || '0') })));
+    const lignesInitiales = articlesDetails.map(l => ({ 
+      id_article: String(l.id_article || l.article_id || ''), 
+      designation: (l.designation || l.Designation || l.libelle || '').toUpperCase(), 
+      quantite: String(l.quantite || l.Quantite || 1), 
+      prix_achat: String(l.prix_achat || l.Prix_Achat || l.prix_estime || '0') 
+    }));
+    setLignesValidees(lignesInitiales);
     setIndexEnCoursModif(null);
     setVueActive(type === 'APPRO' ? 'formulaire_facture' : 'formulaire_commande');
+
+    // 🛡️ ENREGISTREMENT DE L'ÉTAT INITIAL POUR LA COMPARAISON
+    setEtatInitialEdition({
+      dateDoc: dateDocStr,
+      idFournisseur: String(doc.id_fournisseur || ''),
+      referenceFournisseur: String(doc.numero_commande || doc.reference || ''),
+      idDepotDestination: String(doc.id_depot_destination || ''),
+      delaiLivraison: String(doc.delai_livraison || '7 JOURS'),
+      statutPaiement: String(doc.statut_paiement || 'SOLDE'),
+      montantPaye: Number(doc.montant_paye || 0),
+      lignes: JSON.parse(JSON.stringify(lignesInitiales)),
+      typeDoc: type
+    });
   };
 
   const supprimerDoc = async (id, type) => {
@@ -761,6 +821,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         localStorage.removeItem(cleCacheCommandes);
       }
 
+      setEtatInitialEdition(null);
       alert('Supprimé.');
       setDocumentEnLectureSeule(false);
       await chargerDonnees(true);
@@ -966,6 +1027,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               onClick={() => {
                 setVueActive('liste');
                 setDocumentEnLectureSeule(false);
+                setEtatInitialEdition(null);
               }}
               className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
             >
@@ -1154,7 +1216,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
             <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
               <div className="flex items-center gap-2">
                 <span className="font-black text-slate-900 text-xs uppercase">📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); setEtatInitialEdition(null); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
               </div>
               <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
             </div>
@@ -1292,8 +1354,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               <div className="flex items-center gap-1.5">
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
                 {!documentEnLectureSeule && ((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
-                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
-                    {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Valider')}
+                  <button 
+                    type="submit" 
+                    disabled={enTrainDeSauvegarder || (approEnEditionId && !documentModifie)} 
+                    className={`font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1 ${
+                      !enTrainDeSauvegarder && (!approEnEditionId || documentModifie)
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? (documentModifie ? 'Mettre à jour' : '🔒 Aucun changement') : 'Valider')}
                   </button>
                 )}
               </div>
@@ -1311,7 +1381,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
             <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
               <div className="flex items-center gap-2">
                 <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); setEtatInitialEdition(null); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
               </div>
               <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
             </div>
@@ -1412,8 +1482,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
               <div className="flex items-center gap-1.5">
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
                 {!documentEnLectureSeule && ((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
-                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">
-                    {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? 'Mettre à jour' : 'Enregistrer')}
+                  <button 
+                    type="submit" 
+                    disabled={enTrainDeSauvegarder || (approEnEditionId && !documentModifie)} 
+                    className={`font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1 ${
+                      !enTrainDeSauvegarder && (!approEnEditionId || documentModifie)
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? (documentModifie ? 'Mettre à jour' : '🔒 Aucun changement') : 'Enregistrer')}
                   </button>
                 )}
               </div>
