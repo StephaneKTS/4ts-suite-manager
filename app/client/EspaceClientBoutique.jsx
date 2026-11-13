@@ -78,7 +78,6 @@ export default function EspaceClientBoutique() {
       try {
         const [resEnt, resArt] = await Promise.all([
           supabase.from('entreprises').select('*').eq('id_entreprise', entrepriseId).maybeSingle(),
-          // Filtrage strict Supabase : Entreprise, QR code activé, et restriction exclusive au module boutique
           supabase.from('articles_stock')
             .select('*')
             .eq('id_entreprise', entrepriseId)
@@ -100,7 +99,6 @@ export default function EspaceClientBoutique() {
           });
         }
 
-        // Double sécurité côté client : Exclusion explicite de tout article lié à la livraison si la base renvoie des données mixtes
         const articlesBruts = Array.isArray(resArt.data) ? resArt.data : [];
         const articlesBoutiqueSecurises = articlesBruts.filter(art => {
           const designation = (art.Designation || art.designation || '').toUpperCase();
@@ -614,15 +612,16 @@ export default function EspaceClientBoutique() {
     <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
       
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
-        <div className="flex justify-between items-center px-1">
+        <div className="flex justify-between items-center px-1 mb-1">
           <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
-          {/* Bouton d'accès rapide direct pour les clients ouvrant depuis l'écran d'accueil sans vouloir s'identifier */}
+          
+          {/* Bouton d'accès rapide direct toujours visible en haut pour explorer sans se connecter */}
           <button
             type="button"
             onClick={() => setOngletActif('BOUTIQUE')}
-            className="bg-orange-100 text-orange-700 hover:bg-orange-200 font-black px-2.5 py-1 rounded-xl text-[9px] uppercase transition shadow-2xs"
+            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-xl text-[10px] uppercase transition shadow-md flex items-center gap-1"
           >
-            🧭 Explorer / Menu
+            <span>🧭 Explorer le Menu</span>
           </button>
         </div>
         
