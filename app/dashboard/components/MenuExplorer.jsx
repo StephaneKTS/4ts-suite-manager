@@ -16,12 +16,13 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
-  // --- ÉTATS POUR LE CHATBOT ---
+  // --- ÉTATS POUR LE CENTRE CADEAUX & ASTUCES (NAVIGATION PAR PAGES INTERNES) ---
   const [modeChat, setModeChat] = useState('ACCUEIL'); 
   const [etapeSondage, setEtapeSondage] = useState(0);
   const [resultatsSondage, setResultatsSondage] = useState({});
   const [etapeDivertissement, setEtapeDivertissement] = useState(0);
   const [resultatsDivertissement, setResultatsDivertissement] = useState({});
+  const [categorieAstuceActive, setCategorieAstuceActive] = useState(null);
 
   const categoriesAstuces = {
     voyage: {
@@ -96,10 +97,10 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     }
   };
 
-  const [messagesChat, setMessagesChat] = useState([
-    { expediteur: 'bot', texte: '👋 Bienvenue sur l’assistant interactif 4TS Suite Manager ! Comment puis-je vous guider aujourd’hui ?' }
-  ]);
   const [saisieMessage, setSaisieMessage] = useState('');
+  const [messagesSupport, setMessagesSupport] = useState([
+    { expediteur: 'bot', texte: '👋 Bonjour ! Posez votre question sur nos services (Tarifs, Boutique, Livraison). Nous vous répondons instantanément.' }
+  ]);
   const chatFinRef = useRef(null);
 
   const questionsSondage = [
@@ -107,171 +108,84 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     { id: 'ville', question: '🏙️ 2/5. Dans quelle ville résidez-vous ?', type: 'LIBRE' },
     { id: 'activite', question: '💼 3/5. Quel est votre type d’activité ?', type: 'CHOIX', options: ['Commerce', 'Livraison & Logistique', 'Services', 'Autre'] },
     { id: 'module_prefere', question: '⭐ 4/5. Quel module préférez-vous ?', type: 'CHOIX', options: ['Boutique & Caisse', 'Livraison & Flotte', 'Tontine', 'Logistique'] },
-    { id: 'amelioration_libre', question: '💡 5/5. Une suggestion ?', type: 'LIBRE' }
+    { id: 'amelioration_libre', question: '💡 5/5. Une suggestion d’amélioration ?', type: 'LIBRE' }
   ];
 
   const questionsDivertissement = [
-    { id: 'genre_tranche', question: '👤 1/4. Tranche d’âge ?', type: 'CHOIX', options: ['Moins de 25 ans', '25 - 40 ans', '41 - 60 ans', 'Plus de 60 ans'] },
-    { id: 'musique', question: '🎵 2/4. Style de musique favori ?', type: 'LIBRE' },
-    { id: 'couleur', question: '🎨 3/4. Couleur préférée ?', type: 'CHOIX', options: ['🔴 Rouge & Noir', '🔵 Bleu', '🟢 Vert', '🟡 Jaune'] },
-    { id: 'plat', question: '🍲 4/4. Plat favori ?', type: 'LIBRE' }
+    { id: 'genre_tranche', question: '👤 1/4. Quelle est votre tranche d’âge ?', type: 'CHOIX', options: ['Moins de 25 ans', '25 - 40 ans', '41 - 60 ans', 'Plus de 60 ans'] },
+    { id: 'musique', question: '🎵 2/4. Quel est votre style de musique favori ?', type: 'LIBRE' },
+    { id: 'couleur', question: '🎨 3/4. Quelle est votre couleur préférée ?', type: 'CHOIX', options: ['🔴 Rouge & Noir', '🔵 Bleu', '🟢 Vert', '🟡 Jaune'] },
+    { id: 'plat', question: '🍲 4/4. Quel est votre plat favori ?', type: 'LIBRE' }
   ];
 
   useEffect(() => {
-    if (modalChatbotOuvert) {
+    if (modalChatbotOuvert && modeChat === 'SUPPORT') {
       chatFinRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messagesChat, modalChatbotOuvert]);
+  }, [messagesSupport, modalChatbotOuvert, modeChat]);
 
   const retournerAccueilChat = () => {
     setModeChat('ACCUEIL');
-    setMessagesChat([
-      { expediteur: 'bot', texte: '👋 Bienvenue de retour au menu principal ! Que souhaitez-vous faire ?' }
-    ]);
+    setCategorieAstuceActive(null);
   };
 
   const lancerModeSondage = () => {
     setModeChat('SONDAGE');
     setEtapeSondage(0);
     setResultatsSondage({});
-    setMessagesChat((prev) => [
-      ...prev,
-      { expediteur: 'client', texte: '📊 Participer au Sondage' },
-      { expediteur: 'bot', texte: `Formidable ! ${questionsSondage[0].question}`, options: questionsSondage[0].options }
-    ]);
   };
 
   const lancerModeDivertissement = () => {
     setModeChat('DIVERTISSEMENT');
     setEtapeDivertissement(0);
     setResultatsDivertissement({});
-    setMessagesChat((prev) => [
-      ...prev,
-      { expediteur: 'client', texte: '🎮 Quiz & Détente' },
-      { expediteur: 'bot', texte: `Super ! ${questionsDivertissement[0].question}`, options: questionsDivertissement[0].options }
-    ]);
   };
 
   const lancerModeAstuces = () => {
     setModeChat('ASTUCES');
-    const listeNomsCategories = Object.keys(categoriesAstuces).map((cle) => categoriesAstuces[cle].titre);
-    setMessagesChat((prev) => [
-      ...prev,
-      { expediteur: 'client', texte: '💡 Découvrir les Astuces' },
-      { expediteur: 'bot', texte: '💡 **Choisissez une catégorie d’astuces ci-dessous :**', options: listeNomsCategories }
-    ]);
+    setCategorieAstuceActive(null);
   };
 
   const lancerModeSupport = () => {
     setModeChat('SUPPORT');
-    setMessagesChat((prev) => [
-      ...prev,
-      { expediteur: 'client', texte: '❓ Poser une question' },
-      { expediteur: 'bot', texte: 'Posez votre question sur nos services (Tarifs, Boutique, Livraison). Je vous réponds instantanément !' }
-    ]);
   };
 
-  const soumettreReponseChat = (e) => {
+  const soumettreReponseSondage = (valeur) => {
+    const qCourante = questionsSondage[etapeSondage];
+    setResultatsSondage((prev) => ({ ...prev, [qCourante.id]: valeur }));
+    if (etapeSondage + 1 < questionsSondage.length) {
+      setEtapeSondage(etapeSondage + 1);
+    } else {
+      setModeChat('SONDAGE_VALIDE');
+    }
+  };
+
+  const soumettreReponseDivertissement = (valeur) => {
+    const dCourante = questionsDivertissement[etapeDivertissement];
+    setResultatsDivertissement((prev) => ({ ...prev, [dCourante.id]: valeur }));
+    if (etapeDivertissement + 1 < questionsDivertissement.length) {
+      setEtapeDivertissement(etapeDivertissement + 1);
+    } else {
+      setModeChat('DIVERTISSEMENT_VALIDE');
+    }
+  };
+
+  const soumettreMessageSupport = (e) => {
     e.preventDefault();
     if (!saisieMessage.trim()) return;
     const texteSaisi = saisieMessage;
     setSaisieMessage('');
-
-    if (modeChat === 'SONDAGE') {
-      const qCourante = questionsSondage[etapeSondage];
-      setResultatsSondage((prev) => ({ ...prev, [qCourante.id]: texteSaisi }));
-      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: texteSaisi }]);
-      const prochaineEtape = etapeSondage + 1;
-      if (prochaineEtape < questionsSondage.length) {
-        setEtapeSondage(prochaineEtape);
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: questionsSondage[prochaineEtape].question, options: questionsSondage[prochaineEtape].options }]);
-        }, 600);
-      } else {
-        setModeChat('ACCUEIL');
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: '🎉 **Merci !** Vos réponses ont été enregistrées.' }]);
-        }, 600);
+    setMessagesSupport((prev) => [...prev, { expediteur: 'client', texte: texteSaisi }]);
+    setTimeout(() => {
+      let reponseBot = "Contactez notre service client par WhatsApp ou via le bouton d'appel en haut de page.";
+      const texteMin = texteSaisi.toLowerCase();
+      if (texteMin.includes('module') || texteMin.includes('service')) {
+        reponseBot = "📦 **Nos modules :**\n1. Module Boutique & Caisse (✅)\n2. Module Livraison & Flotte (✅)\n3. Module Tontine & Épargne (En développement 🔒)\n4. Module Logistique (En développement 🔒)";
+      } else if (texteMin.includes('prix') || texteMin.includes('tarif')) {
+        reponseBot = "💰 Les options de diffusion publicitaire débutent à 300 XAF/jour.";
       }
-    } else if (modeChat === 'DIVERTISSEMENT') {
-      const dCourante = questionsDivertissement[etapeDivertissement];
-      setResultatsDivertissement((prev) => ({ ...prev, [dCourante.id]: texteSaisi }));
-      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: texteSaisi }]);
-      const prochaineEtape = etapeDivertissement + 1;
-      if (prochaineEtape < questionsDivertissement.length) {
-        setEtapeDivertissement(prochaineEtape);
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: questionsDivertissement[prochaineEtape].question, options: questionsDivertissement[prochaineEtape].options }]);
-        }, 600);
-      } else {
-        setModeChat('ACCUEIL');
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: '🌟 **Quiz terminé avec succès !**' }]);
-        }, 600);
-      }
-    } else {
-      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: texteSaisi }]);
-      setTimeout(() => {
-        let reponseBot = "Contactez notre service client par WhatsApp ou via le bouton d'appel en bas de page.";
-        const texteMin = texteSaisi.toLowerCase();
-        if (texteMin.includes('module') || texteMin.includes('service')) {
-          reponseBot = "📦 **Nos modules :**\n1. Module Boutique & Caisse (✅)\n2. Module Livraison & Flotte (✅)\n3. Module Tontine & Épargne (En développement 🔒)\n4. Module Logistique (En développement 🔒)";
-        } else if (texteMin.includes('prix') || texteMin.includes('tarif')) {
-          reponseBot = "💰 Les options de diffusion publicitaire débutent à 300 XAF/jour.";
-        }
-        setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: reponseBot }]);
-      }, 800);
-    }
-  };
-
-  const selectionnerOptionChoix = (option) => {
-    if (modeChat === 'SONDAGE') {
-      const qCourante = questionsSondage[etapeSondage];
-      setResultatsSondage((prev) => ({ ...prev, [qCourante.id]: option }));
-      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: option }]);
-      const prochaineEtape = etapeSondage + 1;
-      if (prochaineEtape < questionsSondage.length) {
-        setEtapeSondage(prochaineEtape);
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: questionsSondage[prochaineEtape].question, options: questionsSondage[prochaineEtape].options }]);
-        }, 600);
-      } else {
-        setModeChat('ACCUEIL');
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: '🎉 **Merci infiniment !** Sondage enregistré.' }]);
-        }, 600);
-      }
-    } else if (modeChat === 'DIVERTISSEMENT') {
-      const dCourante = questionsDivertissement[etapeDivertissement];
-      setResultatsDivertissement((prev) => ({ ...prev, [dCourante.id]: option }));
-      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: option }]);
-      const prochaineEtape = etapeDivertissement + 1;
-      if (prochaineEtape < questionsDivertissement.length) {
-        setEtapeDivertissement(prochaineEtape);
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: questionsDivertissement[prochaineEtape].question, options: questionsDivertissement[prochaineEtape].options }]);
-        }, 600);
-      } else {
-        setModeChat('ACCUEIL');
-        setTimeout(() => {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: '🌟 **Génial !** Quiz terminé.' }]);
-        }, 600);
-      }
-    } else if (modeChat === 'ASTUCES') {
-      setMessagesChat((prev) => [...prev, { expediteur: 'client', texte: option }]);
-      const cleTrouvee = Object.keys(categoriesAstuces).find(
-        (cle) => categoriesAstuces[cle].titre.toLowerCase() === option.toLowerCase()
-      );
-      setTimeout(() => {
-        if (cleTrouvee) {
-          const cat = categoriesAstuces[cleTrouvee];
-          let texteAstuces = `✨ **${cat.titre}** :\n\n` + cat.liste.map(a => `📌 **${a.titre}**\n${a.texte}`).join('\n\n');
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: texteAstuces }]);
-        } else {
-          setMessagesChat((prev) => [...prev, { expediteur: 'bot', texte: `Voici d'excellents conseils !` }]);
-        }
-      }, 600);
-    }
+      setMessagesSupport((prev) => [...prev, { expediteur: 'bot', texte: reponseBot }]);
+    }, 800);
   };
 
   const [emailConnecte, setEmailConnecte] = useState('stephs7352@gmail.com');
@@ -308,7 +222,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   const [waInput, setWaInput] = useState(liensReseauxSociaux.whatsapp);
   const [telInput, setTelInput] = useState(liensReseauxSociaux.telephone || '+237600000000');
 
-  // Synchroniser les inputs à l'ouverture de la modale de configuration
   useEffect(() => {
     if (modalAdminReseauxOuvert) {
       setFbInput(liensReseauxSociaux.facebook);
@@ -391,7 +304,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     chargerBannièresSupabase();
   }, []);
 
-  // Défilement automatique géré par intervalle (en pause seulement si estEnPause est vrai)
   useEffect(() => {
     if (estEnPause || bannières.length <= 1) return;
     const interval = setInterval(() => {
@@ -400,7 +312,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     return () => clearInterval(interval);
   }, [bannières.length, estEnPause]);
 
-  // Gestion du Swipe tactile / Glissement pour changer d'annonce
   const handleTouchStart = (e) => {
     setEstEnPause(true);
     touchStartX.current = e.touches[0].clientX;
@@ -448,7 +359,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         is_active: true
       };
 
-      const { data, error } = await supabase.from('bannieres').insert([nouvelleAnnonceDB]);
+      const { error } = await supabase.from('bannieres').insert([nouvelleAnnonceDB]);
       if (error) {
         console.error("Détail erreur Supabase:", error);
         throw error;
@@ -503,7 +414,52 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   return (
     <div className="space-y-4 font-sans text-xs pb-16">
       
-      {/* ================= 1. BANNIÈRE DÉFILANTE PRINCIPALE (AUTO-SCROLL & SWIPE & PAUSE AU MAINTIEN) ================= */}
+      {/* ================= 1. NOUS CONTACTER (POSITIONNÉ EN PREMIÈRE POSITION) ================= */}
+      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-xl shrink-0 shadow-inner">
+            🎧
+          </div>
+          <div>
+            <h4 className="font-black uppercase text-xs sm:text-sm tracking-wide text-cyan-300">Nous Contacter</h4>
+            <p className="text-[10px] text-slate-300 font-medium">Service client disponible pour tous par WhatsApp, appel ou Chatbot.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center sm:justify-end gap-2.5 w-full sm:w-auto flex-wrap shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-blue-900/50">
+          <a
+            href={`https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="WhatsApp"
+            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center shadow-lg transition transform hover:scale-110 shrink-0"
+          >
+            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38c1.45.79 3.08 1.21 4.79 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01C17.18 3.03 14.69 2 12.04 2zM12.04 20.12c-1.42 0-2.8-.38-4.02-1.11l-.29-.17-3.03.8.81-2.95-.19-.31c-.79-1.25-1.21-2.71-1.21-4.22 0-4.41 3.59-8 8-8s8 3.59 8 8c0 2.14-.83 4.15-2.34 5.66-1.51 1.51-3.52 2.34-5.63 2.34zm4.41-5.96c-.24-.12-1.42-.7-1.64-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.01-.37-1.93-1.19-.71-.63-1.19-1.42-1.33-1.66-.14-.24-.01-.37.1-.49.1-.1.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.31-.74-1.8-.2-.48-.4-.42-.54-.42h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.31.98 2.47c.12.16 1.69 2.58 4.1 3.62.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1rem.47-.07 1.42-.58 1.62-1.14.2-.56.2-1.04.14-1.14-.06-.1-.22-.16-.46-.28z"/>
+            </svg>
+          </a>
+
+          <a
+            href={`tel:${liensReseauxSociaux.telephone || liensReseauxSociaux.whatsapp}`}
+            title="Appeler"
+            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center shadow-lg transition transform hover:scale-110 shrink-0"
+          >
+            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
+          </a>
+
+          <button
+            onClick={() => { setModalChatbotOuvert(true); setModeChat('ACCUEIL'); }}
+            className="bg-gradient-to-r from-amber-500 via-red-600 to-pink-600 hover:from-amber-600 hover:to-pink-700 text-white font-black px-4 py-3 rounded-xl text-[10.5px] uppercase shadow-2xl transition transform hover:scale-105 flex items-center gap-2 shrink-0 animate-bounce border-2 border-yellow-300"
+          >
+            <span className="text-base">🎁</span>
+            <span>Ouvre Ton Cadeau Secret ! ✨</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ================= 2. BANNIÈRE DÉFILANTE PRINCIPALE ================= */}
       <div 
         onMouseEnter={() => setEstEnPause(true)}
         onMouseLeave={() => setEstEnPause(false)}
@@ -579,7 +535,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* ================= 2. CENTRE DE FORMATION - BOUTONS CÔTE À CÔTE FORCÉS ================= */}
+      {/* ================= 3. CENTRE DE FORMATION ================= */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <div className="flex items-center gap-2">
@@ -600,7 +556,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
           )}
         </div>
 
-        {/* Grille 3 colonnes forcée sur la même ligne (flex-row) */}
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <a href={liensReseauxSociaux.facebook} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 hover:bg-blue-50 transition overflow-hidden">
             <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shrink-0">f</div>
@@ -626,7 +581,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* ================= 3. DÉCOUVREZ NOS MODULES - CÔTE À CÔTE EN 4 COLONNES (SIDE BY SIDE) ================= */}
+      {/* ================= 4. DÉCOUVREZ NOS MODULES ================= */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
           <div className="flex items-center gap-2">
@@ -635,7 +590,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
           </div>
         </div>
 
-        {/* Grille sur 4 colonnes pour afficher tous les modules côte à côte parfaitement */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {modulesFormation.map((mod) => {
             const estVerrouille = mod.statut === 'EN_DEVELOPPEMENT';
@@ -675,51 +629,6 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* ================= 4. BESOIN D'AIDE ? NOUS CONTACTER ================= */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-xl shrink-0 shadow-inner">
-            🎧
-          </div>
-          <div>
-            <h4 className="font-black uppercase text-xs sm:text-sm tracking-wide text-cyan-300">Besoin d'aide ? Nous Contacter</h4>
-            <p className="text-[10px] text-slate-300 font-medium">Service client disponible pour tous par WhatsApp, appel ou Chatbot.</p>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-center sm:justify-end gap-2.5 w-full sm:w-auto flex-wrap shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-blue-900/50">
-          <a
-            href={`https://wa.me/${liensReseauxSociaux.whatsapp.replace(/[^0-9]/g, '')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="WhatsApp"
-            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center shadow-lg transition transform hover:scale-110 shrink-0"
-          >
-            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-              <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38c1.45.79 3.08 1.21 4.79 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01C17.18 3.03 14.69 2 12.04 2zM12.04 20.12c-1.42 0-2.8-.38-4.02-1.11l-.29-.17-3.03.8.81-2.95-.19-.31c-.79-1.25-1.21-2.71-1.21-4.22 0-4.41 3.59-8 8-8s8 3.59 8 8c0 2.14-.83 4.15-2.34 5.66-1.51 1.51-3.52 2.34-5.63 2.34zm4.41-5.96c-.24-.12-1.42-.7-1.64-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.01-.37-1.93-1.19-.71-.63-1.19-1.42-1.33-1.66-.14-.24-.01-.37.1-.49.1-.1.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.31-.74-1.8-.2-.48-.4-.42-.54-.42h-.46c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.31.98 2.47c.12.16 1.69 2.58 4.1 3.62.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1rem.47-.07 1.42-.58 1.62-1.14.2-.56.2-1.04.14-1.14-.06-.1-.22-.16-.46-.28z"/>
-            </svg>
-          </a>
-
-          <a
-            href={`tel:${liensReseauxSociaux.telephone || liensReseauxSociaux.whatsapp}`}
-            title="Appeler"
-            className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center shadow-lg transition transform hover:scale-110 shrink-0"
-          >
-            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
-            </svg>
-          </a>
-
-          <button
-            onClick={() => { setModalChatbotOuvert(true); setModeChat('ACCUEIL'); }}
-            className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2.5 rounded-xl text-[10px] uppercase shadow-xl transition transform hover:scale-105 flex items-center gap-1.5 shrink-0 animate-pulse border-2 border-red-400"
-          >
-            <span className="text-sm">🤖</span>
-            <span>Chatbot ✨</span>
-          </button>
         </div>
       </div>
 
@@ -835,72 +744,306 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* ================= MODALE CHATBOT (PLEIN ÉCRAN VERTICAL) ================= */}
+      {/* ================= MODALE CADEAUX & ASTUCES SECRÈTES (NAVIGATION PAR PAGES INTERNES) ================= */}
       {modalChatbotOuvert && (
-        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col h-[94vh] sm:h-[90vh]">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col h-[92vh] sm:h-[88vh]">
             
+            {/* EN-TÊTE DE LA MODALE */}
             <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0 shadow-md">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-red-600/30 border border-red-500/40 flex items-center justify-center text-lg shadow-inner">
-                  🤖
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center text-xl shadow-lg">
+                  🎁
                 </div>
                 <div>
-                  <h4 className="font-black uppercase text-xs tracking-wide">Assistant Virtuel 4TS</h4>
-                  <p className="text-[9px] text-slate-300 font-bold">Toujours à votre service</p>
+                  <h4 className="font-black uppercase text-xs sm:text-sm tracking-wide text-amber-300">Cadeaux & Astuces Secrètes</h4>
+                  <p className="text-[9px] text-slate-300 font-bold">Espace exclusif 4TS Suite Manager</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={retournerAccueilChat}
-                  title="Retour au menu principal"
-                  className="bg-slate-800 hover:bg-orange-600 text-white font-black text-[9.5px] px-3 py-1.5 rounded-xl uppercase transition shadow-md border border-slate-700 flex items-center gap-1"
-                >
-                  <span>🏠</span> Menu
-                </button>
-                <button onClick={() => setModalChatbotOuvert(false)} className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold flex items-center justify-center transition">✕</button>
+                {modeChat !== 'ACCUEIL' && (
+                  <button
+                    onClick={retournerAccueilChat}
+                    className="bg-slate-800 hover:bg-orange-600 text-white font-black text-[10px] px-3 py-2 rounded-xl uppercase transition shadow-md border border-slate-700 flex items-center gap-1"
+                  >
+                    <span>← Retour</span>
+                  </button>
+                )}
+                <button onClick={() => setModalChatbotOuvert(false)} className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold flex items-center justify-center transition">✕</button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 text-[11px]">
-              {messagesChat.map((msg, idx) => (
-                <div key={idx} className={`flex flex-col ${msg.expediteur === 'client' ? 'items-end' : 'items-start'}`}>
-                  <div className={`p-3.5 rounded-2xl whitespace-pre-line max-w-[92%] leading-relaxed ${msg.expediteur === 'client' ? 'bg-slate-900 text-white font-medium shadow-md' : 'bg-white text-slate-800 border border-slate-200 shadow-xs'}`}>
-                    {msg.texte}
+            {/* CORPS DE LA PAGE / NAVIGATION DYNAMIQUE */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 text-xs">
+              
+              {/* --- PAGE 1 : ACCUEIL DES BOUTONS PRINCIPAUX --- */}
+              {modeChat === 'ACCUEIL' && (
+                <div className="space-y-6 max-w-sm mx-auto text-center pt-4">
+                  <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-orange-200/60 p-4 rounded-2xl shadow-xs space-y-2">
+                    <span className="text-2xl">✨</span>
+                    <h3 className="font-black text-slate-900 uppercase text-sm">Bienvenue dans votre espace secret !</h3>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Sélectionnez l'une des thématiques ci-dessous pour ouvrir une page dédiée et découvrir vos cadeaux, quiz, astuces et notre support interactif :
+                    </p>
                   </div>
-                  {msg.options && (
-                    <div className="flex flex-col gap-2 mt-3 w-full pl-2">
-                      {msg.options.map((opt, i) => (
-                        <button key={i} onClick={() => selectionnerOptionChoix(opt)} className="bg-slate-900 hover:bg-orange-600 text-white p-3 rounded-xl text-left font-bold transition shadow-sm flex items-center gap-2.5">
-                          <span className="text-orange-400 font-black">👉</span> <span>{opt}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      onClick={lancerModeSondage}
+                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
+                    >
+                      <span className="text-3xl">📊</span>
+                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Sondage</span>
+                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Donnez votre avis</span>
+                    </button>
+
+                    <button
+                      onClick={lancerModeDivertissement}
+                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
+                    >
+                      <span className="text-3xl">🎮</span>
+                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Quiz & Jeux</span>
+                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Testez vos connaissances</span>
+                    </button>
+
+                    <button
+                      onClick={lancerModeAstuces}
+                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
+                    >
+                      <span className="text-3xl">💡</span>
+                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Astuces Pro</span>
+                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Conseils exclusifs</span>
+                    </button>
+
+                    <button
+                      onClick={lancerModeSupport}
+                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
+                    >
+                      <span className="text-3xl">❓</span>
+                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Support Client</span>
+                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Assistance instantanée</span>
+                    </button>
+                  </div>
                 </div>
-              ))}
-              <div ref={chatFinRef} />
-            </div>
+              )}
 
-            <div className="px-3 py-2.5 bg-slate-100 border-t border-slate-200 flex gap-2 justify-around shrink-0 flex-wrap shadow-inner">
-              <button onClick={lancerModeSondage} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">📊 Sondage</button>
-              <button onClick={lancerModeDivertissement} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">🎮 Quiz</button>
-              <button onClick={lancerModeAstuces} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">💡 Astuces</button>
-              <button onClick={lancerModeSupport} className="flex-1 bg-slate-900 hover:bg-orange-600 text-white py-2 px-1 rounded-xl text-[8.5px] uppercase font-black transition shadow-sm">❓ Support</button>
-            </div>
+              {/* --- PAGE 2 : SONDAGE INTERACTIF --- */}
+              {modeChat === 'SONDAGE' && (
+                <div className="space-y-4 max-w-md mx-auto pt-2">
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase border-b pb-2">
+                      <span>Étape {etapeSondage + 1} sur {questionsSondage.length}</span>
+                      <span>📊 Sondage Exclusif</span>
+                    </div>
 
-            <form onSubmit={soumettreReponseChat} className="p-3.5 bg-white border-t border-slate-200 flex gap-2 shrink-0">
-              <input
-                type="text"
-                value={saisieMessage}
-                onChange={(e) => setSaisieMessage(e.target.value)}
-                placeholder="Posez votre question ici..."
-                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-[11px] font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500"
-              />
-              <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-black px-5 py-2.5 rounded-xl text-[10px] uppercase shadow-md transition">
-                Envoyer
-              </button>
-            </form>
+                    <h3 className="font-black text-slate-900 text-sm leading-snug">
+                      {questionsSondage[etapeSondage].question}
+                    </h3>
+
+                    {questionsSondage[etapeSondage].type === 'CHOIX' ? (
+                      <div className="space-y-2 pt-2">
+                        {questionsSondage[etapeSondage].options.map((opt, i) => (
+                          <button
+                            key={i}
+                            onClick={() => soumettreReponseSondage(opt)}
+                            className="w-full text-left p-3.5 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-bold transition shadow-xs flex items-center justify-between group"
+                          >
+                            <span>{opt}</span>
+                            <span className="text-orange-500 font-black group-hover:text-amber-400">➔</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const inputVal = e.target.elements.reponseLibre.value;
+                          if (inputVal.trim()) soumettreReponseSondage(inputVal);
+                        }}
+                        className="space-y-3 pt-2"
+                      >
+                        <input
+                          type="text"
+                          name="reponseLibre"
+                          placeholder="Tapez votre réponse ici..."
+                          required
+                          autoFocus
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                        <button
+                          type="submit"
+                          className="w-full bg-slate-900 hover:bg-orange-600 text-white font-black py-3 rounded-xl uppercase text-xs shadow-md transition"
+                        >
+                          Valider et continuer ➔
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {modeChat === 'SONDAGE_VALIDE' && (
+                <div className="space-y-4 max-w-sm mx-auto text-center pt-10">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-md">🎉</div>
+                  <h3 className="font-black text-slate-900 uppercase text-base">Sondage validé avec succès !</h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">Merci pour votre participation active. Vos réponses nous aident à perfectionner continuellement notre écosystème.</p>
+                  <button
+                    onClick={retournerAccueilChat}
+                    className="w-full bg-slate-900 hover:bg-orange-600 text-white font-black py-3 rounded-xl uppercase text-xs shadow-md transition mt-4"
+                  >
+                    Retourner au menu secret 🎁
+                  </button>
+                </div>
+              )}
+
+              {/* --- PAGE 3 : QUIZ & DIVERTISSEMENT --- */}
+              {modeChat === 'DIVERTISSEMENT' && (
+                <div className="space-y-4 max-w-md mx-auto pt-2">
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase border-b pb-2">
+                      <span>Question {etapeDivertissement + 1} sur {questionsDivertissement.length}</span>
+                      <span>🎮 Quiz & Détente</span>
+                    </div>
+
+                    <h3 className="font-black text-slate-900 text-sm leading-snug">
+                      {questionsDivertissement[etapeDivertissement].question}
+                    </h3>
+
+                    {questionsDivertissement[etapeDivertissement].type === 'CHOIX' ? (
+                      <div className="space-y-2 pt-2">
+                        {questionsDivertissement[etapeDivertissement].options.map((opt, i) => (
+                          <button
+                            key={i}
+                            onClick={() => soumettreReponseDivertissement(opt)}
+                            className="w-full text-left p-3.5 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-bold transition shadow-xs flex items-center justify-between group"
+                          >
+                            <span>{opt}</span>
+                            <span className="text-amber-500 font-black group-hover:text-amber-400">➔</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const inputVal = e.target.elements.reponseQuiz.value;
+                          if (inputVal.trim()) soumettreReponseDivertissement(inputVal);
+                        }}
+                        className="space-y-3 pt-2"
+                      >
+                        <input
+                          type="text"
+                          name="reponseQuiz"
+                          placeholder="Votre réponse..."
+                          required
+                          autoFocus
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                        <button
+                          type="submit"
+                          className="w-full bg-slate-900 hover:bg-orange-600 text-white font-black py-3 rounded-xl uppercase text-xs shadow-md transition"
+                        >
+                          Étape suivante ➔
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {modeChat === 'DIVERTISSEMENT_VALIDE' && (
+                <div className="space-y-4 max-w-sm mx-auto text-center pt-10">
+                  <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-md">🌟</div>
+                  <h3 className="font-black text-slate-900 uppercase text-base">Quiz terminé avec brio !</h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">Félicitations pour avoir complété ce quiz exclusif. Vous débloquez l'accès à nos astuces professionnelles !</p>
+                  <button
+                    onClick={lancerModeAstuces}
+                    className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-3 rounded-xl uppercase text-xs shadow-md transition mt-4"
+                  >
+                    Découvrir les Astuces Pro 💡
+                  </button>
+                </div>
+              )}
+
+              {/* --- PAGE 4 : ASTUCES PRO --- */}
+              {modeChat === 'ASTUCES' && !categorieAstuceActive && (
+                <div className="space-y-3 max-w-md mx-auto pt-2">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 mb-3">
+                    <h3 className="font-black text-slate-900 uppercase text-xs">💡 Choisissez une thématique d'astuces :</h3>
+                    <p className="text-[10px] text-slate-500 font-medium">Explorez nos guides pratiques et conseils d'experts.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {Object.keys(categoriesAstuces).map((cle) => {
+                      const cat = categoriesAstuces[cle];
+                      return (
+                        <button
+                          key={cle}
+                          onClick={() => setCategorieAstuceActive(cle)}
+                          className="p-3 bg-white hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-black text-[11px] uppercase text-left transition shadow-2xs flex items-center justify-between group"
+                        >
+                          <span className="truncate">{cat.titre}</span>
+                          <span className="text-slate-400 group-hover:text-amber-400">➔</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {modeChat === 'ASTUCES' && categorieAstuceActive && (
+                <div className="space-y-4 max-w-md mx-auto pt-2">
+                  <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+                    <button
+                      onClick={() => setCategorieAstuceActive(null)}
+                      className="text-orange-600 font-black text-[11px] uppercase flex items-center gap-1 hover:underline"
+                    >
+                      <span>← Retour aux catégories</span>
+                    </button>
+                    <span className="font-black text-slate-900 uppercase text-[10px]">{categoriesAstuces[categorieAstuceActive].titre}</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {categoriesAstuces[categorieAstuceActive].liste.map((astuce, idx) => (
+                      <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+                        <h4 className="font-black text-slate-900 text-xs uppercase text-amber-600">{astuce.titre}</h4>
+                        <p className="text-xs text-slate-700 leading-relaxed font-medium">{astuce.texte}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* --- PAGE 5 : SUPPORT CLIENT INTERACTIF --- */}
+              {modeChat === 'SUPPORT' && (
+                <div className="flex flex-col h-full space-y-3">
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                    {messagesSupport.map((msg, idx) => (
+                      <div key={idx} className={`flex flex-col ${msg.expediteur === 'client' ? 'items-end' : 'items-start'}`}>
+                        <div className={`p-3.5 rounded-2xl whitespace-pre-line max-w-[90%] leading-relaxed ${msg.expediteur === 'client' ? 'bg-slate-900 text-white font-medium shadow-md' : 'bg-white text-slate-800 border border-slate-200 shadow-xs'}`}>
+                          {msg.texte}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={chatFinRef} />
+                  </div>
+
+                  <form onSubmit={soumettreMessageSupport} className="pt-2 border-t border-slate-200 flex gap-2 shrink-0">
+                    <input
+                      type="text"
+                      value={saisieMessage}
+                      onChange={(e) => setSaisieMessage(e.target.value)}
+                      placeholder="Posez votre question au support..."
+                      className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-3 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-inner"
+                    />
+                    <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white font-black px-5 py-3 rounded-xl text-xs uppercase shadow-md transition">
+                      Envoyer
+                    </button>
+                  </form>
+                </div>
+              )}
+
+            </div>
           </div>
         </div>
       )}
