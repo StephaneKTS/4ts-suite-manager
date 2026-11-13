@@ -31,11 +31,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const [actionEnCours, setActionEnCours] = useState(false);
   const [estAdmin, setEstAdmin] = useState(false);
 
-  // Styles dynamiques Jour / Nuit épurés
+  // Styles dynamiques Jour / Nuit épurés (Orange & Gris)
   const cardBg = isDarkMode ? 'bg-slate-900/90 text-slate-100' : 'bg-white text-slate-900 shadow-sm';
   const innerCardBg = isDarkMode ? 'bg-slate-950/70 text-slate-100' : 'bg-slate-50 text-slate-900';
   const inputBg = isDarkMode ? 'bg-slate-950 text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
-  const titleColor = isDarkMode ? 'text-purple-400' : 'text-purple-700';
+  const titleColor = isDarkMode ? 'text-orange-400' : 'text-orange-600';
   const subTitleColor = isDarkMode ? 'text-orange-400' : 'text-orange-600';
   const textMuted = isDarkMode ? 'text-slate-400' : 'text-slate-600';
 
@@ -432,7 +432,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
           th { background: #f9fafb; font-weight: bold; text-transform: uppercase; font-size: 8px; color: #374151; }
           .text-center { text-align: center; }
           .text-right { text-align: right; }
-          .winner { font-weight: bold; background: #fdf4ff; }
+          .winner { font-weight: bold; background: #fff7ed; }
           .signatures { margin-top: 15px; display: flex; justify-content: space-between; page-break-inside: avoid; }
           .signature-box { width: 30%; text-align: center; font-size: 9px; }
           .signature-line { margin-top: 25px; border-top: 1px dashed #6b7280; padding-top: 2px; color: #4b5563; }
@@ -543,7 +543,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
             <button
               type="button"
               onClick={() => setVue('creation')}
-              className="bg-purple-600 hover:bg-purple-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow cursor-pointer"
+              className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow cursor-pointer"
             >
               ➕ Organiser une Élection
             </button>
@@ -574,7 +574,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                       <div className="flex items-center gap-2">
                         <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
                           estElectionValidee ? 'bg-emerald-500/20 text-emerald-300' :
-                          el.statut === 'EN_COURS' ? 'bg-purple-500/20 text-purple-300' :
+                          el.statut === 'EN_COURS' ? 'bg-orange-500/20 text-orange-300' :
                           isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
                         }`}>
                           {el.statut === 'EN_COURS' ? 'OUVERT AUX VOTES' : el.statut}
@@ -609,7 +609,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                           }
                         }}
                         className={`font-black px-3 py-2 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer ${
-                          el.statut === 'EN_COURS' ? 'bg-purple-600 hover:bg-purple-500 text-white' : 'bg-slate-300 hover:bg-slate-400 text-slate-950'
+                          el.statut === 'EN_COURS' ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-slate-300 hover:bg-slate-400 text-slate-950'
                         }`}
                       >
                         🗳️ Ouvrir l'Urne
@@ -687,7 +687,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               <button type="button" disabled={actionEnCours} onClick={() => setVue('liste')} className={`${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-800'} font-bold px-4 py-2 rounded-xl text-[10px] disabled:opacity-50 cursor-pointer`}>
                 Annuler
               </button>
-              <button type="submit" disabled={actionEnCours} className="bg-purple-600 hover:bg-purple-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer">
+              <button type="submit" disabled={actionEnCours} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer">
                 {actionEnCours && <span className="animate-spin">⏳</span>}
                 Enregistrer
               </button>
@@ -743,7 +743,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                     className={`w-full p-2.5 rounded-lg border font-bold text-xs uppercase disabled:opacity-50 ${inputBg}`}
                   />
                 </div>
-                <button type="submit" disabled={actionEnCours} className="bg-purple-600 hover:bg-purple-500 text-white font-black px-4 py-2.5 rounded-lg text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-1.5 cursor-pointer">
+                <button type="submit" disabled={actionEnCours} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-2.5 rounded-lg text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-1.5 cursor-pointer">
                   {actionEnCours && <span className="animate-spin">⏳</span>}
                   ➕ Ajouter Poste
                 </button>
@@ -885,7 +885,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                 )}
               </div>
 
-              <button type="submit" disabled={actionEnCours} className="w-full bg-gradient-to-r from-purple-600 to-orange-600 hover:from-purple-500 hover:to-orange-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer">
+              <button type="submit" disabled={actionEnCours} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer">
                 {actionEnCours && <span className="animate-spin">⏳</span>}
                 📥 Soumettre mon bulletin global dans l'urne
               </button>
@@ -902,7 +902,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
             {/* EN-TÊTE DU PV OFFICIEL AVEC BOUTON IMPRIMER */}
             <div className={`text-center border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-3 space-y-2`}>
               <div className="flex justify-between items-center flex-wrap gap-2">
-                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${estValide ? 'bg-emerald-500/20 text-emerald-300' : estOuvert ? 'bg-purple-500/20 text-purple-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${estValide ? 'bg-emerald-500/20 text-emerald-300' : estOuvert ? 'bg-orange-500/20 text-orange-300' : 'bg-amber-500/20 text-amber-300'}`}>
                   {estValide ? '✅ Procès-Verbal Officiel Clôturé et Validé' : estOuvert ? '📊 Scrutin Ouvert (Votes en cours)' : '📊 Rapport Provisoire (Scrutin fermé)'}
                 </span>
                 
@@ -950,7 +950,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                             <tr><td colSpan="3" className={`p-3 text-center ${textMuted}`}>Aucun candidat pour ce poste.</td></tr>
                           ) : (
                             scores.map((s, idx) => (
-                              <tr key={s.id} className={idx === 0 && s.voix > 0 ? (isDarkMode ? 'bg-purple-500/10 font-bold' : 'bg-purple-50 font-bold') : ''}>
+                              <tr key={s.id} className={idx === 0 && s.voix > 0 ? (isDarkMode ? 'bg-orange-500/10 font-bold' : 'bg-orange-50 font-bold') : ''}>
                                 <td className="p-2 uppercase font-extrabold">
                                   {idx === 0 && s.voix > 0 ? '🥇 ' : ''}
                                   {s.tontine_participants?.nom_participant} {s.tontine_participants?.prenom || ''}

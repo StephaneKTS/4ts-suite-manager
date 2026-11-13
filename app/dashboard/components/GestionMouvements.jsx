@@ -15,7 +15,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const moduleActuel = obtenirModuleActuel();
   const estModeBoutique = moduleActuel === 'BOUTIQUE';
 
-  // Libellés dynamiques selon le module actif (Boutique -> Emplacement / Livraison -> Livreur)
   const libelleLivreur = estModeBoutique ? 'Emplacement' : 'Livreur';
   const libellePlaceholderSource = estModeBoutique ? '-- Emplacement --' : '-- Livreur --';
   const libellePlaceholderDest = estModeBoutique ? '-- Emplacement (Optionnel) --' : '-- Livreur (Optionnel) --';
@@ -117,7 +116,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
-  const [enTrainDInsertion, setEnTrainDInsertion] = useState(false); // 🛡️ Verrou anti-double clic
+  const [enTrainDInsertion, setEnTrainDInsertion] = useState(false);
 
   const [roleNom, setRoleNom] = useState('');
   const [emailConnecteUser, setEmailConnecteUser] = useState('');
@@ -133,12 +132,20 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
+  // États pour les filtres de la liste
   const [filtreDateDebut, setFiltreDateDebut] = useState('');
   const [filtreDateFin, setFiltreDateFin] = useState('');
+  const [filtrePartenaire, setFiltrePartenaire] = useState('');
+  const [filtreLivreur, setFiltreLivreur] = useState('');
+
+  // Modales de filtres
+  const [modalFiltrePartenaireOuvert, setModalFiltrePartenaireOuvert] = useState(false);
+  const [modalFiltreLivreurOuvert, setModalFiltreLivreurOuvert] = useState(false);
+  const [rechercheFiltreModal, setRechercheFiltreModal] = useState('');
 
   const [enTeteDoc, setEnTeteDoc] = useState({
     numeroDoc: '',
-    numeroAffichage: '', // 🌟 Numéro séquentiel d'affichage (ex: TR-13)
+    numeroAffichage: '',
     dateDoc: new Date().toISOString().split('T')[0],
     id_depot_source: '',
     id_emplacement_source: '',
@@ -154,7 +161,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [recherchePopup, setRecherchePopup] = useState('');
   const [articleSelectionneTemp, setArticleSelectionneTemp] = useState(null);
 
-  // États pour les modales de sélection Partenaire (Dépôt) et Livreur / Emplacement
   const [modalDepotSourceOuvert, setModalDepotSourceOuvert] = useState(false);
   const [modalDepotDestOuvert, setModalDepotDestOuvert] = useState(false);
   const [modalLivreurSourceOuvert, setModalLivreurSourceOuvert] = useState(false);
@@ -495,7 +501,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return Math.max(0, stockDepot);
   };
 
-  // 🌟 CALCULATEUR GLOBAL DES DOCUMENTS GROUPÉS (Identique à la liste pour garantir la correspondance exacte des numéros TR-XX)
   const documentsGroupes = useMemo(() => {
     const documentsBruts = Object.values(
       mouvements
@@ -560,7 +565,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     });
   }, [mouvements, depots, emplacements]);
 
-  // 🛡️ FILTRAGE STRICT DES ARTICLES (Entreprise, Module, Partenaire et Emplacement/Livreur)
   const articlesPopupFiltres = articles.filter((art) => {
     const designation = (art.Designation || art.designation || '').toLowerCase();
     const matchRecherche = designation.includes((recherchePopup || '').toLowerCase());
@@ -656,7 +660,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50);
   };
 
-  // 🛡️ AJOUT D'ARTICLE SÉCURISÉ AVEC DÉSACTIVATION PROVISOIRE DU BOUTON OK
   const ajouterArticleAuPanier = () => {
     if (enTrainDeSauvegarder || documentEnLectureSeule || enTrainDInsertion) return;
     
@@ -731,27 +734,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       e.preventDefault();
       ajouterArticleAuPanier();
     }
-  };
-
-  const annulerOperation = () => {
-    if (enTrainDeSauvegarder) return;
-    if (!documentEnLectureSeule && (lignesPanier.length > 0 || enTeteDoc.referenceDoc || mouvementEnEditionId)) {
-      if (!confirm('Voulez-vous vraiment annuler cette opération en cours de saisie ?')) return;
-    }
-    setLignesPanier([]);
-    setMouvementEnEditionId(null);
-    setDocumentEnLectureSeule(false);
-    setEtatInitialEdition(null);
-    setArticleSelectionneTemp(null);
-    setQuantiteSaisie(1);
-    setEnTeteDoc(prev => ({
-      ...prev,
-      referenceDoc: '',
-      numeroDoc: genererNumeroDocSecurise(typeOperation),
-      numeroAffichage: '',
-      operateur: obtenirNomOperateurConnecte()
-    }));
-    setModeAffichage('LISTE_DOCS');
   };
 
   const verifierDroitSuppressionEffectif = () => {
@@ -935,11 +917,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (lignesAssociees.length === 0) return;
     const premier = lignesAssociees[0];
     
-    // 🌟 Retrouver le numéro d'affichage séquentiel correspondant (ex: TR-13) depuis documentsGroupes
     const docGroupeTrouve = documentsGroupes.find(d => String(d.numeroDocBrut) === String(numeroDocUnique));
     const numeroAffichageEffectif = docGroupeTrouve ? docGroupeTrouve.numeroDoc : '';
     
-    // 🛡️ MODE CONSULTATION SEULE POUR LES JOURNÉES PASSÉES
     const dateDocStr = premier.created_at ? premier.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
     const dateDuJour = new Date().toISOString().split('T')[0];
     const estVerrouille = dateDocStr < dateDuJour;
@@ -992,11 +972,26 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return enTeteModifie || typeModifie || lignesModifiees;
   }, [mouvementEnEditionId, etatInitialEdition, enTeteDoc, typeOperation, lignesPanier]);
 
-  const documentsFiltresParDate = documentsGroupes.filter((doc) => {
-    if (!doc.date) return true;
-    const dateDocStr = doc.date.split('T')[0];
-    if (filtreDateDebut && dateDocStr < filtreDateDebut) return false;
-    if (filtreDateFin && dateDocStr > filtreDateFin) return false;
+  // Filtrage avancé des documents par date, partenaire et livreur sur une seule ligne
+  const documentsFiltresParCriteres = documentsGroupes.filter((doc) => {
+    // 1. Plage de dates
+    if (doc.date) {
+      const dateDocStr = doc.date.split('T')[0];
+      if (filtreDateDebut && dateDocStr < filtreDateDebut) return false;
+      if (filtreDateFin && dateDocStr > filtreDateFin) return false;
+    }
+    // 2. Partenaire / Dépôt source
+    if (filtrePartenaire) {
+      const depotNomDoc = (doc.depotNom || '').toUpperCase();
+      const depotCibleObj = depots.find(d => String(d.id) === String(filtrePartenaire));
+      const depotCibleNom = depotCibleObj ? (depotCibleObj.nom_depot || depotCibleObj.nom || '').toUpperCase() : filtrePartenaire.toUpperCase();
+      if (!depotNomDoc.includes(depotCibleNom)) return false;
+    }
+    // 3. Livreur / Opérateur
+    if (filtreLivreur) {
+      const opDoc = (doc.operateur || '').toUpperCase();
+      if (!opDoc.includes(filtreLivreur.toUpperCase())) return false;
+    }
     return true;
   });
 
@@ -1006,7 +1001,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     else { setColonneTri(colonne); setOrdreTri('asc'); }
   };
 
-  const documentsTries = [...documentsFiltresParDate].sort((a, b) => {
+  const documentsTries = [...documentsFiltresParCriteres].sort((a, b) => {
     let valA = a[colonneTri]; let valB = b[colonneTri];
     if (colonneTri === 'date') { valA = new Date(valA); valB = new Date(valB); }
     else { valA = String(valA).toLowerCase(); valB = String(valB).toLowerCase(); }
@@ -1053,7 +1048,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
             className={`py-1 px-3 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-800'}`}
           >
-            📋 Liste ({documentsFiltresParDate.length})
+            📋 Liste ({documentsFiltresParCriteres.length})
           </button>
         </div>
       </div>
@@ -1118,7 +1113,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   OPÉRATEUR CONNECTÉ : <strong className="text-slate-800">{mouvementEnEditionId ? enTeteDoc.operateur : obtenirNomOperateurConnecte()}</strong>
                 </span>
               </div>
-              {/* 🌟 AFFICHAGE CLAIR DU NUMÉRO SÉQUENTIEL (ex: TR-13) OU DU NUMÉRO DE SÉCURITÉ */}
               <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">
                 {enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}
               </span>
@@ -1466,7 +1460,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     }`}
                   >
-                    {enTrainDeSauvegarder ? 'Valid...' : (mouvementEnEditionId && !documentModifie ? '🔒 Modif.' : '✅ Valider')}
+                    {enTrainDeSauvegarder ? 'Valid...' : (mouvementEnEditionId ? (documentModifie ? 'Mettre à jour' : '🔒 Aucun changement') : '✅ Valider')}
                   </button>
                 )}
               </div>
@@ -1482,28 +1476,29 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span>
           </div>
 
+          {/* Ligne de filtres compacte : Date, Partenaire, Livreur */}
           <div className="px-2 pt-1">
-            <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200 space-y-1">
+            <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200 space-y-1.5">
               <div className="flex justify-between items-center">
-                <span className="font-black text-[8.5px] text-slate-700 uppercase">📅 Filtrer par plage de dates</span>
-                {(filtreDateDebut || filtreDateFin) && (
+                <span className="font-black text-[8.5px] text-slate-700 uppercase">🔍 FILTRER LES MOUVEMENTS</span>
+                {(filtreDateDebut || filtreDateFin || filtrePartenaire || filtreLivreur) && (
                   <button 
                     type="button" 
-                    onClick={() => { setFiltreDateDebut(''); setFiltreDateFin(''); }} 
+                    onClick={() => { setFiltreDateDebut(''); setFiltreDateFin(''); setFiltrePartenaire(''); setFiltreLivreur(''); }} 
                     className="text-[8px] text-orange-600 font-bold underline hover:text-orange-700"
                   >
-                    Effacer les filtres
+                    Réinitialiser les filtres
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-4 gap-1.5 items-end">
                 <div>
                   <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Date début</label>
                   <input 
                     type="date" 
                     value={filtreDateDebut} 
                     onChange={(e) => setFiltreDateDebut(e.target.value)} 
-                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]" 
+                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" 
                   />
                 </div>
                 <div>
@@ -1512,8 +1507,32 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     type="date" 
                     value={filtreDateFin} 
                     onChange={(e) => setFiltreDateFin(e.target.value)} 
-                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[9px]" 
+                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" 
                   />
+                </div>
+                <div>
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Partenaire / Dépôt</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheFiltreModal(''); setModalFiltrePartenaireOuvert(true); }}
+                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] text-left truncate flex justify-between items-center"
+                  >
+                    <span className="truncate">
+                      {filtrePartenaire ? (depots.find(d => String(d.id) === String(filtrePartenaire))?.nom_depot || filtrePartenaire) : 'Tous'}
+                    </span>
+                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Livreur / Opérateur</label>
+                  <button
+                    type="button"
+                    onClick={() => { setRechercheFiltreModal(''); setModalFiltreLivreurOuvert(true); }}
+                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] uppercase text-left truncate flex justify-between items-center"
+                  >
+                    <span className="truncate">{filtreLivreur || 'Tous'}</span>
+                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1534,10 +1553,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <tbody className="divide-y text-[9.5px]">
                 {documentsAffiches.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="p-4 text-center text-slate-400 font-bold">Aucun document ne correspond à cette plage de dates.</td>
+                    <td colSpan="6" className="p-4 text-center text-slate-400 font-bold">Aucun document ne correspond à vos critères de filtre.</td>
                   </tr>
                 ) : (
-                  documentsAffiches.main ? null : documentsAffiches.map((doc, idx) => (
+                  documentsAffiches.map((doc, idx) => (
                     <tr key={idx} onClick={() => !enTrainDeSauvegarder && ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
                       <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numeroDoc}</td>
@@ -1566,6 +1585,67 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           )}
         </div>
       )}
+
+      {/* Modale Filtre Partenaire */}
+      {modalFiltrePartenaireOuvert && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">FILTRER PAR PARTENAIRE / DÉPÔT</h4>
+              <button type="button" onClick={() => setModalFiltrePartenaireOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+            </div>
+            <input
+              type="text"
+              value={rechercheFiltreModal}
+              onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              autoFocus
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs"
+            />
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2">
+              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">
+                -- Tous les partenaires --
+              </div>
+              {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheFiltreModal)).map(d => (
+                <div key={d.id} onClick={() => { setFiltrePartenaire(d.id); setModalFiltrePartenaireOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">
+                  {d.nom_depot || d.nom}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale Filtre Livreur / Opérateur */}
+      {modalFiltreLivreurOuvert && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">FILTRER PAR LIVREUR / OPÉRATEUR</h4>
+              <button type="button" onClick={() => setModalFiltreLivreurOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+            </div>
+            <input
+              type="text"
+              value={rechercheFiltreModal}
+              onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              autoFocus
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs"
+            />
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2">
+              <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">
+                -- Tous les livreurs / opérateurs --
+              </div>
+              {Array.from(new Set(documentsGroupes.map(d => d.operateur))).filter(op => op && op.toUpperCase().includes(rechercheFiltreModal)).map((op, idx) => (
+                <div key={idx} onClick={() => { setFiltreLivreur(op); setModalFiltreLivreurOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">
+                  {op}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
