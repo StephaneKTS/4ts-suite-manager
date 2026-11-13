@@ -19,7 +19,7 @@ const LISTE_STATUTS = [
   { id: 'CLÔTURÉ', label: 'Clôturé', color: 'bg-slate-500/20 text-slate-400 border-slate-500/30' },
 ];
 
-export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDarkMode = false }) {
+export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDarkMode = false, onRetour = null }) {
   const [cycles, setCycles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [recherche, setRecherche] = useState('');
@@ -175,11 +175,17 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       <div className="flex justify-between items-center bg-white/5 px-2 py-1.5 rounded border border-slate-700/20 gap-1 overflow-x-auto">
         <button
           type="button"
-          onClick={chargerCycles}
+          onClick={() => {
+            if (typeof onRetour === 'function') {
+              onRetour();
+            } else {
+              window.dispatchEvent(new CustomEvent('naviguer-accueil'));
+            }
+          }}
           className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer"
-          title="Rafraîchir"
+          title="Retour au menu accueil"
         >
-          🔄 Actualiser
+          ⬅️ Retour
         </button>
 
         <div className="flex items-center gap-1 shrink-0">

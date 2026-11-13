@@ -195,7 +195,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
     setActionEnCours(true);
     try {
-      // Supprimer les dépendances en cascade si nécessaire
       await supabase.from('tontine_votes').delete().eq('id_election', el.id);
       await supabase.from('tontine_candidatures').delete().eq('id_election', el.id);
       await supabase.from('tontine_postes_electoraux').delete().eq('id_election', el.id);
@@ -558,7 +557,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
           {chargement ? (
             <p className={`text-center py-6 animate-pulse ${textMuted}`}>Chargement des scrutins...</p>
           ) : elections.length === 0 ? (
-            <div className={`${cardBg} p-8 rounded-2xl text-center space-y-2 w-full`}>
+            <div className={`${cardBg} p-8 rounded-2xl text-center space-y-2 w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
               <p className="font-bold">Aucune élection enregistrée pour le moment.</p>
               <p className={`text-[10px] ${textMuted}`}>Seul un administrateur peut organiser une élection.</p>
             </div>
@@ -567,10 +566,12 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               {elections.map((el) => {
                 const estElectionValidee = el.statut === 'VALIDE';
                 return (
-                  <div key={el.id} className={`${cardBg} p-4 rounded-xl shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-3 w-full`}>
-                    <div className="space-y-1 flex-1">
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <span className={`font-black text-sm uppercase ${titleColor}`}>📌 {el.titre_election}</span>
+                  <div key={el.id} className={`${cardBg} p-4 rounded-xl shadow-md border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)] space-y-3 w-full`}>
+                    
+                    {/* LIGNE 1 : Titre, Statut et Date sur une seule ligne */}
+                    <div className="flex justify-between items-center flex-wrap gap-2">
+                      <span className={`font-black text-sm uppercase ${titleColor}`}>📌 {el.titre_election}</span>
+                      <div className="flex items-center gap-2">
                         <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
                           estElectionValidee ? 'bg-emerald-500/20 text-emerald-300' :
                           el.statut === 'EN_COURS' ? 'bg-purple-500/20 text-purple-300' :
@@ -578,31 +579,12 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                         }`}>
                           {el.statut === 'EN_COURS' ? 'OUVERT AUX VOTES' : el.statut}
                         </span>
+                        <span className={`text-[10px] ${textMuted}`}>📅 {el.date_scrutin}</span>
                       </div>
-                      <p className={`text-[10px] ${textMuted}`}>📅 Date du scrutin : {el.date_scrutin}</p>
                     </div>
 
-                    <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
-                      {/* BOUTONS MODIFIER & SUPPRIMER (UNIQUEMENT SI ADMIN ET NON CLÔTURÉ/VALIDÉ) */}
-                      {estAdmin && !estElectionValidee && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => modifierElection(el)}
-                            className="bg-amber-600 hover:bg-amber-500 text-white font-black px-3 py-2 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
-                          >
-                            ✏️ Modifier
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => supprimerElection(el)}
-                            className="bg-rose-600 hover:bg-rose-500 text-white font-black px-3 py-2 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
-                          >
-                            🗑️ Supprimer
-                          </button>
-                        </>
-                      )}
-
+                    {/* LIGNE 2 : Boutons d'action principaux (Candidature, Ouvrir l'Urne, Résultats & PV) */}
+                    <div className="flex items-center gap-2 justify-center flex-wrap pt-1 border-t border-slate-800/40">
                       {estAdmin && (
                         <button
                           type="button"
@@ -644,6 +626,27 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                         📊 Résultats & PV
                       </button>
                     </div>
+
+                    {/* LIGNE 3 : Supprimer à l'extrême gauche, Modifier à l'extrême droite (Si admin et non validé) */}
+                    {estAdmin && !estElectionValidee && (
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-800/40">
+                        <button
+                          type="button"
+                          onClick={() => supprimerElection(el)}
+                          className="bg-rose-600 hover:bg-rose-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
+                        >
+                          🗑️ Supprimer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => modifierElection(el)}
+                          className="bg-amber-600 hover:bg-amber-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
+                        >
+                          ✏️ Modifier
+                        </button>
+                      </div>
+                    )}
+
                   </div>
                 );
               })}
@@ -654,7 +657,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
       {/* VUE 2 : CRÉATION D'UNE ÉLECTION */}
       {vue === 'creation' && estAdmin && (
-        <div className={`max-w-xl mx-auto ${cardBg} p-5 rounded-2xl shadow-xl space-y-4 w-full`}>
+        <div className={`max-w-xl mx-auto ${cardBg} p-5 rounded-2xl shadow-xl space-y-4 w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
           <h4 className={`font-black text-xs uppercase ${titleColor} border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-2`}>➕ Nouvelle Élection de Bureau</h4>
           <form onSubmit={creerElection} className="space-y-3">
             <div>
@@ -696,7 +699,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* VUE 3 : GESTION DES POSTES ET DES CANDIDATS (CANDIDATURE) */}
       {vue === 'gestion' && electionActive && (
         <div className="space-y-4 w-full">
-          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full`}>
+          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
             <div className={`flex justify-between items-center border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-2 flex-wrap gap-2`}>
               <h4 className={`font-black text-xs uppercase ${titleColor}`}>⚙️ Candidature : {electionActive.titre_election}</h4>
               
@@ -749,7 +752,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
           </div>
 
           {!estValide && estAdmin && (
-            <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full`}>
+            <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
               <h5 className={`font-black text-xs uppercase ${subTitleColor} border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-2`}>👥 Enregistrement des Candidatures</h5>
               
               {postes.length === 0 ? (
@@ -793,7 +796,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
             </div>
           )}
 
-          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full`}>
+          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
             <h6 className={`font-bold text-[10px] uppercase ${textMuted}`}>Candidats validés :</h6>
             <div className="space-y-2">
               {postes.map(poste => {
@@ -822,7 +825,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
       {/* VUE 4 : L'ISLOIR GLOBAL */}
       {vue === 'vote' && electionActive && (
-        <div className={`max-w-2xl mx-auto ${cardBg} p-5 rounded-2xl shadow-xl space-y-4 w-full`}>
+        <div className={`max-w-2xl mx-auto ${cardBg} p-5 rounded-2xl shadow-xl space-y-4 w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
           <div className={`text-center border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-3 space-y-1`}>
             <h4 className={`font-black text-xs uppercase ${titleColor}`}>🗳️ Isoloir Électronique Global</h4>
             <p className={`text-[10px] ${textMuted}`}>{electionActive.titre_election}</p>
@@ -894,7 +897,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* VUE 5 : RÉSULTATS & PROCÈS-VERBAL (PV) GLOBAL */}
       {vue === 'resultats' && electionActive && (
         <div className="space-y-4 w-full">
-          <div className={`${cardBg} p-4 rounded-2xl shadow-xl space-y-4 w-full`}>
+          <div className={`${cardBg} p-4 rounded-2xl shadow-xl space-y-4 w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
             
             {/* EN-TÊTE DU PV OFFICIEL AVEC BOUTON IMPRIMER */}
             <div className={`text-center border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-3 space-y-2`}>
