@@ -948,7 +948,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
     const nouvellesLignes = lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
-      return { id_article: mvt.id_article, designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, quantite: mvt.quantite, stockActuel: calculerStockPourDepotActuel(mvt.id_article), stockReel: mvt.quantite };
+      return { id_article: String(mvt.id_article), designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, quantite: Number(mvt.quantite), stockActuel: calculerStockPourDepotActuel(mvt.id_article), stockReel: Number(mvt.quantite) };
     });
 
     setEnTeteDoc(nouvelEnTete);
@@ -964,11 +964,39 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setModeAffichage('SAISIE');
   };
 
+  // 🛡️ COMPARAISON RIGOUREUSE : Vérifie si une information primaire a réellement changé
   const documentModifie = useMemo(() => {
-    if (!mouvementEnEditionId || !etatInitialEdition) return true;
-    const enTeteModifie = JSON.stringify(enTeteDoc) !== JSON.stringify(etatInitialEdition.enTete);
+    if (!mouvementEnEditionId || !etatInitialEdition) return false;
+
+    const norm = (val) => (val === null || val === undefined ? '' : String(val).trim());
+
+    const initEnTete = etatInitialEdition.enTete || {};
+    const enTeteModifie = 
+      norm(enTeteDoc.dateDoc) !== norm(initEnTete.dateDoc) ||
+      norm(enTeteDoc.referenceDoc) !== norm(initEnTete.referenceDoc) ||
+      norm(enTeteDoc.id_depot_source) !== norm(initEnTete.id_depot_source) ||
+      norm(enTeteDoc.id_emplacement_source) !== norm(initEnTete.id_emplacement_source) ||
+      norm(enTeteDoc.id_depot_destination) !== norm(initEnTete.id_depot_destination) ||
+      norm(enTeteDoc.id_emplacement_destination) !== norm(initEnTete.id_emplacement_destination);
+
     const typeModifie = typeOperation !== etatInitialEdition.typeOp;
-    const lignesModifiees = JSON.stringify(lignesPanier) !== JSON.stringify(etatInitialEdition.lignes);
+
+    const initLignes = etatInitialEdition.lignes || [];
+    let lignesModifiees = lignesPanier.length !== initLignes.length;
+    if (!lignesModifiees) {
+      for (let i = 0; i < lignesPanier.length; i++) {
+        const cur = lignesPanier[i];
+        const init = initLignes[i];
+        if (
+          norm(cur.id_article) !== norm(init.id_article) ||
+          Number(cur.quantite) !== Number(init.quantite)
+        ) {
+          lignesModifiees = true;
+          break;
+        }
+      }
+    }
+
     return enTeteModifie || typeModifie || lignesModifiees;
   }, [mouvementEnEditionId, etatInitialEdition, enTeteDoc, typeOperation, lignesPanier]);
 
