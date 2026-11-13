@@ -31,7 +31,6 @@ export default function ConnexionEntreprise() {
         }
       });
 
-      // Récupérer le dernier restaurant visité pour permettre au client de y retourner directement
       const stockFavoris = localStorage.getItem('4ts_restaurants_recents');
       if (stockFavoris) {
         const parsed = JSON.parse(stockFavoris);
@@ -69,7 +68,6 @@ export default function ConnexionEntreprise() {
       let matrixPermissions = { _aucun_acces: true };
       let authenticated = false;
 
-      // 1. RECHERCHE CIBLÉE DANS LES UTILISATEURS
       const { data: userList, error: errUser } = await supabase
         .from('utilisateurs')
         .select('*');
@@ -126,7 +124,6 @@ export default function ConnexionEntreprise() {
         }
       }
 
-      // 2. RECHERCHE DANS LES ENTREPRISES
       if (!authenticated) {
         const { data: entList, error: errEnt } = await supabase
           .from('entreprises')
@@ -211,7 +208,6 @@ export default function ConnexionEntreprise() {
           </div>
         )}
 
-        {/* Bouton d'accès direct pour le client (sans compte / sans connexion) */}
         {dernierRestoId && (
           <div className="bg-orange-600/15 border border-orange-500/40 p-3.5 rounded-xl text-center space-y-2">
             <p className="text-[11px] text-orange-200 font-bold">Vous êtes client et souhaitez simplement consulter le menu ?</p>
@@ -220,7 +216,7 @@ export default function ConnexionEntreprise() {
               onClick={() => router.push(`/client?entrepriseId=${dernierRestoId}`)}
               className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-4 rounded-xl shadow-md transition uppercase tracking-wider text-xs"
             >
-              🧭 Accéder directement au Menu / Restaurant
+              🧭 ACCÉDER DIRECTEMENT AU MENU
             </button>
           </div>
         )}
