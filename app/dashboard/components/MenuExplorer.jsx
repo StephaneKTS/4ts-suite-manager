@@ -97,6 +97,13 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     }
   };
 
+  const numerosUrgencesCameroun = [
+    { titre: '🚨 Gendarmerie Nationale', numero: '113', description: 'Intervention et sécurité publique' },
+    { titre: '🚒 Sapeurs-Pompiers (Secours)', numero: '118', description: 'Incendies, accidents et urgences vitales' },
+    { titre: '🚑 SAMU (Urgences Médicales)', numero: '119', description: 'Assistance médicale d’urgence' },
+    { titre: '👮 Police Secours', numero: '117', description: 'Sécurité et ordre public' }
+  ];
+
   const [saisieMessage, setSaisieMessage] = useState('');
   const [messagesSupport, setMessagesSupport] = useState([
     { expediteur: 'bot', texte: '👋 Bonjour ! Posez votre question sur nos services (Tarifs, Boutique, Livraison). Nous vous répondons instantanément.' }
@@ -129,6 +136,11 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     setCategorieAstuceActive(null);
   };
 
+  const lancerModeAstuces = () => {
+    setModeChat('ASTUCES');
+    setCategorieAstuceActive(null);
+  };
+
   const lancerModeSondage = () => {
     setModeChat('SONDAGE');
     setEtapeSondage(0);
@@ -141,13 +153,12 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
     setResultatsDivertissement({});
   };
 
-  const lancerModeAstuces = () => {
-    setModeChat('ASTUCES');
-    setCategorieAstuceActive(null);
-  };
-
   const lancerModeSupport = () => {
     setModeChat('SUPPORT');
+  };
+
+  const lancerModeNumerosUtiles = () => {
+    setModeChat('NUMEROS_UTILES');
   };
 
   const soumettreReponseSondage = (valeur) => {
@@ -414,7 +425,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
   return (
     <div className="space-y-4 font-sans text-xs pb-16">
       
-      {/* ================= 1. NOUS CONTACTER (POSITIONNÉ EN PREMIÈRE POSITION) ================= */}
+      {/* ================= 1. NOUS CONTACTER ================= */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-950 border border-blue-900/50 rounded-2xl p-4 sm:p-5 shadow-xl text-white flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-xl shrink-0 shadow-inner">
@@ -744,7 +755,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* ================= MODALE CADEAUX & ASTUCES SECRÈTES (NAVIGATION PAR PAGES INTERNES) ================= */}
+      {/* ================= MODALE CADEAUX & ASTUCES SECRÈTES ================= */}
       {modalChatbotOuvert && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col h-[92vh] sm:h-[88vh]">
@@ -776,62 +787,104 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
             {/* CORPS DE LA PAGE / NAVIGATION DYNAMIQUE */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 text-xs">
               
-              {/* --- PAGE 1 : ACCUEIL DES BOUTONS PRINCIPAUX --- */}
+              {/* --- PAGE 1 : ACCUEIL RÉORGANISÉ SELON VOS INSTRUCTIONS --- */}
               {modeChat === 'ACCUEIL' && (
-                <div className="space-y-6 max-w-sm mx-auto text-center pt-4">
-                  <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-orange-200/60 p-4 rounded-2xl shadow-xs space-y-2">
+                <div className="space-y-6 max-w-md mx-auto text-center pt-2">
+                  <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-orange-200/60 p-4 rounded-2xl shadow-xs space-y-1.5">
                     <span className="text-2xl">✨</span>
                     <h3 className="font-black text-slate-900 uppercase text-sm">Bienvenue dans votre espace secret !</h3>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Sélectionnez l'une des thématiques ci-dessous pour ouvrir une page dédiée et découvrir vos cadeaux, quiz, astuces et notre support interactif :
+                    <p className="text-[11px] text-slate-700 font-medium leading-relaxed">
+                      Sélectionnez une rubrique ci-dessous pour découvrir nos astuces, participer aux sondages et quiz, ou consulter les numéros d'urgence :
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <button
-                      onClick={lancerModeSondage}
-                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
-                    >
-                      <span className="text-3xl">📊</span>
-                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Sondage</span>
-                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Donnez votre avis</span>
-                    </button>
-
-                    <button
-                      onClick={lancerModeDivertissement}
-                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
-                    >
-                      <span className="text-3xl">🎮</span>
-                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Quiz & Jeux</span>
-                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Testez vos connaissances</span>
-                    </button>
-
+                  {/* LIGNE 1 : ASTUCES PRO & SONDAGE */}
+                  <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={lancerModeAstuces}
                       className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
                     >
                       <span className="text-3xl">💡</span>
                       <span className="font-black uppercase text-xs group-hover:text-amber-400">Astuces Pro</span>
-                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Conseils exclusifs</span>
+                      <span className="text-[9px] text-slate-500 group-hover:text-slate-300">Conseils exclusifs</span>
+                    </button>
+
+                    <button
+                      onClick={lancerModeSondage}
+                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
+                    >
+                      <span className="text-3xl">📊</span>
+                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Sondage</span>
+                      <span className="text-[9px] text-slate-500 group-hover:text-slate-300">Donnez votre avis</span>
+                    </button>
+                  </div>
+
+                  {/* LIGNE 2 : QUIZ & JEUX, SUPPORT CLIENT & NUMÉROS UTILES */}
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <button
+                      onClick={lancerModeDivertissement}
+                      className="p-3 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-1.5 group"
+                    >
+                      <span className="text-2xl">🎮</span>
+                      <span className="font-black uppercase text-[10px] group-hover:text-amber-400 leading-tight">Quiz & Jeux</span>
+                      <span className="text-[8px] text-slate-500 group-hover:text-slate-300">Détente</span>
                     </button>
 
                     <button
                       onClick={lancerModeSupport}
-                      className="p-4 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-2 group"
+                      className="p-3 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-1.5 group"
                     >
-                      <span className="text-3xl">❓</span>
-                      <span className="font-black uppercase text-xs group-hover:text-amber-400">Support Client</span>
-                      <span className="text-[9px] text-slate-400 group-hover:text-slate-300">Assistance instantanée</span>
+                      <span className="text-2xl">❓</span>
+                      <span className="font-black uppercase text-[10px] group-hover:text-amber-400 leading-tight">Support Client</span>
+                      <span className="text-[8px] text-slate-500 group-hover:text-slate-300">Assistance</span>
+                    </button>
+
+                    <button
+                      onClick={lancerModeNumerosUtiles}
+                      className="p-3 bg-white hover:bg-slate-900 hover:text-white text-slate-900 border border-slate-200 rounded-2xl shadow-sm transition transform hover:scale-105 flex flex-col items-center text-center gap-1.5 group"
+                    >
+                      <span className="text-2xl">📞</span>
+                      <span className="font-black uppercase text-[10px] group-hover:text-amber-400 leading-tight">Numéros Utiles</span>
+                      <span className="text-[8px] text-slate-500 group-hover:text-slate-300">Cameroun</span>
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* --- PAGE 2 : SONDAGE INTERACTIF --- */}
+              {/* --- PAGE : NUMÉROS UTILES AU CAMEROUN --- */}
+              {modeChat === 'NUMEROS_UTILES' && (
+                <div className="space-y-4 max-w-md mx-auto pt-2">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 mb-3">
+                    <h3 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2">
+                      <span>🇨🇲</span> Numéros d'Urgence & Utiles au Cameroun
+                    </h3>
+                    <p className="text-[10px] text-slate-600 font-medium">Appelez directement en cas de besoin urgent :</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {numerosUrgencesCameroun.map((item, idx) => (
+                      <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <h4 className="font-black text-slate-900 text-xs uppercase text-slate-900">{item.titre}</h4>
+                          <p className="text-[10px] text-slate-600 font-medium truncate">{item.description}</p>
+                        </div>
+                        <a
+                          href={`tel:${item.numero}`}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2.5 rounded-xl text-xs uppercase shadow-md transition shrink-0 flex items-center gap-1.5"
+                        >
+                          <span>📞</span> <span>{item.numero}</span>
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* --- PAGE : SONDAGE INTERACTIF --- */}
               {modeChat === 'SONDAGE' && (
                 <div className="space-y-4 max-w-md mx-auto pt-2">
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase border-b pb-2">
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold uppercase border-b pb-2">
                       <span>Étape {etapeSondage + 1} sur {questionsSondage.length}</span>
                       <span>📊 Sondage Exclusif</span>
                     </div>
@@ -846,9 +899,9 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                           <button
                             key={i}
                             onClick={() => soumettreReponseSondage(opt)}
-                            className="w-full text-left p-3.5 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-bold transition shadow-xs flex items-center justify-between group"
+                            className="w-full text-left p-3.5 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-bold text-slate-900 transition shadow-xs flex items-center justify-between group"
                           >
-                            <span>{opt}</span>
+                            <span className="group-hover:text-white">{opt}</span>
                             <span className="text-orange-500 font-black group-hover:text-amber-400">➔</span>
                           </button>
                         ))}
@@ -868,7 +921,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                           placeholder="Tapez votre réponse ici..."
                           required
                           autoFocus
-                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
                         <button
                           type="submit"
@@ -886,7 +939,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 <div className="space-y-4 max-w-sm mx-auto text-center pt-10">
                   <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-md">🎉</div>
                   <h3 className="font-black text-slate-900 uppercase text-base">Sondage validé avec succès !</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">Merci pour votre participation active. Vos réponses nous aident à perfectionner continuellement notre écosystème.</p>
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed">Merci pour votre participation active. Vos réponses nous aident à perfectionner continuellement notre écosystème.</p>
                   <button
                     onClick={retournerAccueilChat}
                     className="w-full bg-slate-900 hover:bg-orange-600 text-white font-black py-3 rounded-xl uppercase text-xs shadow-md transition mt-4"
@@ -896,11 +949,11 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 </div>
               )}
 
-              {/* --- PAGE 3 : QUIZ & DIVERTISSEMENT --- */}
+              {/* --- PAGE : QUIZ & DIVERTISSEMENT --- */}
               {modeChat === 'DIVERTISSEMENT' && (
                 <div className="space-y-4 max-w-md mx-auto pt-2">
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase border-b pb-2">
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold uppercase border-b pb-2">
                       <span>Question {etapeDivertissement + 1} sur {questionsDivertissement.length}</span>
                       <span>🎮 Quiz & Détente</span>
                     </div>
@@ -915,9 +968,9 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                           <button
                             key={i}
                             onClick={() => soumettreReponseDivertissement(opt)}
-                            className="w-full text-left p-3.5 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-bold transition shadow-xs flex items-center justify-between group"
+                            className="w-full text-left p-3.5 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-bold text-slate-900 transition shadow-xs flex items-center justify-between group"
                           >
-                            <span>{opt}</span>
+                            <span className="group-hover:text-white">{opt}</span>
                             <span className="text-amber-500 font-black group-hover:text-amber-400">➔</span>
                           </button>
                         ))}
@@ -937,7 +990,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                           placeholder="Votre réponse..."
                           required
                           autoFocus
-                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
                         <button
                           type="submit"
@@ -955,7 +1008,7 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 <div className="space-y-4 max-w-sm mx-auto text-center pt-10">
                   <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-md">🌟</div>
                   <h3 className="font-black text-slate-900 uppercase text-base">Quiz terminé avec brio !</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">Félicitations pour avoir complété ce quiz exclusif. Vous débloquez l'accès à nos astuces professionnelles !</p>
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed">Félicitations pour avoir complété ce quiz exclusif. Vous débloquez l'accès à nos astuces professionnelles !</p>
                   <button
                     onClick={lancerModeAstuces}
                     className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-3 rounded-xl uppercase text-xs shadow-md transition mt-4"
@@ -965,12 +1018,12 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                 </div>
               )}
 
-              {/* --- PAGE 4 : ASTUCES PRO --- */}
+              {/* --- PAGE : ASTUCES PRO --- */}
               {modeChat === 'ASTUCES' && !categorieAstuceActive && (
                 <div className="space-y-3 max-w-md mx-auto pt-2">
                   <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 mb-3">
                     <h3 className="font-black text-slate-900 uppercase text-xs">💡 Choisissez une thématique d'astuces :</h3>
-                    <p className="text-[10px] text-slate-500 font-medium">Explorez nos guides pratiques et conseils d'experts.</p>
+                    <p className="text-[10px] text-slate-600 font-medium">Explorez nos guides pratiques et conseils d'experts.</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2.5">
@@ -980,9 +1033,9 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                         <button
                           key={cle}
                           onClick={() => setCategorieAstuceActive(cle)}
-                          className="p-3 bg-white hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-black text-[11px] uppercase text-left transition shadow-2xs flex items-center justify-between group"
+                          className="p-3 bg-white hover:bg-slate-900 hover:text-white border border-slate-200 rounded-xl font-black text-[11px] uppercase text-slate-900 text-left transition shadow-2xs flex items-center justify-between group"
                         >
-                          <span className="truncate">{cat.titre}</span>
+                          <span className="truncate group-hover:text-white">{cat.titre}</span>
                           <span className="text-slate-400 group-hover:text-amber-400">➔</span>
                         </button>
                       );
@@ -1007,14 +1060,14 @@ export default function MenuExplorer({ entrepriseId = '4TS-290136' }) {
                     {categoriesAstuces[categorieAstuceActive].liste.map((astuce, idx) => (
                       <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2">
                         <h4 className="font-black text-slate-900 text-xs uppercase text-amber-600">{astuce.titre}</h4>
-                        <p className="text-xs text-slate-700 leading-relaxed font-medium">{astuce.texte}</p>
+                        <p className="text-xs text-slate-800 leading-relaxed font-medium">{astuce.texte}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* --- PAGE 5 : SUPPORT CLIENT INTERACTIF --- */}
+              {/* --- PAGE : SUPPORT CLIENT INTERACTIF --- */}
               {modeChat === 'SUPPORT' && (
                 <div className="flex flex-col h-full space-y-3">
                   <div className="flex-1 overflow-y-auto space-y-3 pr-1">
