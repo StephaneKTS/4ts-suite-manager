@@ -36,6 +36,7 @@ import GestionTontineParticipants from './components/GestionTontineParticipants'
 import GestionTontineCycles from './components/GestionTontineCycles';
 import GestionTontineCotisations from './components/GestionTontineCotisations';
 import GestionTontineAttributions from './components/GestionTontineAttributions';
+import GestionElections from './components/GestionElections';
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -203,7 +204,7 @@ function DashboardContent() {
       return <GestionCommandesClientsQR entrepriseId={entrepriseId} />;
     }
 
-    // ➕ Gestion des vues du module Tontine
+    // ➕ Gestion des vues du module Tontine (incluant les Élections)
     if (moduleActif === 'tontine_participants') {
       return <GestionTontineParticipants entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
@@ -215,6 +216,9 @@ function DashboardContent() {
     }
     if (moduleActif === 'tontine_attributions') {
       return <GestionTontineAttributions entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+    }
+    if (moduleActif === 'tontine_elections') {
+      return <GestionElections entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
     if (moduleActif === 'super_admin_panel') {
@@ -455,7 +459,7 @@ function DashboardContent() {
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && estModeTontine ? (
-          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Avec la tuile Rôles ajoutée) */
+          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Toutes les tuiles avec le même style de bordure uniforme cardClass) */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE TONTINE
@@ -463,10 +467,10 @@ function DashboardContent() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 w-full">
               <div 
                 onClick={() => setModuleActif('tontine_participants')} 
-                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group border-2 border-orange-500/50`}
+                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
               >
                 <span className="text-3xl group-hover:scale-110 transition">👥</span>
-                <span className="font-black text-xs leading-tight text-orange-500">Gestion des Participants</span>
+                <span className="font-bold text-xs leading-tight">Gestion des Participants</span>
               </div>
 
               <div 
@@ -491,6 +495,14 @@ function DashboardContent() {
               >
                 <span className="text-3xl group-hover:scale-110 transition">🏆</span>
                 <span className="font-bold text-xs leading-tight">Attributions & Cagnottes</span>
+              </div>
+
+              <div 
+                onClick={() => setModuleActif('tontine_elections')} 
+                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
+              >
+                <span className="text-3xl group-hover:scale-110 transition">🏛️</span>
+                <span className="font-bold text-xs leading-tight">Élections du Bureau</span>
               </div>
 
               <div 
