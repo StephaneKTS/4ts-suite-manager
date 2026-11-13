@@ -641,13 +641,15 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   };
 
-  const handleChangementPartenaire = (partenaireId) => {
+  const handleChangementPartenaire = (partenaireId, conserverNumero = false) => {
     if (documentEnLectureSeule) return;
     setIdPartenaire(partenaireId);
     if (!commandeEnEdition) setLignesSaisies([]);
     setStocksArticlesCache({});
 
-    calculerNumeroAutomatique(commandes, partenaireId, dateCommande);
+    if (!conserverNumero) {
+      calculerNumeroAutomatique(commandes, partenaireId, dateCommande);
+    }
 
     if (!partenaireId) {
       setPartenaireSansStockage(false);
@@ -662,7 +664,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       
       setPartenaireSansStockage(Boolean(sansStock));
 
-      if (sansStock && partObj.adresse) {
+      if (sansStock && partObj.adresse && !conserverNumero) {
         setPointADepart(partObj.adresse);
       }
 
@@ -672,9 +674,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         return nomDep === nomPartenaireClean || String(d.id) === String(partObj.id_depot);
       });
 
-      if (depotAssocie) {
+      if (depotAssocie && !conserverNumero) {
         setDepotId(depotAssocie.id || depotAssocie.ID);
-      } else {
+      } else if (!conserverNumero) {
         setDepotId(partObj.id_depot || 'AUCUN_DEPOT');
       }
     } else {
@@ -682,12 +684,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setDepotId('AUCUN_DEPOT');
     }
 
-    setTimeout(() => {
-      if (inputNumeroCmdRef.current) {
-        inputNumeroCmdRef.current.focus();
-        inputNumeroCmdRef.current.select();
-      }
-    }, 50);
+    if (!conserverNumero) {
+      setTimeout(() => {
+        if (inputNumeroCmdRef.current) {
+          inputNumeroCmdRef.current.focus();
+          inputNumeroCmdRef.current.select();
+        }
+      }, 50);
+    }
   };
 
   const handleChangementDate = (nouvelleDate) => {
@@ -868,7 +872,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     setStocksArticlesCache({});
     
     if (cmd.id_partenaire) {
-      handleChangementPartenaire(cmd.id_partenaire);
+      handleChangementPartenaire(cmd.id_partenaire, true);
       if (cmd.id_depot) setDepotId(cmd.id_depot);
     }
 

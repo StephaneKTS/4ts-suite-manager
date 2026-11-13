@@ -22,14 +22,14 @@ const LISTE_STATUTS = [
 export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDarkMode = false }) {
   const [cycles, setCycles] = useState([]);
   const [chargement, setChargement] = useState(false);
-  const [vueActuelle, setVueActuelle] = useState('liste'); // 'liste' | 'creation'
-  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [cycleEnEdition, setCycleEnEdition] = useState(null);
 
-  // États pour les modales de sélection
+  // États pour les modales
+  const [modalCreationOuverte, setModalCreationOuverte] = useState(false);
   const [modalFrequenceOuverte, setModalFrequenceOuverte] = useState(false);
   const [modalStatutOuverte, setModalStatutOuverte] = useState(false);
+  const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
   const [nouveauCycle, setNouveauCycle] = useState({
     nom_cycle: '',
@@ -117,8 +117,8 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         statut: 'ACTIF',
       });
 
+      setModalCreationOuverte(false);
       await chargerCycles();
-      setVueActuelle('liste');
     } catch (err) {
       alert('❌ Erreur lors de l\'enregistrement : ' + err.message);
     } finally {
@@ -136,7 +136,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       if (error) throw error;
       alert('🗑️ Cycle supprimé avec succès !');
       setCycleEnEdition(null);
-      setVueActuelle('liste');
+      setModalCreationOuverte(false);
       await chargerCycles();
     } catch (err) {
       alert('❌ Erreur lors de la suppression : ' + err.message);
@@ -156,7 +156,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       date_fin: c.date_fin ? c.date_fin.split('T')[0] : '',
       statut: c.statut || 'ACTIF',
     });
-    setVueActuelle('creation');
+    setModalCreationOuverte(true);
   };
 
   const cyclesFiltres = cycles.filter(c => {
@@ -176,7 +176,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         <button
           type="button"
           onClick={chargerCycles}
-          className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-bold transition flex items-center gap-1 shrink-0"
+          className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-bold transition flex items-center gap-1 shrink-0 cursor-pointer"
           title="Rafraîchir"
         >
           🔄 Actualiser
@@ -198,166 +198,168 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 date_fin: '',
                 statut: 'ACTIF',
               });
-              setVueActuelle('creation');
+              setModalCreationOuverte(true);
             }}
-            className={`font-black px-2 py-1 rounded transition shadow text-[10px] uppercase ${
-              vueActuelle === 'creation' && !cycleEnEdition
-                ? 'bg-orange-600 text-white ring-1 ring-orange-400' 
-                : 'bg-orange-600/85 hover:bg-orange-600 text-white'
-            }`}
+            className="bg-orange-600 hover:bg-orange-600 text-white font-black px-2 py-1 rounded transition shadow text-[10px] uppercase cursor-pointer"
           >
             ➕ Créer
           </button>
 
-          <button
-            type="button"
-            onClick={() => setVueActuelle('liste')}
-            className={`font-black px-2 py-1 rounded transition shadow text-[10px] uppercase ${
-              vueActuelle === 'liste' 
-                ? 'bg-slate-800 text-white ring-1 ring-slate-500 border border-slate-600' 
-                : 'bg-slate-700 hover:bg-slate-600 text-white'
-            }`}
-          >
+          <div className="bg-slate-800 text-white px-2 py-1 rounded font-black text-[10px] uppercase border border-slate-600">
             📋 Cycles ({cycles.length})
-          </button>
+          </div>
         </div>
       </div>
 
-      {/* VUE DE CRÉATION / MODIFICATION */}
-      {vueActuelle === 'creation' && (
-        <div className="space-y-2 w-full p-2 bg-black/10 rounded border border-slate-700/20">
-          <div className="flex justify-between items-center border-b pb-1 border-slate-700/20">
-            <h4 className="font-black text-orange-500 uppercase text-[10px]">
-              {cycleEnEdition ? '✏️ Modifier le cycle' : '➕ Configurer un nouveau cycle'}
-            </h4>
-            <button type="button" onClick={() => setVueActuelle('liste')} className="text-slate-400 hover:text-white font-bold text-sm">✖</button>
-          </div>
-
-          <form onSubmit={enregistrerCycle} className="space-y-2 w-full">
-            
-            {/* LIGNE 1 : Nom du cycle */}
-            <div>
-              <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nom du Cycle / Type de Tontine *</label>
-              <input
-                type="text"
-                required
-                value={nouveauCycle.nom_cycle}
-                onChange={(e) => setNouveauCycle({ ...nouveauCycle, nom_cycle: e.target.value.toUpperCase() })}
-                className={`w-full p-1.5 rounded border text-xs font-bold uppercase ${inputBg}`}
-              />
+      {/* MODALE DE CRÉATION / MODIFICATION DE CYCLE */}
+      {modalCreationOuverte && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 w-full max-w-lg space-y-2 shadow-2xl text-white my-auto">
+            <div className="flex justify-between items-center border-b pb-1.5 border-slate-800">
+              <h4 className="font-black text-orange-500 uppercase text-xs">
+                {cycleEnEdition ? '✏️ Modifier le cycle' : '➕ Configurer un nouveau cycle'}
+              </h4>
+              <button
+                type="button"
+                onClick={() => setModalCreationOuverte(false)}
+                className="bg-red-600 hover:bg-red-500 text-white font-bold px-1.5 py-0.5 rounded text-xs transition cursor-pointer"
+                title="Fermer"
+              >
+                ✖
+              </button>
             </div>
 
-            {/* LIGNE 2 : Montant & Option Montant Libre */}
-            <div className="space-y-1 p-1.5 rounded bg-white/5 border border-slate-700/20">
-              <div className="flex justify-between items-center">
-                <label className={`font-black text-[9px] uppercase ${labelColor}`}>Montant de la Cotisation</label>
-                <label className="flex items-center gap-1 cursor-pointer text-[9px] font-bold text-orange-400">
-                  <input
-                    type="checkbox"
-                    checked={nouveauCycle.montant_libre}
-                    onChange={(e) => setNouveauCycle({ ...nouveauCycle, montant_libre: e.target.checked })}
-                    className="rounded accent-orange-600"
-                  />
-                  Montant libre / Au choix
-                </label>
-              </div>
-              {!nouveauCycle.montant_libre && (
+            <form onSubmit={enregistrerCycle} className="space-y-2 w-full">
+              
+              {/* LIGNE 1 : Nom du cycle */}
+              <div>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nom du Cycle / Type de Tontine *</label>
                 <input
-                  type="number"
-                  required={!nouveauCycle.montant_libre}
-                  value={nouveauCycle.montant_cotisation}
-                  onChange={(e) => setNouveauCycle({ ...nouveauCycle, montant_cotisation: e.target.value })}
-                  className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-emerald-600 ${inputBg}`}
-                />
-              )}
-            </div>
-
-            {/* LIGNE 3 : Choix de la Fréquence & du Statut en Modale */}
-            <div className="grid grid-cols-2 gap-1.5">
-              <div>
-                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Fréquence</label>
-                <button
-                  type="button"
-                  onClick={() => setModalFrequenceOuverte(true)}
-                  className={`w-full p-1.5 rounded border text-xs font-bold flex justify-between items-center ${inputBg}`}
-                >
-                  <span className="truncate">{LISTE_FREQUENCES.find(f => f.id === nouveauCycle.frequence)?.label || nouveauCycle.frequence}</span>
-                  <span className="text-orange-500 font-black">▼</span>
-                </button>
-              </div>
-
-              <div>
-                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Statut</label>
-                <button
-                  type="button"
-                  onClick={() => setModalStatutOuverte(true)}
-                  className={`w-full p-1.5 rounded border text-xs font-bold flex justify-between items-center ${inputBg}`}
-                >
-                  <span className="truncate">{LISTE_STATUTS.find(s => s.id === nouveauCycle.statut)?.label || nouveauCycle.statut}</span>
-                  <span className="text-orange-500 font-black">▼</span>
-                </button>
-              </div>
-            </div>
-
-            {/* LIGNE 4 : Règle ou Date précise des réunions */}
-            <div>
-              <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date / Règle des réunions</label>
-              <input
-                type="text"
-                value={nouveauCycle.regle_reunion}
-                onChange={(e) => setNouveauCycle({ ...nouveauCycle, regle_reunion: e.target.value.toUpperCase() })}
-                className={`w-full p-1.5 rounded border text-xs font-bold uppercase ${inputBg}`}
-              />
-            </div>
-
-            {/* LIGNE 5 : Nombre de tours & Date de début */}
-            <div className="grid grid-cols-2 gap-1.5">
-              <div>
-                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nombre de Tours</label>
-                <input
-                  type="number"
-                  min="1"
+                  type="text"
                   required
-                  value={nouveauCycle.nombre_tours}
-                  onChange={(e) => setNouveauCycle({ ...nouveauCycle, nombre_tours: e.target.value })}
-                  className={`w-full p-1.5 rounded border text-xs font-bold ${inputBg}`}
+                  value={nouveauCycle.nom_cycle}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setNouveauCycle({ ...nouveauCycle, nom_cycle: e.target.value.toUpperCase() })}
+                  className={`w-full p-1.5 rounded border text-xs font-bold uppercase ${inputBg}`}
                 />
               </div>
-              <div>
-                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date de début</label>
-                <input
-                  type="date"
-                  value={nouveauCycle.date_debut}
-                  onChange={(e) => setNouveauCycle({ ...nouveauCycle, date_debut: e.target.value })}
-                  className={`w-full p-1.5 rounded border text-xs font-bold ${inputBg}`}
-                />
-              </div>
-            </div>
 
-            {/* BOUTONS D'ACTION COMPACTS */}
-            <div className="flex justify-between items-center pt-2 border-t border-slate-700/20">
-              <div>
-                {cycleEnEdition && (
-                  <button
-                    type="button"
-                    onClick={() => supprimerCycle(cycleEnEdition.id)}
-                    className="bg-red-600 hover:bg-red-500 text-white font-black px-2 py-1 rounded text-[10px] shadow transition"
-                  >
-                    🗑️ Supprimer
-                  </button>
+              {/* LIGNE 2 : Montant & Option Montant Libre */}
+              <div className="space-y-1 p-1.5 rounded bg-white/5 border border-slate-700/20">
+                <div className="flex justify-between items-center">
+                  <label className={`font-black text-[9px] uppercase ${labelColor}`}>Montant de la Cotisation</label>
+                  <label className="flex items-center gap-1 cursor-pointer text-[9px] font-bold text-orange-400">
+                    <input
+                      type="checkbox"
+                      checked={nouveauCycle.montant_libre}
+                      onChange={(e) => setNouveauCycle({ ...nouveauCycle, montant_libre: e.target.checked })}
+                      className="rounded accent-orange-600 cursor-pointer"
+                    />
+                    Montant libre / Au choix
+                  </label>
+                </div>
+                {!nouveauCycle.montant_libre && (
+                  <input
+                    type="number"
+                    required={!nouveauCycle.montant_libre}
+                    value={nouveauCycle.montant_cotisation}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNouveauCycle({ ...nouveauCycle, montant_cotisation: e.target.value })}
+                    className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-emerald-600 ${inputBg}`}
+                  />
                 )}
               </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setVueActuelle('liste')} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-2 py-1 rounded text-[10px]">
-                  Annuler
-                </button>
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-3 py-1 rounded text-[10px] shadow">
-                  {enTrainDeSauvegarder ? 'Enregistrement...' : (cycleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                </button>
-              </div>
-            </div>
 
-          </form>
+              {/* LIGNE 3 : Choix de la Fréquence & du Statut en Modale */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Fréquence</label>
+                  <button
+                    type="button"
+                    onClick={() => setModalFrequenceOuverte(true)}
+                    className={`w-full p-1.5 rounded border text-xs font-bold flex justify-between items-center cursor-pointer ${inputBg}`}
+                  >
+                    <span className="truncate">{LISTE_FREQUENCES.find(f => f.id === nouveauCycle.frequence)?.label || nouveauCycle.frequence}</span>
+                    <span className="text-orange-500 font-black">▼</span>
+                  </button>
+                </div>
+
+                <div>
+                  <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Statut</label>
+                  <button
+                    type="button"
+                    onClick={() => setModalStatutOuverte(true)}
+                    className={`w-full p-1.5 rounded border text-xs font-bold flex justify-between items-center cursor-pointer ${inputBg}`}
+                  >
+                    <span className="truncate">{LISTE_STATUTS.find(s => s.id === nouveauCycle.statut)?.label || nouveauCycle.statut}</span>
+                    <span className="text-orange-500 font-black">▼</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* LIGNE 4 : Règle ou Date précise des réunions */}
+              <div>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date / Règle des réunions</label>
+                <input
+                  type="text"
+                  value={nouveauCycle.regle_reunion}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setNouveauCycle({ ...nouveauCycle, regle_reunion: e.target.value.toUpperCase() })}
+                  className={`w-full p-1.5 rounded border text-xs font-bold uppercase ${inputBg}`}
+                />
+              </div>
+
+              {/* LIGNE 5 : Nombre de tours & Date de début */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nombre de Tours</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={nouveauCycle.nombre_tours}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNouveauCycle({ ...nouveauCycle, nombre_tours: e.target.value })}
+                    className={`w-full p-1.5 rounded border text-xs font-bold ${inputBg}`}
+                  />
+                </div>
+                <div>
+                  <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date de début</label>
+                  <input
+                    type="date"
+                    value={nouveauCycle.date_debut}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNouveauCycle({ ...nouveauCycle, date_debut: e.target.value })}
+                    className={`w-full p-1.5 rounded border text-xs font-bold ${inputBg}`}
+                  />
+                </div>
+              </div>
+
+              {/* BOUTONS D'ACTION COMPACTS */}
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                <div>
+                  {cycleEnEdition && (
+                    <button
+                      type="button"
+                      onClick={() => supprimerCycle(cycleEnEdition.id)}
+                      className="bg-red-600 hover:bg-red-500 text-white font-black px-2 py-1 rounded text-[10px] shadow transition cursor-pointer"
+                    >
+                      🗑️ Supprimer
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setModalCreationOuverte(false)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-2 py-1 rounded text-[10px] cursor-pointer">
+                    Annuler
+                  </button>
+                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-3 py-1 rounded text-[10px] shadow cursor-pointer">
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (cycleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                  </button>
+                </div>
+              </div>
+
+            </form>
+          </div>
         </div>
       )}
 
@@ -367,7 +369,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl text-white">
             <div className="flex justify-between items-center border-b border-slate-800 pb-1">
               <h5 className="font-black uppercase text-[10px] text-orange-500">Sélectionner la Fréquence</h5>
-              <button type="button" onClick={() => setModalFrequenceOuverte(false)} className="text-slate-400 hover:text-white font-bold text-sm">✖</button>
+              <button type="button" onClick={() => setModalFrequenceOuverte(false)} className="bg-red-600 hover:bg-red-500 text-white font-bold px-1.5 py-0.5 rounded text-xs transition cursor-pointer">✖</button>
             </div>
             <div className="space-y-1 max-h-60 overflow-y-auto">
               {LISTE_FREQUENCES.map((freq) => (
@@ -378,7 +380,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     setNouveauCycle({ ...nouveauCycle, frequence: freq.id });
                     setModalFrequenceOuverte(false);
                   }}
-                  className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center ${
+                  className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center cursor-pointer ${
                     nouveauCycle.frequence === freq.id ? 'bg-orange-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                   }`}
                 >
@@ -397,7 +399,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl text-white">
             <div className="flex justify-between items-center border-b border-slate-800 pb-1">
               <h5 className="font-black uppercase text-[10px] text-orange-500">Sélectionner le Statut</h5>
-              <button type="button" onClick={() => setModalStatutOuverte(false)} className="text-slate-400 hover:text-white font-bold text-sm">✖</button>
+              <button type="button" onClick={() => setModalStatutOuverte(false)} className="bg-red-600 hover:bg-red-500 text-white font-bold px-1.5 py-0.5 rounded text-xs transition cursor-pointer">✖</button>
             </div>
             <div className="space-y-1">
               {LISTE_STATUTS.map((st) => (
@@ -408,7 +410,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     setNouveauCycle({ ...nouveauCycle, statut: st.id });
                     setModalStatutOuverte(false);
                   }}
-                  className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center ${
+                  className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center cursor-pointer ${
                     nouveauCycle.statut === st.id ? 'bg-orange-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                   }`}
                 >
@@ -422,66 +424,66 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       )}
 
       {/* VUE DE LA LISTE DES CYCLES */}
-      {vueActuelle === 'liste' && (
-        <div className="space-y-2 w-full">
-          <div className="bg-white p-1 rounded border border-slate-200 shadow-2xs">
-            <input
-              type="text"
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900 text-xs focus:outline-none"
-            />
-          </div>
-
-          <div className="overflow-x-auto border border-slate-700/20 rounded bg-white shadow-2xs w-full">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 text-slate-800 border-b uppercase text-[9px] font-black select-none">
-                <tr>
-                  <th className="p-2">Nom du Cycle</th>
-                  <th className="p-2 text-center">Montant</th>
-                  <th className="p-2 text-center">Fréquence</th>
-                  <th className="p-2 text-center">Tours</th>
-                  <th className="p-2 text-center">Statut</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[10px]">
-                {chargement ? (
-                  <tr><td colSpan="5" className="p-4 text-center animate-pulse text-slate-500">Chargement...</td></tr>
-                ) : cyclesFiltres.length === 0 ? (
-                  <tr><td colSpan="5" className="p-4 text-center text-slate-500 font-bold">Aucun cycle configuré. Cliquez sur "Créer".</td></tr>
-                ) : (
-                  cyclesFiltres.map((c) => {
-                    const nomAffiche = c.nom_cycle || c.libelle || 'CYCLE';
-                    return (
-                      <tr 
-                        key={c.id} 
-                        onClick={() => ouvrirEdition(c)} 
-                        className="hover:bg-orange-50/70 cursor-pointer transition select-none text-slate-900"
-                        title="Cliquez pour modifier ou supprimer ce cycle"
-                      >
-                        <td className="p-2 font-black uppercase text-slate-900">
-                          {nomAffiche}
-                          {c.regle_reunion && <div className="text-[8px] text-slate-500 font-normal">🗓️ {c.regle_reunion}</div>}
-                        </td>
-                        <td className="p-2 text-center font-black font-mono text-emerald-700">
-                          {c.montant_libre ? <span className="text-purple-600 font-bold">Au choix</span> : `${c.montant_cotisation?.toLocaleString()} FCFA`}
-                        </td>
-                        <td className="p-2 text-center font-bold text-slate-700 uppercase">{c.frequence}</td>
-                        <td className="p-2 text-center font-black text-blue-600">{c.nombre_tours}</td>
-                        <td className="p-2 text-center">
-                          <span className="bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded text-[8px] uppercase border border-emerald-200">
-                            {c.statut}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+      <div className="space-y-2 w-full">
+        <div className="bg-white p-1 rounded border border-slate-200 shadow-2xs">
+          <input
+            type="text"
+            value={recherche}
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => setRecherche(e.target.value)}
+            className="w-full bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900 text-xs focus:outline-none"
+            placeholder="Rechercher un cycle..."
+          />
         </div>
-      )}
+
+        <div className="overflow-x-auto border border-slate-700/20 rounded bg-white shadow-2xs w-full">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-100 text-slate-800 border-b uppercase text-[9px] font-black select-none">
+              <tr>
+                <th className="p-2">Nom du Cycle</th>
+                <th className="p-2 text-center">Montant</th>
+                <th className="p-2 text-center">Fréquence</th>
+                <th className="p-2 text-center">Tours</th>
+                <th className="p-2 text-center">Statut</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-[10px]">
+              {chargement ? (
+                <tr><td colSpan="5" className="p-4 text-center animate-pulse text-slate-500">Chargement...</td></tr>
+              ) : cyclesFiltres.length === 0 ? (
+                <tr><td colSpan="5" className="p-4 text-center text-slate-500 font-bold">Aucun cycle configuré. Cliquez sur "Créer".</td></tr>
+              ) : (
+                cyclesFiltres.map((c) => {
+                  const nomAffiche = c.nom_cycle || c.libelle || 'CYCLE';
+                  return (
+                    <tr 
+                      key={c.id} 
+                      onClick={() => ouvrirEdition(c)} 
+                      className="hover:bg-orange-50/70 cursor-pointer transition select-none text-slate-900"
+                      title="Cliquez pour modifier ou supprimer ce cycle"
+                    >
+                      <td className="p-2 font-black uppercase text-slate-900">
+                        {nomAffiche}
+                        {c.regle_reunion && <div className="text-[8px] text-slate-500 font-normal">🗓️ {c.regle_reunion}</div>}
+                      </td>
+                      <td className="p-2 text-center font-black font-mono text-emerald-700 whitespace-nowrap">
+                        {c.montant_libre ? <span className="text-purple-600 font-bold">Au choix</span> : `${c.montant_cotisation?.toLocaleString()} F`}
+                      </td>
+                      <td className="p-2 text-center font-bold text-slate-700 uppercase">{c.frequence}</td>
+                      <td className="p-2 text-center font-black text-blue-600">{c.nombre_tours}</td>
+                      <td className="p-2 text-center">
+                        <span className="bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded text-[8px] uppercase border border-emerald-200">
+                          {c.statut}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
     </div>
   );
