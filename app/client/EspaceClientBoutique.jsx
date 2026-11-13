@@ -78,12 +78,10 @@ export default function EspaceClientBoutique() {
       try {
         const [resEnt, resArt] = await Promise.all([
           supabase.from('entreprises').select('*').eq('id_entreprise', entrepriseId).maybeSingle(),
-          // Filtrage strict : Entreprise, QR code activé, et restriction exclusive au module boutique (exclusion des articles de type/module livraison)
           supabase.from('articles_stock')
             .select('*')
             .eq('id_entreprise', entrepriseId)
             .eq('Disponible_Menu_QR', true)
-            .eq('module', 'BOUTIQUE') // <-- Filtre strict sur le module boutique pour éviter de remonter la livraison
         ]);
 
         if (resEnt.data) {
@@ -604,62 +602,70 @@ export default function EspaceClientBoutique() {
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
         <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
         
-        <div className="grid grid-cols-5 gap-1 bg-slate-100 p-1 rounded-xl">
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('BOUTIQUE'); }}
-            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
-              ongletActif === 'BOUTIQUE' ? 'bg-orange-600 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            🛍️ MENU
-          </button>
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { 
-              if (!enTrainDeSauvegarder) {
-                setOngletActif('SUIVI');
-                if (telephoneRecherche.trim() && mesCommandesClient.length === 0) rechercherMesCommandes();
-              }
-            }}
-            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
-              ongletActif === 'SUIVI' ? 'bg-orange-600 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            📋 SUIVI
-          </button>
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('RESTAURANTS'); }}
-            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
-              ongletActif === 'RESTAURANTS' ? 'bg-slate-900 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            🏪 RESTOS
-          </button>
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('EXPLORER'); }}
-            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
-              ongletActif === 'EXPLORER' ? 'bg-slate-900 text-white shadow-xs' : 'bg-transparent text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            🧭 EXPLORER
-          </button>
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('SOUSCRIPTION'); }}
-            className={`py-2 rounded-lg font-black text-[7px] uppercase transition shadow-2xs truncate ${
-              ongletActif === 'SOUSCRIPTION' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-            }`}
-          >
-            🚀 COMPTE
-          </button>
+        {/* Navigation sur deux lignes pour un affichage mobile optimal sans coupure */}
+        <div className="space-y-1.5 bg-slate-100 p-1.5 rounded-xl">
+          {/* Ligne 1 : Exclusivement le restaurant (Menu, Suivi, Restos) */}
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('BOUTIQUE'); }}
+              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+                ongletActif === 'BOUTIQUE' ? 'bg-orange-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              🛍️ MENU
+            </button>
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { 
+                if (!enTrainDeSauvegarder) {
+                  setOngletActif('SUIVI');
+                  if (telephoneRecherche.trim() && mesCommandesClient.length === 0) rechercherMesCommandes();
+                }
+              }}
+              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+                ongletActif === 'SUIVI' ? 'bg-orange-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              📋 SUIVI
+            </button>
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('RESTAURANTS'); }}
+              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+                ongletActif === 'RESTAURANTS' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              🏪 RESTOS
+            </button>
+          </div>
+
+          {/* Ligne 2 : Exploration et Compte / Inscription */}
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('EXPLORER'); }}
+              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+                ongletActif === 'EXPLORER' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              🧭 EXPLORER
+            </button>
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('SOUSCRIPTION'); }}
+              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+                ongletActif === 'SOUSCRIPTION' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+              }`}
+            >
+              🚀 INSCRIPTION
+            </button>
+          </div>
         </div>
       </div>
 
