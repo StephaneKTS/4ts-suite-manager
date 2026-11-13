@@ -614,7 +614,17 @@ export default function EspaceClientBoutique() {
     <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
       
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
-        <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
+        <div className="flex justify-between items-center px-1">
+          <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
+          {/* Bouton d'accès rapide direct pour les clients ouvrant depuis l'écran d'accueil sans vouloir s'identifier */}
+          <button
+            type="button"
+            onClick={() => setOngletActif('BOUTIQUE')}
+            className="bg-orange-100 text-orange-700 hover:bg-orange-200 font-black px-2.5 py-1 rounded-xl text-[9px] uppercase transition shadow-2xs"
+          >
+            🧭 Explorer / Menu
+          </button>
+        </div>
         
         {/* Navigation sur deux lignes pour un affichage mobile optimal sans coupure */}
         <div className="space-y-1.5 bg-slate-100 p-1.5 rounded-xl">
