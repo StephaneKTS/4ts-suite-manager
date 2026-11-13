@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { localSync } from '../../../lib/localSync';
 
 export default function PageTontine({ entrepriseId = '4TS-290136' }) {
   const moduleActuel = 'TONTINE';
@@ -39,12 +38,6 @@ export default function PageTontine({ entrepriseId = '4TS-290136' }) {
 
   const chargerDonneesTontine = async () => {
     setChargement(true);
-    const cyclesLocaux = localSync.recupererDonneesLocales(cleCacheCycles);
-    const participantsLocaux = localSync.recupererDonneesLocales(cleCacheParticipants);
-
-    if (cyclesLocaux) setCycles(cyclesLocaux);
-    if (participantsLocaux) setParticipants(participantsLocaux);
-
     try {
       const { data: dataCycles, error: errC } = await supabase
         .from('tontine_cycles')
@@ -55,7 +48,6 @@ export default function PageTontine({ entrepriseId = '4TS-290136' }) {
       if (errC) throw errC;
       if (dataCycles) {
         setCycles(dataCycles);
-        localSync.sauvegarderDonneesLocales(cleCacheCycles, dataCycles);
         if (dataCycles.length > 0 && !cycleSelectionneId) {
           setCycleSelectionneId(dataCycles[0].id);
         }
@@ -70,7 +62,6 @@ export default function PageTontine({ entrepriseId = '4TS-290136' }) {
       if (errP) throw errP;
       if (dataParts) {
         setParticipants(dataParts);
-        localSync.sauvegarderDonneesLocales(cleCacheParticipants, dataParts);
       }
     } catch (err) {
       console.warn('Mode hors-ligne ou erreur chargement tontine :', err.message);
@@ -140,7 +131,7 @@ export default function PageTontine({ entrepriseId = '4TS-290136' }) {
       return;
     }
 
-    setEnTrainDeSauvegardery = true;
+    setEnTrainDeSauvegarder(true);
     try {
       const payload = {
         id_entreprise: entrepriseId,

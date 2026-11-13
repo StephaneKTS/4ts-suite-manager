@@ -20,6 +20,8 @@ const LISTE_PAYS = [
 
 export default function GestionTontineParticipants({ entrepriseId = '4TS-290136', isDarkMode = false }) {
   const [participants, setParticipants] = useState([]);
+  const [rolesDisponibles, setRolesDisponibles] = useState([]);
+  const [nouveauRoleInput, setNouveauRoleInput] = useState('');
   const [chargement, setChargement] = useState(false);
   const [vueActuelle, setVueActuelle] = useState('liste'); 
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
@@ -35,33 +37,72 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     telephone: '',
     lieu_residence: '',
     numero_cni: '',
+    libelle_role: '',
     date_adhesion: new Date().toISOString().split('T')[0],
     photo: '',
   });
 
-  const chargerParticipants = async () => {
+  const chargerDonnees = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase
+      // 1. Charger les participants
+      const { data: dataPart, error: errPart } = await supabase
         .from('tontine_participants')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Erreur Supabase :', error.message);
-      } else {
-        setParticipants(data || []);
+      if (errPart) throw errPart;
+      setParticipants(dataPart || []);
+
+      // 2. Charger les rôles personnalisés créés pour l'entreprise
+      const { data: dataRoles, error: errRoles } = await supabase
+        .from('tontine_roles')
+        .select('nom_role')
+        .eq('id_entreprise', entrepriseId);
+
+      if (!errRoles && dataRoles) {
+        const rolesPerso = dataRoles.map(r => r.nom_role);
+        setRolesDisponibles(rolesPerso);
+        if (rolesPerso.length > 0 && !nouveauParticipant.libelle_role) {
+          setNouveauParticipant(prev => ({ ...prev, libelle_role: rolesPerso[0] }));
+        }
       }
     } catch (err) {
-      console.error('Erreur technique chargement :', err.message);
+      console.error('Erreur chargement :', err.message);
     } finally {
       setChargement(false);
     }
   };
 
   useEffect(() => {
-    chargerParticipants();
+    chargerDonnees();
   }, [entrepriseId]);
+
+  const ajouterRolePersonnalise = async () => {
+    if (!nouveauRoleInput.trim()) return;
+    const roleMaj = nouveauRoleInput.trim().toUpperCase();
+    if (rolesDisponibles.includes(roleMaj)) {
+      setNouveauParticipant(prev => ({ ...prev, libelle_role: roleMaj }));
+      setNouveauRoleInput('');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('tontine_roles').insert([{
+        id_entreprise: entrepriseId,
+        nom_role: roleMaj
+      }]);
+
+      if (error) throw error;
+
+      setRolesDisponibles(prev => [...prev, roleMaj]);
+      setNouveauParticipant(prev => ({ ...prev, libelle_role: roleMaj }));
+      setNouveauRoleInput('');
+      alert(`✅ Rôle "${roleMaj}" créé avec succès !`);
+    } catch (err) {
+      alert('❌ Erreur création rôle : ' + err.message);
+    }
+  };
 
   const gererSelectionImage = (e) => {
     const fichier = e.target.files[0];
@@ -108,6 +149,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         telephone: telephoneComplet,
         lieu_residence: (nouveauParticipant.lieu_residence || '').trim().toUpperCase(),
         numero_cni: (nouveauParticipant.numero_cni || '').trim().toUpperCase(),
+        libelle_role: nouveauParticipant.libelle_role || (rolesDisponibles[0] || 'MEMBRE'),
         date_adhesion: nouveauParticipant.date_adhesion || new Date().toISOString().split('T')[0],
         photo: nouveauParticipant.photo || null,
       };
@@ -130,10 +172,10 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       setParticipantEnEdition(null);
       setNouveauParticipant({
         nom_participant: '', prenom: '', pays: 'cmr', telephone: '', lieu_residence: '', numero_cni: '',
-        date_adhesion: new Date().toISOString().split('T')[0], photo: ''
+        libelle_role: rolesDisponibles[0] || '', date_adhesion: new Date().toISOString().split('T')[0], photo: ''
       });
       
-      await chargerParticipants();
+      await chargerDonnees();
       setVueActuelle('liste');
     } catch (err) {
       alert('❌ Erreur lors de l\'enregistrement : ' + err.message);
@@ -153,7 +195,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       alert('🗑️ Membre supprimé avec succès !');
       setParticipantEnEdition(null);
       setVueActuelle('liste');
-      await chargerParticipants();
+      await chargerDonnees();
     } catch (err) {
       alert('❌ Erreur lors de la suppression : ' + err.message);
     }
@@ -174,6 +216,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       telephone: telLocal.replace(/[^0-9]/g, ''),
       lieu_residence: p.lieu_residence || '',
       numero_cni: p.numero_cni || '',
+      libelle_role: p.libelle_role || rolesDisponibles[0] || '',
       date_adhesion: p.date_adhesion ? p.date_adhesion.split('T')[0] : new Date().toISOString().split('T')[0],
       photo: p.photo || '',
     });
@@ -182,7 +225,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const participantsFiltres = participants.filter(p => {
     const nomP = p.nom_participant || p.nom_complet || '';
-    const texte = `${nomP} ${p.prenom || ''} ${p.telephone || ''}`.toLowerCase();
+    const texte = `${nomP} ${p.prenom || ''} ${p.telephone || ''} ${p.libelle_role || ''}`.toLowerCase();
     return texte.includes(recherche.toLowerCase());
   });
 
@@ -201,7 +244,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
           </p>
           <button
             type="button"
-            onClick={chargerParticipants}
+            onClick={chargerDonnees}
             className="bg-slate-700 hover:bg-slate-600 text-white px-2.5 py-1 rounded text-[10px] font-bold transition"
             title="Rafraîchir la liste"
           >
@@ -215,7 +258,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               setParticipantEnEdition(null);
               setNouveauParticipant({
                 nom_participant: '', prenom: '', pays: 'cmr', telephone: '', lieu_residence: '', numero_cni: '',
-                date_adhesion: new Date().toISOString().split('T')[0], photo: ''
+                libelle_role: rolesDisponibles[0] || '', date_adhesion: new Date().toISOString().split('T')[0], photo: ''
               });
               setVueActuelle('creation');
             }}
@@ -294,6 +337,45 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                   onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, prenom: e.target.value.toUpperCase() })}
                   className={`w-full p-3 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
                 />
+              </div>
+            </div>
+
+            {/* GESTION DYNAMIQUE DES RÔLES DE LA TONTINE */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-orange-500/5 p-3 rounded-xl border border-orange-500/30">
+              <div>
+                <label className={`block font-black mb-1 text-[11px] uppercase ${labelColor}`}>Rôle / Poste dans la Tontine</label>
+                <select
+                  value={nouveauParticipant.libelle_role}
+                  onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, libelle_role: e.target.value })}
+                  className={`w-full p-3 rounded-lg border text-xs font-bold ${inputBg}`}
+                >
+                  {rolesDisponibles.length === 0 ? (
+                    <option value="">Aucun rôle créé. Créez-en un ci-contre ➔</option>
+                  ) : (
+                    rolesDisponibles.map((role, idx) => (
+                      <option key={idx} value={role}>{role}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className={`block font-black mb-1 text-[11px] uppercase ${labelColor}`}>Créer un nouveau rôle</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={nouveauRoleInput}
+                    onChange={(e) => setNouveauRoleInput(e.target.value.toUpperCase())}
+                    placeholder="EX: TRÉSORIER, PRÉSIDENT..."
+                    className={`w-full p-2.5 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={ajouterRolePersonnalise}
+                    className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-2.5 rounded-lg text-xs shadow shrink-0"
+                  >
+                    ➕ Créer
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -379,7 +461,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* VUE DE LA LISTE DES PARTICIPANTS (SANS COLONNE ACTIONS) */}
+      {/* VUE DE LA LISTE DES PARTICIPANTS */}
       {vueActuelle === 'liste' && (
         <div className="space-y-3 w-full">
           <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
@@ -387,7 +469,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               type="text"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
-              placeholder="🔍 Rechercher un participant par nom ou téléphone..."
+              placeholder="🔍 Rechercher un participant par nom, rôle ou téléphone..."
               className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-bold text-slate-900 text-xs focus:outline-none"
             />
           </div>
@@ -398,6 +480,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 <tr>
                   <th className="p-3 w-12 text-center">Avatar</th>
                   <th className="p-3">Nom & Prénom</th>
+                  <th className="p-3">Rôle / Poste</th>
                   <th className="p-3">Téléphone</th>
                   <th className="p-3">Résidence</th>
                   <th className="p-3">CNI</th>
@@ -406,9 +489,9 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               </thead>
               <tbody className="divide-y divide-slate-100 text-[10.5px]">
                 {chargement ? (
-                  <tr><td colSpan="6" className="p-6 text-center animate-pulse text-slate-500">Chargement des membres...</td></tr>
+                  <tr><td colSpan="7" className="p-6 text-center animate-pulse text-slate-500">Chargement des membres...</td></tr>
                 ) : participantsFiltres.length === 0 ? (
-                  <tr><td colSpan="6" className="p-6 text-center text-slate-500 font-bold">Aucun participant trouvé. Cliquez sur "Actualiser".</td></tr>
+                  <tr><td colSpan="7" className="p-6 text-center text-slate-500 font-bold">Aucun participant trouvé. Cliquez sur "Actualiser" ou créez-en un.</td></tr>
                 ) : (
                   participantsFiltres.map((p) => {
                     const nomAffiche = p.nom_participant || p.nom_complet || 'Membre';
@@ -429,6 +512,11 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                           </div>
                         </td>
                         <td className="p-2.5 font-black uppercase">{nomAffiche} {p.prenom || ''}</td>
+                        <td className="p-2.5">
+                          <span className="bg-orange-100 text-orange-800 font-black px-2 py-0.5 rounded text-[9px] uppercase border border-orange-200">
+                            {p.libelle_role || 'MEMBRE'}
+                          </span>
+                        </td>
                         <td className="p-2.5 font-mono text-orange-600 font-bold">{p.telephone || 'N/A'}</td>
                         <td className="p-2.5 uppercase font-semibold text-slate-700">{p.lieu_residence || 'N/A'}</td>
                         <td className="p-2.5 font-mono text-slate-600">{p.numero_cni || 'N/A'}</td>
