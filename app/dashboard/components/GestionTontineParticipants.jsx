@@ -207,18 +207,17 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   return (
     <div className="w-full h-full space-y-3 font-sans text-xs">
       
-      {/* Barre d'en-tête ultra-compacte sur une seule ligne */}
-      <div className="flex flex-wrap justify-between items-center bg-white/5 px-3 py-2 rounded-xl border border-slate-700/30 gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={chargerDonnees}
-            className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-bold transition flex items-center gap-1"
-            title="Rafraîchir"
-          >
-            🔄 Actualiser
-          </button>
-        </div>
+      {/* Barre d'en-tête : Actualiser, Créer, Membres sur la même ligne */}
+      <div className="flex justify-between items-center bg-white/5 px-3 py-2 rounded-xl border border-slate-700/30 gap-2">
+        <button
+          type="button"
+          onClick={chargerDonnees}
+          className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1.5 rounded text-[10px] font-bold transition flex items-center gap-1 shrink-0"
+          title="Rafraîchir"
+        >
+          🔄 Actualiser
+        </button>
+
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -230,19 +229,19 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               });
               setVueActuelle('creation');
             }}
-            className={`font-black px-3 py-1.5 rounded-lg transition shadow text-[10px] uppercase ${
+            className={`font-black px-3 py-1.5 rounded-lg transition shadow text-[10px] uppercase shrink-0 ${
               vueActuelle === 'creation' && !participantEnEdition
                 ? 'bg-orange-600 text-white ring-1 ring-orange-400' 
                 : 'bg-orange-600/85 hover:bg-orange-600 text-white'
             }`}
           >
-            ➕ Nouveau Membre
+            ➕ Créer
           </button>
 
           <button
             type="button"
             onClick={() => setVueActuelle('liste')}
-            className={`font-black px-3 py-1.5 rounded-lg transition shadow text-[10px] uppercase ${
+            className={`font-black px-3 py-1.5 rounded-lg transition shadow text-[10px] uppercase shrink-0 ${
               vueActuelle === 'liste' 
                 ? 'bg-slate-800 text-white ring-1 ring-slate-500 border border-slate-600' 
                 : 'bg-slate-700 hover:bg-slate-600 text-white'
@@ -263,120 +262,120 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
             <button type="button" onClick={() => setVueActuelle('liste')} className="text-slate-400 hover:text-white font-bold text-sm">✖</button>
           </div>
 
-          <form onSubmit={enregistrerParticipant} className="space-y-3 w-full">
+          <form onSubmit={enregistrerParticipant} className="space-y-2.5 w-full">
             
             <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
             
-            {/* LIGNE 1 : Photo, Nom, Prénom sur la même ligne */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-              <div className="sm:col-span-2 flex justify-center">
-                <div 
-                  onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                  className="w-11 h-11 rounded-full bg-slate-800 border border-orange-500 flex items-center justify-center overflow-hidden cursor-pointer relative group shadow-sm shrink-0"
-                  title="Ajouter une photo"
-                >
-                  {nouveauParticipant.photo ? (
-                    <img src={nouveauParticipant.photo} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-slate-300 text-base">📷</span>
-                  )}
-                </div>
+            {/* PHOTO, NOM ET PRÉNOM STRICTEMENT SUR LA MÊME LIGNE */}
+            <div className="flex flex-row items-center gap-2 w-full">
+              <div 
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                className="w-10 h-10 rounded-full bg-slate-800 border border-orange-500 flex items-center justify-center overflow-hidden cursor-pointer relative group shadow-sm shrink-0"
+                title="Ajouter une photo"
+              >
+                {nouveauParticipant.photo ? (
+                  <img src={nouveauParticipant.photo} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-slate-300 text-sm">📷</span>
+                )}
               </div>
-              <div className="sm:col-span-5">
-                <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Nom *</label>
+              <div className="flex-1">
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nom *</label>
                 <input
                   type="text"
                   required
                   value={nouveauParticipant.nom_participant}
                   onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, nom_participant: e.target.value.toUpperCase() })}
-                  className={`w-full p-2 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
+                  className={`w-full p-1.5 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
                 />
               </div>
-              <div className="sm:col-span-5">
-                <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Prénom</label>
+              <div className="flex-1">
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Prénom</label>
                 <input
                   type="text"
                   value={nouveauParticipant.prenom}
                   onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, prenom: e.target.value.toUpperCase() })}
-                  className={`w-full p-2 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
+                  className={`w-full p-1.5 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
                 />
               </div>
             </div>
 
-            {/* RÔLE SUR UNE LIGNE SEULE */}
-            <div>
-              <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Rôle / Poste dans la Tontine</label>
-              <select
-                value={nouveauParticipant.libelle_role}
-                onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, libelle_role: e.target.value })}
-                className={`w-full p-2 rounded-lg border text-xs font-bold ${inputBg}`}
-              >
-                {rolesDisponibles.length === 0 ? (
-                  <option value="MEMBRE">MEMBRE (Par défaut)</option>
-                ) : (
-                  rolesDisponibles.map((role, idx) => (
-                    <option key={idx} value={role}>{role}</option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            {/* PAYS, TÉLÉPHONE, DATE D'ADHÉSION SUR UNE LIGNE */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* RÔLE ET PAYS SUR LA MÊME LIGNE */}
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Pays</label>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Rôle / Poste</label>
+                <select
+                  value={nouveauParticipant.libelle_role}
+                  onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, libelle_role: e.target.value })}
+                  className={`w-full p-1.5 rounded-lg border text-xs font-bold ${inputBg}`}
+                >
+                  {rolesDisponibles.length === 0 ? (
+                    <option value="MEMBRE">MEMBRE</option>
+                  ) : (
+                    rolesDisponibles.map((role, idx) => (
+                      <option key={idx} value={role}>{role}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Pays</label>
                 <select
                   value={nouveauParticipant.pays}
                   onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, pays: e.target.value })}
-                  className={`w-full p-2 rounded-lg border text-xs font-bold ${inputBg}`}
+                  className={`w-full p-1.5 rounded-lg border text-xs font-bold ${inputBg}`}
                 >
                   {LISTE_PAYS.map(p => <option key={p.code} value={p.code}>{p.code.toUpperCase()} ({p.indicatif})</option>)}
                 </select>
               </div>
-              <div>
-                <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                <div className="flex items-center border rounded-lg overflow-hidden bg-white">
-                  <span className="bg-slate-200 px-2 py-2 text-[10px] font-black text-slate-900 border-r">{paysActuelObj.indicatif}</span>
-                  <input
-                    type="text"
-                    maxLength={paysActuelObj.longueur}
-                    value={nouveauParticipant.telephone}
-                    onChange={gererSaisieTelephone}
-                    className="w-full p-2 text-xs font-mono font-bold text-slate-900 focus:outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Date d'adhésion</label>
+            </div>
+
+            {/* NUMÉRO DE TÉLÉPHONE SUR UNE LIGNE SEULE */}
+            <div>
+              <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Téléphone ({paysActuelObj.longueur} chiffres)</label>
+              <div className="flex items-center border rounded-lg overflow-hidden bg-white">
+                <span className="bg-slate-200 px-2 py-1.5 text-[10px] font-black text-slate-900 border-r">{paysActuelObj.indicatif}</span>
                 <input
-                  type="date"
-                  value={nouveauParticipant.date_adhesion}
-                  onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, date_adhesion: e.target.value })}
-                  className={`w-full p-2 rounded-lg border text-xs font-bold ${inputBg}`}
+                  type="text"
+                  maxLength={paysActuelObj.longueur}
+                  value={nouveauParticipant.telephone}
+                  onChange={gererSaisieTelephone}
+                  className="w-full p-1.5 text-xs font-mono font-bold text-slate-900 focus:outline-none"
                 />
               </div>
             </div>
 
-            {/* LIEU DE RÉSIDENCE ET NUMÉRO CNI SUR UNE LIGNE */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* DATE D'ADHÉSION ET LIEU DE RÉSIDENCE SUR LA MÊME LIGNE */}
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Lieu de résidence</label>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date d'adhésion</label>
+                <input
+                  type="date"
+                  value={nouveauParticipant.date_adhesion}
+                  onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, date_adhesion: e.target.value })}
+                  className={`w-full p-1.5 rounded-lg border text-xs font-bold ${inputBg}`}
+                />
+              </div>
+              <div>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Lieu de résidence</label>
                 <input
                   type="text"
                   value={nouveauParticipant.lieu_residence}
                   onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, lieu_residence: e.target.value.toUpperCase() })}
-                  className={`w-full p-2 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
+                  className={`w-full p-1.5 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
                 />
               </div>
-              <div>
-                <label className={`block font-black mb-0.5 text-[10px] uppercase ${labelColor}`}>Numéro CNI</label>
-                <input
-                  type="text"
-                  value={nouveauParticipant.numero_cni}
-                  onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, numero_cni: e.target.value.toUpperCase() })}
-                  className={`w-full p-2 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
-                />
-              </div>
+            </div>
+
+            {/* NUMÉRO CNI SUR UNE LIGNE SEULE */}
+            <div>
+              <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Numéro CNI</label>
+              <input
+                type="text"
+                value={nouveauParticipant.numero_cni}
+                onChange={(e) => setNouveauParticipant({ ...nouveauParticipant, numero_cni: e.target.value.toUpperCase() })}
+                className={`w-full p-1.5 rounded-lg border text-xs font-bold uppercase ${inputBg}`}
+              />
             </div>
 
             {/* BOUTONS D'ACTION COMPACTS */}
@@ -386,17 +385,17 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                   <button
                     type="button"
                     onClick={() => supprimerParticipant(participantEnEdition.id)}
-                    className="bg-red-600 hover:bg-red-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] shadow transition"
+                    className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1 rounded text-[10px] shadow transition"
                   >
                     🗑️ Supprimer
                   </button>
                 )}
               </div>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setVueActuelle('liste')} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 rounded-lg text-[10px]">
+                <button type="button" onClick={() => setVueActuelle('liste')} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-2.5 py-1 rounded text-[10px]">
                   Annuler
                 </button>
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow">
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-3.5 py-1 rounded text-[10px] shadow">
                   {enTrainDeSauvegarder ? 'Enregistrement...' : (participantEnEdition ? 'Mettre à jour' : 'Enregistrer')}
                 </button>
               </div>
