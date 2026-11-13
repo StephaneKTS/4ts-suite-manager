@@ -78,10 +78,12 @@ export default function EspaceClientBoutique() {
       try {
         const [resEnt, resArt] = await Promise.all([
           supabase.from('entreprises').select('*').eq('id_entreprise', entrepriseId).maybeSingle(),
+          // Filtrage strict Supabase : Entreprise, QR code activé, et restriction exclusive au module boutique
           supabase.from('articles_stock')
             .select('*')
             .eq('id_entreprise', entrepriseId)
             .eq('Disponible_Menu_QR', true)
+            .eq('module', 'BOUTIQUE')
         ]);
 
         if (resEnt.data) {
@@ -98,7 +100,19 @@ export default function EspaceClientBoutique() {
           });
         }
 
-        setArticles(Array.isArray(resArt.data) ? resArt.data : []);
+        // Double sécurité côté client : Exclusion explicite de tout article lié à la livraison si la base renvoie des données mixtes
+        const articlesBruts = Array.isArray(resArt.data) ? resArt.data : [];
+        const articlesBoutiqueSecurises = articlesBruts.filter(art => {
+          const designation = (art.Designation || art.designation || '').toUpperCase();
+          const moduleArt = (art.module || '').toUpperCase();
+          
+          if (moduleArt && moduleArt !== 'BOUTIQUE') return false;
+          if (designation.includes('LIVRAISON') || designation.includes('FRAIS DE LIVRAISON')) return false;
+          
+          return true;
+        });
+
+        setArticles(articlesBoutiqueSecurises);
 
         supabase.from('mouvements_stock').select('*').eq('id_entreprise', entrepriseId)
           .then(({ data }) => setMouvements(data || []));
