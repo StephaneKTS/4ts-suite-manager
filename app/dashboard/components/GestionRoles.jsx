@@ -19,15 +19,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const [roleNomConnecte, setRoleNomConnecte] = useState('');
   
-  // Droits globaux de l'utilisateur connecté sur le module des rôles
-  const [permissionsUser, setPermissionsUser] = useState({
-    lecture: true,
-    creation: true,
-    modification: true,
-    suppression: true,
-  });
-
-  const modulesApp = [
+  const modulesBoutique = [
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
     { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
@@ -47,6 +39,25 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
   ];
 
+  const modulesTontine = [
+    { id: 'tontine_participants', nom: '👥 Participants & Membres' },
+    { id: 'tontine_cycles', nom: '🔄 Cycles & Sessions' },
+    { id: 'tontine_cotisations', nom: '💰 Suivi des Cotisations' },
+    { id: 'tontine_attributions', nom: '🏆 Attributions & Cagnottes' }
+  ];
+
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const estTontine = moduleActuel === 'TONTINE';
+  const modulesApp = estTontine ? modulesTontine : modulesBoutique;
+  const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
+
   const initialiserPermissionsDefaut = () => {
     const perms = {};
     modulesApp.forEach((m) => {
@@ -61,18 +72,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     permissions: initialiserPermissionsDefaut(),
   });
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-  const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
-
   const chargerRolesEtPermissions = async () => {
-    // 1. Chargement instantané depuis le cache local (Zéro attente)
     const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
     if (rolesLocaux && rolesLocaux.length > 0) {
       setRoles(rolesLocaux);
@@ -89,7 +89,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         setRoleNomConnecte(nomRoleUser);
       }
 
-      // 2. Chargement Supabase filtré strictement par entreprise et module
       const { data, error } = await supabase
         .from('roles')
         .select('*')
@@ -100,7 +99,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       if (error) throw error;
       let listRoles = data || [];
 
-      // 3. Vérification et auto-création du rôle système ADMINISTRATEUR s'il est absent
+      // 1. Vérification et auto-création du rôle système ADMINISTRATEUR
       const adminExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR');
 
       if (!adminExiste) {
@@ -123,55 +122,39 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      // 4. Vérification et auto-création du rôle système LIVREUR s'il est absent
-      const livreurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'LIVREUR');
-
-      if (!livreurExiste) {
-        const payloadLivreur = {
-          id_entreprise: entrepriseId,
-          module: moduleActuel,
-          nom_role: 'LIVREUR',
-          description: 'Rôle système figé pour les livreurs et chauffeurs.',
-          permissions: initialiserPermissionsDefaut()
-        };
-
-        const { data: newLivreur, error: errLivreur } = await supabase
-          .from('roles')
-          .insert([payloadLivreur])
-          .select()
-          .single();
-
-        if (!errLivreur && newLivreur) {
-          listRoles = [newLivreur, ...listRoles];
+      // 2. Rôles LIVREUR et SUPERVISEUR (Uniquement hors Tontine)
+      if (!estTontine) {
+        const livreurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'LIVREUR');
+        if (!livreurExiste) {
+          const payloadLivreur = {
+            id_entreprise: entrepriseId,
+            module: moduleActuel,
+            nom_role: 'LIVREUR',
+            description: 'Rôle système figé pour les livreurs et chauffeurs.',
+            permissions: initialiserPermissionsDefaut()
+          };
+          const { data: newLivreur, error: errLivreur } = await supabase.from('roles').insert([payloadLivreur]).select().single();
+          if (!errLivreur && newLivreur) listRoles = [newLivreur, ...listRoles];
         }
-      }
 
-      // 5. Vérification et auto-création du rôle système SUPERVISEUR s'il est absent
-      const superviseurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'SUPERVISEUR');
-
-      if (!superviseurExiste) {
-        const payloadSuperviseur = {
-          id_entreprise: entrepriseId,
-          module: moduleActuel,
-          nom_role: 'SUPERVISEUR',
-          description: 'Rôle système figé pour la supervision et le contrôle.',
-          permissions: initialiserPermissionsDefaut()
-        };
-
-        const { data: newSuperviseur, error: errSuperviseur } = await supabase
-          .from('roles')
-          .insert([payloadSuperviseur])
-          .select()
-          .single();
-
-        if (!errSuperviseur && newSuperviseur) {
-          listRoles = [newSuperviseur, ...listRoles];
+        const superviseurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'SUPERVISEUR');
+        if (!superviseurExiste) {
+          const payloadSuperviseur = {
+            id_entreprise: entrepriseId,
+            module: moduleActuel,
+            nom_role: 'SUPERVISEUR',
+            description: 'Rôle système figé pour la supervision et le contrôle.',
+            permissions: initialiserPermissionsDefaut()
+          };
+          const { data: newSuperviseur, error: errSuperviseur } = await supabase.from('roles').insert([payloadSuperviseur]).select().single();
+          if (!errSuperviseur && newSuperviseur) listRoles = [newSuperviseur, ...listRoles];
         }
+      } else {
+        // Filtrer pour s'assurer qu'aucun ancien livreur/superviseur ne s'affiche en Tontine
+        listRoles = listRoles.filter(r => !['LIVREUR', 'SUPERVISEUR'].includes((r.nom_role || '').trim().toUpperCase()));
       }
 
       setRoles(listRoles);
-
-      // Mise à jour du cache local propre
       localSync.sauvegarderDonneesLocales(cleCacheRoles, listRoles);
     } catch (err) {
       console.error('Erreur chargement rôles :', err.message);
@@ -233,10 +216,11 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         permissions: nouveauRole.permissions,
       };
 
+      const rolesSystemeInterditsModification = estTontine ? ['ADMINISTRATEUR'] : ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'];
+
       if (roleEnEdition) {
         const nomRoleAncien = (roleEnEdition.nom_role || '').trim().toUpperCase();
-        // Empêcher la modification de nom des rôles systèmes ADMINISTRATEUR, LIVREUR ou SUPERVISEUR par sécurité
-        if (['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes(nomRoleAncien) && nomSaisi !== nomRoleAncien) {
+        if (rolesSystemeInterditsModification.includes(nomRoleAncien) && nomSaisi !== nomRoleAncien) {
           alert(`❌ Impossible de renommer le rôle système ${nomRoleAncien}.`);
           setEnTrainDeSauvegarder(false);
           return;
@@ -304,9 +288,9 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     if (enTrainDeSauvegarder || !roleEnEdition) return;
 
     const nomRoleCible = (roleEnEdition.nom_role || '').trim().toUpperCase();
+    const rolesSystemeInterditsSuppression = estTontine ? ['ADMINISTRATEUR'] : ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'];
 
-    // Protection des rôles systèmes ADMINISTRATEUR, LIVREUR et SUPERVISEUR contre la suppression
-    if (['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes(nomRoleCible)) {
+    if (rolesSystemeInterditsSuppression.includes(nomRoleCible)) {
       alert(`❌ SUPPRESSION INTERDITE : Le rôle système ${nomRoleCible} ne peut pas être supprimé.`);
       return;
     }
@@ -388,6 +372,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const rolesAffiches = rolesFiltres.slice(0, limiteRoles);
 
+  const rolesSystemeInterditsModification = estTontine ? ['ADMINISTRATEUR'] : ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'];
+
   return (
     <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden">
       
@@ -458,10 +444,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               <input
                 type="text"
                 required
-                disabled={enTrainDeSauvegarder || (roleEnEdition && ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes((roleEnEdition.nom_role || '').trim().toUpperCase()))}
+                disabled={enTrainDeSauvegarder || (roleEnEdition && rolesSystemeInterditsModification.includes((roleEnEdition.nom_role || '').trim().toUpperCase()))}
                 value={nouveauRole.nom_role}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
-                placeholder="EX: MANAGER..."
+                placeholder="EX: PRESIDENT..."
                 className="w-full border border-slate-300 rounded p-1.5 font-extrabold uppercase text-xs shadow-xs bg-white text-slate-900 disabled:bg-slate-100"
               />
             </div>
@@ -479,7 +465,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="space-y-2 pt-2 border-t border-slate-200">
-            <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Matrice des Droits par Module :</h5>
+            <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Matrice des Droits par Module ({moduleActuel}) :</h5>
             <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs max-h-56">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black sticky top-0">
@@ -517,7 +503,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="pt-2 border-t border-slate-200 flex justify-between items-center gap-2">
-            {roleEnEdition && !['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'].includes((roleEnEdition.nom_role || '').trim().toUpperCase()) ? (
+            {roleEnEdition && !rolesSystemeInterditsModification.includes((roleEnEdition.nom_role || '').trim().toUpperCase()) ? (
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
@@ -584,8 +570,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                     {rolesAffiches.map((r) => {
                       const nomRoleUpper = (r.nom_role || '').trim().toUpperCase();
                       const estAdmin = nomRoleUpper === 'ADMINISTRATEUR';
-                      const estLivreur = nomRoleUpper === 'LIVREUR';
-                      const estSuperviseur = nomRoleUpper === 'SUPERVISEUR';
                       const nbModulesActifs = estAdmin ? modulesApp.length : Object.values(r.permissions || {}).filter(p => p.lecture).length;
                       return (
                         <tr
@@ -595,8 +579,8 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                           title="Cliquer pour modifier"
                         >
                           <td className="p-2.5 font-extrabold uppercase text-slate-900 w-1/3 truncate">
-                            <span className={`${estAdmin ? 'bg-indigo-100 text-indigo-900 border-indigo-200' : estLivreur ? 'bg-orange-100 text-orange-900 border-orange-200' : estSuperviseur ? 'bg-amber-100 text-amber-900 border-amber-200' : 'bg-slate-100 text-slate-900 border-slate-200'} border px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full`}>
-                              {estAdmin ? '👑' : estLivreur ? '🚚' : estSuperviseur ? '👁️' : '🛡️'} {r.nom_role}
+                            <span className={`${estAdmin ? 'bg-indigo-100 text-indigo-900 border-indigo-200' : 'bg-slate-100 text-slate-900 border-slate-200'} border px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full`}>
+                              {estAdmin ? '👑' : '🛡️'} {r.nom_role}
                             </span>
                           </td>
                           <td className="p-2.5 text-slate-600 font-medium w-1/2 truncate max-w-[150px] sm:max-w-xs">

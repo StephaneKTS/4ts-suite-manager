@@ -31,7 +31,7 @@ import GestionTaxesRistournes from './components/GestionTaxesRistournes';
 import MenuExplorer from './components/MenuExplorer'; 
 import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; 
 
-// ➕ Importation des 4 composants du module Tontine
+// ➕ Importation des composants du module Tontine
 import GestionTontineParticipants from './components/GestionTontineParticipants';
 import GestionTontineCycles from './components/GestionTontineCycles';
 import GestionTontineCotisations from './components/GestionTontineCotisations';
@@ -455,12 +455,12 @@ function DashboardContent() {
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && estModeTontine ? (
-          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE */
+          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Avec la tuile Rôles ajoutée) */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE TONTINE
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 w-full">
               <div 
                 onClick={() => setModuleActif('tontine_participants')} 
                 className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group border-2 border-orange-500/50`}
@@ -491,6 +491,14 @@ function DashboardContent() {
               >
                 <span className="text-3xl group-hover:scale-110 transition">🏆</span>
                 <span className="font-bold text-xs leading-tight">Attributions & Cagnottes</span>
+              </div>
+
+              <div 
+                onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} 
+                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
+              >
+                <span className="text-3xl group-hover:scale-110 transition">🛡️</span>
+                <span className="font-bold text-xs leading-tight">Gestion des Rôles</span>
               </div>
             </div>
           </div>
