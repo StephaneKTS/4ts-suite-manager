@@ -9,7 +9,7 @@ const TARIFS_MODULES = {
   Boutique: { installation: 25000, mensuelPerUser: 5000, disponible: true },
   Livraison: { installation: 25000, mensuelPerUser: 5000, disponible: true },
   Logistique: { installation: 20000, mensuelPerUser: 4000, disponible: false },
-  Tontine: { installation: 25000, mensuelPerUser: 2500, disponible: false },
+  Tontine: { installation: 25000, mensuelPerUser: 2500, disponible: true }, // ✅ Activé ici
 };
 
 export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
@@ -428,7 +428,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
             </div>
           </div>
 
-          {/* MENU DES BOUTONS D'ACTION (Couleur unique: Remplissage rouge, écriture blanche) */}
+          {/* MENU DES BOUTONS D'ACTION */}
           {estAdminEntreprise ? (
             <div className="grid grid-cols-4 gap-1">
               <button
@@ -501,7 +501,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 Présentez cet écran directement à votre client. Il lui suffit de le scanner avec son téléphone pour accéder instantanément à votre menu.
               </p>
 
-              {/* Conteneur du QR code en grand affichage */}
               <div className="bg-white p-4 rounded-2xl inline-block shadow-md border-2 border-slate-200 mx-auto">
                 <img 
                   src={imageUrlQrCode} 
@@ -543,29 +542,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                   <span>🖨️</span> Imprimer
                 </button>
               </div>
-            </div>
-          )}
-
-          {estAdminEntreprise && modeAction === 'module_indisponible' && (
-            <div className={`${innerCardBg} border-2 border-amber-500/80 p-4 rounded-xl space-y-3 shadow-2xl animate-fadeIn text-center transition-colors`}>
-              <div className="w-10 h-10 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-lg font-bold">
-                ⏳
-              </div>
-              <div className="space-y-1">
-                <h4 className="font-black text-amber-400 uppercase text-xs tracking-wide">
-                  Module [{moduleSelectionneInfo}] en cours de développement
-                </h4>
-                <p className={`text-[10px] leading-relaxed px-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                  Notre équipe technique prépare une version ultra-performante du module <strong className={headerTitleText}>{moduleSelectionneInfo}</strong>.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModeAction('switcher_module')}
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 rounded-lg text-[10px] uppercase shadow transition"
-              >
-                Retourner aux modules disponibles 👍
-              </button>
             </div>
           )}
 
@@ -651,127 +627,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                   }
                 })}
               </div>
-            </div>
-          )}
-
-          {estAdminEntreprise && modeAction === 'reabonnement' && (
-            <div className={`${innerCardBg} border-2 border-cyan-500/60 p-3 rounded-xl space-y-3 shadow-inner animate-fadeIn transition-colors`}>
-              <h4 className="font-black text-cyan-400 uppercase text-[10px]">
-                🔄 Réabonnement & Extension — Module : <span className="text-orange-400">{moduleActuel}</span>
-              </h4>
-
-              <div className={`grid grid-cols-2 gap-2 p-2.5 rounded-xl border text-center transition-colors ${isDarkMode ? 'bg-[#1b263b] border-blue-900/50' : 'bg-white border-slate-200'}`}>
-                <div>
-                  <span className={`block text-[8px] uppercase font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Utilisateurs Actuels</span>
-                  <span className="text-xs font-black text-orange-400">{entreprise.limite_utilisateurs || 1} User(s)</span>
-                </div>
-                <div>
-                  <span className={`block text-[8px] uppercase font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Durée Restante</span>
-                  <span className="text-xs font-black text-emerald-400">{entreprise.duree_abonnement_mois || 1} Mois</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className={`block text-[8.5px] mb-1 uppercase font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Users Supplémentaires (+)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={nombreUtilisateursChoisi}
-                    onChange={(e) => setNombreUtilisateursChoisi(Math.max(1, parseInt(e.target.value) || 1))}
-                    className={`w-full border rounded-lg p-1.5 text-xs font-bold text-center ${inputBg}`}
-                  />
-                </div>
-                <div>
-                  <label className={`block text-[8.5px] mb-1 uppercase font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Durée à ajouter (Mois)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={nombreMoisChoisi}
-                    onChange={(e) => setNombreMoisChoisi(Math.max(1, parseInt(e.target.value) || 1))}
-                    className={`w-full border rounded-lg p-1.5 text-xs font-bold text-center ${inputBg}`}
-                  />
-                </div>
-              </div>
-
-              <div className={`border border-orange-500/40 p-2.5 rounded-xl space-y-1 text-[10px] ${isDarkMode ? 'bg-[#1b263b]' : 'bg-white'}`}>
-                <div className="flex justify-between font-black text-xs text-orange-400">
-                  <span>MONTANT TOTAL À PAYER :</span>
-                  <span>{detailsCalculReabonnement.montantNet.toLocaleString()} XAF</span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                disabled={!modificationReabonnementEffectuee}
-                onClick={souscrireSurMesure}
-                className={`w-full font-black py-2.5 rounded-lg text-[10px] uppercase shadow-md transition ${
-                  modificationReabonnementEffectuee 
-                    ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer' 
-                    : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-60'
-                }`}
-              >
-                {modificationReabonnementEffectuee ? 'Valider le réabonnement 🚀' : 'Modifiez les valeurs pour valider 🔒'}
-              </button>
-            </div>
-          )}
-
-          {estAdminEntreprise && modeAction === 'nouveau_module' && (
-            <div className={`${innerCardBg} border-2 border-emerald-500/60 p-3 rounded-xl space-y-2.5 shadow-inner animate-fadeIn transition-colors`}>
-              <h4 className="font-black text-emerald-400 uppercase text-[10px]">
-                ➕ Souscrire à un nouveau module :
-              </h4>
-              <div className="grid grid-cols-2 gap-2">
-                {LISTE_MODULES_PRINCIPAUX.map((mod) => {
-                  const estDejaSouscrit = espacesSouscrits.includes(mod);
-                  const modCapitalized = mod.charAt(0) + mod.slice(1).toLowerCase();
-                  const estDispo = TARIFS_MODULES[modCapitalized]?.disponible ?? true;
-
-                  return (
-                    <label
-                      key={mod}
-                      onClick={(e) => {
-                        if (!estDispo) {
-                          e.preventDefault();
-                          gererClicModule(mod);
-                        }
-                      }}
-                      className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition ${
-                        estDejaSouscrit 
-                          ? 'bg-slate-900 text-slate-500 border-slate-800 opacity-60' 
-                          : !estDispo
-                            ? 'bg-amber-950/20 text-amber-300 border-amber-500/40'
-                            : nouveauxModulesChoisis[mod] 
-                              ? 'bg-orange-600 text-white border-orange-500 font-bold' 
-                              : isDarkMode ? 'bg-[#1b263b] text-slate-300 border-blue-900' : 'bg-white text-slate-700 border-slate-300'
-                      }`}
-                    >
-                      <span className="text-[10px]">
-                        {mod} {estDejaSouscrit && '(Actif)'} {!estDispo && '⏳ (Bientôt)'}
-                      </span>
-                      <input
-                        type="checkbox"
-                        disabled={estDejaSouscrit}
-                        checked={estDejaSouscrit ? true : nouveauxModulesChoisis[mod]}
-                        onChange={(e) => {
-                          if (estDispo) {
-                            setNouveauxModulesChoisis({ ...nouveauxModulesChoisis, [mod]: e.target.checked });
-                          }
-                        }}
-                        className="accent-orange-500 w-3.5 h-3.5"
-                      />
-                    </label>
-                  );
-                })}
-              </div>
-              <button
-                type="button"
-                disabled={activationEnCours}
-                onClick={validerActivationNouveauxModules}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2 rounded-lg text-[10px] uppercase shadow-md transition"
-              >
-                {activationEnCours ? 'Souscription...' : 'Activer les nouveaux modules 🚀'}
-              </button>
             </div>
           )}
 
