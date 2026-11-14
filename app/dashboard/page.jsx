@@ -260,29 +260,9 @@ function DashboardContent() {
                         onClick={() => {
                           window.location.href = `/dashboard?entreprise=${ent.id_entreprise}`;
                         }}
-                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] transition shadow"
+                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] transition shadow cursor-pointer"
                       >
                         Accéder →
-                      </button>
-
-                      <button
-                        onClick={async () => {
-                          if (confirm(`Voulez-vous vraiment supprimer l'entreprise "${ent.nom_entreprise}" (${ent.id_entreprise}) et toutes ses données ?`)) {
-                            try {
-                              await supabase.from('utilisateurs').delete().eq('id_entreprise', ent.id_entreprise);
-                              const { error } = await supabase.from('entreprises').delete().eq('id_entreprise', ent.id_entreprise);
-                              
-                              if (error) throw error;
-                              alert("Entreprise supprimée avec succès.");
-                              chargerToutesLesEntreprises();
-                            } catch (err) {
-                              alert("Erreur lors de la suppression : " + err.message);
-                            }
-                          }
-                        }}
-                        className={`${isDarkMode ? 'bg-rose-600/20 text-rose-300 border-rose-800 hover:bg-rose-600 hover:text-white' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-600 hover:text-white'} font-bold px-2 py-1 rounded-lg text-[10px] transition`}
-                      >
-                        🗑️
                       </button>
                     </div>
                   </div>
@@ -370,7 +350,7 @@ function DashboardContent() {
           <button
             onClick={basculerTheme}
             title={isDarkMode ? "Passer en mode Jour" : "Passer en mode Nuit"}
-            className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition flex items-center gap-1 border shadow-2xs ${
+            className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition flex items-center gap-1 border shadow-2xs cursor-pointer ${
               isDarkMode 
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30' 
                 : 'bg-slate-800 text-cyan-200 border-slate-700 hover:bg-slate-700'
@@ -390,7 +370,7 @@ function DashboardContent() {
                   setOngletNavigation('accueil');
                 }
               }}
-              className={`${isDarkMode ? 'bg-sky-900/65 text-cyan-200 border-cyan-500/40 hover:bg-sky-800' : 'bg-slate-200 text-slate-800 border-slate-300 hover:bg-slate-300'} font-bold px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] transition border shadow-2xs flex items-center gap-1`}
+              className={`${isDarkMode ? 'bg-sky-900/65 text-cyan-200 border-cyan-500/40 hover:bg-sky-800' : 'bg-slate-200 text-slate-800 border-slate-300 hover:bg-slate-300'} font-bold px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] transition border shadow-2xs flex items-center gap-1 cursor-pointer`}
             >
               {['journal', 'grand_livre', 'controle', 'plan_comptable', 'caisses'].includes(moduleActif) ? '← Comptabilité' : '← Accueil'}
             </button>
@@ -444,7 +424,7 @@ function DashboardContent() {
                 </div>
                 <button
                   onClick={() => setModuleActif(moduleActif === 'super_admin_panel' ? null : 'super_admin_panel')}
-                  className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[11px] transition shadow-md border border-amber-400/50 flex items-center gap-1.5 shrink-0"
+                  className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[11px] transition shadow-md border border-amber-400/50 flex items-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   <span>🛡️</span> {moduleActif === 'super_admin_panel' ? 'Fermer le Panneau' : 'Ouvrir Super-Admin'}
                 </button>
@@ -458,67 +438,129 @@ function DashboardContent() {
           <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
             {rendreModuleActif()}
           </div>
-        ) : !moduleActif && estModeTontine ? (
-          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Toutes les tuiles avec le même style de bordure uniforme cardClass) */
+        ) : !moduleActif && moduleCourant === 'TONTINE' ? (
+          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE TONTINE
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 w-full">
-              <div 
-                onClick={() => setModuleActif('tontine_participants')} 
-                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
-              >
+              <div onClick={() => setModuleActif('tontine_participants')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">👥</span>
                 <span className="font-bold text-xs leading-tight">Gestion des Participants</span>
               </div>
-
-              <div 
-                onClick={() => setModuleActif('tontine_cycles')} 
-                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
-              >
+              <div onClick={() => setModuleActif('tontine_cycles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🔄</span>
                 <span className="font-bold text-xs leading-tight">Cycles & Sessions</span>
               </div>
-
-              <div 
-                onClick={() => setModuleActif('tontine_cotisations')} 
-                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
-              >
+              <div onClick={() => setModuleActif('tontine_cotisations')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">💰</span>
                 <span className="font-bold text-xs leading-tight">Suivi des Cotisations</span>
               </div>
-
-              <div 
-                onClick={() => setModuleActif('tontine_attributions')} 
-                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
-              >
+              <div onClick={() => setModuleActif('tontine_attributions')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🏆</span>
                 <span className="font-bold text-xs leading-tight">Attributions & Cagnottes</span>
               </div>
-
-              <div 
-                onClick={() => setModuleActif('tontine_elections')} 
-                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
-              >
+              <div onClick={() => setModuleActif('tontine_elections')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🏛️</span>
                 <span className="font-bold text-xs leading-tight">Élections du Bureau</span>
               </div>
-
-              <div 
-                onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} 
-                className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}
-              >
+              <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🛡️</span>
                 <span className="font-bold text-xs leading-tight">Gestion des Rôles</span>
               </div>
             </div>
           </div>
-        ) : !moduleActif && !estModeLivraison ? (
-          /* ACCUEIL BOUTIQUE */
+        ) : !moduleActif && moduleCourant === 'LIVRAISON' ? (
+          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE LIVRAISON */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
-              ACCUEIL
+              ACCUEIL - MODULE LIVRAISON
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
+              {verifierPermission('commandes_livraison') && (
+                <div onClick={() => tenterAccesModule('commandes_livraison', 'Commandes & Livraisons')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Commandes & Livraisons</span>
+                </div>
+              )}
+              {verifierPermission('articles_stock') && (
+                <div onClick={() => tenterAccesModule('articles', 'Stock Articles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Stock Articles</span>
+                </div>
+              )}
+              {verifierPermission('grille_tarifaire') && (
+                <div onClick={() => tenterAccesModule('grille_tarifaire', 'Grille Tarifaire')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Grille Tarifaire</span>
+                </div>
+              )}
+              {verifierPermission('emplacements_stock') && (
+                <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Livreurs')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">📍</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Emplacements Livreurs</span>
+                </div>
+              )}
+              {verifierPermission('depots_stock') && (
+                <div onClick={() => tenterAccesModule('depots', 'Dépôts de stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🏢</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
+                </div>
+              )}
+              {verifierPermission('familles_articles') && (
+                <div onClick={() => tenterAccesModule('familles', "Familles d'Articles")} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
+                </div>
+              )}
+              {verifierPermission('challenges_commerciaux') && (
+                <div onClick={() => tenterAccesModule('challenges_commerciaux', 'Challenges Commerciaux')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🏆</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Challenges Commerciaux</span>
+                </div>
+              )}
+              {verifierPermission('mouvements_stock') && (
+                <div onClick={() => tenterAccesModule('mouvements', 'Mouvement Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
+                </div>
+              )}
+              {verifierPermission('approvisionnements') && (
+                <div onClick={() => tenterAccesModule('approvisionnements', 'Achats & Approvisionnement')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
+                </div>
+              )}
+              {verifierPermission('roles_utilisateurs') && (
+                <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion des Rôles</span>
+                </div>
+              )}
+              {verifierPermission('fournisseurs') && (
+                <div onClick={() => tenterAccesModule('fournisseurs', 'Gestion Partenaire')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🤝</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion Partenaire</span>
+                </div>
+              )}
+              {verifierPermission('roles_utilisateurs') && (
+                <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
+                </div>
+              )}
+              <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
+              </div>
+            </div>
+          </div>
+        ) : !moduleActif ? (
+          /* 📌 ACCUEIL MODULE BOUTIQUE (Par défaut) */
+          <div className="space-y-2.5 w-full">
+            <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
+              ACCUEIL - BOUTIQUE
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
               
@@ -612,90 +654,6 @@ function DashboardContent() {
               </div>
             </div>
           </div>
-        ) : !moduleActif && estModeLivraison ? (
-          <div className="space-y-2.5 w-full">
-            <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
-              ACCUEIL
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
-              {verifierPermission('commandes_livraison') && (
-                <div onClick={() => tenterAccesModule('commandes_livraison', 'Commandes & Livraisons')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Commandes & Livraisons</span>
-                </div>
-              )}
-              {verifierPermission('articles_stock') && (
-                <div onClick={() => tenterAccesModule('articles', 'Stock Articles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Stock Articles</span>
-                </div>
-              )}
-              {verifierPermission('grille_tarifaire') && (
-                <div onClick={() => tenterAccesModule('grille_tarifaire', 'Grille Tarifaire')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Grille Tarifaire</span>
-                </div>
-              )}
-              {verifierPermission('emplacements_stock') && (
-                <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Livreurs')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📍</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Emplacements Livreurs</span>
-                </div>
-              )}
-              {verifierPermission('depots_stock') && (
-                <div onClick={() => tenterAccesModule('depots', 'Dépôts de stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🏢</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
-                </div>
-              )}
-              {verifierPermission('familles_articles') && (
-                <div onClick={() => tenterAccesModule('familles', "Familles d'Articles")} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
-                </div>
-              )}
-              {verifierPermission('challenges_commerciaux') && (
-                <div onClick={() => tenterAccesModule('challenges_commerciaux', 'Challenges Commerciaux')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🏆</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Challenges Commerciaux</span>
-                </div>
-              )}
-              {verifierPermission('mouvements_stock') && (
-                <div onClick={() => tenterAccesModule('mouvements', 'Mouvement Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
-                </div>
-              )}
-              {verifierPermission('approvisionnements') && (
-                <div onClick={() => tenterAccesModule('approvisionnements', 'Achats & Approvisionnement')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
-                </div>
-              )}
-              {verifierPermission('roles_utilisateurs') && (
-                <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion des Rôles</span>
-                </div>
-              )}
-              {verifierPermission('fournisseurs') && (
-                <div onClick={() => tenterAccesModule('fournisseurs', 'Gestion Partenaire')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🤝</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion Partenaire</span>
-                </div>
-              )}
-              {verifierPermission('roles_utilisateurs') && (
-                <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
-                </div>
-              )}
-              <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
-                <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
-              </div>
-            </div>
-          </div>
         ) : (
           <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
             {rendreModuleActif()}
@@ -707,7 +665,7 @@ function DashboardContent() {
       <div className={`bottom-0 left-0 right-0 z-30 ${bgHeaderNav} border-t py-2.5 px-6 flex justify-around items-center shadow-2xl shrink-0 w-full`}>
         <button
           onClick={() => { setOngletNavigation('accueil'); setModuleActif(null); }}
-          className={`flex flex-col items-center space-y-0.5 transition ${
+          className={`flex flex-col items-center space-y-0.5 transition cursor-pointer ${
             ongletNavigation === 'accueil' && !moduleActif 
               ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
               : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
@@ -719,7 +677,7 @@ function DashboardContent() {
 
         <button
           onClick={() => { setOngletNavigation('rapports'); setModuleActif(null); }}
-          className={`flex flex-col items-center space-y-0.5 transition ${
+          className={`flex flex-col items-center space-y-0.5 transition cursor-pointer ${
             ongletNavigation === 'rapports' && !moduleActif 
               ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
               : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
@@ -731,7 +689,7 @@ function DashboardContent() {
 
         <button
           onClick={() => { setOngletNavigation('explorer'); setModuleActif(null); }}
-          className={`flex flex-col items-center space-y-0.5 transition ${
+          className={`flex flex-col items-center space-y-0.5 transition cursor-pointer ${
             ongletNavigation === 'explorer' && !moduleActif 
               ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
               : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
@@ -743,7 +701,7 @@ function DashboardContent() {
 
         <button
           onClick={() => { setOngletNavigation('profil'); setModuleActif(null); }}
-          className={`flex flex-col items-center space-y-0.5 transition ${
+          className={`flex flex-col items-center space-y-0.5 transition cursor-pointer ${
             ongletNavigation === 'profil' && !moduleActif 
               ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
               : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')

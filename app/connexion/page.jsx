@@ -20,7 +20,8 @@ export default function ConnexionEntreprise() {
       'emailConnecte',
       'entrepriseId',
       'utilisateur_connecte',
-      'permissions_utilisateur'
+      'permissions_utilisateur',
+      'moduleActif'
     ];
     clesASupprimer.forEach(cle => localStorage.removeItem(cle));
 
@@ -31,7 +32,6 @@ export default function ConnexionEntreprise() {
         }
       });
 
-      // Lecture des boutiques récentes (clé mise à jour sans terme restrictif)
       const stockFavoris = localStorage.getItem('4ts_boutiques_recentes') || localStorage.getItem('4ts_restaurants_recents');
       if (stockFavoris) {
         const parsed = JSON.parse(stockFavoris);
@@ -67,8 +67,10 @@ export default function ConnexionEntreprise() {
       let entrepriseIdCible = null;
       let nomUtilisateurConnecte = '';
       let matrixPermissions = { _aucun_acces: true };
+      let moduleActifEntreprise = 'TOUT';
       let authenticated = false;
 
+      // 1. Vérification dans la table des utilisateurs personnels
       const { data: userList, error: errUser } = await supabase
         .from('utilisateurs')
         .select('*');
@@ -125,6 +127,7 @@ export default function ConnexionEntreprise() {
         }
       }
 
+      // 2. Vérification dans la table des entreprises (Admin Entreprise)
       if (!authenticated) {
         const { data: entList, error: errEnt } = await supabase
           .from('entreprises')
@@ -155,7 +158,21 @@ export default function ConnexionEntreprise() {
 
             entrepriseIdCible = entrepriseTrouvee.id_entreprise;
             nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-            matrixPermissions = { _plein_acces: true };
+            
+            // 🌟 RÉCUPÉRATION DU MODULE ACTIF DE LA BASE DE DONNÉES
+            moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'TOUT').trim().toUpperCase();
+
+            // Restriction des permissions selon le module souscrit en base
+            if (moduleActifEntreprise.includes('BOUTIQUE')) {
+              matrixPermissions = { boutique: true, stock: true, ventes: true, _plein_acces: false };
+            } else if (moduleActifEntreprise.includes('TONTINE')) {
+              matrixPermissions = { tontine: true, _plein_acces: false };
+            } else if (moduleActifEntreprise.includes('LIVRAISON')) {
+              matrixPermissions = { livraison: true, _plein_acces: false };
+            } else {
+              matrixPermissions = { _plein_acces: true };
+            }
+
             authenticated = true;
           }
         }
@@ -165,10 +182,12 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant ou mot de passe incorrect. Accès non autorisé.");
       }
 
+      // Enregistrement de la session et du module actif restreint
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
       localStorage.setItem('permissions_utilisateur', JSON.stringify(matrixPermissions));
+      localStorage.setItem('moduleActif', moduleActifEntreprise);
 
       router.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
 

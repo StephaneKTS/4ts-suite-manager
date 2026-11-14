@@ -485,7 +485,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     let stockCalcule = Math.max(0, totalEntrees - totalSorties);
 
-    // Neutralisation automatique de la quantité initiale de la commande en mode édition
     if (commandeEnEdition) {
       const statutCmdActuel = (commandeEnEdition.statut || commandeEnEdition.statut_commande || '').trim().toUpperCase();
       const etaitEffectifLivre = statutCmdActuel === 'LIVRE' || statutCmdActuel === 'LIVRÉ';
@@ -504,8 +503,15 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const recupererStockReelRPC = async (articleId, livreurNomParam = '') => {
-    const empIdCible = trouverIdEmplacementLivreur(livreurNomParam || livreurAssigne);
-    const stockLocal = calculerStockStrictLivreurMagasin(articleId, depotId, empIdCible);
+    const livreurActuel = livreurNomParam || livreurAssigne;
+    const empIdCible = trouverIdEmplacementLivreur(livreurActuel);
+    const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
+    
+    const depotCibleEffectif = (!livreurActuel)
+      ? (depotId && depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || depotId))
+      : depotId;
+
+    const stockLocal = calculerStockStrictLivreurMagasin(articleId, depotCibleEffectif, empIdCible);
 
     if (typeof window !== 'undefined' && !navigator.onLine) {
       return stockLocal;
@@ -516,7 +522,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const { data, error } = await supabase.rpc('calculer_stock_reel', {
         p_article_id: parseInt(articleId),
         p_entreprise_id: currentEntId,
-        p_depot_id: depotId && depotId !== 'AUCUN_DEPOT' ? depotId : null,
+        p_depot_id: depotCibleEffectif && depotCibleEffectif !== 'AUCUN_DEPOT' ? depotCibleEffectif : null,
         p_emplacement_id: empIdCible
       });
 
@@ -707,8 +713,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       if (depotAssocie && !conserverNumero) {
         setDepotId(depotAssocie.id || depotAssocie.ID);
+      } else if (partObj.id_depot && !conserverNumero) {
+        setDepotId(partObj.id_depot);
       } else if (!conserverNumero) {
-        setDepotId(partObj.id_depot || 'AUCUN_DEPOT');
+        setDepotId('AUCUN_DEPOT');
       }
     } else {
       setPartenaireSansStockage(false);
@@ -790,9 +798,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     return designation.includes(rechercheArticleInput.toUpperCase());
   });
 
+  const partObjActive = partenaires.find(p => String(p.id) === String(idPartenaire));
+  const depotValideEffectif = (depotId && depotId !== 'AUCUN_DEPOT') || (partObjActive && partObjActive.id_depot);
+
+  // CORRECTION APPORTÉE ICI : Pour les partenaires sans stockage, on enlève l'exigence du dépôt
   const enteteValide = partenaireSansStockage 
-    ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '' && (depotId && depotId !== 'AUCUN_DEPOT'))
-    : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && (depotId && depotId !== 'AUCUN_DEPOT'));
+    ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '')
+    : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && Boolean(depotValideEffectif));
 
   const aEteModifie = (() => {
     if (!commandeEnEdition || !snapshotCommandeInitiale) return true;
@@ -1122,8 +1134,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       return;
     }
 
-    if (!partenaireSansStockage && (!depotId || depotId === 'AUCUN_DEPOT')) {
-      alert('🚫 ACTION BLOQUÉE : Veuillez sélectionner obligatoirement un dépôt d’origine.');
+    const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
+    const depotSourceEffectif = (depotId && depotId !== 'AUCUN_DEPOT') ? depotId : (partObj?.id_depot || null);
+
+    if (!partenaireSansStockage && !depotSourceEffectif) {
+      alert('🚫 ACTION BLOQUÉE : Veuillez sélectionner obligatoirement un dépôt d’origine ou associer un dépôt au partenaire.');
       setSauvegardeEnCours(false);
       return;
     }
@@ -1179,8 +1194,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       }
 
-      const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
-      const depotSourceMvt = depotId !== 'AUCUN_DEPOT' ? depotId : null;
+      const depotSourceMvt = depotSourceEffectif;
 
       let payload = {
         id_entreprise: currentEntId,
