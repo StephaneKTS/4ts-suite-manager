@@ -26,6 +26,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [depots, setDepots] = useState([]);
   const [emplacements, setEmplacements] = useState([]);
   const [utilisateurs, setUtilisateurs] = useState([]);
+  const [rolesList, setRolesList] = useState([]);
   const [grilleTarifaire, setGrilleTarifaire] = useState([]);
   const [mouvements, setMouvements] = useState([]);
   const [approvisionnements, setApprovisionnements] = useState([]);
@@ -258,7 +259,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     try {
       await chargerDroitsUtilisateur();
 
-      const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resTarif, resMouv, resAppro, resCaisses, resClotures] = await Promise.all([
+      const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resRoles, resTarif, resMouv, resAppro, resCaisses, resClotures] = await Promise.all([
         supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('commandes_livraison_lignes').select('*'),
         supabase.from('fournisseurs').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel),
@@ -266,6 +267,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         supabase.from('depots_stock').select('*').eq('id_entreprise', currentEntId),
         supabase.from('emplacements_stock').select('*').eq('id_entreprise', currentEntId),
         supabase.from('utilisateurs').select('*').eq('id_entreprise', currentEntId),
+        supabase.from('roles').select('*'),
         supabase.from('grille_tarifaire_livraison').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel),
         supabase.from('mouvements_stock').select('*').eq('id_entreprise', currentEntId),
         supabase.from('approvisionnements').select('*').eq('id_entreprise', currentEntId),
@@ -308,6 +310,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         localSync.sauvegarderDonneesLocales(`emplacements_livraison_${currentEntId}`, resEmp.data);
       }
       if (resUser.data) setUtilisateurs(resUser.data);
+      if (resRoles.data) setRolesList(resRoles.data);
       if (resTarif.data && resTarif.data.length > 0) {
         setGrilleTarifaire(resTarif.data);
         localSync.sauvegarderDonneesLocales(`grille_tarifaire_${currentEntId}`, resTarif.data);
@@ -388,8 +391,34 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const zonesFiltresFiltrees = listeZonesUniques().filter(z => z.toLowerCase().includes(rechercheFiltreZoneInput.toLowerCase()));
 
+  const estUnSuperviseur = (nomLivreur) => {
+    if (!nomLivreur) return false;
+    const nomNorm = nomLivreur.trim().toUpperCase();
+    const userObj = utilisateurs.find(u => {
+      let uNom = (u.nom_complet || u.nom_utilisateur || u.nom || u.prenom || u.name || '').trim().toUpperCase();
+      if (!uNom && u.email) uNom = u.email.split('@')[0].toUpperCase();
+      return uNom === nomNorm || uNom.includes(nomNorm) || nomNorm.includes(uNom);
+    });
+    if (!userObj) return false;
+
+    const roleObj = rolesList.find(r => String(r.id) === String(userObj.id_role));
+    if (roleObj) {
+      const nomRole = (roleObj.nom_role || roleObj.nom || roleObj.libelle || '').toUpperCase();
+      if (nomRole.includes('SUPERVISEUR') || nomRole.includes('SUPERVISOR')) {
+        return true;
+      }
+    }
+    if (userObj.role && String(userObj.role).toUpperCase().includes('SUPERVISEUR')) {
+      return true;
+    }
+    return false;
+  };
+
   const trouverIdEmplacementLivreur = (nomLivreur) => {
     if (!nomLivreur) return null;
+    if (estUnSuperviseur(nomLivreur)) {
+      return null;
+    }
     const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     const nomLivreurNorm = nomLivreur.trim().toUpperCase();
     const empObj = emplacements.find(e => {
@@ -504,12 +533,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const recupererStockReelRPC = async (articleId, livreurNomParam = '') => {
     const livreurActuel = livreurNomParam || livreurAssigne;
-    const empIdCible = trouverIdEmplacementLivreur(livreurActuel);
+    const estSuperviseurActuel = estUnSuperviseur(livreurActuel);
+    const empIdCible = estSuperviseurActuel ? null : trouverIdEmplacementLivreur(livreurActuel);
     const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
     
-    const depotCibleEffectif = (!livreurActuel)
+    const depotCibleEffectif = (estSuperviseurActuel || !livreurActuel)
       ? (depotId && depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || depotId))
-      : depotId;
+      : (depotId && depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || depotId));
 
     const stockLocal = calculerStockStrictLivreurMagasin(articleId, depotCibleEffectif, empIdCible);
 
@@ -612,7 +642,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
 
       if (!estSansStockage && etaitDejaLivre && !estLivreVerif) {
-        const empIdTrouve = trouverIdEmplacementLivreur(cmd.vendeur_livreur);
+        const estSuperviseurCmd = estUnSuperviseur(cmd.vendeur_livreur);
+        const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(cmd.vendeur_livreur);
         const depotRestitution = cmd.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || null));
 
         for (const item of lignesCmd) {
@@ -642,7 +673,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       }
 
       if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
-        const empIdTrouve = trouverIdEmplacementLivreur(cmd.vendeur_livreur);
+        const estSuperviseurCmd = estUnSuperviseur(cmd.vendeur_livreur);
+        const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(cmd.vendeur_livreur);
         const depotSourceMvt = cmd.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || (depots[0]?.id || null)));
 
         for (const item of lignesCmd) {
@@ -801,7 +833,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const partObjActive = partenaires.find(p => String(p.id) === String(idPartenaire));
   const depotValideEffectif = (depotId && depotId !== 'AUCUN_DEPOT') || (partObjActive && partObjActive.id_depot);
 
-  // CORRECTION APPORTÉE ICI : Pour les partenaires sans stockage, on enlève l'exigence du dépôt
   const enteteValide = partenaireSansStockage 
     ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '')
     : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && Boolean(depotValideEffectif));
@@ -1015,7 +1046,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const estSansStockage = !partObj || (partObj.statut_stockage || partObj.statut || '').toString().trim().toUpperCase() === 'SANS_STOCKAGE';
 
       if (!estSansStockage && etaitLivre) {
-        const empIdTrouve = trouverIdEmplacementLivreur(commandeEnEdition.vendeur_livreur);
+        const estSuperviseurCmd = estUnSuperviseur(commandeEnEdition.vendeur_livreur);
+        const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(commandeEnEdition.vendeur_livreur);
         const lignesCmd = lignesCommandesMap[commandeEnEdition.id] || [];
         
         const depotRestitution = commandeEnEdition.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || null));
@@ -1171,7 +1203,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       }
 
-      const empIdTrouve = trouverIdEmplacementLivreur(livreurAssigne);
+      const estSuperviseurCmd = estUnSuperviseur(livreurAssigne);
+      const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(livreurAssigne);
 
       const statutNormVerif = (statutCommandeSaisi || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const estLivreVerif = statutNormVerif === 'LIVRE' || statutNormVerif === 'LIVRÉ';
@@ -2591,62 +2624,64 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           </div>
 
           {!partenaireSansStockage ? (
-            <div className="grid grid-cols-2 gap-1.5">
-              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col space-y-1.5">
-                <div className="flex justify-between items-center gap-1">
-                  <span className="font-black text-slate-900 uppercase text-[9.5px] truncate">
-                    ARTICLE
-                  </span>
-                  {!documentEnLectureSeule && (
-                    <button
-                      type="button"
-                      onClick={() => setModalArticleOuverte(true)}
-                      disabled={!enteteValide}
-                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center justify-center gap-0.5 shadow-2xs transition disabled:opacity-50 truncate"
-                    >
-                      <span>🔍</span> Rechercher
-                    </button>
+            <div className="grid grid-cols-2 gap-1.5 items-stretch">
+              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col justify-between space-y-1.5 h-full">
+                <div className="space-y-1.5 flex-1 flex flex-col">
+                  <div className="flex justify-between items-center gap-1">
+                    <span className="font-black text-slate-900 uppercase text-[9.5px] truncate">
+                      ARTICLE
+                    </span>
+                    {!documentEnLectureSeule && (
+                      <button
+                        type="button"
+                        onClick={() => setModalArticleOuverte(true)}
+                        disabled={!enteteValide}
+                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center justify-center gap-0.5 shadow-2xs transition disabled:opacity-50 truncate"
+                      >
+                        <span>🔍</span> Rechercher
+                      </button>
+                    )}
+                  </div>
+
+                  {!enteteValide ? (
+                    <div className="p-1.5 text-center text-amber-700 font-bold text-[9px] bg-amber-50 rounded-lg border border-amber-200">
+                      ⚠️ Remplir l'en-tête et client 9 chiffres.
+                    </div>
+                  ) : articlesFiltres.length === 0 ? (
+                    <div className="p-1.5 text-center text-slate-500 font-bold text-[9px] bg-slate-50 rounded-lg border border-slate-200">
+                      Aucun article.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-1 overflow-y-auto max-h-[460px] min-h-[320px] pr-0.5 flex-1">
+                      {articlesFiltres.map((art) => {
+                        const idArt = art.id_article;
+
+                        return (
+                          <ArticleItemStockCard 
+                            key={`${idArt}_${livreurAssigne}_${depotId}`} 
+                            art={art} 
+                            onSelect={() => { if (!documentEnLectureSeule) ajouterArticleAuPanier(art); }} 
+                            chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
+                          />
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-
-                {!enteteValide ? (
-                  <div className="p-1.5 text-center text-amber-700 font-bold text-[9px] bg-amber-50 rounded-lg border border-amber-200">
-                    ⚠️ Remplir l'en-tête et client 9 chiffres.
-                  </div>
-                ) : articlesFiltres.length === 0 ? (
-                  <div className="p-1.5 text-center text-slate-500 font-bold text-[9px] bg-slate-50 rounded-lg border border-slate-200">
-                    Aucun article.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-1 overflow-y-auto max-h-[180px] pr-0.5">
-                    {articlesFiltres.map((art) => {
-                      const idArt = art.id_article;
-
-                      return (
-                        <ArticleItemStockCard 
-                          key={`${idArt}_${livreurAssigne}_${depotId}`} 
-                          art={art} 
-                          onSelect={() => { if (!documentEnLectureSeule) ajouterArticleAuPanier(art); }} 
-                          chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
               </div>
 
-              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col justify-between space-y-1.5">
-                <div className="space-y-1">
+              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col justify-between space-y-1.5 h-full">
+                <div className="space-y-1 flex-1 flex flex-col">
                   <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
                     <span className="font-black text-slate-900 uppercase text-[9.5px]">Panier</span>
                   </div>
 
                   {lignesSaisies.length === 0 ? (
-                    <div className="py-4 text-center text-slate-400 font-bold text-[9px] italic">
+                    <div className="py-4 text-center text-slate-400 font-bold text-[9px] italic flex-1 flex items-center justify-center">
                       Panier vide.
                     </div>
                   ) : (
-                    <div className="space-y-1 overflow-y-auto max-h-[120px] pr-0.5">
+                    <div className="space-y-1 overflow-y-auto max-h-[350px] min-h-[220px] pr-0.5 flex-1">
                       {lignesSaisies.map((l, index) => (
                         <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1 rounded-md text-[9px]">
                           <div className="flex-1 truncate pr-1">
@@ -2689,7 +2724,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   )}
                 </div>
 
-                <div className="space-y-1 pt-1 border-t border-slate-200">
+                <div className="space-y-1 pt-1 border-t border-slate-200 mt-auto">
                   <div className="w-full bg-slate-100 px-1.5 py-1 rounded-md border border-slate-200 flex flex-col items-center justify-center text-center">
                     <span className="font-black text-slate-900 text-[8px] uppercase">Net à payer</span>
                     <span className="font-black text-emerald-700 text-[9.5px] font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
