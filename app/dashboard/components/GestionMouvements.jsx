@@ -390,19 +390,24 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return '-';
   };
 
-  const obtenirTousLesFluxArticle = (articleId) => {
+  const obtenirTousLesFluxArticle = (articleId, numeroDocExclu = null) => {
     let flux = [];
-    mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
-      flux.push({ 
-        date: m.created_at || '', 
-        depot_source: m.id_depot_source, 
-        depot_destination: m.id_depot_destination, 
-        emplacement_source: m.id_emplacement_source,
-        emplacement_destination: m.id_emplacement_destination,
-        quantite: parseInt(m.quantite || 0), 
-        type: (m.type_mouvement || '').toUpperCase() 
+    mouvements
+      .filter((m) => {
+        if (numeroDocExclu && String(m.motif_remarque) === String(numeroDocExclu)) return false;
+        return String(m.id_article) === String(articleId);
+      })
+      .forEach((m) => {
+        flux.push({ 
+          date: m.created_at || '', 
+          depot_source: m.id_depot_source, 
+          depot_destination: m.id_depot_destination, 
+          emplacement_source: m.id_emplacement_source,
+          emplacement_destination: m.id_emplacement_destination,
+          quantite: parseInt(m.quantite || 0), 
+          type: (m.type_mouvement || '').toUpperCase() 
+        });
       });
-    });
 
     approvisionnements.forEach((app) => {
       let articlesAppro = [];
@@ -435,7 +440,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const calculerStockPourEmplacement = (articleId, emplacementId) => {
     let stockEmp = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId);
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, mouvementEnEditionId ? enTeteDoc.numeroDoc : null);
     
     fluxArticle.forEach((m) => {
       const qte = m.quantite;
@@ -471,7 +476,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       return parseInt(artObj?.Quantite_Stock || artObj?.quantite_stock || 0);
     }
     let stockDepot = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId);
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, mouvementEnEditionId ? enTeteDoc.numeroDoc : null);
     fluxArticle.forEach((m) => {
       const matchDepotSource = correspondAuDepot(m.depot_source, depotCibleId);
       const matchDepotDest = correspondAuDepot(m.depot_destination, depotCibleId);

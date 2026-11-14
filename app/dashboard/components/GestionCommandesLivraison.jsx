@@ -483,7 +483,24 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       });
     }
 
-    return Math.max(0, totalEntrees - totalSorties);
+    let stockCalcule = Math.max(0, totalEntrees - totalSorties);
+
+    // Neutralisation automatique de la quantité initiale de la commande en mode édition
+    if (commandeEnEdition) {
+      const statutCmdActuel = (commandeEnEdition.statut || commandeEnEdition.statut_commande || '').trim().toUpperCase();
+      const etaitEffectifLivre = statutCmdActuel === 'LIVRE' || statutCmdActuel === 'LIVRÉ';
+      
+      if (etaitEffectifLivre) {
+        const lignesOrigine = (snapshotCommandeInitiale && snapshotCommandeInitiale.lignes) ? snapshotCommandeInitiale.lignes : (lignesCommandesMap[commandeEnEdition.id] || []);
+        lignesOrigine.forEach(l => {
+          if (String(l.id_article) === String(articleId)) {
+            stockCalcule += Number(l.quantite || 0);
+          }
+        });
+      }
+    }
+
+    return stockCalcule;
   };
 
   const recupererStockReelRPC = async (articleId, livreurNomParam = '') => {
@@ -504,7 +521,20 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       });
 
       if (!error && data !== null) {
-        return parseInt(data, 10);
+        let stockRpc = parseInt(data, 10);
+        if (commandeEnEdition) {
+          const statutCmdActuel = (commandeEnEdition.statut || commandeEnEdition.statut_commande || '').trim().toUpperCase();
+          const etaitEffectifLivre = statutCmdActuel === 'LIVRE' || statutCmdActuel === 'LIVRÉ';
+          if (etaitEffectifLivre) {
+            const lignesOrigine = (snapshotCommandeInitiale && snapshotCommandeInitiale.lignes) ? snapshotCommandeInitiale.lignes : (lignesCommandesMap[commandeEnEdition.id] || []);
+            lignesOrigine.forEach(l => {
+              if (String(l.id_article) === String(articleId)) {
+                stockRpc += Number(l.quantite || 0);
+              }
+            });
+          }
+        }
+        return stockRpc;
       }
     } catch (err) {}
 
@@ -764,7 +794,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '' && (depotId && depotId !== 'AUCUN_DEPOT'))
     : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && (depotId && depotId !== 'AUCUN_DEPOT'));
 
-  // Détection si des modifications ont été apportées en mode édition
   const aEteModifie = (() => {
     if (!commandeEnEdition || !snapshotCommandeInitiale) return true;
     if (dateCommande !== snapshotCommandeInitiale.dateCommande) return true;
@@ -928,6 +957,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     setLignesSaisies(lignesInit);
+    setLignesCommandesMap(prev => ({ ...prev, [cmd.id]: lignesInit }));
 
     const numClean = cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1';
     setSnapshotCommandeInitiale({
@@ -2683,7 +2713,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     {!documentEnLectureSeule && ((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
                       <button
                         type="button"
-                        disabled={sauvegardeEnCours || (commandeEnEdition ? !aEteModifie : !enteteValide)}
+                        disabled={sauvegardeEnCours || !enteteValide || (commandeEnEdition && !aEteModifie)}
                         onClick={sauvegarderCommande}
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1 px-0.5 rounded text-[8.5px] transition text-center shadow-xs truncate"
                       >
@@ -2756,7 +2786,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 {!documentEnLectureSeule && ((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
                   <button
                     type="button"
-                    disabled={sauvegardeEnCours || (commandeEnEdition ? !aEteModifie : !enteteValide)}
+                    disabled={sauvegardeEnCours || !enteteValide || (commandeEnEdition && !aEteModifie)}
                     onClick={sauvegarderCommande}
                     className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-3 rounded-lg text-[9px] transition shadow-xs text-center truncate"
                   >

@@ -566,25 +566,25 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               {elections.map((el) => {
                 const estElectionValidee = el.statut === 'VALIDE';
                 return (
-                  <div key={el.id} className={`${cardBg} p-4 rounded-xl shadow-md border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)] space-y-3 w-full`}>
+                  <div key={el.id} className={`${cardBg} p-3.5 rounded-xl shadow-md border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)] space-y-2.5 w-full`}>
                     
                     {/* LIGNE 1 : Titre, Statut et Date sur une seule ligne */}
                     <div className="flex justify-between items-center flex-wrap gap-2">
-                      <span className={`font-black text-sm uppercase ${titleColor}`}>📌 {el.titre_election}</span>
+                      <span className={`font-black text-xs uppercase ${titleColor}`}>📌 {el.titre_election}</span>
                       <div className="flex items-center gap-2">
-                        <span className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase ${
                           estElectionValidee ? 'bg-emerald-500/20 text-emerald-300' :
                           el.statut === 'EN_COURS' ? 'bg-orange-500/20 text-orange-300' :
                           isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'
                         }`}>
                           {el.statut === 'EN_COURS' ? 'OUVERT AUX VOTES' : el.statut}
                         </span>
-                        <span className={`text-[10px] ${textMuted}`}>📅 {el.date_scrutin}</span>
+                        <span className={`text-[9px] ${textMuted}`}>📅 {el.date_scrutin}</span>
                       </div>
                     </div>
 
-                    {/* LIGNE 2 : Boutons d'action principaux (Candidature, Ouvrir l'Urne, Résultats & PV) */}
-                    <div className="flex items-center gap-2 justify-center flex-wrap pt-1 border-t border-slate-800/40">
+                    {/* LIGNE 2 : Boutons d'action principaux (Candidature, Ouvrir l'Urne, Résultats & PV) alignés et réduits */}
+                    <div className="flex items-center gap-1.5 justify-center pt-1 border-t border-slate-800/40">
                       {estAdmin && (
                         <button
                           type="button"
@@ -592,7 +592,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                             chargerDetailsElection(el);
                             setVue('gestion');
                           }}
-                          className="bg-slate-300 hover:bg-slate-400 text-slate-950 font-black px-3 py-2 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
+                          className="bg-slate-300 hover:bg-slate-400 text-slate-950 font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
                         >
                           ⚙️ Candidature
                         </button>
@@ -608,7 +608,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                             setVue('vote');
                           }
                         }}
-                        className={`font-black px-3 py-2 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer ${
+                        className={`font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer ${
                           el.statut === 'EN_COURS' ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-slate-300 hover:bg-slate-400 text-slate-950'
                         }`}
                       >
@@ -621,26 +621,26 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                           chargerDetailsElection(el);
                           setVue('resultats');
                         }}
-                        className="bg-slate-300 hover:bg-slate-400 text-slate-950 font-black px-3 py-2 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
+                        className="bg-slate-300 hover:bg-slate-400 text-slate-950 font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
                       >
                         📊 Résultats & PV
                       </button>
                     </div>
 
-                    {/* LIGNE 3 : Supprimer à l'extrême gauche, Modifier à l'extrême droite (Si admin et non validé) */}
+                    {/* LIGNE 3 : Supprimer à gauche, Modifier à droite (Si admin et non validé) - Boutons réduits */}
                     {estAdmin && !estElectionValidee && (
-                      <div className="flex justify-between items-center pt-2 border-t border-slate-800/40">
+                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-800/40">
                         <button
                           type="button"
                           onClick={() => supprimerElection(el)}
-                          className="bg-rose-600 hover:bg-rose-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
+                          className="bg-rose-600 hover:bg-rose-500 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
                         >
                           🗑️ Supprimer
                         </button>
                         <button
                           type="button"
                           onClick={() => modifierElection(el)}
-                          className="bg-amber-600 hover:bg-amber-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow-xs cursor-pointer"
+                          className="bg-amber-600 hover:bg-amber-500 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
                         >
                           ✏️ Modifier
                         </button>
