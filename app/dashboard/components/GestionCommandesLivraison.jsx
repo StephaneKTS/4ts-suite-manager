@@ -825,9 +825,18 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
   const clotureLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheClotureLivreurInput.toLowerCase()));
 
+  // CORRECTION : Filtrage des articles par recherche textuelle ET par partenaire sélectionné (idPartenaire)
   const articlesFiltres = articles.filter((a) => {
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
-    return designation.includes(rechercheArticleInput.toUpperCase());
+    const matchNom = designation.includes(rechercheArticleInput.toUpperCase());
+
+    if (!idPartenaire) return matchNom;
+
+    const artPartId = String(a.id_partenaire || a.id_fournisseur || a.partenaire_id || a.fournisseur_id || '');
+    if (artPartId) {
+      return matchNom && artPartId === String(idPartenaire);
+    }
+    return matchNom;
   });
 
   const partObjActive = partenaires.find(p => String(p.id) === String(idPartenaire));
