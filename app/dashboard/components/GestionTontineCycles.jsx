@@ -30,6 +30,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const [modalFrequenceOuverte, setModalFrequenceOuverte] = useState(false);
   const [modalStatutOuverte, setModalStatutOuverte] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+  const [enTrainDeCalculer, setEnTrainDeCalculer] = useState(false);
 
   const [nouveauCycle, setNouveauCycle] = useState({
     nom_cycle: '',
@@ -65,6 +66,40 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     chargerCycles();
   }, [entrepriseId]);
 
+  // Fonction pour calculer automatiquement le nombre de tours à partir de la table tontine_participants et de nombre_parts
+  const calculerToursAutomatique = async (idCycleCible = null) => {
+    setEnTrainDeCalculer(true);
+    try {
+      let query = supabase
+        .from('tontine_participants')
+        .select('nombre_parts, id_cycle')
+        .eq('id_entreprise', entrepriseId);
+
+      const { data: participants, error } = await query;
+
+      if (error) {
+        console.error('Erreur lecture tontine_participants :', error.message);
+        return;
+      }
+
+      if (participants && participants.length > 0) {
+        // Additionne la colonne nombre_parts de chaque participant
+        const totalParts = participants.reduce((acc, p) => {
+          const partsVal = parseInt(p.nombre_parts || 1) || 1;
+          return acc + partsVal;
+        }, 0);
+
+        if (totalParts > 0) {
+          setNouveauCycle(prev => ({ ...prev, nombre_tours: totalParts }));
+        }
+      }
+    } catch (err) {
+      console.error('Erreur calcul automatique des tours :', err.message);
+    } finally {
+      setEnTrainDeCalculer(false);
+    }
+  };
+
   const enregistrerCycle = async (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
@@ -83,7 +118,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         montant_libre: nouveauCycle.montant_libre,
         frequence: nouveauCycle.frequence,
         regle_reunion: (nouveauCycle.regle_reunion || '').trim().toUpperCase(),
-        nombre_tours: parseInt(nouveauCycle.nombre_tours) || 12,
+        nombre_tours: parseInt(nouveauCycle.nombre_tours) || 1,
         date_debut: nouveauCycle.date_debut || null,
         date_fin: nouveauCycle.date_fin || null,
         statut: nouveauCycle.statut || 'ACTIF',
@@ -143,7 +178,24 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     }
   };
 
-  const ouvrirEdition = (c) => {
+  const ouvrirCreation = async () => {
+    setCycleEnEdition(null);
+    setNouveauCycle({
+      nom_cycle: '',
+      montant_cotisation: '',
+      montant_libre: false,
+      frequence: 'MENSUEL',
+      regle_reunion: '',
+      nombre_tours: 12,
+      date_debut: new Date().toISOString().split('T')[0],
+      date_fin: '',
+      statut: 'ACTIF',
+    });
+    setModalCreationOuverte(true);
+    await calculerToursAutomatique();
+  };
+
+  const ouvrirEdition = async (c) => {
     setCycleEnEdition(c);
     setNouveauCycle({
       nom_cycle: c.nom_cycle || c.libelle || '',
@@ -157,6 +209,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       statut: c.statut || 'ACTIF',
     });
     setModalCreationOuverte(true);
+    await calculerToursAutomatique(c.id);
   };
 
   const cyclesFiltres = cycles.filter(c => {
@@ -191,22 +244,8 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            onClick={() => {
-              setCycleEnEdition(null);
-              setNouveauCycle({
-                nom_cycle: '',
-                montant_cotisation: '',
-                montant_libre: false,
-                frequence: 'MENSUEL',
-                regle_reunion: '',
-                nombre_tours: 12,
-                date_debut: new Date().toISOString().split('T')[0],
-                date_fin: '',
-                statut: 'ACTIF',
-              });
-              setModalCreationOuverte(true);
-            }}
-            className="bg-orange-600 hover:bg-orange-600 text-white font-black px-2 py-1 rounded transition shadow text-[10px] uppercase cursor-pointer"
+            onClick={ouvrirCreation}
+            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2 py-1 rounded transition shadow text-[10px] uppercase cursor-pointer"
           >
             ➕ Créer
           </button>
@@ -223,7 +262,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 w-full max-w-lg space-y-2 shadow-2xl text-white my-auto">
             <div className="flex justify-between items-center border-b pb-1.5 border-slate-800">
               <h4 className="font-black text-orange-500 uppercase text-xs">
-                {cycleEnEdition ? '✏️ Modifier le cycle' : '➕ Configurer un nouveau cycle'}
+                {cycleEnEdition ? '✏️ Modifier le cycle' : '➕ Créer un nouveau cycle'}
               </h4>
               <button
                 type="button"
@@ -318,7 +357,18 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
               {/* LIGNE 5 : Nombre de tours & Date de début */}
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nombre de Tours</label>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <label className={`block font-black text-[9px] uppercase ${labelColor}`}>Nombre de Tours</label>
+                    <button
+                      type="button"
+                      disabled={enTrainDeCalculer}
+                      onClick={() => calculerToursAutomatique(cycleEnEdition?.id)}
+                      className="text-[8px] font-black text-orange-400 hover:underline cursor-pointer"
+                      title="Recalculer selon les parts des participants"
+                    >
+                      {enTrainDeCalculer ? 'Calcul...' : '🔄 Recalculer'}
+                    </button>
+                  </div>
                   <input
                     type="number"
                     min="1"
@@ -326,8 +376,11 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     value={nouveauCycle.nombre_tours}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauCycle({ ...nouveauCycle, nombre_tours: e.target.value })}
-                    className={`w-full p-1.5 rounded border text-xs font-bold ${inputBg}`}
+                    className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-blue-600 ${inputBg}`}
                   />
+                  <span className="text-[8px] text-slate-400 block mt-0.5">
+                    Somme automatique des parts des participants.
+                  </span>
                 </div>
                 <div>
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date de début</label>
