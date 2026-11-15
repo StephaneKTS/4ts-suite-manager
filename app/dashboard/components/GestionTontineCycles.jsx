@@ -30,7 +30,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const [recherche, setRecherche] = useState('');
   const [cycleEnEdition, setCycleEnEdition] = useState(null);
 
-  // États pour les modales
   const [modalCreationOuverte, setModalCreationOuverte] = useState(false);
   const [modalFrequenceOuverte, setModalFrequenceOuverte] = useState(false);
   const [modalStatutOuverte, setModalStatutOuverte] = useState(false);
@@ -38,7 +37,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
   const [nouveauCycle, setNouveauCycle] = useState({
     nom_cycle: '',
-    type_cycle: 'BOUFFER', // 'BOUFFER' ou 'EPARGNE'
+    type_cycle: 'BOUFFER',
     montant_cotisation: '',
     montant_libre: false,
     frequence: 'MENSUEL',
@@ -52,14 +51,33 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const chargerCycles = async () => {
     setChargement(true);
     try {
-      const { data, error } = await supabase
+      const { data: cyclesData, error } = await supabase
         .from('tontine_cycles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCycles(data || []);
+
+      // Calcul dynamique des tours réels pour chaque cycle en filtrant strictement par id_cycle
+      const cyclesAvecTours = await Promise.all((cyclesData || []).map(async (c) => {
+        if (c.type_cycle === 'EPARGNE') {
+          return { ...c, nombre_tours_reel: 1 };
+        }
+        const { data: partsData } = await supabase
+          .from('tontine_participants')
+          .select('nombre_parts')
+          .eq('id_entreprise', entrepriseId)
+          .eq('id_cycle', c.id);
+
+        const totalParts = (partsData || []).reduce((acc, p) => acc + (parseInt(p.nombre_parts || 1) || 1), 0);
+        return {
+          ...c,
+          nombre_tours_reel: totalParts > 0 ? totalParts : (c.nombre_tours || 1)
+        };
+      }));
+
+      setCycles(cyclesAvecTours);
     } catch (err) {
       console.error('Erreur chargement cycles :', err.message);
     } finally {
@@ -71,38 +89,44 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     chargerCycles();
   }, [entrepriseId]);
 
-  // Calcul automatique en arrière-plan des tours selon les parts des participants
-  const calculerToursAutomatique = async () => {
+  // Calcul automatique ciblé UNIQUEMENT sur le cycle en cours (par son ID)
+  const calculerToursAutomatique = async (idCycleActuel = null) => {
     try {
-      const { data: participants, error } = await supabase
-        .from('tontine_participants')
-        .select('nombre_parts')
-        .eq('id_entreprise', entrepriseId);
+      if (idCycleActuel) {
+        const { data: participants, error } = await supabase
+          .from('tontine_participants')
+          .select('nombre_parts')
+          .eq('id_entreprise', entrepriseId)
+          .eq('id_cycle', idCycleActuel);
 
-      if (error) {
-        console.error('Erreur lecture tontine_participants :', error.message);
-        return;
+        if (!error && participants && participants.length > 0) {
+          const totalParts = participants.reduce((acc, p) => acc + (parseInt(p.nombre_parts || 1) || 1), 0);
+          setNouveauCycle(prev => ({ ...prev, nombre_tours: totalParts }));
+          return;
+        }
       }
 
-      if (participants && participants.length > 0) {
-        const totalParts = participants.reduce((acc, p) => {
-          const partsVal = parseInt(p.nombre_parts || 1) || 1;
-          return acc + partsVal;
-        }, 0);
+      // Si création ou aucun participant dans ce cycle, compter les membres uniques actifs de l'entreprise
+      const { data: partsData } = await supabase
+        .from('tontine_participants')
+        .select('nom_participant, prenom, telephone')
+        .eq('id_entreprise', entrepriseId)
+        .eq('statut', 'ACTIF');
 
-        if (totalParts > 0) {
-          setNouveauCycle(prev => ({ ...prev, nombre_tours: totalParts }));
-        }
+      if (partsData && partsData.length > 0) {
+        const uniques = new Set(partsData.map(p => `${p.nom_participant}_${p.prenom}_${p.telephone}`));
+        setNouveauCycle(prev => ({ ...prev, nombre_tours: Math.max(1, uniques.size) }));
+      } else {
+        setNouveauCycle(prev => ({ ...prev, nombre_tours: 1 }));
       }
     } catch (err) {
       console.error('Erreur calcul automatique des tours :', err.message);
     }
   };
 
-  // Déclenchement automatique du calcul à l'ouverture de la modale ou lors du passage en mode "BOUFFER"
   useEffect(() => {
     if (modalCreationOuverte && nouveauCycle.type_cycle === 'BOUFFER') {
-      calculerToursAutomatique();
+      calculerToursAutomatique(cycleEnEdition ? cycleEnEdition.id : null);
     }
   }, [modalCreationOuverte, nouveauCycle.type_cycle]);
 
@@ -186,8 +210,24 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     }
   };
 
-  const ouvrirCreation = () => {
+  const ouvrirCreation = async () => {
     setCycleEnEdition(null);
+    let defaultTours = 1;
+    try {
+      const { data: partsData } = await supabase
+        .from('tontine_participants')
+        .select('nom_participant, prenom, telephone')
+        .eq('id_entreprise', entrepriseId)
+        .eq('statut', 'ACTIF');
+      
+      if (partsData && partsData.length > 0) {
+        const uniques = new Set(partsData.map(p => `${p.nom_participant}_${p.prenom}_${p.telephone}`));
+        defaultTours = Math.max(1, uniques.size);
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
     setNouveauCycle({
       nom_cycle: '',
       type_cycle: 'BOUFFER',
@@ -195,7 +235,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       montant_libre: false,
       frequence: 'MENSUEL',
       regle_reunion: '',
-      nombre_tours: 1,
+      nombre_tours: defaultTours,
       date_debut: new Date().toISOString().split('T')[0],
       date_fin: '',
       statut: 'ACTIF',
@@ -203,8 +243,23 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     setModalCreationOuverte(true);
   };
 
-  const ouvrirEdition = (c) => {
+  const ouvrirEdition = async (c) => {
     setCycleEnEdition(c);
+    let toursReels = c.nombre_tours_reel || c.nombre_tours || 1;
+    try {
+      const { data: partsData } = await supabase
+        .from('tontine_participants')
+        .select('nombre_parts')
+        .eq('id_entreprise', entrepriseId)
+        .eq('id_cycle', c.id);
+
+      if (partsData && partsData.length > 0) {
+        toursReels = partsData.reduce((acc, p) => acc + (parseInt(p.nombre_parts || 1) || 1), 0);
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
     setNouveauCycle({
       nom_cycle: c.nom_cycle || c.libelle || '',
       type_cycle: c.type_cycle || 'BOUFFER',
@@ -212,7 +267,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       montant_libre: c.montant_libre || false,
       frequence: c.frequence || 'MENSUEL',
       regle_reunion: c.regle_reunion || '',
-      nombre_tours: c.nombre_tours || 1,
+      nombre_tours: toursReels,
       date_debut: c.date_debut ? c.date_debut.split('T')[0] : new Date().toISOString().split('T')[0],
       date_fin: c.date_fin ? c.date_fin.split('T')[0] : '',
       statut: c.statut || 'ACTIF',
@@ -284,7 +339,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
             <form onSubmit={enregistrerCycle} className="space-y-2 w-full">
               
-              {/* LIGNE 1 : Nom du cycle */}
               <div>
                 <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nom du Cycle / Type de Tontine *</label>
                 <input
@@ -297,7 +351,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 />
               </div>
 
-              {/* LIGNE 2 : Type de Cycle avec cases à cocher */}
               <div>
                 <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nature du Cycle / Cotisation *</label>
                 <div className="grid grid-cols-2 gap-1.5">
@@ -310,7 +363,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                         onClick={() => setNouveauCycle({ ...nouveauCycle, type_cycle: typeC.id })}
                         className={`p-1.5 rounded border font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1.5 text-center ${
                           estCoche
-                            ? 'bg-orange-600 text-white border-orange-500 shadow'
+                            ? 'bg-slate-800 text-white border-slate-600 shadow'
                             : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                         }`}
                       >
@@ -318,7 +371,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                           type="checkbox"
                           checked={estCoche}
                           onChange={() => {}}
-                          className="w-3.5 h-3.5 accent-orange-600 cursor-pointer rounded pointer-events-none"
+                          className="w-3.5 h-3.5 accent-slate-600 cursor-pointer rounded pointer-events-none"
                         />
                         <span>{typeC.id === 'BOUFFER' ? '🎯 Tontine à bouffer (Bénéficiée)' : '🏦 Épargne (Mise en caisse)'}</span>
                       </button>
@@ -327,7 +380,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 </div>
               </div>
 
-              {/* LIGNE 3 : Montant & Option Montant Libre */}
               <div className="space-y-1 p-1.5 rounded bg-white/5 border border-slate-700/20">
                 <div className="flex justify-between items-center">
                   <label className={`font-black text-[9px] uppercase ${labelColor}`}>Montant de la Cotisation</label>
@@ -353,7 +405,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 )}
               </div>
 
-              {/* LIGNE 4 : Choix de la Fréquence & du Statut en Modale */}
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Fréquence</label>
@@ -380,7 +431,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 </div>
               </div>
 
-              {/* LIGNE 5 : Règle ou Date précise des réunions */}
               <div>
                 <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date / Règle des réunions</label>
                 <input
@@ -392,7 +442,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 />
               </div>
 
-              {/* LIGNE 6 : Nombre de tours (Affiché uniquement si Tontine à bouffer) & Date de début */}
               <div className={`grid ${nouveauCycle.type_cycle === 'BOUFFER' ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5`}>
                 {nouveauCycle.type_cycle === 'BOUFFER' && (
                   <div>
@@ -401,10 +450,10 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                       type="number"
                       disabled
                       value={nouveauCycle.nombre_tours}
-                      className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-blue-600 cursor-not-allowed opacity-80 ${inputBg}`}
+                      className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-slate-300 cursor-not-allowed opacity-80 ${inputBg}`}
                     />
                     <span className="text-[8px] text-slate-400 block mt-0.5">
-                      Calculé automatiquement selon les parts des participants.
+                      Calculé automatiquement selon les parts des participants inscrits.
                     </span>
                   </div>
                 )}
@@ -420,7 +469,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 </div>
               </div>
 
-              {/* BOUTONS D'ACTION COMPACTS */}
               <div className="flex justify-between items-center pt-2 border-t border-slate-800">
                 <div>
                   {cycleEnEdition && (
@@ -448,7 +496,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE LA FRÉQUENCE */}
       {modalFrequenceOuverte && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-8 p-3">
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl text-white">
@@ -466,7 +513,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     setModalFrequenceOuverte(false);
                   }}
                   className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center cursor-pointer ${
-                    nouveauCycle.frequence === freq.id ? 'bg-orange-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                    nouveauCycle.frequence === freq.id ? 'bg-slate-800 text-white border border-slate-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                   }`}
                 >
                   <span>{freq.label}</span>
@@ -478,7 +525,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DU STATUT */}
       {modalStatutOuverte && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-8 p-3">
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl text-white">
@@ -496,7 +542,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     setModalStatutOuverte(false);
                   }}
                   className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center cursor-pointer ${
-                    nouveauCycle.statut === st.id ? 'bg-orange-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                    nouveauCycle.statut === st.id ? 'bg-slate-800 text-white border border-slate-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                   }`}
                 >
                   <span>{st.label}</span>
@@ -508,7 +554,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         </div>
       )}
 
-      {/* VUE DE LA LISTE DES CYCLES */}
       <div className="space-y-2 w-full">
         <div className="bg-white p-1 rounded border border-slate-200 shadow-2xs">
           <input
@@ -541,6 +586,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 cyclesFiltres.map((c) => {
                   const nomAffiche = c.nom_cycle || c.libelle || 'CYCLE';
                   const estEpargne = c.type_cycle === 'EPARGNE';
+                  const toursAffiches = estEpargne ? 'N/A' : (c.nombre_tours_reel || c.nombre_tours || 1);
                   return (
                     <tr 
                       key={c.id} 
@@ -551,18 +597,18 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                       <td className="p-2 font-black uppercase text-slate-900">
                         <div className="flex items-center gap-1">
                           <span>{nomAffiche}</span>
-                          <span className={`px-1 py-0.5 rounded text-[7px] font-bold border ${estEpargne ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-orange-100 text-orange-800 border-orange-200'}`}>
+                          <span className={`px-1 py-0.5 rounded text-[7px] font-bold border ${estEpargne ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-orange-100 text-orange-800 border-orange-200'}`}>
                             {estEpargne ? '🏦 ÉPARGNE' : '🎯 BÉNÉFICIÉ'}
                           </span>
                         </div>
                         {c.regle_reunion && <div className="text-[8px] text-slate-500 font-normal">🗓️ {c.regle_reunion}</div>}
                       </td>
                       <td className="p-2 text-center font-black font-mono text-emerald-700 whitespace-nowrap">
-                        {c.montant_libre ? <span className="text-purple-600 font-bold">Au choix</span> : `${c.montant_cotisation?.toLocaleString()} F`}
+                        {c.montant_libre ? <span className="text-slate-700 font-bold">Au choix</span> : `${c.montant_cotisation?.toLocaleString()} F`}
                       </td>
                       <td className="p-2 text-center font-bold text-slate-700 uppercase">{c.frequence}</td>
-                      <td className="p-2 text-center font-black text-blue-600">
-                        {estEpargne ? <span className="text-slate-400 font-normal">N/A</span> : c.nombre_tours}
+                      <td className="p-2 text-center font-black text-slate-900">
+                        {toursAffiches}
                       </td>
                       <td className="p-2 text-center">
                         <span className="bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded text-[8px] uppercase border border-emerald-200">

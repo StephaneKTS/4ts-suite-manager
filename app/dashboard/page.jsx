@@ -31,11 +31,11 @@ import GestionTaxesRistournes from './components/GestionTaxesRistournes';
 import MenuExplorer from './components/MenuExplorer'; 
 import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; 
 
-// ➕ Importation des composants du module Tontine
+// ➕ Importation des composants du module Tontine (avec Emprunts)
 import GestionTontineParticipants from './components/GestionTontineParticipants';
 import GestionTontineCycles from './components/GestionTontineCycles';
 import GestionTontineCotisations from './components/GestionTontineCotisations';
-import GestionTontineAttributions from './components/GestionTontineAttributions';
+import GestionTontineEmprunts from './components/GestionTontineEmprunts';
 import GestionElections from './components/GestionElections';
 
 function DashboardContent() {
@@ -204,7 +204,7 @@ function DashboardContent() {
       return <GestionCommandesClientsQR entrepriseId={entrepriseId} />;
     }
 
-    // ➕ Gestion des vues du module Tontine (incluant les Élections)
+    // ➕ Gestion des vues du module Tontine (avec Emprunts)
     if (moduleActif === 'tontine_participants') {
       return <GestionTontineParticipants entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
@@ -214,8 +214,8 @@ function DashboardContent() {
     if (moduleActif === 'tontine_cotisations') {
       return <GestionTontineCotisations entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
-    if (moduleActif === 'tontine_attributions') {
-      return <GestionTontineAttributions entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+    if (moduleActif === 'tontine_emprunts') {
+      return <GestionTontineEmprunts entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
     if (moduleActif === 'tontine_elections') {
       return <GestionElections entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
@@ -439,7 +439,7 @@ function DashboardContent() {
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && moduleCourant === 'TONTINE' ? (
-          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE */
+          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Emprunts intégrés) */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE TONTINE
@@ -457,9 +457,9 @@ function DashboardContent() {
                 <span className="text-3xl group-hover:scale-110 transition">💰</span>
                 <span className="font-bold text-xs leading-tight">Suivi des Cotisations</span>
               </div>
-              <div onClick={() => setModuleActif('tontine_attributions')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">🏆</span>
-                <span className="font-bold text-xs leading-tight">Attributions & Cagnottes</span>
+              <div onClick={() => setModuleActif('tontine_emprunts')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                <span className="text-3xl group-hover:scale-110 transition">💳</span>
+                <span className="font-bold text-xs leading-tight">Gestion des Emprunts</span>
               </div>
               <div onClick={() => setModuleActif('tontine_elections')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🏛️</span>

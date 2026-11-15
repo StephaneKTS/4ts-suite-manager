@@ -137,10 +137,45 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     }
   };
 
+  // Récupération des membres ordonnés strictement selon le tirage validé
+  const obtenirMembresOrdreTirage = (idC) => {
+    const membresBruts = participants.filter(p => p.id_cycle?.toString() === idC?.toString());
+    if (!idC) return membresBruts;
+
+    try {
+      const historiqueLocal = localStorage.getItem(`historique_tirages_${entrepriseId}`);
+      if (historiqueLocal) {
+        const tirages = JSON.parse(historiqueLocal);
+        const tirageCycle = tirages.find(t => t.id_cycle?.toString() === idC.toString());
+        if (tirageCycle && tirageCycle.resultats && tirageCycle.resultats.length > 0) {
+          const membresordonnes = [];
+          const membresRestants = [...membresBruts];
+
+          tirageCycle.resultats.forEach(resMembre => {
+            const idx = membresRestants.findIndex(m => 
+              (m.id && resMembre.id && m.id.toString() === resMembre.id.toString()) ||
+              ((m.nom_participant || m.nom_complet || '').trim().toUpperCase() === (resMembre.nom_participant || resMembre.nom_complet || '').trim().toUpperCase())
+            );
+            if (idx !== -1) {
+              membresordonnes.push(membresRestants[idx]);
+              membresRestants.splice(idx, 1);
+            }
+          });
+
+          return [...membresordonnes, ...membresRestants];
+        }
+      }
+    } catch (e) {
+      console.warn('Erreur lecture tirages localStorage :', e);
+    }
+
+    return membresBruts;
+  };
+
   const obtenirListePartsCycle = (idC) => {
     if (!idC) return [];
     const cycleObj = cycles.find(c => c.id?.toString() === idC?.toString());
-    const membresCycle = participants.filter(p => p.id_cycle?.toString() === idC.toString());
+    const membresCycle = obtenirMembresOrdreTirage(idC);
     let listeParts = [];
 
     if (estCycleEpargne(cycleObj)) {
@@ -185,6 +220,35 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     const cycleObj = cycles.find(c => c.id?.toString() === idC?.toString());
     if (estCycleEpargne(cycleObj)) return null;
 
+    try {
+      const historiqueLocal = localStorage.getItem(`historique_tirages_${entrepriseId}`);
+      if (historiqueLocal) {
+        const tirages = JSON.parse(historiqueLocal);
+        const tirageCycle = tirages.find(t => t.id_cycle?.toString() === idC.toString());
+        if (tirageCycle && tirageCycle.resultats && tirageCycle.resultats.length > 0) {
+          const indexBenef = (parseInt(numeroTour) - 1) % tirageCycle.resultats.length;
+          const gagnantTirage = tirageCycle.resultats[indexBenef];
+          
+          const participantTrouve = participants.find(p => 
+            p.id_cycle?.toString() === idC.toString() && 
+            ((p.id && gagnantTirage.id && p.id.toString() === gagnantTirage.id.toString()) ||
+             ((p.nom_participant || p.nom_complet || '').trim().toUpperCase() === (gagnantTirage.nom_participant || gagnantTirage.nom_complet || '').trim().toUpperCase()))
+          );
+
+          if (participantTrouve) {
+            return {
+              ...participantTrouve,
+              numeroPart: 1,
+              dejaServie: false,
+              affichageNom: `${participantTrouve.nom_participant || participantTrouve.nom_complet || ''} ${participantTrouve.prenom || ''}`
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Erreur détection bénéficiaire tirage :', e);
+    }
+
     const listeParts = obtenirListePartsCycle(idC);
     const partsDisponibles = listeParts.filter(p => !p.dejaServie);
     if (partsDisponibles.length > 0) return partsDisponibles[0];
@@ -206,7 +270,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     const montantBaseCycle = cycleTrouve ? (parseFloat(cycleTrouve.montant_cotisation || cycleTrouve.montant_mise || 0)) : 0;
     const estEp = estCycleEpargne(cycleTrouve);
 
-    const membresDuCycle = participants.filter(p => p.id_cycle?.toString() === idC.toString());
+    const membresDuCycle = obtenirMembresOrdreTirage(idC);
     
     calculerTourAutomatique(idC, participants, cotisations, attributions);
 
@@ -481,11 +545,10 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const cycleCaisseObj = cycles.find(c => c.id.toString() === caisseCycleId?.toString());
   const estActuelEpargne = estCycleEpargne(cycleActuelObj);
 
-  const membresDuCycleSelectionne = participants.filter(p => p.id_cycle?.toString() === cycleId?.toString());
+  const membresDuCycleSelectionne = obtenirMembresOrdreTirage(cycleId);
   
-  // Déduplication stricte par nom et prénom pour éviter les doublons en mode "Toutes les caisses"
   const sourceMembresCaisse = caisseCycleId 
-    ? participants.filter(p => p.id_cycle?.toString() === caisseCycleId?.toString()) 
+    ? obtenirMembresOrdreTirage(caisseCycleId) 
     : participants;
 
   const mapMembresUniquesCaisse = new Map();
@@ -505,7 +568,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const beneficiaireActuelObj = listePartsCycleActuel.find(p => p.id?.toString() === beneficiaireSelection.participantId?.toString() && p.numeroPart === beneficiaireSelection.numeroPart);
   const beneficiaireAutoTour = detecterBeneficiaireTour(cycleId);
 
-  // Regroupement des cotisations de caisse par session (uniquement pour les cycles d'épargne)
+  // Regroupement des cotisations de caisse par session
   const caisseSessionsMap = {};
   cotisationsUniques.forEach(c => {
     const cyc = cycles.find(cy => cy.id?.toString() === c.id_cycle?.toString());
@@ -575,25 +638,28 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         @media print {
           @page {
             size: portrait;
-            margin: 8mm;
+            margin: 10mm;
           }
           body * {
-            visibility: hidden;
+            visibility: hidden !important;
           }
           #printable-session-detail, #printable-session-detail * {
-            visibility: visible;
+            visibility: visible !important;
           }
           #printable-session-detail {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
             background: white !important;
             color: black !important;
-            padding: 5px !important;
+            padding: 10px !important;
             margin: 0 !important;
             box-sizing: border-box;
-            font-size: 10px !important;
+            font-size: 11px !important;
+          }
+          .no-print {
+            display: none !important;
           }
         }
       `}</style>
@@ -754,13 +820,13 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   </div>
                 </div>
 
-                {/* ZONE DE SAISIE AGRANDIE ET ADAPTÉE MOBILE */}
+                {/* ZONE DE SAISIE AGRANDIE ET ADAPTÉE MOBILE (TRIÉE SELON LE TIRAGE) */}
                 <div className="overflow-x-auto border border-gray-300 rounded-xl bg-white shadow-2xs max-h-[60vh] sm:max-h-[68vh] overflow-y-auto">
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 uppercase text-[9px] font-black bg-gray-100 text-black z-10 border-b border-gray-300">
                       <tr>
                         <th className="p-2 text-center w-10">Actif</th>
-                        <th className="p-2">Nom & Prénom</th>
+                        <th className="p-2">Nom & Prénom (Ordre Tirage)</th>
                         {!estActuelEpargne && <th className="p-2 text-center">Parts</th>}
                         <th className="p-2 text-right">Montant (F)</th>
                       </tr>
@@ -896,13 +962,13 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
         {/* VUE 3 : DÉTAILS D'UNE COTISATION SÉLECTIONNÉE */}
         {sousVue === 'detail' && sessionDetail && (
-          <div className="space-y-2.5 animate-fadeIn">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-1 border-b pb-2 border-slate-700/30 gap-2">
+          <div id="printable-session-detail" className="space-y-2.5 animate-fadeIn bg-white text-black p-2 sm:p-3 rounded-xl">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-1 border-b pb-2 border-gray-300 gap-2">
               <div>
-                <h4 className={`font-black uppercase text-[11px] ${titleColor}`}>
+                <h4 className="font-black uppercase text-sm text-slate-900">
                   🔍 DÉTAILS : {sessionDetail.nom_cycle} (TOUR N° {sessionDetail.numero_tour})
                 </h4>
-                <span className={`text-[10px] ${labelColor}`}>
+                <span className="text-xs text-gray-700">
                   Total : <b className="text-emerald-600">{sessionDetail.total_verse.toLocaleString()} FCFA</b>
                   {sessionDetail.estEpargne ? (
                     <span className="ml-1 text-blue-700 font-bold">| Type : Épargne (Caisse)</span>
@@ -913,20 +979,20 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   )}
                 </span>
               </div>
-              <div className="flex gap-1.5 flex-wrap w-full sm:w-auto justify-end">
+              <div className="flex gap-1.5 flex-wrap w-full sm:w-auto justify-end no-print">
                 <button
                   type="button"
                   onClick={imprimerDetailsSession}
-                  className="px-2.5 py-1.5 rounded-lg font-black text-[10px] bg-slate-800 hover:bg-slate-700 text-white uppercase shadow cursor-pointer whitespace-nowrap border border-slate-600 flex items-center gap-1"
+                  className="px-3 py-1.5 rounded-lg font-black text-xs bg-slate-800 hover:bg-slate-700 text-white uppercase shadow cursor-pointer whitespace-nowrap border border-slate-600 flex items-center gap-1"
                 >
-                  <span>🖨️</span> PDF
+                  <span>🖨️</span> Imprimer
                 </button>
 
                 {!sessionDetail.estEpargne && !sessionDetail.beneficiaireNom && (
                   <button
                     type="button"
                     onClick={() => attribuerDepuisDetail(sessionDetail)}
-                    className="px-2.5 py-1.5 rounded-lg font-black text-[10px] bg-slate-800 hover:bg-slate-700 text-white uppercase shadow cursor-pointer whitespace-nowrap border border-slate-600"
+                    className="px-3 py-1.5 rounded-lg font-black text-xs bg-slate-800 hover:bg-slate-700 text-white uppercase shadow cursor-pointer whitespace-nowrap border border-slate-600"
                   >
                     🏆 Attribuer
                   </button>
@@ -934,9 +1000,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                 <button
                   type="button"
                   onClick={() => { setSousVue('liste'); setSessionDetail(null); }}
-                  className={`px-3 py-1.5 rounded-lg font-bold text-[10px] border cursor-pointer ${
-                    isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600' : 'bg-gray-200 hover:bg-gray-300 text-black border-gray-400'
-                  }`}
+                  className="px-3 py-1.5 rounded-lg font-bold text-xs border bg-gray-200 hover:bg-gray-300 text-black border-gray-400 cursor-pointer"
                 >
                   ⬅ Retour
                 </button>
@@ -946,16 +1010,15 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
             <div className="bg-white text-black p-3 rounded-xl border border-gray-300 space-y-3">
               <div className="overflow-x-auto border border-gray-300 rounded-xl bg-white shadow-2xs">
                 <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 uppercase text-[9px] font-black bg-gray-100 text-black z-10 border-b border-gray-300">
+                  <thead className="sticky top-0 uppercase text-[10px] font-black bg-gray-100 text-black z-10 border-b border-gray-300">
                     <tr>
-                      <th className="p-2">Nom & Prénom</th>
-                      <th className="p-2 text-center">Statut</th>
-                      <th className="p-2 text-right">Montant</th>
+                      <th className="p-2.5">Nom & Prénom</th>
+                      <th className="p-2.5 text-center">Statut</th>
+                      <th className="p-2.5 text-right">Montant</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 text-[10px] text-black">
-                    {participants
-                      .filter(p => p.id_cycle?.toString() === sessionDetail.id_cycle?.toString())
+                  <tbody className="divide-y divide-gray-200 text-xs text-black">
+                    {obtenirMembresOrdreTirage(sessionDetail.id_cycle)
                       .map((m) => {
                         const cotisMembre = cotisationsUniques.find(c => 
                           c.id_cycle?.toString() === sessionDetail.id_cycle?.toString() && 
@@ -967,15 +1030,15 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
                         return (
                           <tr key={m.id} className={`transition ${aCotise ? 'bg-emerald-50 text-black' : 'bg-red-50 text-black'}`}>
-                            <td className="p-2 font-black uppercase text-black">{nomComplet}</td>
-                            <td className="p-2 text-center">
+                            <td className="p-2.5 font-black uppercase text-black">{nomComplet}</td>
+                            <td className="p-2.5 text-center">
                               {aCotise ? (
-                                <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-full text-[8px] uppercase">OK</span>
+                                <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-full text-[9px] uppercase">OK</span>
                               ) : (
-                                <span className="bg-red-600 text-white font-black px-2 py-0.5 rounded-full text-[8px] uppercase">ÉCHEC</span>
+                                <span className="bg-red-600 text-white font-black px-2 py-0.5 rounded-full text-[9px] uppercase">ÉCHEC</span>
                               )}
                             </td>
-                            <td className="p-2 text-right font-black font-mono text-emerald-600">
+                            <td className="p-2.5 text-right font-black font-mono text-emerald-600">
                               {aCotise ? `${cotisMembre.montant_verse?.toLocaleString()}F` : '-'}
                             </td>
                           </tr>
@@ -1036,7 +1099,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 uppercase text-[9px] font-black bg-gray-100 text-black z-10 border-b border-gray-300">
                       <tr>
-                        <th className="p-2.5">Nom & Prénom</th>
+                        <th className="p-2.5">Nom & Prénom (Ordre Tirage)</th>
                         <th className="p-2.5 text-center">Statut</th>
                       </tr>
                     </thead>
