@@ -825,7 +825,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
   const clotureLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheClotureLivreurInput.toLowerCase()));
 
-  // CORRECTION STRICTE : Filtrage des articles par recherche textuelle ET appartenance stricte au partenaire sélectionné (idPartenaire)
+  // CORRECTION : Filtrage des articles par recherche textuelle ET appartenance au partenaire (Directe, Dépôt ou Historique de mouvements/commandes)
   const articlesFiltres = articles.filter((a) => {
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
     const matchNom = designation.includes(rechercheArticleInput.toUpperCase());
@@ -854,7 +854,27 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     } else if (artDepotId && (artDepotId === partDepotId || (depotAssocieId && artDepotId === depotAssocieId))) {
       matchPartenaire = true;
     } else {
-      matchPartenaire = false; // Bloque strictement les articles des autres partenaires
+      // Vérifier si le partenaire a déjà mouvementé / commandé cet article au moins une fois
+      const dejaMouvementeParPartenaire = commandes.some(c => {
+        if (String(c.id_partenaire) !== String(idPartenaire)) return false;
+        const lignesCmd = lignesCommandesMap[c.id] || [];
+        return lignesCmd.some(l => String(l.id_article) === String(a.id_article));
+      });
+
+      if (dejaMouvementeParPartenaire) {
+        matchPartenaire = true;
+      } else {
+        const mvtStockPartenaire = mouvements.some(m => {
+          if (String(m.id_article) !== String(a.id_article)) return false;
+          const mDepotSrc = String(m.id_depot_source || '');
+          const mDepotDest = String(m.id_depot_destination || '');
+          return (partDepotId && (mDepotSrc === partDepotId || mDepotDest === partDepotId)) ||
+                 (depotAssocieId && (mDepotSrc === depotAssocieId || mDepotDest === depotAssocieId));
+        });
+        if (mvtStockPartenaire) {
+          matchPartenaire = true;
+        }
+      }
     }
 
     return matchNom && matchPartenaire;
