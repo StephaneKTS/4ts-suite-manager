@@ -695,7 +695,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                               className="text-cyan-700 hover:text-cyan-900 underline cursor-pointer bg-cyan-50 px-2 py-0.5 rounded border border-cyan-300"
                               title="Cliquer pour appeler, envoyer un WhatsApp ou un SMS"
                             >
-                              📞 {p.telephone}
+                              {p.telephone}
                             </span>
                           ) : (
                             <span className="text-slate-400">N/A</span>
