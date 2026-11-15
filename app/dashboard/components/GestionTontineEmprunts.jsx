@@ -390,6 +390,7 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
                     type="number"
                     value={formEmprunt.montant_principal}
                     onChange={(e) => setFormEmprunt({ ...formEmprunt, montant_principal: e.target.value })}
+                    onFocus={(e) => e.target.select()}
                     placeholder="Ex: 50000"
                     required
                     className={`w-full p-2 rounded-lg border font-mono font-bold ${inputBg}`}
@@ -402,6 +403,7 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
                     step="0.1"
                     value={formEmprunt.taux_interet}
                     onChange={(e) => setFormEmprunt({ ...formEmprunt, taux_interet: e.target.value })}
+                    onFocus={(e) => e.target.select()}
                     required
                     className={`w-full p-2 rounded-lg border font-mono font-bold ${inputBg}`}
                   />
@@ -416,6 +418,7 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
                     min="1"
                     value={formEmprunt.nombre_mois}
                     onChange={(e) => setFormEmprunt({ ...formEmprunt, nombre_mois: e.target.value })}
+                    onFocus={(e) => e.target.select()}
                     required
                     className={`w-full p-2 rounded-lg border font-mono font-bold ${inputBg}`}
                   />
@@ -426,6 +429,7 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
                     type="date"
                     value={formEmprunt.date_emprunt}
                     onChange={(e) => setFormEmprunt({ ...formEmprunt, date_emprunt: e.target.value })}
+                    onFocus={(e) => e.target.select()}
                     required
                     className={`w-full p-2 rounded-lg border font-mono ${inputBg}`}
                   />
@@ -466,6 +470,7 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
                   type="text"
                   value={formEmprunt.motif}
                   onChange={(e) => setFormEmprunt({ ...formEmprunt, motif: e.target.value })}
+                  onFocus={(e) => e.target.select()}
                   placeholder="Ex: Commerce, urgence familiale..."
                   className={`w-full p-2 rounded-lg border ${inputBg}`}
                 />
