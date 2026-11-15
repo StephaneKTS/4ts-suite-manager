@@ -19,17 +19,27 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const [postes, setPostes] = useState([]);
   const [nouveauPoste, setNouveauPoste] = useState('');
   const [candidats, setCandidats] = useState([]);
-  const [candidatSelectionne, setCandidatSelectionne] = useState({ id_poste: '', id_participant: '' });
 
-  // Urne / Vote Global
+  // États de sélection multiple pour les candidatures
+  const [posteCandidatureId, setPosteCandidatureId] = useState('');
+  const [participantsCoches, setParticipantsCoches] = useState({}); // { id_participant: true/false }
+
+  // États des modales d'ajout
+  const [modalPosteOuverte, setModalPosteOuverte] = useState(false);
+  const [modalCandidatOuverte, setModalCandidatOuverte] = useState(false);
+
+  // Urne / Vote Global & Modales de vote
   const [electeurId, setElecteurId] = useState('');
   const [nomElecteurConnecte, setNomElecteurConnecte] = useState('');
   const [bulletinVote, setBulletinVote] = useState({});
+  const [posteVoteModal, setPosteVoteModal] = useState(null); // Poste actuellement ouvert dans la modal de vote
+  const [modalConfirmationSoumissionOuverte, setModalConfirmationSoumissionOuverte] = useState(false); // Modale de confirmation finale
   const [resultatsDetails, setResultatsDetails] = useState([]);
 
   const [chargement, setChargement] = useState(false);
   const [actionEnCours, setActionEnCours] = useState(false);
   const [estAdmin, setEstAdmin] = useState(false);
+  const [emailConnecte, setEmailConnecte] = useState('');
 
   // Styles dynamiques Jour / Nuit épurés (Orange & Gris)
   const cardBg = isDarkMode ? 'bg-slate-900/90 text-slate-100' : 'bg-white text-slate-900 shadow-sm';
@@ -42,7 +52,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const chargerDonneesInitiales = async () => {
     setChargement(true);
     try {
-      const emailLocal = typeof window !== 'undefined' ? localStorage.getItem('emailConnecte') || '' : '';
+      const emailLocal = typeof window !== 'undefined' ? localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com' : 'stephs7352@gmail.com';
+      setEmailConnecte(emailLocal);
       const userLocal = typeof window !== 'undefined' ? localStorage.getItem('utilisateurConnecte') || '' : '';
       const isSuper = emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com';
 
@@ -50,6 +61,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       const { data: dataPart } = await supabase
         .from('tontine_participants')
         .select('*')
+        .eq('id_entreprise', entrepriseId)
         .order('nom_participant', { ascending: true });
       
       const listeParticipants = dataPart || [];
@@ -98,6 +110,24 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   useEffect(() => {
     chargerDonneesInitiales();
   }, [entrepriseId]);
+
+  // DÉDUPLICATION ET FILTRAGE STRICT : Uniquement les membres dotés d'un identifiant unique valide
+  const mapMembresUniques = new Map();
+  const participantstries = [...participants].sort((a, b) => {
+    const hasA = Boolean(a.identifiant_unique && a.identifiant_unique.trim() !== '');
+    const hasB = Boolean(b.identifiant_unique && b.identifiant_unique.trim() !== '');
+    return hasB - hasA;
+  });
+
+  participantstries.forEach(p => {
+    const nomCle = `${(p.nom_participant || p.nom_complet || '').trim().toUpperCase()}_${(p.prenom || '').trim().toUpperCase()}`;
+    if (!mapMembresUniques.has(nomCle)) {
+      if (p.identifiant_unique && p.identifiant_unique.trim() !== '') {
+        mapMembresUniques.set(nomCle, p);
+      }
+    }
+  });
+  const participantsUniques = Array.from(mapMembresUniques.values());
 
   const chargerDetailsElection = async (election) => {
     setElectionActive(election);
@@ -189,8 +219,13 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   };
 
   const supprimerElection = async (el) => {
-    if (!estAdmin) return;
-    const confirmation = window.confirm(`⚠️ Voulez-vous vraiment supprimer l'élection "${el.titre_election}" ? Cette action est irréversible.`);
+    const isSuperAdmin = (emailConnecte || '').trim().toLowerCase() === 'stephs7352@gmail.com';
+    if (!isSuperAdmin) {
+      alert("❌ Action non autorisée : Réservé uniquement au super administrateur (stephs7352@gmail.com).");
+      return;
+    }
+
+    const confirmation = window.confirm(`⚠️ Voulez-vous vraiment supprimer définitivement l'élection "${el.titre_election}" ? Cette action est irréversible.`);
     if (!confirmation) return;
 
     setActionEnCours(true);
@@ -234,6 +269,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
       if (error) throw error;
       setNouveauPoste('');
+      setModalPosteOuverte(false);
       await chargerDetailsElection(electionActive);
     } catch (err) {
       alert('❌ Erreur : ' + err.message);
@@ -242,39 +278,65 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
     }
   };
 
-  const ajouterCandidat = async (e) => {
-    e.preventDefault();
+  const enregistrerCandidaturesMultiples = async () => {
     if (!estAdmin) {
       alert('⛔ Action réservée aux administrateurs.');
       return;
     }
-    if (!candidatSelectionne.id_poste || !candidatSelectionne.id_participant || actionEnCours || electionActive.statut === 'VALIDE') {
-      alert('⚠️ Veuillez sélectionner un poste et un membre.');
+    if (!posteCandidatureId || actionEnCours || electionActive.statut === 'VALIDE') {
+      alert('⚠️ Veuillez sélectionner un poste à pourvoir.');
       return;
     }
 
-    const idPartNum = Number(candidatSelectionne.id_participant);
-    const dejaCandidat = candidats.find(c => c.id_participant === idPartNum);
-    if (dejaCandidat) {
-      const posteConcerne = postes.find(p => p.id === dejaCandidat.id_poste)?.libelle_poste || 'un autre poste';
-      alert(`❌ Ce membre est déjà enregistré comme candidat pour le poste "${posteConcerne}". Un membre ne peut pas se présenter à deux postes distincts.`);
+    const idsCoched = Object.keys(participantsCoches).filter(id => participantsCoches[id]);
+    if (idsCoched.length === 0) {
+      alert('⚠️ Veuillez cocher au moins un membre candidat.');
       return;
     }
 
     setActionEnCours(true);
     try {
+      const inserts = idsCoched.map(idPart => ({
+        id_election: electionActive.id,
+        id_poste: posteCandidatureId,
+        id_participant: Number(idPart),
+        statut_candidat: 'VALIDE'
+      }));
+
       const { error } = await supabase
         .from('tontine_candidatures')
-        .insert([{
-          id_election: electionActive.id,
-          id_poste: candidatSelectionne.id_poste,
-          id_participant: idPartNum,
-          statut_candidat: 'VALIDE'
-        }]);
+        .insert(inserts);
 
       if (error) throw error;
-      alert('✅ Candidature enregistrée !');
-      setCandidatSelectionne({ id_poste: '', id_participant: '' });
+      alert('✅ Candidatures enregistrées avec succès !');
+      setParticipantsCoches({});
+      setPosteCandidatureId('');
+      setModalCandidatOuverte(false);
+      await chargerDetailsElection(electionActive);
+    } catch (err) {
+      alert('❌ Erreur : ' + err.message);
+    } finally {
+      setActionEnCours(false);
+    }
+  };
+
+  // SUPPRIMER / RETIRER UNE CANDIDATURE
+  const supprimerCandidature = async (candidatId) => {
+    if (electionActive.statut === 'EN_COURS' || electionActive.statut === 'VALIDE') {
+      alert("⚠️ Impossible de modifier les candidatures une fois le scrutin ouvert ou validé.");
+      return;
+    }
+    if (!confirm("Voulez-vous vraiment retirer cette candidature ?")) return;
+
+    setActionEnCours(true);
+    try {
+      const { error } = await supabase
+        .from('tontine_candidatures')
+        .delete()
+        .eq('id', candidatId);
+
+      if (error) throw error;
+      alert('✅ Candidature retirée avec succès !');
       await chargerDetailsElection(electionActive);
     } catch (err) {
       alert('❌ Erreur : ' + err.message);
@@ -322,7 +384,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         }
       }
 
-      alert('🗳️ Votre bulletin global a été enregistré avec succès dans l’urne !');
+      alert('🗳️ Votre bulletin a été soumis avec succès dans l’urne !');
       setBulletinVote({});
       await chargerResultats(electionActive.id);
       setVue('resultats');
@@ -358,6 +420,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       if (confirmationFermeture) {
         await changerStatutElection('BROUILLON');
       }
+      return;
+    }
+
+    if (candidats.length === 0) {
+      alert("⚠️ Impossible d'ouvrir le scrutin : aucune candidature n'a été créée pour cette élection. Veuillez d'abord ajouter des candidats.");
       return;
     }
 
@@ -520,6 +587,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
   const estValide = electionActive?.statut === 'VALIDE';
   const estOuvert = electionActive?.statut === 'EN_COURS';
+  const isSuperAdminUser = (emailConnecte || '').trim().toLowerCase() === 'stephs7352@gmail.com';
+  const aucuneCandidature = candidats.length === 0;
 
   return (
     <div className={`w-full h-full space-y-3 font-sans text-xs relative ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
@@ -627,23 +696,29 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                       </button>
                     </div>
 
-                    {/* LIGNE 3 : Supprimer à gauche, Modifier à droite (Si admin et non validé) - Boutons réduits */}
-                    {estAdmin && !estElectionValidee && (
+                    {/* LIGNE 3 : Supprimer (Super Admin stephs7352@gmail.com), Modifier à droite (Si admin) - Boutons réduits */}
+                    {estAdmin && (
                       <div className="flex justify-between items-center pt-1.5 border-t border-slate-800/40">
-                        <button
-                          type="button"
-                          onClick={() => supprimerElection(el)}
-                          className="bg-rose-600 hover:bg-rose-500 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
-                        >
-                          🗑️ Supprimer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => modifierElection(el)}
-                          className="bg-amber-600 hover:bg-amber-500 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
-                        >
-                          ✏️ Modifier
-                        </button>
+                        {isSuperAdminUser ? (
+                          <button
+                            type="button"
+                            onClick={() => supprimerElection(el)}
+                            className="bg-rose-600 hover:bg-rose-500 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
+                            title="Suppression réservée au Super Admin (stephs7352@gmail.com)"
+                          >
+                            🗑️ Supprimer
+                          </button>
+                        ) : <div />}
+                        
+                        {!estElectionValidee && (
+                          <button
+                            type="button"
+                            onClick={() => modifierElection(el)}
+                            className="bg-amber-600 hover:bg-amber-500 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer"
+                          >
+                            ✏️ Modifier
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -704,16 +779,43 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               <h4 className={`font-black text-xs uppercase ${titleColor}`}>⚙️ Candidature : {electionActive.titre_election}</h4>
               
               {estAdmin && !estValide && (
-                <button
-                  type="button"
-                  disabled={actionEnCours}
-                  onClick={gererOuvertureScrutin}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase disabled:opacity-50 cursor-pointer transition shadow-xs ${
-                    estOuvert ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                  }`}
-                >
-                  {estOuvert ? '🔒 Scrutin Ouvert (Cliquer pour bloquer)' : '🚀 Ouvrir le Scrutin & Valider les Candidatures'}
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setModalPosteOuverte(true)}
+                    className="bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition shadow-xs cursor-pointer"
+                  >
+                    ➕ Ajouter un Poste
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPosteCandidatureId('');
+                      setParticipantsCoches({});
+                      setModalCandidatOuverte(true);
+                    }}
+                    className="bg-cyan-700 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition shadow-xs cursor-pointer"
+                  >
+                    👥 Enregistrer Candidat
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionEnCours || ( aucuneCandidature && !estOuvert )}
+                    onClick={gererOuvertureScrutin}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition shadow-xs ${
+                      aucuneCandidature && !estOuvert
+                        ? 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed'
+                        : estOuvert 
+                          ? 'bg-amber-600 hover:bg-amber-500 text-white cursor-pointer' 
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                    }`}
+                    title={aucuneCandidature && !estOuvert ? "Veuillez d'abord enregistrer au moins une candidature pour ouvrir le scrutin." : ""}
+                  >
+                    {estOuvert ? '🔒 Scrutin Ouvert (Bloquer)' : '🚀 Ouvrir le Scrutin'}
+                  </button>
+                </div>
               )}
 
               {estValide && (
@@ -723,102 +825,227 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               )}
             </div>
 
+            {aucuneCandidature && !estValide && !estOuvert && (
+              <div className="bg-amber-500/10 p-2.5 rounded-xl text-amber-300 font-bold text-center text-[10px]">
+                ⚠️ Le bouton d'ouverture du scrutin est désactivé car aucune candidature n'a encore été enregistrée.
+              </div>
+            )}
+
             {estValide && (
               <div className="bg-emerald-500/10 p-2.5 rounded-xl text-emerald-300 font-bold text-center">
                 ✅ Cette élection a été officiellement validée et clôturée. Mode consultation uniquement.
               </div>
             )}
-
-            {!estValide && estAdmin && (
-              <form onSubmit={ajouterPoste} className="flex gap-2 items-end">
-                <div className="flex-1">
-                  <label className={`block text-[10px] font-bold uppercase mb-1 ${textMuted}`}>Ajouter un poste à pourvoir :</label>
-                  <input
-                    type="text"
-                    required
-                    disabled={actionEnCours}
-                    value={nouveauPoste}
-                    onChange={(e) => setNouveauPoste(e.target.value)}
-                    placeholder="EX: SECRÉTAIRE GÉNÉRAL"
-                    className={`w-full p-2.5 rounded-lg border font-bold text-xs uppercase disabled:opacity-50 ${inputBg}`}
-                  />
-                </div>
-                <button type="submit" disabled={actionEnCours} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-2.5 rounded-lg text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-1.5 cursor-pointer">
-                  {actionEnCours && <span className="animate-spin">⏳</span>}
-                  ➕ Ajouter Poste
-                </button>
-              </form>
-            )}
           </div>
 
-          {!estValide && estAdmin && (
-            <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
-              <h5 className={`font-black text-xs uppercase ${subTitleColor} border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-2`}>👥 Enregistrement des Candidatures</h5>
-              
-              {postes.length === 0 ? (
-                <p className={`text-xs py-2 ${textMuted}`}>Veuillez d'abord créer au moins un poste ci-dessus.</p>
-              ) : (
-                <form onSubmit={ajouterCandidat} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-                  <div>
-                    <label className={`block text-[10px] font-bold uppercase mb-1 ${textMuted}`}>Poste :</label>
-                    <select
-                      value={candidatSelectionne.id_poste}
-                      disabled={actionEnCours}
-                      onChange={(e) => setCandidatSelectionne({ ...candidatSelectionne, id_poste: e.target.value })}
-                      className={`w-full p-2.5 rounded-lg border font-bold text-xs disabled:opacity-50 ${inputBg}`}
-                    >
-                      <option value="">-- Choisir un poste --</option>
-                      {postes.map(p => <option key={p.id} value={p.id}>{p.libelle_poste}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={`block text-[10px] font-bold uppercase mb-1 ${textMuted}`}>Membre candidat :</label>
-                    <select
-                      value={candidatSelectionne.id_participant}
-                      disabled={actionEnCours}
-                      onChange={(e) => setCandidatSelectionne({ ...candidatSelectionne, id_participant: e.target.value })}
-                      className={`w-full p-2.5 rounded-lg border font-bold text-xs disabled:opacity-50 ${inputBg}`}
-                    >
-                      <option value="">-- Choisir un membre --</option>
-                      {participants.map(part => (
-                        <option key={part.id} value={part.id}>
-                          {part.nom_participant} {part.prenom || ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button type="submit" disabled={actionEnCours} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-2.5 rounded-lg text-[10px] uppercase shadow disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer">
-                    {actionEnCours && <span className="animate-spin">⏳</span>}
-                    ✅ Valider Candidature
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
+          {/* LISTE DES CANDIDATS VALIDÉS PAR POSTE AVEC BOUTON DE SUPPRESSION UNIQUEMENT */}
           <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border-2 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]`}>
             <h6 className={`font-bold text-[10px] uppercase ${textMuted}`}>Candidats validés :</h6>
             <div className="space-y-2">
-              {postes.map(poste => {
-                const candsDuPoste = candidats.filter(c => c.id_poste === poste.id);
-                return (
-                  <div key={poste.id} className={`${innerCardBg} p-3 rounded-xl space-y-1.5 w-full`}>
-                    <span className={`font-black uppercase text-[11px] ${titleColor}`}>👑 {poste.libelle_poste}</span>
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {candsDuPoste.length === 0 ? (
-                        <span className={`text-[10px] italic ${textMuted}`}>Aucun candidat enregistré pour ce poste.</span>
-                      ) : (
-                        candsDuPoste.map(c => (
-                          <span key={c.id} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800 shadow-xs'}`}>
-                            {c.tontine_participants?.nom_participant} {c.tontine_participants?.prenom || ''}
-                          </span>
-                        ))
-                      )}
+              {postes.length === 0 ? (
+                <p className={`text-xs italic ${textMuted}`}>Aucun poste n'a été créé pour le moment.</p>
+              ) : (
+                postes.map(poste => {
+                  const candsDuPoste = candidats.filter(c => c.id_poste === poste.id);
+                  return (
+                    <div key={poste.id} className={`${innerCardBg} p-3 rounded-xl space-y-1.5 w-full`}>
+                      <span className={`font-black uppercase text-[11px] ${titleColor}`}>👑 {poste.libelle_poste}</span>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {candsDuPoste.length === 0 ? (
+                          <span className={`text-[10px] italic ${textMuted}`}>Aucun candidat enregistré pour ce poste.</span>
+                        ) : (
+                          candsDuPoste.map(c => (
+                            <div 
+                              key={c.id} 
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border ${isDarkMode ? 'bg-slate-900 text-white border-slate-700' : 'bg-white text-slate-800 border-slate-300 shadow-xs'}`}
+                            >
+                              <span>{c.tontine_participants?.nom_participant} {c.tontine_participants?.prenom || ''}</span>
+                              
+                              {/* BOUTON SUPPRIMER LA CANDIDATURE (AVANT OUVERTURE DU SCRUTIN) */}
+                              {!estOuvert && !estValide && estAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => supprimerCandidature(c.id)}
+                                  className="text-rose-400 hover:text-rose-300 transition cursor-pointer font-black text-xs ml-1 pl-1.5 border-l border-slate-600/30"
+                                  title="Retirer cette candidature"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE 1 : AJOUT DE POSTE */}
+      {modalPosteOuverte && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
+          <div className={`w-full max-w-lg rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.4)] border border-cyan-400 p-5 space-y-4 ${isDarkMode ? 'bg-[#0b1329] text-white' : 'bg-white text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-cyan-400/40">
+              <h4 className="font-black text-cyan-400 uppercase text-xs">➕ Ajouter un Poste à Pourvoir</h4>
+              <button type="button" onClick={() => setModalPosteOuverte(false)} className="text-cyan-300 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+            </div>
+
+            <form onSubmit={ajouterPoste} className="space-y-3 w-full">
+              <div>
+                <label className={`block text-[10px] font-bold uppercase mb-1 ${textMuted}`}>Libellé du poste :</label>
+                <input
+                  type="text"
+                  required
+                  disabled={actionEnCours}
+                  value={nouveauPoste}
+                  onChange={(e) => setNouveauPoste(e.target.value)}
+                  placeholder="EX: SECRÉTAIRE GÉNÉRAL"
+                  className={`w-full p-2.5 rounded-lg border font-bold text-xs uppercase disabled:opacity-50 ${inputBg}`}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-cyan-400/40">
+                <button type="button" onClick={() => setModalPosteOuverte(false)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer">
+                  Annuler
+                </button>
+                <button type="submit" disabled={actionEnCours} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow flex items-center gap-2 cursor-pointer">
+                  {actionEnCours && <span className="animate-spin">⏳</span>}
+                  Enregistrer le poste
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE 2 : ENREGISTREMENT DES CANDIDATURES MULTIPLES PAR POSTE */}
+      {modalCandidatOuverte && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
+          <div className={`w-full max-w-2xl rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.4)] border border-cyan-400 p-5 space-y-4 ${isDarkMode ? 'bg-[#0b1329] text-white' : 'bg-white text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-cyan-400/40">
+              <h4 className="font-black text-cyan-400 uppercase text-xs">👥 Enregistrement des Candidatures</h4>
+              <button type="button" onClick={() => setModalCandidatOuverte(false)} className="text-cyan-300 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+            </div>
+
+            {postes.length === 0 ? (
+              <div className="py-6 text-center space-y-2">
+                <p className="text-xs font-bold text-amber-400">⚠️ Aucun poste n'a été créé. Veuillez d'abord ajouter au moins un poste.</p>
+                <button type="button" onClick={() => { setModalCandidatOuverte(false); setModalPosteOuverte(true); }} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase cursor-pointer">
+                  ➕ Créer un poste maintenant
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4 w-full">
+                
+                {/* 1. SÉLECTION DU POSTE */}
+                <div className="space-y-1.5">
+                  <label className={`block text-[10px] font-bold uppercase ${textMuted}`}>1. Choisir le poste à pourvoir :</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {postes.map(p => {
+                      const estSelectionne = posteCandidatureId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setPosteCandidatureId(p.id);
+                            setParticipantsCoches({});
+                          }}
+                          className={`p-2.5 rounded-xl border text-left font-black text-xs uppercase transition cursor-pointer flex items-center justify-between ${
+                            estSelectionne 
+                              ? 'bg-orange-600 text-white border-orange-400 shadow-md' 
+                              : isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-700 hover:bg-slate-800' : 'bg-slate-50 text-slate-800 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="truncate">👑 {p.libelle_poste}</span>
+                          {estSelectionne && <span>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. SÉLECTION DES MEMBRES CANDIDATS (Uniques avec ID) */}
+                <div className="space-y-1.5">
+                  <label className={`block text-[10px] font-bold uppercase ${textMuted}`}>
+                    2. Cocher les membres candidats pour ce poste {!posteCandidatureId && <span className="text-amber-400">(Veuillez d'abord choisir un poste ci-dessus)</span>} :
+                  </label>
+                  
+                  <div className="max-h-56 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-slate-950/40 rounded-xl border border-slate-800">
+                    {participantsUniques.length === 0 ? (
+                      <p className="col-span-full text-center text-xs py-4 text-slate-400">Aucun membre avec identifiant unique enregistré.</p>
+                    ) : (
+                      participantsUniques.map(part => {
+                        const candExistant = candidats.find(c => c.id_participant === part.id);
+                        const estDejaCandidatAilleurs = Boolean(candExistant);
+                        const posteExistantLibelle = estDejaCandidatAilleurs 
+                          ? postes.find(p => p.id === candExistant.id_poste)?.libelle_poste || 'un autre poste'
+                          : '';
+
+                        const estCoche = Boolean(participantsCoches[part.id]);
+                        const nomComplet = `${part.nom_participant || part.nom_complet || ''} ${part.prenom || ''}`.trim();
+
+                        return (
+                          <div
+                            key={part.id}
+                            onClick={() => {
+                              if (!posteCandidatureId || estDejaCandidatAilleurs) return;
+                              setParticipantsCoches(prev => ({
+                                ...prev,
+                                [part.id]: !prev[part.id]
+                              }));
+                            }}
+                            className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
+                              !posteCandidatureId || estDejaCandidatAilleurs
+                                ? 'opacity-50 cursor-not-allowed bg-slate-900/40 border-slate-800 text-slate-500'
+                                : estCoche 
+                                  ? 'bg-cyan-600/30 text-cyan-200 border-cyan-400 font-bold shadow-md cursor-pointer' 
+                                  : isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800 cursor-pointer' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50 cursor-pointer'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2 flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                disabled={!posteCandidatureId || estDejaCandidatAilleurs}
+                                checked={estCoche}
+                                onChange={() => {}}
+                                className="w-4 h-4 rounded accent-cyan-500 cursor-pointer"
+                              />
+                              <div className="min-w-0">
+                                <p className="font-black uppercase truncate text-xs">{nomComplet}</p>
+                                <p className="text-[9px] font-mono text-cyan-400">
+                                  {estDejaCandidatAilleurs ? <span className="text-rose-400 font-bold">⚠️ Déjà candidat ({posteExistantLibelle})</span> : part.identifiant_unique}
+                                </p>
+                              </div>
+                            </div>
+                            {estCoche && <span className="shrink-0 font-bold text-cyan-300 text-xs">✓ Coché</span>}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-cyan-400/40">
+                  <button type="button" onClick={() => setModalCandidatOuverte(false)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer">
+                    Annuler
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={enregistrerCandidaturesMultiples} 
+                    disabled={actionEnCours || !posteCandidatureId || Object.values(participantsCoches).filter(Boolean).length === 0} 
+                    className="bg-orange-600 hover:bg-orange-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  >
+                    {actionEnCours && <span className="animate-spin">⏳</span>}
+                    Valider les candidatures
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -842,7 +1069,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               <p className={`text-[10px] ${textMuted}`}>Les votes ne sont plus autorisés.</p>
             </div>
           ) : (
-            <form onSubmit={soumettreBulletinGlobal} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className={`block text-[10px] font-bold uppercase mb-1 ${textMuted}`}>Identité de l'électeur (Connecté) :</label>
                 <input
@@ -855,42 +1082,169 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
               <div className="space-y-3 pt-2">
                 <h5 className={`font-black text-xs uppercase border-b ${isDarkMode ? 'border-slate-800/60' : 'border-slate-100'} pb-1 ${subTitleColor}`}>
-                  📋 Bulletin de Vote (Faites vos choix pour chaque poste) :
+                  📋 Bulletin de Vote (Cliquez sur chaque poste pour choisir votre candidat) :
                 </h5>
 
                 {postes.length === 0 ? (
                   <p className={`text-xs italic ${textMuted}`}>Aucun poste à pourvoir dans cette élection.</p>
                 ) : (
                   postes.map(poste => {
-                    const candsDuPoste = candidats.filter(c => c.id_poste === poste.id);
+                    const candidatVoteId = bulletinVote[poste.id];
+                    const candidatChoisi = candidats.find(c => String(c.id) === String(candidatVoteId));
+                    const nomCandidatChoisi = candidatChoisi 
+                      ? `${candidatChoisi.tontine_participants?.nom_participant} ${candidatChoisi.tontine_participants?.prenom || ''}`
+                      : '-- Abstention / Ne pas voter --';
+
                     return (
-                      <div key={poste.id} className={`${innerCardBg} p-3 rounded-xl space-y-1.5 w-full`}>
-                        <span className={`font-black uppercase text-xs ${titleColor}`}>👑 {poste.libelle_poste}</span>
-                        <select
-                          value={bulletinVote[poste.id] || ''}
-                          disabled={actionEnCours}
-                          onChange={(e) => setBulletinVote({ ...bulletinVote, [poste.id]: e.target.value })}
-                          className={`w-full p-2.5 rounded-lg border font-bold text-xs disabled:opacity-50 ${inputBg}`}
-                        >
-                          <option value="">-- Abstention / Ne pas voter pour ce poste --</option>
-                          {candsDuPoste.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.tontine_participants?.nom_participant} {c.tontine_participants?.prenom || ''}
-                            </option>
-                          ))}
-                        </select>
+                      <div 
+                        key={poste.id} 
+                        onClick={() => setPosteVoteModal(poste)}
+                        className={`${innerCardBg} p-3.5 rounded-xl space-y-1 w-full border border-cyan-400/40 hover:border-cyan-400 transition cursor-pointer flex items-center justify-between shadow-xs`}
+                      >
+                        <div>
+                          <span className={`block font-black uppercase text-xs ${titleColor}`}>👑 {poste.libelle_poste}</span>
+                          <span className={`text-[10px] font-bold ${candidatChoisi ? 'text-emerald-400' : textMuted}`}>
+                            {nomCandidatChoisi}
+                          </span>
+                        </div>
+                        <span className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase shadow-xs">
+                          {candidatChoisi ? 'Modifier le choix' : 'Voter ➔'}
+                        </span>
                       </div>
                     );
                   })
                 )}
               </div>
 
-              <button type="submit" disabled={actionEnCours} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer">
-                {actionEnCours && <span className="animate-spin">⏳</span>}
-                📥 Soumettre mon bulletin global dans l'urne
-              </button>
-            </form>
+              <div className="space-y-1 pt-2">
+                <button
+                  type="button"
+                  disabled={actionEnCours}
+                  onClick={() => setModalConfirmationSoumissionOuverte(true)}
+                  className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {actionEnCours && <span className="animate-spin">⏳</span>}
+                  📥 Soumettre mon bulletin
+                </button>
+                <p className="text-[10px] text-center text-amber-400 font-bold italic pt-1">
+                  ⚠️ Attention : Après soumission de votre bulletin, vous ne pourrez plus modifier vos choix. Vous pouvez modifier vos sélections autant de fois que nécessaire avant de soumettre.
+                </p>
+              </div>
+            </div>
           )}
+        </div>
+      )}
+
+      {/* MODALE DE VOTE ÉPURÉE ET ÉTIRÉE POUR UN POSTE SPÉCIFIQUE */}
+      {posteVoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
+          <div className={`w-full max-w-xl rounded-2xl shadow-[0_0_25px_rgba(34,211,238,0.4)] border border-cyan-400 p-5 space-y-4 ${isDarkMode ? 'bg-[#0b1329] text-white' : 'bg-white text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-cyan-400/40">
+              <h4 className="font-black text-cyan-400 uppercase text-xs">🗳️ VOTE POUR : {posteVoteModal.libelle_poste}</h4>
+              <button type="button" onClick={() => setPosteVoteModal(null)} className="text-cyan-300 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+            </div>
+
+            <div className="space-y-2 py-1">
+              <p className={`text-[10px] font-bold uppercase ${textMuted}`}>Sélectionnez votre candidat ou optez pour l'abstention :</p>
+              
+              <div className="grid grid-cols-1 gap-2">
+                {/* Option Abstention */}
+                <div
+                  onClick={() => {
+                    setBulletinVote(prev => ({ ...prev, [posteVoteModal.id]: '' }));
+                    setPosteVoteModal(null);
+                  }}
+                  className={`p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                    !bulletinVote[posteVoteModal.id] 
+                      ? 'bg-amber-600/30 text-amber-200 border-amber-400 font-bold shadow-md' 
+                      : isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 text-slate-800 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span className="font-bold text-xs uppercase">-- Abstention / Ne pas voter pour ce poste --</span>
+                  {!bulletinVote[posteVoteModal.id] && <span className="text-amber-400 font-bold">✓ Choisi</span>}
+                </div>
+
+                {/* Liste des candidats */}
+                {candidats.filter(c => c.id_poste === posteVoteModal.id).length === 0 ? (
+                  <p className="text-center text-xs py-4 text-slate-400 italic">Aucun candidat enregistré pour ce poste.</p>
+                ) : (
+                  candidats.filter(c => c.id_poste === posteVoteModal.id).map(c => {
+                    const estSelectionne = String(bulletinVote[posteVoteModal.id]) === String(c.id);
+                    const nomCandidat = `${c.tontine_participants?.nom_participant} ${c.tontine_participants?.prenom || ''}`.trim();
+                    const identifiant = c.tontine_participants?.identifiant_unique || '';
+
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setBulletinVote(prev => ({ ...prev, [posteVoteModal.id]: c.id }));
+                          setPosteVoteModal(null);
+                        }}
+                        className={`p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                          estSelectionne 
+                            ? 'bg-orange-600 text-white border-orange-400 font-bold shadow-md' 
+                            : isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-800 hover:bg-slate-800' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div>
+                          <p className="font-black uppercase text-xs">👑 {nomCandidat}</p>
+                          {identifiant && <p className="text-[9px] font-mono opacity-80">{identifiant}</p>}
+                        </div>
+                        {estSelectionne && <span className="font-bold text-xs">✓ Sélectionné</span>}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-cyan-400/40">
+              <button type="button" onClick={() => setPosteVoteModal(null)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer">
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE CONFIRMATION DE SOUMISSION DU BULLETIN */}
+      {modalConfirmationSoumissionOuverte && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
+          <div className={`w-full max-w-md rounded-2xl shadow-[0_0_25px_rgba(34,211,238,0.4)] border border-cyan-400 p-5 space-y-4 ${isDarkMode ? 'bg-[#0b1329] text-white' : 'bg-white text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-cyan-400/40">
+              <h4 className="font-black text-cyan-400 uppercase text-xs">⚠️ Confirmation de soumission</h4>
+              <button type="button" onClick={() => setModalConfirmationSoumissionOuverte(false)} className="text-cyan-300 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+            </div>
+
+            <div className="space-y-3 py-2 text-center">
+              <p className="font-bold text-xs uppercase">Êtes-vous sûr de vouloir soumettre votre vote ?</p>
+              <p className={`text-[10px] text-amber-400 font-bold`}>
+                Cette action est définitive. Une fois soumis, il ne sera plus possible de modifier vos choix.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-cyan-400/40">
+              <button 
+                type="button" 
+                onClick={() => setModalConfirmationSoumissionOuverte(false)} 
+                className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer"
+              >
+                Annuler / Modifier encore
+              </button>
+              <button 
+                type="button" 
+                disabled={actionEnCours} 
+                onClick={async (e) => {
+                  setModalConfirmationSoumissionOuverte(false);
+                  await soumettreBulletinGlobal(e);
+                }} 
+                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow flex items-center gap-2 cursor-pointer"
+              >
+                {actionEnCours && <span className="animate-spin">⏳</span>}
+                Oui, soumettre définitivement
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

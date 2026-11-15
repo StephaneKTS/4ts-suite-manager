@@ -13,19 +13,19 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const [tourEnCours, setTourEnCours] = useState(1);
   const [cotisations, setCotisations] = useState([]);
   const [chargement, setChargement] = useState(false);
-  const [sousVue, setSousVue] = useState('saisie'); // 'saisie' | 'liste' | 'detail' | 'historique' | 'caisse' | 'caisse_detail'
+  const [sousVue, setSousVue] = useState('saisie'); // 'saisie' | 'liste' | 'detail' | 'etat_membre' | 'caisse' | 'caisse_detail'
   const [sessionDetail, setSessionDetail] = useState(null);
   const [caisseDetailSession, setCaisseDetailSession] = useState(null);
   const [filtreCycleId, setFiltreCycleId] = useState('');
   
-  // États pour la date de saisie, l'historique et la caisse
+  // États pour la date de saisie, l'état membre et la caisse
   const [dateSaisie, setDateSaisie] = useState(new Date().toISOString().split('T')[0]);
-  const [historiqueCycleId, setHistoriqueCycleId] = useState('');
+  const [etatCycleId, setEtatCycleId] = useState('');
   const [caisseCycleId, setCaisseCycleId] = useState(''); // '' signifie TOUTES les caisses
   const [caisseFiltreDate, setCaisseFiltreDate] = useState('');
   const [caisseFiltreMembre, setCaisseFiltreMembre] = useState('');
   
-  const [modalHistoriqueCycleOuverte, setModalHistoriqueCycleOuverte] = useState(false);
+  const [modalEtatCycleOuverte, setModalEtatCycleOuverte] = useState(false);
   const [modalCaisseCycleOuverte, setModalCaisseCycleOuverte] = useState(false);
   const [modalCaisseMembreOuverte, setModalCaisseMembreOuverte] = useState(false);
   
@@ -68,7 +68,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         .select(`
           *,
           tontine_participants (id, nom_participant, nom_complet, prenom, nombre_parts),
-          tontine_cycles (id, nom_cycle, libelle, montant_cotisation, montant_mise)
+          tontine_cycles (id, nom_cycle, libelle, montant_cotisation, montant_mise, delai_paiement_mois, date_fin)
         `)
         .eq('id_entreprise', idEnt)
         .order('created_at', { ascending: false });
@@ -139,7 +139,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     }
   };
 
-  // Récupération des membres ordonnés strictement selon le tirage validé
   const obtenirMembresOrdreTirage = (idC) => {
     const membresBruts = participants.filter(p => p.id_cycle?.toString() === idC?.toString());
     if (!idC) return membresBruts;
@@ -271,12 +270,13 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     const cycleTrouve = cycles.find(c => c.id.toString() === idC.toString());
     const montantBaseCycle = cycleTrouve ? (parseFloat(cycleTrouve.montant_cotisation || cycleTrouve.montant_mise || 0)) : 0;
     const estEp = estCycleEpargne(cycleTrouve);
+    const aDelai = cycleTrouve?.delai_paiement_mois > 0 || !!cycleTrouve?.date_fin;
 
     const membresDuCycle = obtenirMembresOrdreTirage(idC);
     
     calculerTourAutomatique(idC, participants, cotisations, attributions);
 
-    if (!estEp) {
+    if (!estEp && !aDelai) {
       const benefObj = detecterBeneficiaireTour(idC);
       setBeneficiaireSelection({ participantId: benefObj?.id || '', numeroPart: benefObj?.numeroPart || 1 });
     }
@@ -284,9 +284,18 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     const nouveauMap = {};
     membresDuCycle.forEach(m => {
       const parts = estEp ? 1 : (m.nombre_parts || 1);
+      const montantPrevu = montantBaseCycle * parts;
+
+      const cotisMembreCycle = cotisations.filter(c => 
+        c.id_cycle?.toString() === idC?.toString() && 
+        (c.id_participant?.toString() === m.id?.toString() || c.participant_id?.toString() === m.id?.toString())
+      );
+      const dejaCotise = cotisMembreCycle.reduce((acc, c) => acc + (parseFloat(c.montant_verse) || 0), 0);
+      const soldeRestant = Math.max(0, montantPrevu - dejaCotise);
+
       nouveauMap[m.id] = {
         coche: false,
-        montant: montantBaseCycle * parts
+        montant: aDelai ? soldeRestant : montantPrevu
       };
     });
 
@@ -294,11 +303,26 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   };
 
   const toggleMembreCoche = (idMembre) => {
+    const estActuellementCoche = selectionMembres[idMembre]?.coche || false;
+    const cycleTrouve = cycles.find(c => c.id.toString() === cycleId?.toString());
+    const montantBaseCycle = cycleTrouve ? (parseFloat(cycleTrouve.montant_cotisation || cycleTrouve.montant_mise || 0)) : 0;
+    const m = participants.find(part => part.id?.toString() === idMembre?.toString());
+    const parts = estCycleEpargne(cycleTrouve) ? 1 : (m?.nombre_parts || 1);
+    const montantPrevu = montantBaseCycle * parts;
+    const cotisMembreCycle = cotisations.filter(c => 
+      c.id_cycle?.toString() === cycleId?.toString() && 
+      (c.id_participant?.toString() === idMembre?.toString() || c.participant_id?.toString() === idMembre?.toString())
+    );
+    const dejaCotise = cotisMembreCycle.reduce((acc, c) => acc + (parseFloat(c.montant_verse) || 0), 0);
+    const soldeRestant = Math.max(0, montantPrevu - dejaCotise);
+    const aDelai = cycleTrouve?.delai_paiement_mois > 0 || !!cycleTrouve?.date_fin;
+
     setSelectionMembres(prev => ({
       ...prev,
       [idMembre]: {
         ...prev[idMembre],
-        coche: !prev[idMembre]?.coche
+        coche: !estActuellementCoche,
+        montant: !estActuellementCoche ? (aDelai ? soldeRestant : montantPrevu) : prev[idMembre]?.montant
       }
     }));
   };
@@ -306,14 +330,23 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const toutCocherOuDecocherSaisie = () => {
     const tousCoches = membresDuCycleSelectionne.length > 0 && membresDuCycleSelectionne.every(m => selectionMembres[m.id]?.coche);
     const cycleTrouve = cycles.find(c => c.id.toString() === cycleId?.toString());
-    const montantBase = cycleTrouve ? (parseFloat(cycleTrouve.montant_cotisation || cycleTrouve.montant_mise || 0)) : 0;
+    const montantBaseCycle = cycleTrouve ? (parseFloat(cycleTrouve.montant_cotisation || cycleTrouve.montant_mise || 0)) : 0;
+    const aDelai = cycleTrouve?.delai_paiement_mois > 0 || !!cycleTrouve?.date_fin;
 
     const nouveauMap = {};
     membresDuCycleSelectionne.forEach(m => {
       const parts = estActuelEpargne ? 1 : (m.nombre_parts || 1);
+      const montantPrevu = montantBaseCycle * parts;
+      const cotisMembreCycle = cotisations.filter(c => 
+        c.id_cycle?.toString() === cycleId?.toString() && 
+        (c.id_participant?.toString() === m.id?.toString() || c.participant_id?.toString() === m.id?.toString())
+      );
+      const dejaCotise = cotisMembreCycle.reduce((acc, c) => acc + (parseFloat(c.montant_verse) || 0), 0);
+      const soldeRestant = Math.max(0, montantPrevu - dejaCotise);
+
       nouveauMap[m.id] = {
         coche: !tousCoches,
-        montant: selectionMembres[m.id]?.montant || (montantBase * parts)
+        montant: !tousCoches ? (aDelai ? soldeRestant : montantPrevu) : 0
       };
     });
     setSelectionMembres(nouveauMap);
@@ -483,7 +516,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
       setChargement(true);
       const idEnt = entrepriseId || '4TS-234321';
 
-      // 1. Supprimer les cotisations de cette session
       const { error: errCotis } = await supabase
         .from('tontine_cotisations')
         .delete()
@@ -493,7 +525,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
       if (errCotis) throw errCotis;
 
-      // 2. Supprimer de tontine_caisse si c'est un cycle d'épargne
       if (session.estEpargne) {
         await supabase
           .from('tontine_caisse')
@@ -502,7 +533,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
           .eq('id_cycle', session.id_cycle)
           .eq('numero_tour', session.numero_tour);
       } else {
-        // 3. Supprimer l'attribution si elle existe
         await supabase
           .from('tontine_attributions')
           .delete()
@@ -593,11 +623,15 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
   const cycleActuelObj = cycles.find(c => c.id.toString() === cycleId?.toString());
   const cycleFiltreObj = cycles.find(c => c.id.toString() === filtreCycleId?.toString());
-  const cycleHistoriqueObj = cycles.find(c => c.id.toString() === historiqueCycleId?.toString());
+  const cycleEtatObj = cycles.find(c => c.id.toString() === etatCycleId?.toString());
   const cycleCaisseObj = cycles.find(c => c.id.toString() === caisseCycleId?.toString());
   const estActuelEpargne = estCycleEpargne(cycleActuelObj);
+  const aDelaiActuel = cycleActuelObj ? (cycleActuelObj.delai_paiement_mois > 0 || !!cycleActuelObj.date_fin) : false;
+  const aDelaiEtat = cycleEtatObj ? (cycleEtatObj.delai_paiement_mois > 0 || !!cycleEtatObj.date_fin) : false;
 
   const membresDuCycleSelectionne = obtenirMembresOrdreTirage(cycleId);
+  const membresEtatCycle = obtenirMembresOrdreTirage(etatCycleId);
+  const listePartsEtat = obtenirListePartsCycle(etatCycleId);
   
   const sourceMembresCaisse = caisseCycleId 
     ? obtenirMembresOrdreTirage(caisseCycleId) 
@@ -615,10 +649,17 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const membresDuCaisseCycle = Array.from(mapMembresUniquesCaisse.values());
   
   const listePartsCycleActuel = obtenirListePartsCycle(cycleId);
-  const listePartsHistorique = obtenirListePartsCycle(historiqueCycleId);
 
   const beneficiaireActuelObj = listePartsCycleActuel.find(p => p.id?.toString() === beneficiaireSelection.participantId?.toString() && p.numeroPart === beneficiaireSelection.numeroPart);
   const beneficiaireAutoTour = detecterBeneficiaireTour(cycleId);
+
+  // Calcul du montant total encaissé dynamiquement pendant la saisie
+  const montantTotalSaisieEnCours = Object.entries(selectionMembres).reduce((acc, [_, data]) => {
+    if (data.coche) {
+      return acc + (parseFloat(data.montant) || 0);
+    }
+    return acc;
+  }, 0);
 
   // Regroupement des cotisations de caisse par session
   const caisseSessionsMap = {};
@@ -757,18 +798,18 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
             <button
               type="button"
               onClick={() => { 
-                setSousVue('historique'); 
+                setSousVue('etat_membre'); 
                 setSessionDetail(null); 
                 setCaisseDetailSession(null);
-                if (!historiqueCycleId && cycles.length > 0) {
-                  setHistoriqueCycleId(cycles[0].id);
+                if (!etatCycleId && cycles.length > 0) {
+                  setEtatCycleId(cycles[0].id);
                 }
               }}
               className={`px-2 py-1.5 rounded-lg font-black uppercase transition shadow cursor-pointer whitespace-nowrap ${
-                sousVue === 'historique' ? 'bg-slate-800 text-white border border-slate-600' : (isDarkMode ? 'bg-slate-800 text-slate-300 hover:text-white' : 'bg-gray-200 text-black hover:bg-gray-300')
+                sousVue === 'etat_membre' ? 'bg-slate-800 text-white border border-slate-600' : (isDarkMode ? 'bg-slate-800 text-slate-300 hover:text-white' : 'bg-gray-200 text-black hover:bg-gray-300')
               }`}
             >
-              📜 Histo.
+              📊 État Membre
             </button>
 
             <button
@@ -796,9 +837,14 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                 <span className="font-black text-xs uppercase">
                   {cycleActuelObj ? (cycleActuelObj.nom_cycle || cycleActuelObj.libelle) : '⚠️ Aucun cycle sélectionné'}
                 </span>
-                {cycleActuelObj && !estActuelEpargne && (
+                {cycleActuelObj && !estActuelEpargne && !aDelaiActuel && (
                   <div className="text-[10px] text-slate-300 font-bold mt-0.5">
                     🏆 Bénéficiaire du Tour {numeroTour} : <b>{beneficiaireAutoTour?.affichageNom || 'Tous les tours servis'}</b>
+                  </div>
+                )}
+                {aDelaiActuel && (
+                  <div className="text-[10px] text-orange-600 font-bold mt-0.5">
+                    ⏳ Cycle avec délai de paiement — Échéance : {cycleActuelObj.date_fin ? new Date(cycleActuelObj.date_fin).toLocaleDateString() : 'Non définie'}
                   </div>
                 )}
                 {estActuelEpargne && (
@@ -819,7 +865,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   />
                 </div>
 
-                {!estActuelEpargne && (
+                {!estActuelEpargne && !aDelaiActuel && (
                   <div className="flex flex-col">
                     <label className={`font-black text-[9px] uppercase mb-0.5 ${labelColor}`}>Tour :</label>
                     <input
@@ -858,7 +904,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
               <form onSubmit={validerCotisation} className="space-y-2 animate-fadeIn">
                 <div className="flex justify-between items-center px-1">
                   <h4 className={`font-black uppercase text-[11px] ${titleColor}`}>
-                    Membres : {cycleActuelObj?.nom_cycle || cycleActuelObj?.libelle} {estActuelEpargne ? '(Épargne)' : `(Tour n° ${numeroTour})`}
+                    Membres : {cycleActuelObj?.nom_cycle || cycleActuelObj?.libelle} {estActuelEpargne ? '(Épargne)' : aDelaiActuel ? '(Avec Délai / Échéancier)' : `(Tour n° ${numeroTour})`}
                   </h4>
                   <div className="flex items-center gap-2">
                     <button
@@ -877,19 +923,40 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                     <thead className="sticky top-0 uppercase text-[9px] font-black bg-gray-100 text-black z-10 border-b border-gray-300">
                       <tr>
                         <th className="p-2 text-center w-10">Actif</th>
-                        <th className="p-2">Nom & Prénom (Ordre Tirage)</th>
-                        {!estActuelEpargne && <th className="p-2 text-center">Parts</th>}
-                        <th className="p-2 text-right">Montant (F)</th>
+                        <th className="p-2">Nom & Prénom</th>
+                        {aDelaiActuel ? (
+                          <>
+                            <th className="p-2 text-right">Prévu (F)</th>
+                            <th className="p-2 text-right">Cotisé (F)</th>
+                            <th className="p-2 text-right">Solde (F)</th>
+                            <th className="p-2 text-center">Échéance</th>
+                          </>
+                        ) : (
+                          !estActuelEpargne && <th className="p-2 text-center">Parts</th>
+                        )}
+                        <th className="p-2 text-right">Versement (F)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 text-[10px] text-black">
                       {membresDuCycleSelectionne.length === 0 ? (
-                        <tr><td colSpan={estActuelEpargne ? 3 : 4} className="p-4 text-center font-bold text-gray-600">Aucun membre inscrit à ce cycle.</td></tr>
+                        <tr><td colSpan={aDelaiActuel ? 7 : (estActuelEpargne ? 3 : 4)} className="p-4 text-center font-bold text-gray-600">Aucun membre inscrit à ce cycle.</td></tr>
                       ) : (
                         membresDuCycleSelectionne.map((m) => {
                           const estCoche = selectionMembres[m.id]?.coche || false;
                           const montantMembre = selectionMembres[m.id]?.montant ?? 0;
                           const nomComplet = `${m.nom_participant || m.nom_complet || ''} ${m.prenom || ''}`;
+
+                          const montantBaseCycle = cycleActuelObj ? (parseFloat(cycleActuelObj.montant_cotisation || cycleActuelObj.montant_mise || 0)) : 0;
+                          const parts = estActuelEpargne ? 1 : (m.nombre_parts || 1);
+                          const montantPrevu = montantBaseCycle * parts;
+
+                          const cotisMembreCycle = cotisations.filter(c => 
+                            c.id_cycle?.toString() === cycleId?.toString() && 
+                            (c.id_participant?.toString() === m.id?.toString() || c.participant_id?.toString() === m.id?.toString())
+                          );
+                          const dejaCotise = cotisMembreCycle.reduce((acc, c) => acc + (parseFloat(c.montant_verse) || 0), 0);
+                          const soldeRestant = Math.max(0, montantPrevu - dejaCotise);
+                          const dateEcheance = cycleActuelObj?.date_fin ? new Date(cycleActuelObj.date_fin).toLocaleDateString() : '-';
 
                           return (
                             <tr key={m.id} className={`transition ${estCoche ? 'bg-slate-100 font-bold text-black' : 'hover:bg-gray-50 text-black'}`}>
@@ -902,8 +969,17 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                                 />
                               </td>
                               <td className="p-2 uppercase font-black text-black">{nomComplet}</td>
-                              {!estActuelEpargne && (
-                                <td className="p-2 text-center font-mono font-bold text-black">{m.nombre_parts || 1}</td>
+                              {aDelaiActuel ? (
+                                <>
+                                  <td className="p-2 text-right font-mono font-bold text-black">{montantPrevu.toLocaleString()}</td>
+                                  <td className="p-2 text-right font-mono font-bold text-blue-700">{dejaCotise.toLocaleString()}</td>
+                                  <td className="p-2 text-right font-mono font-black text-orange-600">{soldeRestant.toLocaleString()}</td>
+                                  <td className="p-2 text-center font-mono text-[9px] text-gray-700">{dateEcheance}</td>
+                                </>
+                              ) : (
+                                !estActuelEpargne && (
+                                  <td className="p-2 text-center font-mono font-bold text-black">{m.nombre_parts || 1}</td>
+                                )
                               )}
                               <td className="p-2 text-right">
                                 <input
@@ -923,13 +999,21 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   </table>
                 </div>
 
-                <div className="flex justify-end pt-1">
+                {/* SECTION DU BAS : TOTAL ENCAISSÉ DYNAMIQUE ET BOUTON VALIDER */}
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-gray-300">Total Encaissé :</span>
+                    <span className="font-mono font-black text-sm text-emerald-400">
+                      {montantTotalSaisieEnCours.toLocaleString()} FCFA
+                    </span>
+                  </div>
+
                   <button 
                     type="submit" 
                     disabled={chargement || membresDuCycleSelectionne.length === 0}
-                    className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-black px-4 py-2.5 rounded-xl uppercase transition shadow cursor-pointer text-xs flex items-center justify-center gap-1.5 border border-slate-600"
+                    className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl uppercase transition shadow cursor-pointer text-xs flex items-center justify-center gap-1.5 border border-slate-600"
                   >
-                    <span>💾</span> {estActuelEpargne ? 'Valider & Verser dans la caisse' : 'Valider la cotisation & Remettre la cagnotte'}
+                    <span>💾</span> Valider
                   </button>
                 </div>
               </form>
@@ -1130,20 +1214,20 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
           </div>
         )}
 
-        {/* VUE 4 : HISTORIQUE DES BÉNÉFICIAIRES PAR CYCLE */}
-        {sousVue === 'historique' && (
+        {/* VUE 4 : ÉTAT MEMBRE (SITUATION COMPLÈTE PAR MEMBRE) */}
+        {sousVue === 'etat_membre' && (
           <div className="space-y-2.5 animate-fadeIn w-full">
             <div className={`p-3 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 shadow-2xs ${headerBarBg}`}>
               <div>
-                <span className={`block font-black text-[9px] uppercase mb-0.5 ${labelColor}`}>📜 Cycle Sélectionné (Historique) :</span>
+                <span className={`block font-black text-[9px] uppercase mb-0.5 ${labelColor}`}>📊 Cycle Sélectionné (État Membre) :</span>
                 <span className="font-black text-xs uppercase">
-                  {cycleHistoriqueObj ? (cycleHistoriqueObj.nom_cycle || cycleHistoriqueObj.libelle) : '⚠️ Aucun cycle sélectionné'}
+                  {cycleEtatObj ? (cycleEtatObj.nom_cycle || cycleEtatObj.libelle) : '⚠️ Aucun cycle sélectionné'}
                 </span>
               </div>
 
               <button
                 type="button"
-                onClick={() => setModalHistoriqueCycleOuverte(true)}
+                onClick={() => setModalEtatCycleOuverte(true)}
                 className={`font-black px-3 py-1.5 rounded-lg uppercase text-[10px] transition border shadow cursor-pointer flex items-center gap-1.5 ${
                   isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600' : 'bg-gray-200 hover:bg-gray-300 text-black border-gray-400'
                 }`}
@@ -1152,12 +1236,12 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
               </button>
             </div>
 
-            {!historiqueCycleId ? (
+            {!etatCycleId ? (
               <div className={`p-8 text-center rounded-xl border ${isDarkMode ? 'bg-slate-900/60 text-slate-300 border-slate-700' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
-                <p className="font-bold text-xs mb-2">Veuillez choisir un cycle pour afficher l'historique.</p>
+                <p className="font-bold text-xs mb-2">Veuillez choisir un cycle pour afficher l'état des membres.</p>
                 <button
                   type="button"
-                  onClick={() => setModalHistoriqueCycleOuverte(true)}
+                  onClick={() => setModalEtatCycleOuverte(true)}
                   className="px-3 py-1.5 rounded-lg font-black text-xs bg-slate-800 hover:bg-slate-700 text-white uppercase shadow cursor-pointer border border-slate-600"
                 >
                   🎯 Choisir un cycle
@@ -1167,48 +1251,102 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
               <div className="space-y-2">
                 <div className="flex justify-between items-center px-1">
                   <h4 className={`font-black uppercase text-[11px] ${titleColor}`}>
-                    Membres & Statut : {cycleHistoriqueObj?.nom_cycle || cycleHistoriqueObj?.libelle}
+                    Situation des membres : {cycleEtatObj?.nom_cycle || cycleEtatObj?.libelle} {aDelaiEtat ? '(Avec Échéance)' : '(Rotation / Standard)'}
                   </h4>
                   <span className={`text-[10px] ${subtitleColor}`}>
-                    {estCycleEpargne(cycleHistoriqueObj) ? `${listePartsHistorique.length} inscrits` : `${listePartsHistorique.filter(p => p.dejaServie).length} / ${listePartsHistorique.length} servis`}
+                    {aDelaiEtat ? `${membresEtatCycle.length} membres` : `${listePartsEtat.length} parts`}
                   </span>
                 </div>
 
-                <div className="overflow-x-auto border border-gray-300 rounded-xl bg-white shadow-2xs max-h-80 overflow-y-auto">
+                <div className="overflow-x-auto border border-gray-300 rounded-xl bg-white shadow-2xs max-h-[65vh] overflow-y-auto">
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 uppercase text-[9px] font-black bg-gray-100 text-black z-10 border-b border-gray-300">
                       <tr>
-                        <th className="p-2.5">Nom & Prénom (Ordre Tirage)</th>
+                        <th className="p-2.5">Nom & Prénom</th>
+                        {aDelaiEtat ? (
+                          <>
+                            <th className="p-2.5 text-right">Montant Attendu</th>
+                            <th className="p-2.5 text-right">Déjà Cotisé</th>
+                            <th className="p-2.5 text-right">Reste à Cotiser</th>
+                            <th className="p-2.5 text-center">Échéance</th>
+                          </>
+                        ) : (
+                          <th className="p-2.5 text-right">Montant</th>
+                        )}
                         <th className="p-2.5 text-center">Statut</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 text-[10px] text-black">
-                      {listePartsHistorique.length === 0 ? (
-                        <tr><td colSpan="2" className="p-4 text-center font-bold text-gray-600">Aucun membre inscrit dans ce cycle.</td></tr>
+                      {aDelaiEtat ? (
+                        membresEtatCycle.length === 0 ? (
+                          <tr><td colSpan="6" className="p-4 text-center font-bold text-gray-600">Aucun membre inscrit dans ce cycle.</td></tr>
+                        ) : (
+                          membresEtatCycle.map((m, idx) => {
+                            const nomComplet = `${m.nom_participant || m.nom_complet || ''} ${m.prenom || ''}`;
+                            const montantBaseCycle = cycleEtatObj ? (parseFloat(cycleEtatObj.montant_cotisation || cycleEtatObj.montant_mise || 0)) : 0;
+                            const parts = m.nombre_parts || 1;
+                            const montantAttendu = montantBaseCycle * parts;
+                            
+                            const cotisMembre = cotisations.filter(c => 
+                              c.id_cycle?.toString() === etatCycleId?.toString() && 
+                              (c.id_participant?.toString() === m.id?.toString() || c.participant_id?.toString() === m.id?.toString())
+                            );
+                            const dejaCotise = cotisMembre.reduce((acc, c) => acc + (parseFloat(c.montant_verse) || 0), 0);
+                            const resteACotiser = Math.max(0, montantAttendu - dejaCotise);
+                            const dateEcheance = cycleEtatObj?.date_fin ? new Date(cycleEtatObj.date_fin).toLocaleDateString() : '-';
+                            const estSolde = montantAttendu > 0 ? dejaCotise >= montantAttendu : dejaCotise > 0;
+
+                            return (
+                              <tr key={`${m.id}_${idx}`} className={`transition ${estSolde ? 'bg-emerald-50/70 font-bold text-black' : 'hover:bg-gray-50 text-black'}`}>
+                                <td className="p-2.5 uppercase font-black text-black">{nomComplet}</td>
+                                <td className="p-2.5 text-right font-mono font-bold text-black">{montantAttendu.toLocaleString()} F</td>
+                                <td className="p-2.5 text-right font-mono font-bold text-blue-700">{dejaCotise.toLocaleString()} F</td>
+                                <td className="p-2.5 text-right font-mono font-black text-orange-600">{resteACotiser.toLocaleString()} F</td>
+                                <td className="p-2.5 text-center font-mono text-[9px] text-gray-700">{dateEcheance}</td>
+                                <td className="p-2.5 text-center">
+                                  {estSolde ? (
+                                    <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded-full text-[9px] uppercase">Soldé</span>
+                                  ) : dejaCotise > 0 ? (
+                                    <span className="bg-amber-500 text-white font-black px-2 py-0.5 rounded-full text-[9px] uppercase">Partiel</span>
+                                  ) : (
+                                    <span className="bg-red-600 text-white font-black px-2 py-0.5 rounded-full text-[9px] uppercase">En attente</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
                       ) : (
-                        listePartsHistorique.map((partie, idx) => {
-                          const estEp = estCycleEpargne(cycleHistoriqueObj);
-                          return (
-                            <tr key={`${partie.id}_${partie.numeroPart}_${idx}`} className={`transition ${partie.dejaServie ? 'bg-emerald-50/60 font-bold text-black' : 'hover:bg-gray-50 text-black'}`}>
-                              <td className="p-2.5 uppercase font-black text-black">{partie.affichageNom}</td>
-                              <td className="p-2.5 text-center">
-                                {estEp ? (
-                                  <span className="bg-blue-100 text-blue-900 font-black px-2.5 py-1 rounded-full text-[9px] uppercase border border-blue-300 inline-flex items-center gap-1">
-                                    <span>🏦</span> Épargnant actif
-                                  </span>
-                                ) : partie.dejaServie ? (
-                                  <span className="bg-emerald-800 text-white font-black px-2.5 py-1 rounded-full text-[9px] uppercase shadow-2xs inline-flex items-center gap-1">
-                                    <span>🏆</span> Servi (Tour n° {partie.tourServi})
-                                  </span>
-                                ) : (
-                                  <span className="bg-amber-100 text-amber-900 font-black px-2.5 py-1 rounded-full text-[9px] uppercase border border-amber-300 inline-flex items-center gap-1">
-                                    <span>⏳</span> En attente
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })
+                        listePartsEtat.length === 0 ? (
+                          <tr><td colSpan="3" className="p-4 text-center font-bold text-gray-600">Aucun membre inscrit dans ce cycle.</td></tr>
+                        ) : (
+                          listePartsEtat.map((partie, idx) => {
+                            const montantBaseCycle = cycleEtatObj ? (parseFloat(cycleEtatObj.montant_cotisation || cycleEtatObj.montant_mise || 0)) : 0;
+                            const estEp = estCycleEpargne(cycleEtatObj);
+
+                            return (
+                              <tr key={`${partie.id}_${partie.numeroPart}_${idx}`} className={`transition ${partie.dejaServie ? 'bg-emerald-50/60 font-bold text-black' : 'hover:bg-gray-50 text-black'}`}>
+                                <td className="p-2.5 uppercase font-black text-black">{partie.affichageNom}</td>
+                                <td className="p-2.5 text-right font-mono font-bold text-black">{montantBaseCycle.toLocaleString()} F</td>
+                                <td className="p-2.5 text-center">
+                                  {estEp ? (
+                                    <span className="bg-blue-100 text-blue-900 font-black px-2.5 py-1 rounded-full text-[9px] uppercase border border-blue-300 inline-flex items-center gap-1">
+                                      <span>🏦</span> Épargnant actif
+                                    </span>
+                                  ) : partie.dejaServie ? (
+                                    <span className="bg-emerald-800 text-white font-black px-2.5 py-1 rounded-full text-[9px] uppercase shadow-2xs inline-flex items-center gap-1">
+                                      <span>🏆</span> Servi (Tour n° {partie.tourServi})
+                                    </span>
+                                  ) : (
+                                    <span className="bg-amber-100 text-amber-900 font-black px-2.5 py-1 rounded-full text-[9px] uppercase border border-amber-300 inline-flex items-center gap-1">
+                                      <span>⏳</span> En attente
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )
                       )}
                     </tbody>
                   </table>
@@ -1431,6 +1569,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                     const nomC = cycle.nom_cycle || cycle.libelle || `Cycle #${cycle.id}`;
                     const montantRef = cycle.montant_cotisation || cycle.montant_mise || 0;
                     const estEp = estCycleEpargne(cycle);
+                    const aDel = cycle.delai_paiement_mois > 0 || !!cycle.date_fin;
                     return (
                       <div
                         key={cycle.id}
@@ -1442,11 +1581,11 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                         }`}
                       >
                         <div className="flex justify-between items-center">
-                          <span className="font-black text-xs uppercase">🎯 {nomC} {estEp && '🏦 (Épargne)'}</span>
+                          <span className="font-black text-xs uppercase">🎯 {nomC} {estEp && '🏦 (Épargne)'} {aDel && '⏳ (Avec délai)'}</span>
                           {estActif && <span className="text-[10px]">✓ Sélectionné</span>}
                         </div>
                         <span className="text-[10px] opacity-80">
-                          Montant : {montantRef > 0 ? `${montantRef.toLocaleString()}F` : 'Libre'}
+                          Montant : {montantRef > 0 ? `${montantRef.toLocaleString()}F` : 'Libre'} {aDel && `| Échéance: ${cycle.date_fin || '-'}`}
                         </span>
                       </div>
                     );
@@ -1463,13 +1602,13 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
           </div>
         )}
 
-        {/* MODALE DE SÉLECTION DU CYCLE (POUR HISTORIQUE) */}
-        {modalHistoriqueCycleOuverte && (
+        {/* MODALE DE SÉLECTION DU CYCLE (POUR ÉTAT MEMBRE) */}
+        {modalEtatCycleOuverte && (
           <div className="fixed inset-0 z-65 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
             <div className={`w-[95%] sm:w-full max-w-md rounded-2xl shadow-2xl border p-4 space-y-3 max-h-[85vh] overflow-y-auto ${isDarkMode ? 'bg-[#0b1329] border-slate-700 text-white' : 'bg-white border-gray-300 text-black'}`}>
               <div className={`flex justify-between items-center border-b pb-2 ${isDarkMode ? 'border-slate-700' : 'border-gray-300'}`}>
-                <h5 className="font-black text-sm uppercase">📜 CHOISIR UN CYCLE (HISTORIQUE)</h5>
-                <button type="button" onClick={() => setModalHistoriqueCycleOuverte(false)} className="font-bold text-sm cursor-pointer">✖</button>
+                <h5 className="font-black text-sm uppercase">📊 CHOISIR UN CYCLE ( ÉTAT MEMBRE )</h5>
+                <button type="button" onClick={() => setModalEtatCycleOuverte(false)} className="font-bold text-sm cursor-pointer">✖</button>
               </div>
               
               <div className="space-y-2">
@@ -1477,14 +1616,14 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   <p className="text-xs text-center py-4 text-gray-500">Aucun cycle enregistré.</p>
                 ) : (
                   cycles.map((cycle) => {
-                    const estActif = historiqueCycleId?.toString() === cycle.id?.toString();
+                    const estActif = etatCycleId?.toString() === cycle.id?.toString();
                     const nomC = cycle.nom_cycle || cycle.libelle || `Cycle #${cycle.id}`;
                     return (
                       <div
                         key={cycle.id}
                         onClick={() => {
-                          setHistoriqueCycleId(cycle.id);
-                          setModalHistoriqueCycleOuverte(false);
+                          setEtatCycleId(cycle.id);
+                          setModalEtatCycleOuverte(false);
                         }}
                         className={`p-2.5 rounded-xl border cursor-pointer transition flex justify-between items-center ${
                           estActif 
@@ -1501,7 +1640,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
               </div>
 
               <div className={`flex justify-end pt-2 border-t ${isDarkMode ? 'border-slate-700' : 'border-gray-300'}`}>
-                <button type="button" onClick={() => setModalHistoriqueCycleOuverte(false)} className={`font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer border ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600' : 'bg-gray-200 hover:bg-gray-300 text-black border-gray-400'}`}>
+                <button type="button" onClick={() => setModalEtatCycleOuverte(false)} className={`font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer border ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600' : 'bg-gray-200 hover:bg-gray-300 text-black border-gray-400'}`}>
                   Fermer
                 </button>
               </div>
