@@ -30,12 +30,14 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   
   const [afficherModal, setAfficherModal] = useState(false);
   const [modalRoleOuverte, setModalRoleOuverte] = useState(false);
-  const [modalCycleOuverte, setModalCycleOuverte] = useState(false); // Modale de sélection des cycles
-  const [cycleFiltreSelectionne, setCycleFiltreSelectionne] = useState(null); // ID du cycle filtré
+  const [modalCycleOuverte, setModalCycleOuverte] = useState(false);
+  const [cycleFiltreSelectionne, setCycleFiltreSelectionne] = useState(null);
 
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [recherche, setRecherche] = useState('');
   const [participantEnEdition, setParticipantEnEdition] = useState(null);
+  const [aDejaCotise, setADejaCotise] = useState(false);
+  const [donneesInitialesModal, setDonneesInitialesModal] = useState(null);
 
   // États pour le tri
   const [triPar, setTriPar] = useState('nom'); // 'nom' | 'role' | 'statut' | 'cycle'
@@ -51,7 +53,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const fileInputRef = useRef(null);
 
-  // État du formulaire incluant le statut et les cycles
+  // État du formulaire
   const [nouveauParticipant, setNouveauParticipant] = useState({
     nom_participant: '',
     prenom: '',
@@ -78,7 +80,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       if (errPart) throw errPart;
       setParticipants(dataPart || []);
 
-      // Chargement de tous les cycles de l'entreprise
       const { data: dataCycles } = await supabase
         .from('tontine_cycles')
         .select('*')
@@ -88,13 +89,11 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         setCyclesDisponibles(dataCycles);
       }
 
-      // Chargement de l'historique des tirages depuis le localStorage
       const historiqueLocal = localStorage.getItem(`historique_tirages_${entrepriseId}`);
       if (historiqueLocal) {
         setHistoriqueTirages(JSON.parse(historiqueLocal));
       }
 
-      // Récupération des rôles tontine
       const { data: dataRoles, error: errRoles } = await supabase
         .from('roles')
         .select('*')
@@ -145,17 +144,32 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     setNouveauParticipant(prev => ({ ...prev, telephone: chiffres }));
   };
 
-  // Gestion des cases à cocher des cycles et de leurs parts
   const basculerCycleSelection = (idCycle) => {
     setNouveauParticipant(prev => {
       const cycles = { ...prev.cyclesSelectionnes };
       if (cycles[idCycle]) {
-        delete cycles[idCycle]; // Décocher
+        delete cycles[idCycle];
       } else {
-        cycles[idCycle] = 1; // Cocher par défaut avec 1 part
+        cycles[idCycle] = 1;
       }
       return { ...prev, cyclesSelectionnes: cycles };
     });
+  };
+
+  // 🌟 FONCTION TOUT COCHER / TOUT DÉCOCHER
+  const toutCocherOuDecocherCycles = () => {
+    const tousCoches = cyclesDisponibles.length > 0 && cyclesDisponibles.every(c => nouveauParticipant.cyclesSelectionnes[c.id] !== undefined);
+    if (tousCoches) {
+      // Tout décocher
+      setNouveauParticipant(prev => ({ ...prev, cyclesSelectionnes: {} }));
+    } else {
+      // Tout cocher avec 1 part par défaut
+      const tous = {};
+      cyclesDisponibles.forEach(c => {
+        tous[c.id] = nouveauParticipant.cyclesSelectionnes[c.id] || 1;
+      });
+      setNouveauParticipant(prev => ({ ...prev, cyclesSelectionnes: tous }));
+    }
   };
 
   const modifierPartsCycle = (idCycle, nbParts) => {
@@ -166,6 +180,28 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         [idCycle]: Math.max(1, parseInt(nbParts) || 1)
       }
     }));
+  };
+
+  // Vérification si des modifications ont été réellement effectuées par rapport à l'état initial
+  const aDesModifications = () => {
+    if (!participantEnEdition) return true; // En création, actif si les champs requis sont remplis
+    if (!donneesInitialesModal) return false;
+
+    const etatActuel = JSON.stringify({
+      nom: nouveauParticipant.nom_participant.trim(),
+      prenom: nouveauParticipant.prenom.trim(),
+      pays: nouveauParticipant.pays,
+      tel: nouveauParticipant.telephone,
+      res: nouveauParticipant.lieu_residence.trim(),
+      cni: nouveauParticipant.numero_cni.trim(),
+      role: nouveauParticipant.libelle_role,
+      statut: nouveauParticipant.statut,
+      date: nouveauParticipant.date_adhesion,
+      photo: nouveauParticipant.photo,
+      cycles: nouveauParticipant.cyclesSelectionnes
+    });
+
+    return etatActuel !== donneesInitialesModal;
   };
 
   const enregistrerParticipant = async (e) => {
@@ -180,6 +216,11 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     const cyclesCoches = Object.keys(nouveauParticipant.cyclesSelectionnes);
     if (cyclesCoches.length === 0) {
       alert('⚠️ Veuillez sélectionner au moins un cycle (antenne) pour ce membre.');
+      return;
+    }
+
+    if (participantEnEdition && !aDesModifications()) {
+      alert('⚠️ Aucune modification n’a été effectuée.');
       return;
     }
 
@@ -256,6 +297,11 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   };
 
   const supprimerParticipant = async (p) => {
+    if (aDejaCotise) {
+      alert('❌ Suppression impossible : ce membre a déjà effectué des cotisations dans un ou plusieurs cycles.');
+      return;
+    }
+
     if (!confirm('Êtes-vous sûr de vouloir supprimer ce membre de tous ses cycles ?')) return;
     try {
       let query = supabase
@@ -281,7 +327,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
   };
 
-  const ouvrirEdition = (p) => {
+  const ouvrirEdition = async (p) => {
     setParticipantEnEdition(p);
     const paysTrouve = LISTE_PAYS.find(item => p.telephone && p.telephone.startsWith(item.indicatif)) || LISTE_PAYS[0];
     let telLocal = p.telephone && p.telephone !== 'N/A' ? p.telephone : '';
@@ -295,13 +341,33 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     );
 
     const cyclesMap = {};
+    const idsParticipant = participationsMembre.map(item => item.id);
+
     participationsMembre.forEach(part => {
       if (part.id_cycle) {
         cyclesMap[part.id_cycle] = part.nombre_parts || 1;
       }
     });
 
-    setNouveauParticipant({
+    // 🌟 VÉRIFICATION DES COTISATIONS EFFECTUÉES PAR CE MEMBRE
+    let cotiseEffectuee = false;
+    if (idsParticipant.length > 0) {
+      try {
+        const { count, error } = await supabase
+          .from('tontine_cotisations')
+          .select('*', { count: 'exact', head: true })
+          .in('id_participant', idsParticipant);
+
+        if (!error && count && count > 0) {
+          cotiseEffectuee = true;
+        }
+      } catch (e) {
+        console.warn('Vérification cotisations :', e);
+      }
+    }
+    setADejaCotise(cotiseEffectuee);
+
+    const formulaireData = {
       nom_participant: p.nom_participant || p.nom_complet || '',
       prenom: p.prenom || '',
       pays: p.pays || paysTrouve.code,
@@ -313,13 +379,31 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       date_adhesion: p.date_adhesion ? p.date_adhesion.split('T')[0] : new Date().toISOString().split('T')[0],
       photo: p.photo || '',
       cyclesSelectionnes: cyclesMap,
-    });
+    };
+
+    setNouveauParticipant(formulaireData);
+    setDonneesInitialesModal(JSON.stringify({
+      nom: formulaireData.nom_participant.trim(),
+      prenom: formulaireData.prenom.trim(),
+      pays: formulaireData.pays,
+      tel: formulaireData.telephone,
+      res: formulaireData.lieu_residence.trim(),
+      cni: formulaireData.numero_cni.trim(),
+      role: formulaireData.libelle_role,
+      statut: formulaireData.statut,
+      date: formulaireData.date_adhesion,
+      photo: formulaireData.photo,
+      cycles: formulaireData.cyclesSelectionnes
+    }));
+
     setAfficherModal(true);
   };
 
   const fermerModal = () => {
     setAfficherModal(false);
     setParticipantEnEdition(null);
+    setADejaCotise(false);
+    setDonneesInitialesModal(null);
     setNouveauParticipant({
       nom_participant: '', prenom: '', pays: 'cmr', telephone: '', lieu_residence: '', numero_cni: '',
       libelle_role: 'ADHERANT', statut: 'ACTIF', date_adhesion: new Date().toISOString().split('T')[0], photo: '',
@@ -354,7 +438,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     };
   });
 
-  // Filtrage par recherche, par cycle sélectionné, et Tri
   const membresFiltres = listeMembresUniques.filter(m => {
     if (cycleFiltreSelectionne) {
       const participeAuCycle = m.cyclesParticipations?.some(cp => cp.id_cycle === cycleFiltreSelectionne);
@@ -386,7 +469,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const participantsActifsUniques = listeMembresUniques.filter(p => p.statut !== 'INACTIF');
 
-  // Gestion du clic sur les en-têtes pour trier
   const gererTri = (colonne) => {
     if (triPar === colonne) {
       setOrdreAsc(!ordreAsc);
@@ -396,7 +478,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
   };
 
-  // 🌟 LOGIQUE DE TIRAGE COLLECTIF SYNCHRONISÉ
   const lancerRoueCollectif = () => {
     if (participantsActifsUniques.length === 0) {
       alert('⚠️ Aucun participant actif enregistré pour effectuer le tirage.');
@@ -410,7 +491,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
     const nbMembres = participantsActifsUniques.length;
     const angleParSecteur = 360 / nbMembres;
-
     const indexGagnant = Math.floor(Math.random() * nbMembres);
 
     const toursSupplementaires = 6 * 360;
@@ -462,11 +542,11 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauParticipant.pays) || LISTE_PAYS[0];
   const inputBg = isDarkMode ? 'bg-[#1b263b] text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
   const labelColor = isDarkMode ? 'text-slate-200' : 'text-slate-800';
+  const tousCochesGlobal = cyclesDisponibles.length > 0 && cyclesDisponibles.every(c => nouveauParticipant.cyclesSelectionnes[c.id] !== undefined);
 
   return (
     <div className="w-full h-full space-y-3 font-sans text-xs relative">
       
-      {/* VUE PRINCIPALE : LISTE DES MEMBRES */}
       {vueActuelle === 'liste' && (
         <div className="space-y-3 w-full">
           
@@ -475,6 +555,8 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               type="button"
               onClick={() => {
                 setParticipantEnEdition(null);
+                setADejaCotise(false);
+                setDonneesInitialesModal(null);
                 setNouveauParticipant({
                   nom_participant: '', prenom: '', pays: 'cmr', telephone: '', lieu_residence: '', numero_cni: '',
                   libelle_role: 'ADHERANT', statut: 'ACTIF', date_adhesion: new Date().toISOString().split('T')[0], photo: '',
@@ -499,7 +581,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
             </button>
           </div>
 
-          {/* BARRE DE RECHERCHE ET BOUTON CYCLE SUR LA MÊME LIGNE (SANS REGROUPEMENT) */}
           <div className="flex flex-wrap gap-2 items-center justify-between bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
             <input
               type="text"
@@ -540,28 +621,16 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               <thead className="bg-slate-100 text-slate-800 border-b uppercase text-[9px] font-black select-none">
                 <tr>
                   <th className="p-2 w-10 text-center">PHOTO</th>
-                  <th 
-                    onClick={() => gererTri('nom')} 
-                    className="p-2 cursor-pointer hover:bg-slate-200 transition"
-                  >
+                  <th onClick={() => gererTri('nom')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
                     {triPar === 'nom' ? (ordreAsc ? '🔼 ' : '🔽 ') : ''}NOM & PRÉNOM
                   </th>
-                  <th 
-                    onClick={() => gererTri('role')} 
-                    className="p-2 cursor-pointer hover:bg-slate-200 transition"
-                  >
+                  <th onClick={() => gererTri('role')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
                     {triPar === 'role' ? (ordreAsc ? '🔼 ' : '🔽 ') : ''}RÔLE
                   </th>
-                  <th 
-                    onClick={() => gererTri('statut')} 
-                    className="p-2 text-center cursor-pointer hover:bg-slate-200 transition"
-                  >
+                  <th onClick={() => gererTri('statut')} className="p-2 text-center cursor-pointer hover:bg-slate-200 transition">
                     {triPar === 'statut' ? (ordreAsc ? '🔼 ' : '🔽 ') : ''}STATUT
                   </th>
-                  <th 
-                    onClick={() => gererTri('cycle')} 
-                    className="p-2 text-center cursor-pointer hover:bg-slate-200 transition"
-                  >
+                  <th onClick={() => gererTri('cycle')} className="p-2 text-center cursor-pointer hover:bg-slate-200 transition">
                     {triPar === 'cycle' ? (ordreAsc ? '🔼 ' : '🔽 ') : ''}CYCLE
                   </th>
                   <th className="p-2 text-center">PARTS</th>
@@ -645,7 +714,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* VUE INDÉPENDANTE : ROUE DE TIRAGE ET HISTORIQUE */}
       {vueActuelle === 'roue' && (
         <div className="bg-black/40 p-4 rounded-xl border border-purple-500/40 space-y-4 text-center">
           
@@ -884,7 +952,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* FENÊTRE MODALE AGRANDIE DE CRÉATION / MODIFICATION DE MEMBRE */}
+      {/* FENÊTRE MODALE DE CRÉATION / MODIFICATION DE MEMBRE */}
       {afficherModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-xl rounded-2xl shadow-2xl border p-4 space-y-3 max-h-[95vh] overflow-y-auto ${isDarkMode ? 'bg-[#0b1329] border-cyan-900 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
@@ -900,7 +968,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               
               <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
               
-              {/* NOM & PRÉNOM SUR LA MÊME LIGNE AVEC AVATAR */}
               <div className="grid grid-cols-12 gap-2 items-center">
                 <div className="col-span-1 flex items-center justify-center pt-4">
                   <div 
@@ -936,7 +1003,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 </div>
               </div>
 
-              {/* RÔLE (MODALE) & STATUT SUR LA MÊME LIGNE */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Rôle / Poste</label>
@@ -962,7 +1028,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 </div>
               </div>
 
-              {/* LIGNE UNIQUE : PAYS, TÉLÉPHONE & NUMÉRO CNI */}
               <div className="grid grid-cols-12 gap-2">
                 <div className="col-span-3">
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Pays</label>
@@ -998,7 +1063,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 </div>
               </div>
 
-              {/* DATE D'ADHÉTION & LIEU DE RÉSIDENCE */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date d'adhésion</label>
@@ -1020,11 +1084,20 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 </div>
               </div>
 
-              {/* SECTION CYCLES SANS BARRE DE DÉFILEMENT (AFFICHAGE COMPLET) */}
+              {/* SECTION CYCLES AVEC BOUTON TOUT COCHER / TOUT DÉCOCHER */}
               <div className="space-y-1.5 p-2 rounded-xl bg-orange-500/10 border border-orange-500/30">
-                <label className="block font-black text-[10px] uppercase text-orange-400">
-                  🎯 Participation aux Cycles / Antennes & Nombre de parts *
-                </label>
+                <div className="flex justify-between items-center">
+                  <label className="block font-black text-[10px] uppercase text-orange-400">
+                    🎯 Participation aux Cycles / Antennes & Nombre de parts *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={toutCocherOuDecocherCycles}
+                    className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2 py-0.5 rounded text-[9px] uppercase shadow transition cursor-pointer"
+                  >
+                    {tousCochesGlobal ? '🔄 Tout décocher' : '✅ Tout cocher'}
+                  </button>
+                </div>
                 <p className="text-[9px] text-slate-400">Cochez les cycles auxquels ce membre participe et indiquez ses parts pour chacun :</p>
                 
                 <div className="space-y-1 bg-slate-900/60 p-2 rounded-lg border border-slate-700">
@@ -1072,10 +1145,12 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                   {participantEnEdition && (
                     <button 
                       type="button" 
-                      onClick={() => supprimerParticipant(participantEnEdition)} 
-                      className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1 rounded text-[10px] shadow transition cursor-pointer"
+                      onClick={() => supprimerParticipant(participantEnEdition)}
+                      disabled={aDejaCotise}
+                      title={aDejaCotise ? 'Suppression impossible : ce membre a déjà effectué des cotisations.' : 'Supprimer le membre'}
+                      className={`font-black px-2.5 py-1 rounded text-[10px] shadow transition ${aDejaCotise ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed' : 'bg-red-600 hover:bg-red-500 text-white cursor-pointer'}`}
                     >
-                      🗑️ Supprimer de tous les cycles
+                      {aDejaCotise ? '🔒 Cotisations existantes (Suppression bloquée)' : '🗑️ Supprimer de tous les cycles'}
                     </button>
                   )}
                 </div>
@@ -1083,7 +1158,15 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                   <button type="button" onClick={fermerModal} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1 rounded text-[10px] cursor-pointer">
                     Annuler
                   </button>
-                  <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-1 rounded text-[10px] shadow cursor-pointer">
+                  <button 
+                    type="submit" 
+                    disabled={enTrainDeSauvegarder || (participantEnEdition && !aDesModifications())} 
+                    className={`font-black px-4 py-1 rounded text-[10px] shadow transition ${
+                      (participantEnEdition && !aDesModifications()) || enTrainDeSauvegarder
+                        ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                    }`}
+                  >
                     {enTrainDeSauvegarder ? 'Enregistrement...' : (participantEnEdition ? 'Mettre à jour' : 'Enregistrer')}
                   </button>
                 </div>
@@ -1094,7 +1177,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DES RÔLES */}
       {modalRoleOuverte && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-4 space-y-3 ${isDarkMode ? 'bg-[#0f1d3e] border-cyan-800 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
@@ -1140,7 +1222,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DU CYCLE (SANS BARRE DE DÉFILEMENT & TITRE SIMPLIFIÉ) */}
       {modalCycleOuverte && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-4 space-y-3 ${isDarkMode ? 'bg-[#0f1d3e] border-cyan-800 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>

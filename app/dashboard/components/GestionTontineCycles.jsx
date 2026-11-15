@@ -19,6 +19,11 @@ const LISTE_STATUTS = [
   { id: 'CLÔTURÉ', label: 'Clôturé', color: 'bg-slate-500/20 text-slate-400 border-slate-500/30' },
 ];
 
+const LISTE_TYPES_CYCLE = [
+  { id: 'BOUFFER', label: 'Tontine à bouffer (Bénéficiée)' },
+  { id: 'EPARGNE', label: 'Épargne (Mise en caisse)' },
+];
+
 export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDarkMode = false, onRetour = null }) {
   const [cycles, setCycles] = useState([]);
   const [chargement, setChargement] = useState(false);
@@ -30,15 +35,15 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const [modalFrequenceOuverte, setModalFrequenceOuverte] = useState(false);
   const [modalStatutOuverte, setModalStatutOuverte] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
-  const [enTrainDeCalculer, setEnTrainDeCalculer] = useState(false);
 
   const [nouveauCycle, setNouveauCycle] = useState({
     nom_cycle: '',
+    type_cycle: 'BOUFFER', // 'BOUFFER' ou 'EPARGNE'
     montant_cotisation: '',
     montant_libre: false,
     frequence: 'MENSUEL',
     regle_reunion: '',
-    nombre_tours: 12,
+    nombre_tours: 1,
     date_debut: new Date().toISOString().split('T')[0],
     date_fin: '',
     statut: 'ACTIF',
@@ -66,16 +71,13 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     chargerCycles();
   }, [entrepriseId]);
 
-  // Fonction pour calculer automatiquement le nombre de tours à partir de la table tontine_participants et de nombre_parts
-  const calculerToursAutomatique = async (idCycleCible = null) => {
-    setEnTrainDeCalculer(true);
+  // Calcul automatique en arrière-plan des tours selon les parts des participants
+  const calculerToursAutomatique = async () => {
     try {
-      let query = supabase
+      const { data: participants, error } = await supabase
         .from('tontine_participants')
-        .select('nombre_parts, id_cycle')
+        .select('nombre_parts')
         .eq('id_entreprise', entrepriseId);
-
-      const { data: participants, error } = await query;
 
       if (error) {
         console.error('Erreur lecture tontine_participants :', error.message);
@@ -83,7 +85,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       }
 
       if (participants && participants.length > 0) {
-        // Additionne la colonne nombre_parts de chaque participant
         const totalParts = participants.reduce((acc, p) => {
           const partsVal = parseInt(p.nombre_parts || 1) || 1;
           return acc + partsVal;
@@ -95,10 +96,15 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       }
     } catch (err) {
       console.error('Erreur calcul automatique des tours :', err.message);
-    } finally {
-      setEnTrainDeCalculer(false);
     }
   };
+
+  // Déclenchement automatique du calcul à l'ouverture de la modale ou lors du passage en mode "BOUFFER"
+  useEffect(() => {
+    if (modalCreationOuverte && nouveauCycle.type_cycle === 'BOUFFER') {
+      calculerToursAutomatique();
+    }
+  }, [modalCreationOuverte, nouveauCycle.type_cycle]);
 
   const enregistrerCycle = async (e) => {
     e.preventDefault();
@@ -114,11 +120,12 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       const payload = {
         id_entreprise: entrepriseId,
         nom_cycle: nouveauCycle.nom_cycle.trim().toUpperCase(),
+        type_cycle: nouveauCycle.type_cycle || 'BOUFFER',
         montant_cotisation: nouveauCycle.montant_libre ? 0 : (parseFloat(nouveauCycle.montant_cotisation) || 0),
         montant_libre: nouveauCycle.montant_libre,
         frequence: nouveauCycle.frequence,
         regle_reunion: (nouveauCycle.regle_reunion || '').trim().toUpperCase(),
-        nombre_tours: parseInt(nouveauCycle.nombre_tours) || 1,
+        nombre_tours: nouveauCycle.type_cycle === 'EPARGNE' ? 1 : (parseInt(nouveauCycle.nombre_tours) || 1),
         date_debut: nouveauCycle.date_debut || null,
         date_fin: nouveauCycle.date_fin || null,
         statut: nouveauCycle.statut || 'ACTIF',
@@ -142,11 +149,12 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       setCycleEnEdition(null);
       setNouveauCycle({
         nom_cycle: '',
+        type_cycle: 'BOUFFER',
         montant_cotisation: '',
         montant_libre: false,
         frequence: 'MENSUEL',
         regle_reunion: '',
-        nombre_tours: 12,
+        nombre_tours: 1,
         date_debut: new Date().toISOString().split('T')[0],
         date_fin: '',
         statut: 'ACTIF',
@@ -178,43 +186,43 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     }
   };
 
-  const ouvrirCreation = async () => {
+  const ouvrirCreation = () => {
     setCycleEnEdition(null);
     setNouveauCycle({
       nom_cycle: '',
+      type_cycle: 'BOUFFER',
       montant_cotisation: '',
       montant_libre: false,
       frequence: 'MENSUEL',
       regle_reunion: '',
-      nombre_tours: 12,
+      nombre_tours: 1,
       date_debut: new Date().toISOString().split('T')[0],
       date_fin: '',
       statut: 'ACTIF',
     });
     setModalCreationOuverte(true);
-    await calculerToursAutomatique();
   };
 
-  const ouvrirEdition = async (c) => {
+  const ouvrirEdition = (c) => {
     setCycleEnEdition(c);
     setNouveauCycle({
       nom_cycle: c.nom_cycle || c.libelle || '',
+      type_cycle: c.type_cycle || 'BOUFFER',
       montant_cotisation: c.montant_cotisation || '',
       montant_libre: c.montant_libre || false,
       frequence: c.frequence || 'MENSUEL',
       regle_reunion: c.regle_reunion || '',
-      nombre_tours: c.nombre_tours || 12,
+      nombre_tours: c.nombre_tours || 1,
       date_debut: c.date_debut ? c.date_debut.split('T')[0] : new Date().toISOString().split('T')[0],
       date_fin: c.date_fin ? c.date_fin.split('T')[0] : '',
       statut: c.statut || 'ACTIF',
     });
     setModalCreationOuverte(true);
-    await calculerToursAutomatique(c.id);
   };
 
   const cyclesFiltres = cycles.filter(c => {
     const nomC = c.nom_cycle || c.libelle || '';
-    const texte = `${nomC} ${c.frequence || ''} ${c.statut || ''} ${c.regle_reunion || ''}`.toLowerCase();
+    const texte = `${nomC} ${c.frequence || ''} ${c.statut || ''} ${c.regle_reunion || ''} ${c.type_cycle || ''}`.toLowerCase();
     return texte.includes(recherche.toLowerCase());
   });
 
@@ -289,7 +297,37 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 />
               </div>
 
-              {/* LIGNE 2 : Montant & Option Montant Libre */}
+              {/* LIGNE 2 : Type de Cycle avec cases à cocher */}
+              <div>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nature du Cycle / Cotisation *</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {LISTE_TYPES_CYCLE.map((typeC) => {
+                    const estCoche = nouveauCycle.type_cycle === typeC.id;
+                    return (
+                      <button
+                        key={typeC.id}
+                        type="button"
+                        onClick={() => setNouveauCycle({ ...nouveauCycle, type_cycle: typeC.id })}
+                        className={`p-1.5 rounded border font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1.5 text-center ${
+                          estCoche
+                            ? 'bg-orange-600 text-white border-orange-500 shadow'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={estCoche}
+                          onChange={() => {}}
+                          className="w-3.5 h-3.5 accent-orange-600 cursor-pointer rounded pointer-events-none"
+                        />
+                        <span>{typeC.id === 'BOUFFER' ? '🎯 Tontine à bouffer (Bénéficiée)' : '🏦 Épargne (Mise en caisse)'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* LIGNE 3 : Montant & Option Montant Libre */}
               <div className="space-y-1 p-1.5 rounded bg-white/5 border border-slate-700/20">
                 <div className="flex justify-between items-center">
                   <label className={`font-black text-[9px] uppercase ${labelColor}`}>Montant de la Cotisation</label>
@@ -315,7 +353,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 )}
               </div>
 
-              {/* LIGNE 3 : Choix de la Fréquence & du Statut en Modale */}
+              {/* LIGNE 4 : Choix de la Fréquence & du Statut en Modale */}
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Fréquence</label>
@@ -342,7 +380,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 </div>
               </div>
 
-              {/* LIGNE 4 : Règle ou Date précise des réunions */}
+              {/* LIGNE 5 : Règle ou Date précise des réunions */}
               <div>
                 <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date / Règle des réunions</label>
                 <input
@@ -354,34 +392,22 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 />
               </div>
 
-              {/* LIGNE 5 : Nombre de tours & Date de début */}
-              <div className="grid grid-cols-2 gap-1.5">
-                <div>
-                  <div className="flex justify-between items-center mb-0.5">
-                    <label className={`block font-black text-[9px] uppercase ${labelColor}`}>Nombre de Tours</label>
-                    <button
-                      type="button"
-                      disabled={enTrainDeCalculer}
-                      onClick={() => calculerToursAutomatique(cycleEnEdition?.id)}
-                      className="text-[8px] font-black text-orange-400 hover:underline cursor-pointer"
-                      title="Recalculer selon les parts des participants"
-                    >
-                      {enTrainDeCalculer ? 'Calcul...' : '🔄 Recalculer'}
-                    </button>
+              {/* LIGNE 6 : Nombre de tours (Affiché uniquement si Tontine à bouffer) & Date de début */}
+              <div className={`grid ${nouveauCycle.type_cycle === 'BOUFFER' ? 'grid-cols-2' : 'grid-cols-1'} gap-1.5`}>
+                {nouveauCycle.type_cycle === 'BOUFFER' && (
+                  <div>
+                    <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Nombre de Tours (Calcul auto)</label>
+                    <input
+                      type="number"
+                      disabled
+                      value={nouveauCycle.nombre_tours}
+                      className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-blue-600 cursor-not-allowed opacity-80 ${inputBg}`}
+                    />
+                    <span className="text-[8px] text-slate-400 block mt-0.5">
+                      Calculé automatiquement selon les parts des participants.
+                    </span>
                   </div>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={nouveauCycle.nombre_tours}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNouveauCycle({ ...nouveauCycle, nombre_tours: e.target.value })}
-                    className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-blue-600 ${inputBg}`}
-                  />
-                  <span className="text-[8px] text-slate-400 block mt-0.5">
-                    Somme automatique des parts des participants.
-                  </span>
-                </div>
+                )}
                 <div>
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Date de début</label>
                   <input
@@ -514,6 +540,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
               ) : (
                 cyclesFiltres.map((c) => {
                   const nomAffiche = c.nom_cycle || c.libelle || 'CYCLE';
+                  const estEpargne = c.type_cycle === 'EPARGNE';
                   return (
                     <tr 
                       key={c.id} 
@@ -522,14 +549,21 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                       title="Cliquez pour modifier ou supprimer ce cycle"
                     >
                       <td className="p-2 font-black uppercase text-slate-900">
-                        {nomAffiche}
+                        <div className="flex items-center gap-1">
+                          <span>{nomAffiche}</span>
+                          <span className={`px-1 py-0.5 rounded text-[7px] font-bold border ${estEpargne ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-orange-100 text-orange-800 border-orange-200'}`}>
+                            {estEpargne ? '🏦 ÉPARGNE' : '🎯 BÉNÉFICIÉ'}
+                          </span>
+                        </div>
                         {c.regle_reunion && <div className="text-[8px] text-slate-500 font-normal">🗓️ {c.regle_reunion}</div>}
                       </td>
                       <td className="p-2 text-center font-black font-mono text-emerald-700 whitespace-nowrap">
                         {c.montant_libre ? <span className="text-purple-600 font-bold">Au choix</span> : `${c.montant_cotisation?.toLocaleString()} F`}
                       </td>
                       <td className="p-2 text-center font-bold text-slate-700 uppercase">{c.frequence}</td>
-                      <td className="p-2 text-center font-black text-blue-600">{c.nombre_tours}</td>
+                      <td className="p-2 text-center font-black text-blue-600">
+                        {estEpargne ? <span className="text-slate-400 font-normal">N/A</span> : c.nombre_tours}
+                      </td>
                       <td className="p-2 text-center">
                         <span className="bg-emerald-100 text-emerald-800 font-black px-1.5 py-0.5 rounded text-[8px] uppercase border border-emerald-200">
                           {c.statut}
