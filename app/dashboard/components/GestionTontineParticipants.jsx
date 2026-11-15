@@ -18,7 +18,7 @@ const LISTE_PAYS = [
   { code: 'nga', indicatif: '+234', longueur: 10 },
 ];
 
-export default function GestionTontineParticipants({ entrepriseId = '4TS-290136', isDarkMode = false }) {
+export default function GestionTontineParticipants({ entrepriseId = '4TS-290136', entrepriseNom = 'ISMA LOGISTIQUE', isDarkMode = false }) {
   const [participants, setParticipants] = useState([]);
   const [cyclesDisponibles, setCyclesDisponibles] = useState([]);
   const [rolesDisponibles, setRolesDisponibles] = useState([]);
@@ -33,6 +33,10 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   const [modalCycleOuverte, setModalCycleOuverte] = useState(false);
   const [cycleFiltreSelectionne, setCycleFiltreSelectionne] = useState(null);
 
+  // États pour la modale de contact rapide (appel, whatsapp, sms)
+  const [modalContactOuverte, setModalContactOuverte] = useState(false);
+  const [contactSelectionne, setContactSelectionne] = useState(null);
+
   // États pour le choix de la tontine au tirage
   const [cycleTirageSelectionne, setCycleTirageSelectionne] = useState(null);
   const [modalChoixCycleTirageOuverte, setModalChoixCycleTirageOuverte] = useState(false);
@@ -44,7 +48,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   const [donneesInitialesModal, setDonneesInitialesModal] = useState(null);
 
   // États pour le tri
-  const [triPar, setTriPar] = useState('nom'); // 'nom' | 'role' | 'statut' | 'cycle'
+  const [triPar, setTriPar] = useState('nom'); // 'nom' | 'role' | 'statut'
   const [ordreAsc, setOrdreAsc] = useState(true);
 
   // États pour la roue et le tirage
@@ -57,8 +61,17 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const fileInputRef = useRef(null);
 
-  // État du formulaire
+  // Génération automatique de l'identifiant unique basé sur l'entreprise (ex: ISMA-601938)
+  const genererCodeMembreUnique = (nomEnt = entrepriseNom) => {
+    const clean = (nomEnt || 'ISMA').replace(/[^a-zA-Z]/g, '').toUpperCase();
+    const prefix = clean.length >= 4 ? clean.substring(0, 4) : clean.padEnd(4, 'X');
+    const aleatoire = Math.floor(100000 + Math.random() * 900000);
+    return `${prefix}-${aleatoire}`;
+  };
+
+  // État du formulaire avec identifiant_unique permanent non modifiable
   const [nouveauParticipant, setNouveauParticipant] = useState({
+    identifiant_unique: '',
     nom_participant: '',
     prenom: '',
     pays: 'cmr',
@@ -188,6 +201,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     if (!donneesInitialesModal) return false;
 
     const etatActuel = JSON.stringify({
+      id_unique: nouveauParticipant.identifiant_unique,
       nom: nouveauParticipant.nom_participant.trim(),
       prenom: nouveauParticipant.prenom.trim(),
       pays: nouveauParticipant.pays,
@@ -233,11 +247,13 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
 
     const telephoneComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : null;
+    const identifiantFinal = nouveauParticipant.identifiant_unique;
 
     setEnTrainDeSauvegarder(true);
     try {
       const basePayload = {
         id_entreprise: entrepriseId || '4TS-290136',
+        identifiant_unique: identifiantFinal,
         nom_participant: nouveauParticipant.nom_participant.trim().toUpperCase(),
         nom_complet: nouveauParticipant.nom_participant.trim().toUpperCase(),
         prenom: (nouveauParticipant.prenom || '').trim().toUpperCase(),
@@ -254,13 +270,12 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         let deleteQuery = supabase
           .from('tontine_participants')
           .delete()
-          .eq('id_entreprise', entrepriseId)
-          .eq('nom_participant', participantEnEdition.nom_participant);
+          .eq('id_entreprise', entrepriseId);
 
-        if (participantEnEdition.telephone && participantEnEdition.telephone !== 'N/A') {
-          deleteQuery = deleteQuery.eq('telephone', participantEnEdition.telephone);
+        if (participantEnEdition.identifiant_unique) {
+          deleteQuery = deleteQuery.eq('identifiant_unique', participantEnEdition.identifiant_unique);
         } else {
-          deleteQuery = deleteQuery.or('telephone.is.null,telephone.eq.N/A');
+          deleteQuery = deleteQuery.eq('nom_participant', participantEnEdition.nom_participant);
         }
 
         const { error: errDel } = await deleteQuery;
@@ -274,7 +289,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
         const { error } = await supabase.from('tontine_participants').insert(payloadsInsertion);
         if (error) throw error;
-        alert('✅ Membre et ses cycles mis à jour avec succès !');
+        alert('✅ Membre et ses cycles mis à jour avec succès (Identifiant unique permanent préservé) !');
       } else {
         const payloadsInsertion = cyclesCoches.map(idCycle => ({
           ...basePayload,
@@ -284,7 +299,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
         const { error } = await supabase.from('tontine_participants').insert(payloadsInsertion);
         if (error) throw error;
-        alert('✅ Membre inscrit aux cycles sélectionnés avec succès !');
+        alert(`✅ Membre inscrit aux cycles sélectionnés avec succès (Identifiant : ${identifiantFinal}) !`);
       }
 
       fermerModal();
@@ -307,13 +322,12 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       let query = supabase
         .from('tontine_participants')
         .delete()
-        .eq('id_entreprise', entrepriseId)
-        .eq('nom_participant', p.nom_participant || p.nom_complet);
+        .eq('id_entreprise', entrepriseId);
 
-      if (p.telephone && p.telephone !== 'N/A') {
-        query = query.eq('telephone', p.telephone);
+      if (p.identifiant_unique) {
+        query = query.eq('identifiant_unique', p.identifiant_unique);
       } else {
-        query = query.or('telephone.is.null,telephone.eq.N/A');
+        query = query.eq('nom_participant', p.nom_participant || p.nom_complet);
       }
 
       const { error } = await query;
@@ -336,8 +350,8 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
 
     const participationsMembre = participants.filter(
-      item => (item.nom_participant === p.nom_participant || item.nom_complet === p.nom_complet) && 
-              ((!item.telephone && (!p.telephone || p.telephone === 'N/A')) || item.telephone === p.telephone)
+      item => (p.identifiant_unique && item.identifiant_unique === p.identifiant_unique) ||
+              (item.nom_participant === p.nom_participant || item.nom_complet === p.nom_complet)
     );
 
     const cyclesMap = {};
@@ -367,6 +381,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     setADejaCotise(cotiseEffectuee);
 
     const formulaireData = {
+      identifiant_unique: p.identifiant_unique || genererCodeMembreUnique(entrepriseNom),
       nom_participant: p.nom_participant || p.nom_complet || '',
       prenom: p.prenom || '',
       pays: p.pays || paysTrouve.code,
@@ -382,6 +397,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
     setNouveauParticipant(formulaireData);
     setDonneesInitialesModal(JSON.stringify({
+      id_unique: formulaireData.identifiant_unique,
       nom: formulaireData.nom_participant.trim(),
       prenom: formulaireData.prenom.trim(),
       pays: formulaireData.pays,
@@ -404,6 +420,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     setADejaCotise(false);
     setDonneesInitialesModal(null);
     setNouveauParticipant({
+      identifiant_unique: '',
       nom_participant: '', prenom: '', pays: 'cmr', telephone: '', lieu_residence: '', numero_cni: '',
       libelle_role: 'ADHERANT', statut: 'ACTIF', date_adhesion: new Date().toISOString().split('T')[0], photo: '',
       cyclesSelectionnes: {}
@@ -412,7 +429,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const mapMembres = new Map();
   participants.forEach(p => {
-    const cle = `${(p.nom_participant || p.nom_complet || '').trim().toUpperCase()}_${(p.prenom || '').trim().toUpperCase()}_${(p.telephone || 'N/A').trim()}`;
+    const cle = p.identifiant_unique || `${(p.nom_participant || p.nom_complet || '').trim().toUpperCase()}_${(p.prenom || '').trim().toUpperCase()}_${(p.telephone || 'N/A').trim()}`;
     if (!mapMembres.has(cle)) {
       mapMembres.set(cle, {
         ...p,
@@ -443,7 +460,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
 
     const nomP = m.nom_participant || m.nom_complet || '';
-    const texte = `${nomP} ${m.prenom || ''} ${m.telephone || ''} ${m.libelle_role || ''}`.toLowerCase();
+    const texte = `${m.identifiant_unique || ''} ${nomP} ${m.prenom || ''} ${m.telephone || ''} ${m.libelle_role || ''}`.toLowerCase();
     return texte.includes(recherche.toLowerCase());
   }).sort((a, b) => {
     let valA = '', valB = '';
@@ -456,16 +473,12 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     } else if (triPar === 'statut') {
       valA = (a.statut || 'ACTIF').trim();
       valB = (b.statut || 'ACTIF').trim();
-    } else if (triPar === 'cycle') {
-      valA = a.cyclesParticipations?.[0]?.id_cycle?.toString() || '0';
-      valB = b.cyclesParticipations?.[0]?.id_cycle?.toString() || '0';
     }
     if (valA < valB) return ordreAsc ? -1 : 1;
     if (valA > valB) return ordreAsc ? 1 : -1;
     return 0;
   });
 
-  // Filtrage strict des membres éligibles au tirage pour le cycle sélectionné
   const participantsActifsUniques = listeMembresUniques.filter(p => {
     if (p.statut === 'INACTIF') return false;
     if (cycleTirageSelectionne) {
@@ -570,7 +583,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       {vueActuelle === 'liste' && (
         <div className="space-y-2.5 w-full">
           
-          {/* ZONE DU HAUT ÉPURÉE (DEUX BOUTONS CÔTE À CÔTE SANS DÉFILEMENT) */}
           <div className="flex items-center bg-white/5 px-2 py-1.5 rounded-xl border border-cyan-400/50 shadow-[0_0_10px_rgba(34,211,238,0.2)] gap-2 w-full">
             <button
               type="button"
@@ -579,6 +591,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 setADejaCotise(false);
                 setDonneesInitialesModal(null);
                 setNouveauParticipant({
+                  identifiant_unique: genererCodeMembreUnique(entrepriseNom),
                   nom_participant: '', prenom: '', pays: 'cmr', telephone: '', lieu_residence: '', numero_cni: '',
                   libelle_role: 'ADHERANT', statut: 'ACTIF', date_adhesion: new Date().toISOString().split('T')[0], photo: '',
                   cyclesSelectionnes: {}
@@ -607,7 +620,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               type="text"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
-              placeholder="🔍 Rechercher un participant..."
+              placeholder="🔍 Rechercher par ID, nom, téléphone..."
               className="flex-1 min-w-[180px] bg-white border border-cyan-400/60 rounded-lg px-2.5 py-1.5 font-bold text-slate-900 text-xs focus:outline-none"
             />
             
@@ -637,18 +650,15 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
             </div>
           </div>
 
-          {/* TABLEAU SIMPLIFIÉ ENCADRÉ EN BLEU NÉON */}
           <div className="overflow-x-auto border border-cyan-400 rounded-xl bg-white shadow-[0_0_12px_rgba(34,211,238,0.3)] w-full">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100 text-slate-800 border-b border-cyan-300 uppercase text-[9px] font-black select-none">
                 <tr>
+                  <th className="p-2.5 text-center w-12">#</th>
+                  <th className="p-2.5">ID UNIQUE</th>
                   <th onClick={() => gererTri('nom')} className="p-2.5 cursor-pointer hover:bg-slate-200 transition">
                     {triPar === 'nom' ? (ordreAsc ? '🔼 ' : '🔽 ') : ''}NOM & PRÉNOM
                   </th>
-                  <th onClick={() => gererTri('cycle')} className="p-2.5 text-center cursor-pointer hover:bg-slate-200 transition">
-                    {triPar === 'cycle' ? (ordreAsc ? '🔼 ' : '🔽 ') : ''}CYCLE
-                  </th>
-                  <th className="p-2.5 text-center">PARTS</th>
                   <th className="p-2.5">TÉLÉPHONE</th>
                   <th onClick={() => gererTri('statut')} className="p-2.5 text-center cursor-pointer hover:bg-slate-200 transition">
                     {triPar === 'statut' ? (ordreAsc ? '🔼 ' : '🔽 ') : ''}STATUT
@@ -661,7 +671,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 ) : membresFiltres.length === 0 ? (
                   <tr><td colSpan="5" className="p-4 text-center text-slate-500 font-bold">Aucun participant trouvé pour ce filtre.</td></tr>
                 ) : (
-                  membresFiltres.map((p) => {
+                  membresFiltres.map((p, index) => {
                     const nomAffiche = p.nom_participant || p.nom_complet || 'Membre';
                     const estInactif = p.statut === 'INACTIF';
                     return (
@@ -671,38 +681,26 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                         className={`cursor-pointer transition select-none ${estInactif ? 'bg-slate-200/60 text-slate-400 opacity-60 grayscale' : 'hover:bg-cyan-50 text-slate-900'}`}
                         title="Cliquez pour ouvrir et modifier le membre"
                       >
+                        <td className="p-2.5 text-center font-mono font-bold text-cyan-700">{index + 1}</td>
+                        <td className="p-2.5 font-mono font-bold text-orange-600">{p.identifiant_unique || 'N/A'}</td>
                         <td className="p-2.5 font-black uppercase">{nomAffiche} {p.prenom || ''}</td>
-                        <td className="p-2.5 text-center font-bold text-slate-800 uppercase">
-                          {p.cyclesParticipations && p.cyclesParticipations.length > 0 ? (
-                            <div className="flex flex-col gap-0.5 items-center">
-                              {p.cyclesParticipations.map((cp, idx) => {
-                                const cycleConcerne = cyclesDisponibles.find(c => c.id === cp.id_cycle);
-                                const nomCycle = cycleConcerne ? (cycleConcerne.nom_cycle || cycleConcerne.libelle) : `Cycle #${cp.id_cycle || 'N/A'}`;
-                                return (
-                                  <span key={idx} className="bg-slate-100 text-slate-800 border border-cyan-300 px-1.5 py-0.5 rounded text-[8px] font-bold">
-                                    {nomCycle}
-                                  </span>
-                                );
-                              })}
-                            </div>
+                        <td className="p-2.5 font-mono font-bold">
+                          {p.telephone && p.telephone !== 'N/A' ? (
+                            <span 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setContactSelectionne(p);
+                                setModalContactOuverte(true);
+                              }}
+                              className="text-cyan-700 hover:text-cyan-900 underline cursor-pointer bg-cyan-50 px-2 py-0.5 rounded border border-cyan-300"
+                              title="Cliquer pour appeler, envoyer un WhatsApp ou un SMS"
+                            >
+                              📞 {p.telephone}
+                            </span>
                           ) : (
-                            <span className="text-slate-400">Aucun cycle</span>
+                            <span className="text-slate-400">N/A</span>
                           )}
                         </td>
-                        <td className="p-2.5 text-center font-black text-slate-900 font-mono">
-                          {p.cyclesParticipations && p.cyclesParticipations.length > 0 ? (
-                            <div className="flex flex-col gap-0.5">
-                              {p.cyclesParticipations.map((cp, idx) => (
-                                <span key={idx} className="py-0.5">
-                                  {cp.nombre_parts || 1}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            1
-                          )}
-                        </td>
-                        <td className="p-2.5 font-mono font-bold">{p.telephone && p.telephone !== 'N/A' ? p.telephone : 'N/A'}</td>
                         <td className="p-2.5 text-center">
                           <span className={`font-black px-2 py-0.5 rounded text-[8px] uppercase border ${estInactif ? 'bg-red-100 text-red-700 border-red-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300'}`}>
                             {p.statut || 'ACTIF'}
@@ -1067,7 +1065,50 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* MODALE D'OUVERTURE / ÉDITION DU MEMBRE (AVEC PHOTO ET RÔLE RESTAURÉS) ENCADRÉE EN BLEU NÉON */}
+      {/* MODALE DE CONTACT (APPEL, WHATSAPP, SMS) */}
+      {modalContactOuverte && contactSelectionne && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.4)] border border-cyan-400 p-4 space-y-3 bg-slate-900 text-white">
+            <div className="flex justify-between items-center border-b pb-2 border-cyan-400/40">
+              <h5 className="font-black text-xs uppercase text-cyan-400">📱 CONTACTER LE MEMBRE</h5>
+              <button type="button" onClick={() => setModalContactOuverte(false)} className="text-cyan-300 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+            </div>
+            <div className="text-center py-2">
+              <p className="font-black uppercase text-sm text-white">{contactSelectionne.nom_participant || contactSelectionne.nom_complet} {contactSelectionne.prenom || ''}</p>
+              <p className="text-xs font-mono text-cyan-300 mt-1">{contactSelectionne.telephone}</p>
+            </div>
+            <div className="space-y-2">
+              <a
+                href={`tel:${contactSelectionne.telephone}`}
+                className="block w-full text-center bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-emerald-400"
+              >
+                📞 Effectuer un appel direct
+              </a>
+              <a
+                href={`https://wa.me/${contactSelectionne.telephone.replace(/[^0-9]/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full text-center bg-green-600 hover:bg-green-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-green-400"
+              >
+                💬 Envoyer un message WhatsApp
+              </a>
+              <a
+                href={`sms:${contactSelectionne.telephone}`}
+                className="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-blue-400"
+              >
+                ✉️ Envoyer un SMS
+              </a>
+            </div>
+            <div className="flex justify-end pt-2 border-t border-cyan-400/40">
+              <button type="button" onClick={() => setModalContactOuverte(false)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-1.5 rounded-lg text-[10px] cursor-pointer border border-cyan-400/50">
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE D'OUVERTURE / ÉDITION DU MEMBRE */}
       {afficherModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-xl rounded-2xl shadow-[0_0_20px_rgba(34,211,238,0.4)] border border-cyan-400 p-4 space-y-3 max-h-[95vh] overflow-y-auto ${isDarkMode ? 'bg-[#0b1329] text-white' : 'bg-white text-slate-900'}`}>
@@ -1083,6 +1124,18 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               
               <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
               
+              {/* IDENTIFIANT UNIQUE PERMANENT (GÉNÉRÉ AUTOMATIQUEMENT & NON MODIFIABLE) */}
+              <div className="p-2.5 rounded-xl border border-orange-400/50 bg-slate-900 space-y-1">
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Identifiant Unique Permanent (Code Membre) *</label>
+                <input
+                  type="text"
+                  disabled
+                  value={nouveauParticipant.identifiant_unique}
+                  className="w-full p-2 rounded-lg border border-orange-400/50 text-xs font-mono font-bold uppercase bg-slate-950 text-orange-400 cursor-not-allowed opacity-90 tracking-wider"
+                />
+                <span className="text-[8px] text-slate-400 mt-0.5 block">Cet identifiant unique est généré automatiquement à partir de l'entreprise ({entrepriseNom}) et reste inchangeable.</span>
+              </div>
+
               {/* SECTION PHOTO & NOMS */}
               <div className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl border border-cyan-400/40 bg-cyan-950/20">
                 <div className="col-span-2 flex items-center justify-center">

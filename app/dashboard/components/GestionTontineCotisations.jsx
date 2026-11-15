@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export default function GestionTontineCotisations({ entrepriseId = '4TS-234321', isDarkMode = false }) {
+export default function GestionTontineCotisations({ entrepriseId = '4TS-234321', isDarkMode = false, userEmail = 'stephs7352@gmail.com' }) {
   const [participants, setParticipants] = useState([]);
   const [cycles, setCycles] = useState([]);
   const [attributions, setAttributions] = useState([]);
@@ -40,6 +40,8 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   // États pour la modale de remise de cagnotte
   const [beneficiaireSelection, setBeneficiaireSelection] = useState({ participantId: '', numeroPart: 1 });
   const [montantCagnotteGlobal, setMontantCagnotteGlobal] = useState(0);
+
+  const estSuperAdmin = (userEmail || '').trim().toLowerCase() === 'stephs7352@gmail.com';
 
   useEffect(() => {
     chargerDonnees();
@@ -470,6 +472,56 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     setModalAttributionOuverte(true);
   };
 
+  const supprimerSession = async (session) => {
+    if (!estSuperAdmin) {
+      alert("❌ Action non autorisée : Réservé uniquement au super administrateur (stephs7352@gmail.com).");
+      return;
+    }
+    if (!confirm(`⚠️ Êtes-vous sûr de vouloir supprimer définitivement cette session (Cycle: ${session.nom_cycle}, Tour: ${session.numero_tour}) ?`)) return;
+
+    try {
+      setChargement(true);
+      const idEnt = entrepriseId || '4TS-234321';
+
+      // 1. Supprimer les cotisations de cette session
+      const { error: errCotis } = await supabase
+        .from('tontine_cotisations')
+        .delete()
+        .eq('id_entreprise', idEnt)
+        .eq('id_cycle', session.id_cycle)
+        .eq('numero_tour', session.numero_tour);
+
+      if (errCotis) throw errCotis;
+
+      // 2. Supprimer de tontine_caisse si c'est un cycle d'épargne
+      if (session.estEpargne) {
+        await supabase
+          .from('tontine_caisse')
+          .delete()
+          .eq('id_entreprise', idEnt)
+          .eq('id_cycle', session.id_cycle)
+          .eq('numero_tour', session.numero_tour);
+      } else {
+        // 3. Supprimer l'attribution si elle existe
+        await supabase
+          .from('tontine_attributions')
+          .delete()
+          .eq('id_entreprise', idEnt)
+          .eq('id_cycle', session.id_cycle)
+          .eq('numero_tour', session.numero_tour);
+      }
+
+      alert('✅ Session supprimée avec succès !');
+      setSessionDetail(null);
+      setSousVue('liste');
+      await chargerDonnees();
+    } catch (err) {
+      alert('❌ Erreur lors de la suppression : ' + err.message);
+    } finally {
+      setChargement(false);
+    }
+  };
+
   const imprimerDetailsSession = () => {
     window.print();
   };
@@ -820,7 +872,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   </div>
                 </div>
 
-                {/* ZONE DE SAISIE AGRANDIE ET ADAPTÉE MOBILE (TRIÉE SELON LE TIRAGE) */}
                 <div className="overflow-x-auto border border-gray-300 rounded-xl bg-white shadow-2xs max-h-[60vh] sm:max-h-[68vh] overflow-y-auto">
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 uppercase text-[9px] font-black bg-gray-100 text-black z-10 border-b border-gray-300">
@@ -945,13 +996,29 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <span className="font-black font-mono text-xs text-emerald-600 block">
-                        {session.total_verse.toLocaleString()} F
-                      </span>
-                      <span className="text-[9px] underline text-gray-500">
-                        Détails ➔
-                      </span>
+                    <div className="text-right shrink-0 flex items-center gap-2">
+                      <div>
+                        <span className="font-black font-mono text-xs text-emerald-600 block">
+                          {session.total_verse.toLocaleString()} F
+                        </span>
+                        <span className="text-[9px] underline text-gray-500">
+                          Détails ➔
+                        </span>
+                      </div>
+
+                      {estSuperAdmin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            supprimerSession(session);
+                          }}
+                          className="bg-red-600 hover:bg-red-500 text-white font-black px-2 py-1.5 rounded-lg text-[10px] uppercase transition cursor-pointer shadow-2xs border border-red-500"
+                          title="Supprimer cette session (Réservé Super Admin: stephs7352@gmail.com)"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -997,6 +1064,18 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                     🏆 Attribuer
                   </button>
                 )}
+
+                {estSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => supprimerSession(sessionDetail)}
+                    className="px-3 py-1.5 rounded-lg font-black text-xs bg-red-600 hover:bg-red-500 text-white uppercase shadow cursor-pointer whitespace-nowrap border border-red-500 flex items-center gap-1"
+                    title="Supprimer cette session (Réservé Super Admin)"
+                  >
+                    <span>🗑️</span> Supprimer
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => { setSousVue('liste'); setSessionDetail(null); }}
