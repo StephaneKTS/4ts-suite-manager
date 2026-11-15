@@ -757,9 +757,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     if (!conserverNumero) {
       setTimeout(() => {
-        if (inputNumeroCmdRef.current) {
-          inputNumeroCmdRef.current.focus();
-          inputNumeroCmdRef.current.select();
+        if (inputNumeroClientRef.current) {
+          inputNumeroClientRef.current.focus();
+          inputNumeroClientRef.current.select();
         }
       }, 50);
     }
@@ -825,18 +825,39 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
   const clotureLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheClotureLivreurInput.toLowerCase()));
 
-  // CORRECTION : Filtrage des articles par recherche textuelle ET par partenaire sélectionné (idPartenaire)
+  // CORRECTION STRICTE : Filtrage des articles par recherche textuelle ET appartenance stricte au partenaire sélectionné (idPartenaire)
   const articlesFiltres = articles.filter((a) => {
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
     const matchNom = designation.includes(rechercheArticleInput.toUpperCase());
 
-    if (!idPartenaire) return matchNom;
+    if (!idPartenaire) return false; // Aucun partenaire sélectionné = aucun article affiché pour la saisie
 
-    const artPartId = String(a.id_partenaire || a.id_fournisseur || a.partenaire_id || a.fournisseur_id || '');
-    if (artPartId) {
-      return matchNom && artPartId === String(idPartenaire);
+    const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
+    if (!partObj) return false;
+
+    const artPartId = String(a.id_partenaire || a.id_fournisseur || a.partenaire_id || a.fournisseur_id || '').trim();
+    const artDepotId = String(a.id_depot || a.depot_id || '').trim();
+
+    const partDepotId = String(partObj.id_depot || '').trim();
+    const nomPartenaireClean = (partObj.nom_fournisseur || partObj.nom || '').trim().toUpperCase();
+
+    const depotAssocie = depots.find(d => {
+      const nomDep = (d.nom_depot || d.Nom_Depot || d.nom || '').trim().toUpperCase();
+      return nomDep === nomPartenaireClean || String(d.id) === partDepotId;
+    });
+    const depotAssocieId = depotAssocie ? String(depotAssocie.id || '').trim() : '';
+
+    let matchPartenaire = false;
+
+    if (artPartId && artPartId === String(idPartenaire)) {
+      matchPartenaire = true;
+    } else if (artDepotId && (artDepotId === partDepotId || (depotAssocieId && artDepotId === depotAssocieId))) {
+      matchPartenaire = true;
+    } else {
+      matchPartenaire = false; // Bloque strictement les articles des autres partenaires
     }
-    return matchNom;
+
+    return matchNom && matchPartenaire;
   });
 
   const partObjActive = partenaires.find(p => String(p.id) === String(idPartenaire));
@@ -2658,7 +2679,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     </div>
                   ) : articlesFiltres.length === 0 ? (
                     <div className="p-1.5 text-center text-slate-500 font-bold text-[9px] bg-slate-50 rounded-lg border border-slate-200">
-                      Aucun article.
+                      Aucun article pour ce partenaire.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-1 overflow-y-auto max-h-[460px] min-h-[320px] pr-0.5 flex-1">
@@ -2945,7 +2966,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                   {articlesFiltres.length === 0 ? (
-                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé pour ce partenaire.</div>
                   ) : (
                     articlesFiltres.map((art) => {
                       const idArt = art.id_article;
