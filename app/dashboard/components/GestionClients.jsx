@@ -32,10 +32,28 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   
   const [ongletActif, setOngletActif] = useState('repertoire');
 
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
 
+  // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
+
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
       const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
@@ -50,7 +68,71 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       }
       if (emailLocal) setEmailConnecte(emailLocal);
     }
-  }, []);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [entrepriseId]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_clients_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_clients_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_clients_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne clients :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_clients_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions clients hors ligne...`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_CLIENT') {
+            const { id, ...dataToInsert } = action.payload;
+            const { error } = await supabase.from('clients').insert([dataToInsert]);
+            if (error) throw error;
+          } else if (action.type === 'UPDATE_CLIENT') {
+            const { error } = await supabase.from('clients').update(action.payload.data).eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_CLIENT') {
+            const { error } = await supabase.from('clients').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action client ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_clients_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des clients effectuée avec succès !');
+        chargerDonnees();
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation clients :', err);
+    }
+  };
 
   const emailActuel = emailConnecte || '';
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
@@ -115,36 +197,43 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
-      const { data: dataCli, error: errCli } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .order('created_at', { ascending: false });
+      let listClients = [];
+      if (!navigator.onLine) {
+        listClients = clientsLocaux || [];
+      } else {
+        const { data: dataCli, error: errCli } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .order('created_at', { ascending: false });
 
-      if (errCli) throw errCli;
-      const listClients = dataCli || [];
+        if (errCli) throw errCli;
+        listClients = dataCli || [];
+      }
+
       setClients(listClients);
-
       localSync.sauvegarderDonneesLocales(cleCacheClients, listClients);
 
       if (listClients.length > 0 && !clientHistoriqueId) {
         setClientHistoriqueId(listClients[0].id);
       }
 
-      const { data: dataVentes } = await supabase
-        .from('ventes_historiques')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      setVentes(dataVentes || []);
+      if (navigator.onLine) {
+        const { data: dataVentes } = await supabase
+          .from('ventes_historiques')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel);
+        setVentes(dataVentes || []);
 
-      const { data: dataArticles } = await supabase
-        .from('articles_stock')
-        .select('*')
-        .eq('ID_Entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      setArticles(dataArticles || []);
+        const { data: dataArticles } = await supabase
+          .from('articles_stock')
+          .select('*')
+          .eq('ID_Entreprise', entrepriseId)
+          .eq('module', moduleActuel);
+        setArticles(dataArticles || []);
+      }
 
     } catch (err) {
       console.error('Erreur chargement clients :', err.message);
@@ -231,6 +320,19 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       };
 
       if (clientEnEdition) {
+        payload.id = clientEnEdition.id;
+
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('UPDATE_CLIENT', { id: clientEnEdition.id, data: payload });
+          const listeMaj = clients.map(c => c.id === clientEnEdition.id ? { ...c, ...payload, est_defaut: nouveauClient.est_defaut } : { ...c, est_defaut: nouveauClient.est_defaut ? false : c.est_defaut });
+          setClients(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheClients, listeMaj);
+          alert('📴 Mode Hors Ligne : Client mis à jour localement.');
+          annulerForm();
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
         const { error } = await supabase
           .from('clients')
           .update(payload)
@@ -241,6 +343,20 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
         setClients(prev => prev.map(c => c.id === clientEnEdition.id ? { ...c, ...payload, est_defaut: nouveauClient.est_defaut } : { ...c, est_defaut: nouveauClient.est_defaut ? false : c.est_defaut }));
         alert('Client mis à jour avec succès !');
       } else {
+        const idTemp = 'temp_' + Date.now();
+        const clientLocal = { ...payload, id: idTemp, solde_credit: 0, created_at: new Date().toISOString(), est_defaut: nouveauClient.est_defaut };
+
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('INSERT_CLIENT', clientLocal);
+          const listeMaj = [clientLocal, ...clients.map(c => ({ ...c, est_defaut: nouveauClient.est_defaut ? false : c.est_defaut }))];
+          setClients(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheClients, listeMaj);
+          alert('📴 Mode Hors Ligne : Client enregistré localement.');
+          annulerForm();
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
         const { error, data } = await supabase.from('clients').insert([
           {
             ...payload,
@@ -252,7 +368,7 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
 
         if (data) {
           const clientAjoute = { ...data, est_defaut: nouveauClient.est_defaut };
-          setClients(prev => [clientAjoute, ...prev.filter(c => c.id !== data.id)]);
+          setClients(prev => [clientAjoute, ...prev.filter(c => c.id !== data.id).map(c => ({ ...c, est_defaut: nouveauClient.est_defaut ? false : c.est_defaut }))]);
         }
         alert('Client enregistré avec succès !');
       }
@@ -311,6 +427,11 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
     if (enTrainDeSauvegarder || !clientEnEdition) return;
     if (!permissions.peut_supprimer) {
       alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
+      return;
+    }
+
+    if (!navigator.onLine) {
+      alert('⚠️ Impossible de supprimer un client en mode hors ligne.');
       return;
     }
 
@@ -544,6 +665,11 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    if (!navigator.onLine) {
+      alert('⚠️ Impossible d’enregistrer un règlement en mode hors ligne.');
+      return;
+    }
+
     setEnTrainDeSauvegarder(true);
     try {
       const montantActuelRegle = Number(factureSelectionnee.montant_regle || factureSelectionnee.montant_paye || 0);
@@ -581,6 +707,23 @@ export default function GestionClients({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
+      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+          >
+            🔄 Synchroniser ({pendingActionsCount})
+          </button>
+        )}
+      </div>
+
       <div className="bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs flex flex-row justify-between items-center gap-1.5 overflow-hidden">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-900 uppercase text-[11px] flex items-center gap-1 shrink-0">

@@ -60,7 +60,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Charger le compteur d'actions en attente au démarrage
     mettreAJourCompteurFileAttente();
     chargerDonnees();
 
@@ -96,7 +95,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
       const queue = JSON.parse(localStorage.getItem(`4ts_offline_queue_${entrepriseId}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -109,7 +107,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -117,7 +114,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
       localStorage.setItem(`4ts_offline_queue_${entrepriseId}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation hors ligne effectuée avec succès !');
         chargerDonnees();
       }
     } catch (err) {
@@ -126,30 +122,26 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   };
 
   const chargerDonnees = async () => {
-    setChargement(true);
     const idEnt = entrepriseId || '4TS-234321';
     
-    if (!navigator.onLine) {
-      // Chargement depuis le Cache Local en mode Hors Ligne
-      try {
-        const cachePart = localStorage.getItem(`4ts_cache_participants_${idEnt}`);
-        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_${idEnt}`);
-        const cacheCot = localStorage.getItem(`4ts_cache_cotisations_${idEnt}`);
-        const cacheAtt = localStorage.getItem(`4ts_cache_attributions_${idEnt}`);
-        const cacheCai = localStorage.getItem(`4ts_cache_caisse_${idEnt}`);
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
+    try {
+      const cachePart = localStorage.getItem(`4ts_cache_participants_${idEnt}`);
+      const cacheCyc = localStorage.getItem(`4ts_cache_cycles_${idEnt}`);
+      const cacheCot = localStorage.getItem(`4ts_cache_cotisations_${idEnt}`);
+      const cacheAtt = localStorage.getItem(`4ts_cache_attributions_${idEnt}`);
+      const cacheCai = localStorage.getItem(`4ts_cache_caisse_${idEnt}`);
 
-        if (cachePart) setParticipants(JSON.parse(cachePart));
-        if (cacheCyc) setCycles(JSON.parse(cacheCyc));
-        if (cacheCot) setCotisations(JSON.parse(cacheCot));
-        if (cacheAtt) setAttributions(JSON.parse(cacheAtt));
-        if (cacheCai) setCaisseRecords(JSON.parse(cacheCai));
-      } catch (e) {
-        console.warn('Erreur lecture cache local :', e);
-      } finally {
-        setChargement(false);
-      }
-      return;
+      if (cachePart) setParticipants(JSON.parse(cachePart));
+      if (cacheCyc) setCycles(JSON.parse(cacheCyc));
+      if (cacheCot) setCotisations(JSON.parse(cacheCot));
+      if (cacheAtt) setAttributions(JSON.parse(cacheAtt));
+      if (cacheCai) setCaisseRecords(JSON.parse(cacheCai));
+    } catch (e) {
+      console.warn('Erreur lecture cache local :', e);
     }
+
+    if (!navigator.onLine) return;
 
     try {
       const { data: part, error: errPart } = await supabase
@@ -213,20 +205,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         calculerTourAutomatique(cycleId, part, cot, att);
       }
     } catch (err) {
-      console.error('Erreur chargement Supabase, bascule sur le cache :', err.message);
-      // Fallback cache local en cas d'erreur réseau
-      try {
-        const cachePart = localStorage.getItem(`4ts_cache_participants_${idEnt}`);
-        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_${idEnt}`);
-        const cacheCot = localStorage.getItem(`4ts_cache_cotisations_${idEnt}`);
-        if (cachePart) setParticipants(JSON.parse(cachePart));
-        if (cacheCyc) setCycles(JSON.parse(cacheCyc));
-        if (cacheCot) setCotisations(JSON.parse(cacheCot));
-      } catch (e) {
-        console.error('Erreur lecture cache :', e);
-      }
-    } finally {
-      setChargement(false);
+      console.error('Erreur chargement Supabase :', err.message);
     }
   };
 
@@ -522,10 +501,8 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
       }));
 
       if (!navigator.onLine) {
-        // Mode Hors Ligne : Enregistrement dans la file d'attente locale
         ajouterActionHorsLigne('COTISATION', payloadInsertions);
         
-        // Mise à jour optimiste locale de l'état des cotisations
         const nouvellesCotisLocales = [...payloadInsertions.map(p => ({ ...p, id: 'local_' + Math.random() })), ...cotisations];
         setCotisations(nouvellesCotisLocales);
         localStorage.setItem(`4ts_cache_cotisations_${idEnt}`, JSON.stringify(nouvellesCotisLocales));
@@ -716,7 +693,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     window.print();
   };
 
-  // Déduplication des cotisations
   const uniqueCotisationsMap = new Map();
   cotisations.forEach(c => {
     const tour = c.numero_tour || 1;
@@ -729,7 +705,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   });
   const cotisationsUniques = Array.from(uniqueCotisationsMap.values());
 
-  // Regroupement par session (Cycle + Tour)
   const sessionsMap = {};
   cotisationsUniques.forEach(c => {
     const tour = c.numero_tour || 1;
@@ -813,7 +788,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const beneficiaireActuelObj = listePartsCycleActuel.find(p => p.id?.toString() === beneficiaireSelection.participantId?.toString() && p.numeroPart === beneficiaireSelection.numeroPart);
   const beneficiaireAutoTour = detecterBeneficiaireTour(cycleId);
 
-  // Calcul du montant total encaissé dynamiquement pendant la saisie
   const montantTotalSaisieEnCours = Object.entries(selectionMembres).reduce((acc, [_, data]) => {
     if (data.coche) {
       return acc + (parseFloat(data.montant) || 0);
@@ -821,7 +795,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     return acc;
   }, 0);
 
-  // Regroupement des cotisations de caisse par session
   const caisseSessionsMap = {};
   cotisationsUniques.forEach(c => {
     const cyc = cycles.find(cy => cy.id?.toString() === c.id_cycle?.toString());
@@ -920,19 +893,19 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
       {/* CONTENEUR PRINCIPAL ÉPURÉ AVEC STATUT HORS LIGNE */}
       <div className={`w-full max-w-3xl mx-auto p-2 sm:p-3 rounded-xl border shadow-md space-y-2.5 text-xs font-sans ${containerBg}`}>
         
-        {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+        {/* BANDEAU DE STATUT CONNEXION MIS À JOUR */}
         <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
           <div className="flex items-center gap-1.5">
             <span>{isOnline ? '🟢' : '🔴'}</span>
-            <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+            <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
           </div>
           {pendingActionsCount > 0 && (
             <button 
               type="button" 
               onClick={verifierEtSynchroniserFileAttente}
-              className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+              className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
             >
-              🔄 Synchroniser ({pendingActionsCount})
+              <span>🔄</span> <span>({pendingActionsCount})</span>
             </button>
           )}
         </div>
@@ -1176,7 +1149,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                   </table>
                 </div>
 
-                {/* SECTION DU BAS : TOTAL ENCAISSÉ DYNAMIQUE ET BOUTON VALIDER */}
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase text-gray-300">Total Encaissé :</span>
@@ -1275,7 +1247,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                             supprimerSession(session);
                           }}
                           className="bg-red-600 hover:bg-red-500 text-white font-black px-2 py-1.5 rounded-lg text-[10px] uppercase transition cursor-pointer shadow-2xs border border-red-500"
-                          title="Supprimer cette session (Réservé Super Admin: stephs7352@gmail.com)"
+                          title="Supprimer cette session"
                         >
                           🗑️
                         </button>
@@ -1331,7 +1303,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                     type="button"
                     onClick={() => supprimerSession(sessionDetail)}
                     className="px-3 py-1.5 rounded-lg font-black text-xs bg-red-600 hover:bg-red-500 text-white uppercase shadow cursor-pointer whitespace-nowrap border border-red-500 flex items-center gap-1"
-                    title="Supprimer cette session (Réservé Super Admin)"
+                    title="Supprimer cette session"
                   >
                     <span>🗑️</span> Supprimer
                   </button>
@@ -1391,7 +1363,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
           </div>
         )}
 
-        {/* VUE 4 : ÉTAT MEMBRE (SITUATION COMPLÈTE PAR MEMBRE) */}
+        {/* VUE 4 : ÉTAT MEMBRE */}
         {sousVue === 'etat_membre' && (
           <div className="space-y-2.5 animate-fadeIn w-full">
             <div className={`p-3 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 shadow-2xs ${headerBarBg}`}>
@@ -1555,7 +1527,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
                 </button>
               </div>
 
-              {/* FILTRES MOBILE GRID */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-700/20">
                 <div className="flex flex-col">
                   <label className={`font-black text-[9px] uppercase mb-0.5 ${labelColor}`}>Filtrer par membre :</label>
@@ -1670,7 +1641,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
           </div>
         )}
 
-        {/* VUE 5-BIS : DÉTAILS D'UNE SESSION DE CAISSE SÉLECTIONNÉE */}
+        {/* VUE 5-BIS : DÉTAILS D'UNE SESSION DE CAISSE */}
         {sousVue === 'caisse_detail' && caisseDetailSession && (
           <div className="space-y-2.5 animate-fadeIn">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-1 border-b pb-2 border-slate-700/30 gap-2">

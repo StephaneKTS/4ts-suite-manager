@@ -91,7 +91,6 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
       const queue = JSON.parse(localStorage.getItem(`4ts_emprunts_queue_${entrepriseId}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions emprunts hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -116,7 +115,6 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action emprunt ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -124,7 +122,6 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
       localStorage.setItem(`4ts_emprunts_queue_${entrepriseId}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des emprunts effectuée avec succès !');
         chargerDonnees();
       }
     } catch (err) {
@@ -144,29 +141,26 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
   }, [formEmprunt.date_emprunt, formEmprunt.nombre_mois]);
 
   const chargerDonnees = async () => {
-    setChargement(true);
     const idEnt = entrepriseId || '4TS-234321';
 
-    if (!navigator.onLine) {
-      try {
-        const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
-        const cacheEmp = localStorage.getItem(`4ts_cache_emprunts_list_${idEnt}`);
-        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
-        const cacheCai = localStorage.getItem(`4ts_cache_caisse_list_${idEnt}`);
-        const cacheCotis = localStorage.getItem(`4ts_cache_cotis_list_${idEnt}`);
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
+    try {
+      const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
+      const cacheEmp = localStorage.getItem(`4ts_cache_emprunts_list_${idEnt}`);
+      const cacheCyc = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
+      const cacheCai = localStorage.getItem(`4ts_cache_caisse_list_${idEnt}`);
+      const cacheCotis = localStorage.getItem(`4ts_cache_cotis_list_${idEnt}`);
 
-        if (cachePart) setParticipants(JSON.parse(cachePart));
-        if (cacheEmp) setEmprunts(JSON.parse(cacheEmp));
-        if (cacheCyc) setCyclesRecords(JSON.parse(cacheCyc));
-        if (cacheCai) setCaisseRecords(JSON.parse(cacheCai));
-        if (cacheCotis) setCotisationsRecords(JSON.parse(cacheCotis));
-      } catch (e) {
-        console.warn('Erreur lecture cache local emprunts :', e);
-      } finally {
-        setChargement(false);
-      }
-      return;
+      if (cachePart) setParticipants(JSON.parse(cachePart));
+      if (cacheEmp) setEmprunts(JSON.parse(cacheEmp));
+      if (cacheCyc) setCyclesRecords(JSON.parse(cacheCyc));
+      if (cacheCai) setCaisseRecords(JSON.parse(cacheCai));
+      if (cacheCotis) setCotisationsRecords(JSON.parse(cacheCotis));
+    } catch (e) {
+      console.warn('Erreur lecture cache local emprunts :', e);
     }
+
+    if (!navigator.onLine) return;
 
     try {
       const { data: part, error: errPart } = await supabase
@@ -217,19 +211,10 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
         localStorage.setItem(`4ts_cache_emprunts_list_${idEnt}`, JSON.stringify(emp));
       }
     } catch (err) {
-      console.error('Erreur chargement emprunts, bascule cache :', err.message);
-      try {
-        const cacheEmp = localStorage.getItem(`4ts_cache_emprunts_list_${idEnt}`);
-        if (cacheEmp) setEmprunts(JSON.parse(cacheEmp));
-      } catch (e) {
-        console.error(e);
-      }
-    } finally {
-      setChargement(false);
+      console.error('Erreur chargement emprunts Supabase :', err.message);
     }
   };
 
-  // Dédoublonnage strict des membres pour éviter les doublons par cycle
   const participantsUniques = participants.reduce((acc, current) => {
     const nomKey = `${(current.nom_participant || current.nom_complet || '').trim().toLowerCase()} ${(current.prenom || '').trim().toLowerCase()}`;
     const existing = acc.find(item => {
@@ -531,19 +516,19 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
   return (
     <div className={`w-full max-w-4xl mx-auto p-2.5 rounded-xl border shadow-md space-y-2.5 text-xs font-sans ${containerBg}`}>
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>

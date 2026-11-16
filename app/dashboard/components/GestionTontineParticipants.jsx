@@ -113,7 +113,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       const queue = JSON.parse(localStorage.getItem(`4ts_participants_queue_${entrepriseId}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions participants hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -132,7 +131,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -140,7 +138,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       localStorage.setItem(`4ts_participants_queue_${entrepriseId}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des participants effectuée avec succès !');
         chargerDonnees();
       }
     } catch (err) {
@@ -148,7 +145,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
   };
 
-  // Génération automatique de l'identifiant unique basé sur l'entreprise (ex: ISMA-601938)
   const genererCodeMembreUnique = (nomEnt = entrepriseNom) => {
     const clean = (nomEnt || 'ISMA').replace(/[^a-zA-Z]/g, '').toUpperCase();
     const prefix = clean.length >= 4 ? clean.substring(0, 4) : clean.padEnd(4, 'X');
@@ -172,30 +168,26 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   });
 
   const chargerDonnees = async () => {
-    setChargement(true);
     const idEnt = entrepriseId || '4TS-290136';
 
-    if (!navigator.onLine) {
-      // Chargement depuis le Cache Local en mode Hors Ligne
-      try {
-        const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
-        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
-        const cacheRoles = localStorage.getItem(`4ts_cache_roles_list_${idEnt}`);
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
+    try {
+      const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
+      const cacheCyc = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
+      const cacheRoles = localStorage.getItem(`4ts_cache_roles_list_${idEnt}`);
 
-        if (cachePart) setParticipants(JSON.parse(cachePart));
-        if (cacheCyc) setCyclesDisponibles(JSON.parse(cacheCyc));
-        if (cacheRoles) {
-          const rData = JSON.parse(cacheRoles);
-          setListeRolesComplet(rData);
-          setRolesDisponibles(rData.map(r => r.nom_role || r));
-        }
-      } catch (e) {
-        console.warn('Erreur lecture cache local participants :', e);
-      } finally {
-        setChargement(false);
+      if (cachePart) setParticipants(JSON.parse(cachePart));
+      if (cacheCyc) setCyclesDisponibles(JSON.parse(cacheCyc));
+      if (cacheRoles) {
+        const rData = JSON.parse(cacheRoles);
+        setListeRolesComplet(rData);
+        setRolesDisponibles(rData.map(r => r.nom_role || r));
       }
-      return;
+    } catch (e) {
+      console.warn('Erreur lecture cache local :', e);
     }
+
+    if (!navigator.onLine) return;
 
     try {
       const { data: dataPart, error: errPart } = await supabase
@@ -235,9 +227,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         localStorage.setItem(`4ts_cache_roles_list_${idEnt}`, JSON.stringify(rolesFiltres));
         const nomsRoles = rolesFiltres.map(r => r.nom_role);
         setRolesDisponibles(nomsRoles);
-        if (nomsRoles.length > 0 && (!nouveauParticipant.libelle_role || !nomsRoles.includes(nouveauParticipant.libelle_role))) {
-          setNouveauParticipant(prev => ({ ...prev, libelle_role: nomsRoles[0] }));
-        }
       } else {
         const rolesDefaut = [
           { nom_role: 'ADHERANT', description: 'Membre standard de l’association.' },
@@ -248,17 +237,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         setRolesDisponibles(['ADHERANT', 'MEMBRE DU BUREAU', 'PRESIDENT']);
       }
     } catch (err) {
-      console.error('Erreur chargement Supabase, bascule sur le cache :', err.message);
-      try {
-        const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
-        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
-        if (cachePart) setParticipants(JSON.parse(cachePart));
-        if (cacheCyc) setCyclesDisponibles(JSON.parse(cacheCyc));
-      } catch (e) {
-        console.error('Erreur lecture cache :', e);
-      }
-    } finally {
-      setChargement(false);
+      console.error('Erreur chargement Supabase :', err.message);
     }
   };
 
@@ -390,7 +369,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       }));
 
       if (!navigator.onLine) {
-        // Mode Hors Ligne : Suppression préalable locale si édition, puis ajout dans la file d'attente
         if (participantEnEdition) {
           ajouterActionHorsLigne('DELETE_PARTICIPANTS', {
             identifiant_unique: participantEnEdition.identifiant_unique,
@@ -399,13 +377,12 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         }
         ajouterActionHorsLigne('INSERT_PARTICIPANTS', payloadsInsertion);
 
-        // Mise à jour optimiste locale
         const filteredParts = participants.filter(p => p.identifiant_unique !== identifiantFinal);
         const nouvellesParts = [...payloadsInsertion.map(p => ({ ...p, id: 'local_' + Math.random() })), ...filteredParts];
         setParticipants(nouvellesParts);
         localStorage.setItem(`4ts_cache_participants_list_${entrepriseId}`, JSON.stringify(nouvellesParts));
 
-        alert('📴 Pas de connexion Internet. Membre enregistré localement et mis en file d’attente pour synchronisation !');
+        alert('📴 Pas de connexion Internet. Membre enregistré localement et mis en file d’attente !');
         fermerModal();
         setEnTrainDeSauvegarder(false);
         return;
@@ -446,14 +423,14 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const supprimerParticipant = async (p) => {
     if (aDejaCotise) {
-      alert('❌ Suppression impossible : ce membre a déjà effectué des cotisations dans un ou plusieurs cycles.');
+      alert('❌ Suppression impossible : ce membre a déjà effectué des cotisations.');
       return;
     }
 
     if (!confirm('Êtes-vous sûr de vouloir supprimer ce membre de tous ses cycles ?')) return;
     try {
       if (!navigator.onLine) {
-        alert('⚠️ Impossible de supprimer un membre en mode hors ligne. Veuillez vous reconnecter.');
+        alert('⚠️ Impossible de supprimer un membre en mode hors ligne.');
         return;
       }
 
@@ -479,7 +456,8 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
   };
 
-  const ouvrirEdition = async (p) => {
+  // ⚡ Ouverture instantanée de l'édition (vérification cotisations en arrière-plan non bloquante)
+  const ouvrirEdition = (p) => {
     setParticipantEnEdition(p);
     const paysTrouve = LISTE_PAYS.find(item => p.telephone && p.telephone.startsWith(item.indicatif)) || LISTE_PAYS[0];
     let telLocal = p.telephone && p.telephone !== 'N/A' ? p.telephone : '';
@@ -501,22 +479,19 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       }
     });
 
-    let cotiseEffectuee = false;
+    setADejaCotise(false);
     if (idsParticipant.length > 0 && navigator.onLine) {
-      try {
-        const { count, error } = await supabase
-          .from('tontine_cotisations')
-          .select('*', { count: 'exact', head: true })
-          .in('id_participant', idsParticipant);
-
-        if (!error && count && count > 0) {
-          cotiseEffectuee = true;
-        }
-      } catch (e) {
-        console.warn('Vérification cotisations :', e);
-      }
+      supabase
+        .from('tontine_cotisations')
+        .select('*', { count: 'exact', head: true })
+        .in('id_participant', idsParticipant)
+        .then(({ count, error }) => {
+          if (!error && count && count > 0) {
+            setADejaCotise(true);
+          }
+        })
+        .catch(e => console.warn('Vérification cotisations :', e));
     }
-    setADejaCotise(cotiseEffectuee);
 
     const formulaireData = {
       identifiant_unique: p.identifiant_unique || genererCodeMembreUnique(entrepriseNom),
@@ -712,29 +687,27 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauParticipant.pays) || LISTE_PAYS[0];
   
-  // Styles adaptatifs (Gris - Rouge - Noir)
   const bgPrincipal = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-slate-900';
   const inputBg = isDarkMode ? 'bg-[#1b263b] text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
   const labelColor = isDarkMode ? 'text-slate-200' : 'text-slate-800';
-  const cardBg = isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900';
   const tousCochesGlobal = cyclesDisponibles.length > 0 && cyclesDisponibles.every(c => nouveauParticipant.cyclesSelectionnes[c.id] !== undefined);
 
   return (
     <div className={`w-full h-full space-y-2.5 font-sans text-xs relative ${bgPrincipal}`}>
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION MIS À JOUR */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
@@ -951,18 +924,11 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                   placeholder="EX: TIRAGE SESSION JANVIER..."
                   className={`w-full p-2 rounded-lg border text-xs font-bold uppercase disabled:opacity-60 ${inputBg}`}
                 />
-                
-                {cycleTirageSelectionne && (
-                  <p className={`text-[10px] font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                    💡 Seuls les membres inscrits à <strong>{cycleTirageSelectionne.nom_cycle || cycleTirageSelectionne.libelle}</strong> ({participantsActifsUniques.length} éligibles) participeront à ce tirage.
-                  </p>
-                )}
               </div>
 
               {participantsActifsUniques.length === 0 ? (
                 <div className={`py-6 rounded-lg border w-full ${isDarkMode ? 'bg-slate-900/40 border-slate-800 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-700'}`}>
                   <p className="font-bold">⚠️ Aucun membre actif n'est inscrit à cette tontine (ou aucun cycle sélectionné).</p>
-                  <p className="text-[10px] mt-1 text-slate-500">Veuillez sélectionner un cycle valide ou vous assurer que des membres y sont inscrits.</p>
                 </div>
               ) : (
                 <>
@@ -1160,7 +1126,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE LA TONTINE BÉNÉFICIAIRE POUR LE TIRAGE */}
+      {/* MODALES SUPPLÉMENTAIRES (CYCLE, CONTACT, FORMULAIRE) */}
       {modalChoixCycleTirageOuverte && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-4 space-y-3 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
@@ -1186,38 +1152,31 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 {!cycleTirageSelectionne && <span className="font-bold text-xs">✓ Actif</span>}
               </div>
 
-              {cyclesDisponibles.filter(c => (c.type_cycle || 'BOUFFER') === 'BOUFFER').length === 0 ? (
-                <p className={`text-xs text-center py-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Aucune tontine bénéficiaire enregistrée.</p>
-              ) : (
-                cyclesDisponibles.filter(c => (c.type_cycle || 'BOUFFER') === 'BOUFFER').map((cycle) => {
-                  const estActif = cycleTirageSelectionne?.id === cycle.id;
-                  const nomC = cycle.nom_cycle || cycle.libelle || `Cycle #${cycle.id}`;
-                  return (
-                    <div
-                      key={cycle.id}
-                      onClick={() => {
-                        setCycleTirageSelectionne(cycle);
-                        setTirageEstValide(false);
-                        setTitreTirage(`TIRAGE DU ${new Date().toLocaleDateString()}-${nomC}`);
-                        setModalChoixCycleTirageOuverte(false);
-                      }}
-                      className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col gap-0.5 ${
-                        estActif 
-                          ? (isDarkMode ? 'bg-slate-800 text-white font-bold border-slate-600' : 'bg-slate-200 text-slate-900 font-bold border-slate-400') 
-                          : (isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100')
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-black text-xs uppercase">🎯 {nomC}</span>
-                        {estActif && <span className="font-bold text-xs">✓ Sélectionné</span>}
-                      </div>
-                      {cycle.montant_cotisation > 0 && (
-                        <span className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Montant : {cycle.montant_cotisation.toLocaleString()} FCFA ({cycle.frequence})</span>
-                      )}
+              {cyclesDisponibles.filter(c => (c.type_cycle || 'BOUFFER') === 'BOUFFER').map((cycle) => {
+                const estActif = cycleTirageSelectionne?.id === cycle.id;
+                const nomC = cycle.nom_cycle || cycle.libelle || `Cycle #${cycle.id}`;
+                return (
+                  <div
+                    key={cycle.id}
+                    onClick={() => {
+                      setCycleTirageSelectionne(cycle);
+                      setTirageEstValide(false);
+                      setTitreTirage(`TIRAGE DU ${new Date().toLocaleDateString()}-${nomC}`);
+                      setModalChoixCycleTirageOuverte(false);
+                    }}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col gap-0.5 ${
+                      estActif 
+                        ? (isDarkMode ? 'bg-slate-800 text-white font-bold border-slate-600' : 'bg-slate-200 text-slate-900 font-bold border-slate-400') 
+                        : (isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100')
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-black text-xs uppercase">🎯 {nomC}</span>
+                      {estActif && <span className="font-bold text-xs">✓ Sélectionné</span>}
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                );
+              })}
             </div>
             <div className={`flex justify-end pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               <button type="button" onClick={() => setModalChoixCycleTirageOuverte(false)} className={`font-bold px-4 py-1.5 rounded-lg text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'}`}>
@@ -1228,7 +1187,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* MODALE DE CONTACT (APPEL, WHATSAPP, SMS) */}
       {modalContactOuverte && contactSelectionne && (
         <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-sm rounded-2xl shadow-2xl border p-4 space-y-3 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
@@ -1241,25 +1199,14 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               <p className="text-xs font-mono font-bold mt-1">{contactSelectionne.telephone}</p>
             </div>
             <div className="space-y-2">
-              <a
-                href={`tel:${contactSelectionne.telephone}`}
-                className="block w-full text-center bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-emerald-500"
-              >
-                📞 Effectuer un appel direct
+              <a href={`tel:${contactSelectionne.telephone}`} className="block w-full text-center bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-emerald-500">
+                📞 Appel direct
               </a>
-              <a
-                href={`https://wa.me/${contactSelectionne.telephone.replace(/[^0-9]/g, '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full text-center bg-emerald-700 hover:bg-emerald-600 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-emerald-600"
-              >
-                💬 Envoyer un message WhatsApp
+              <a href={`https://wa.me/${contactSelectionne.telephone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="block w-full text-center bg-emerald-700 hover:bg-emerald-600 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-emerald-600">
+                💬 WhatsApp
               </a>
-              <a
-                href={`sms:${contactSelectionne.telephone}`}
-                className="block w-full text-center bg-slate-800 hover:bg-slate-700 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-slate-700"
-              >
-                ✉️ Envoyer un SMS
+              <a href={`sms:${contactSelectionne.telephone}`} className="block w-full text-center bg-slate-800 hover:bg-slate-700 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow transition cursor-pointer border border-slate-700">
+                ✉️ SMS
               </a>
             </div>
             <div className={`flex justify-end pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
@@ -1271,7 +1218,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         </div>
       )}
 
-      {/* MODALE D'OUVERTURE / ÉDITION DU MEMBRE */}
       {afficherModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-xl rounded-2xl shadow-2xl border p-4 space-y-3 max-h-[95vh] overflow-y-auto ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
@@ -1287,25 +1233,21 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               
               <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
               
-              {/* IDENTIFIANT UNIQUE PERMANENT */}
               <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-300'}`}>
-                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Identifiant Unique Permanent (Code Membre) *</label>
+                <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Identifiant Unique Permanent *</label>
                 <input
                   type="text"
                   disabled
                   value={nouveauParticipant.identifiant_unique}
                   className={`w-full p-2 rounded-lg border text-xs font-mono font-bold uppercase cursor-not-allowed opacity-90 tracking-wider ${isDarkMode ? 'bg-slate-900 text-red-400 border-slate-700' : 'bg-slate-200 text-red-600 border-slate-300'}`}
                 />
-                <span className="text-[8px] text-slate-500 mt-0.5 block">Cet identifiant unique est généré automatiquement à partir de l'entreprise ({entrepriseNom}) et reste inchangeable.</span>
               </div>
 
-              {/* SECTION PHOTO & NOMS */}
               <div className={`grid grid-cols-12 gap-2 items-center p-2 rounded-xl border ${isDarkMode ? 'bg-slate-800/40 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="col-span-2 flex items-center justify-center">
                   <div 
                     onClick={() => fileInputRef.current && fileInputRef.current.click()}
                     className={`w-12 h-12 rounded-full border-2 flex items-center justify-center overflow-hidden cursor-pointer relative shrink-0 ${isDarkMode ? 'bg-slate-800 border-slate-600 text-slate-300' : 'bg-slate-200 border-slate-400 text-slate-700'}`}
-                    title="Changer la photo"
                   >
                     {nouveauParticipant.photo ? (
                       <img src={nouveauParticipant.photo} alt="Avatar" className="w-full h-full object-cover" />
@@ -1335,7 +1277,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 </div>
               </div>
 
-              {/* SECTION RÔLE & STATUT */}
               <div className={`grid grid-cols-2 gap-2 p-2 rounded-xl border ${isDarkMode ? 'bg-slate-800/40 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                 <div>
                   <label className={`block font-black mb-0.5 text-[9px] uppercase ${labelColor}`}>Rôle / Poste</label>
@@ -1432,42 +1373,38 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 </div>
                 
                 <div className={`space-y-1 p-2 rounded-lg border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-300'}`}>
-                  {cyclesDisponibles.length === 0 ? (
-                    <p className={`text-[10px] text-center py-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Aucun cycle créé.</p>
-                  ) : (
-                    cyclesDisponibles.map((cycle) => {
-                      const estCoche = nouveauParticipant.cyclesSelectionnes[cycle.id] !== undefined;
-                      const nbParts = nouveauParticipant.cyclesSelectionnes[cycle.id] || 1;
-                      return (
-                        <div key={cycle.id} className={`flex items-center justify-between p-1.5 rounded border transition ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
-                          <label className="flex items-center gap-2 cursor-pointer flex-1">
-                            <input
-                              type="checkbox"
-                              checked={estCoche}
-                              onChange={() => basculerCycleSelection(cycle.id)}
-                              className="rounded accent-red-600 w-4 h-4 cursor-pointer"
-                            />
-                            <span className="font-black text-xs uppercase truncate">
-                              {cycle.nom_cycle || cycle.libelle} <span className="text-[9px] text-slate-500 font-normal">({cycle.frequence})</span>
-                            </span>
-                          </label>
+                  {cyclesDisponibles.map((cycle) => {
+                    const estCoche = nouveauParticipant.cyclesSelectionnes[cycle.id] !== undefined;
+                    const nbParts = nouveauParticipant.cyclesSelectionnes[cycle.id] || 1;
+                    return (
+                      <div key={cycle.id} className={`flex items-center justify-between p-1.5 rounded border transition ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                        <label className="flex items-center gap-2 cursor-pointer flex-1">
+                          <input
+                            type="checkbox"
+                            checked={estCoche}
+                            onChange={() => basculerCycleSelection(cycle.id)}
+                            className="rounded accent-red-600 w-4 h-4 cursor-pointer"
+                          />
+                          <span className="font-black text-xs uppercase truncate">
+                            {cycle.nom_cycle || cycle.libelle}
+                          </span>
+                        </label>
 
-                          {estCoche && (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <span className={`text-[9px] font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Parts :</span>
-                              <input
-                                type="number"
-                                min="1"
-                                value={nbParts}
-                                onChange={(e) => modifierPartsCycle(cycle.id, e.target.value)}
-                                className={`w-14 p-1 rounded font-mono font-bold text-center border text-xs ${inputBg}`}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
+                        {estCoche && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className={`text-[9px] font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Parts :</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={nbParts}
+                              onChange={(e) => modifierPartsCycle(cycle.id, e.target.value)}
+                              className={`w-14 p-1 rounded font-mono font-bold text-center border text-xs ${inputBg}`}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1478,7 +1415,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                       type="button" 
                       onClick={() => supprimerParticipant(participantEnEdition)}
                       disabled={aDejaCotise}
-                      title={aDejaCotise ? 'Suppression impossible : ce membre a déjà effectué des cotisations.' : 'Supprimer le membre'}
                       className={`font-black px-2.5 py-1 rounded text-[10px] shadow transition ${aDejaCotise ? 'bg-slate-600 text-slate-300 opacity-50 cursor-not-allowed' : 'bg-red-600 hover:bg-red-500 text-white cursor-pointer border border-red-500'}`}
                     >
                       {aDejaCotise ? '🔒 Cotisations existantes (Bloqué)' : '🗑️ Supprimer'}
@@ -1516,35 +1452,27 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
               <button type="button" onClick={() => setModalRoleOuverte(false)} className="font-bold text-sm cursor-pointer">✖</button>
             </div>
             <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-              {listeRolesComplet.length === 0 ? (
-                <p className={`text-xs text-center py-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Aucun rôle enregistré dans ce module.</p>
-              ) : (
-                listeRolesComplet.map((r, index) => {
-                  const nomR = r.nom_role || r;
-                  const descR = r.description || 'Rôle standard de la tontine.';
-                  const estActif = nouveauParticipant.libelle_role === nomR;
-                  return (
-                    <div 
-                      key={r.id || index}
-                      onClick={() => {
-                        setNouveauParticipant({ ...nouveauParticipant, libelle_role: nomR });
-                        setModalRoleOuverte(false);
-                      }}
-                      className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col gap-0.5 ${
-                        estActif 
-                          ? (isDarkMode ? 'bg-slate-800 border-slate-600 text-white font-bold' : 'bg-slate-200 border-slate-400 text-slate-900 font-bold') 
-                          : (isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100')
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-black text-xs uppercase">👑 {nomR}</span>
-                        {estActif && <span className="font-bold text-xs">✓ Sélectionné</span>}
-                      </div>
-                      <span className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{descR}</span>
-                    </div>
-                  );
-                })
-              )}
+              {listeRolesComplet.map((r, index) => {
+                const nomR = r.nom_role || r;
+                const estActif = nouveauParticipant.libelle_role === nomR;
+                return (
+                  <div 
+                    key={r.id || index}
+                    onClick={() => {
+                      setNouveauParticipant({ ...nouveauParticipant, libelle_role: nomR });
+                      setModalRoleOuverte(false);
+                    }}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition flex justify-between items-center ${
+                      estActif 
+                        ? (isDarkMode ? 'bg-slate-800 border-slate-600 text-white font-bold' : 'bg-slate-200 border-slate-400 text-slate-900 font-bold') 
+                        : (isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100')
+                    }`}
+                  >
+                    <span className="font-black text-xs uppercase">👑 {nomR}</span>
+                    {estActif && <span className="font-bold text-xs">✓ Sélectionné</span>}
+                  </div>
+                );
+              })}
             </div>
             <div className={`flex justify-end pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               <button type="button" onClick={() => setModalRoleOuverte(false)} className={`font-bold px-4 py-1.5 rounded-lg text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'}`}>
@@ -1578,34 +1506,27 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
                 {!cycleFiltreSelectionne && <span className="font-bold text-xs">✓ Actif</span>}
               </div>
 
-              {cyclesDisponibles.length === 0 ? (
-                <p className={`text-xs text-center py-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Aucun cycle enregistré.</p>
-              ) : (
-                cyclesDisponibles.map((cycle) => {
-                  const estActif = cycleFiltreSelectionne === cycle.id;
-                  const nomC = cycle.nom_cycle || cycle.libelle || `Cycle #${cycle.id}`;
-                  return (
-                    <div
-                      key={cycle.id}
-                      onClick={() => {
-                        setCycleFiltreSelectionne(cycle.id);
-                        setModalCycleOuverte(false);
-                      }}
-                      className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col gap-0.5 ${
-                        estActif 
-                          ? (isDarkMode ? 'bg-slate-800 text-white font-bold border-slate-600' : 'bg-slate-200 text-slate-900 font-bold border-slate-400') 
-                          : (isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100')
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-black text-xs uppercase">🎯 {nomC}</span>
-                        {estActif && <span className="font-bold text-xs">✓ Sélectionné</span>}
-                      </div>
-                      {cycle.frequence && <span className={`text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Fréquence : {cycle.frequence}</span>}
-                    </div>
-                  );
-                })
-              )}
+              {cyclesDisponibles.map((cycle) => {
+                const estActif = cycleFiltreSelectionne === cycle.id;
+                const nomC = cycle.nom_cycle || cycle.libelle || `Cycle #${cycle.id}`;
+                return (
+                  <div
+                    key={cycle.id}
+                    onClick={() => {
+                      setCycleFiltreSelectionne(cycle.id);
+                      setModalCycleOuverte(false);
+                    }}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition flex justify-between items-center ${
+                      estActif 
+                        ? (isDarkMode ? 'bg-slate-800 text-white font-bold border-slate-600' : 'bg-slate-200 text-slate-900 font-bold border-slate-400') 
+                        : (isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-100')
+                    }`}
+                  >
+                    <span className="font-black text-xs uppercase">🎯 {nomC}</span>
+                    {estActif && <span className="font-bold text-xs">✓ Sélectionné</span>}
+                  </div>
+                );
+              })}
             </div>
             <div className={`flex justify-end pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               <button type="button" onClick={() => setModalCycleOuverte(false)} className={`font-bold px-4 py-1.5 rounded-lg text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'}`}>

@@ -24,7 +24,6 @@ const LISTE_TYPES_CYCLE = [
   { id: 'EPARGNE', label: 'Fonds de Caisse / Épargne' },
 ];
 
-// Fonction utilitaire pour calculer la date d'échéance à partir de la date de début et du nombre de mois
 const calculerDateEcheance = (dateDebutStr, nbMois) => {
   if (!dateDebutStr) return '';
   const [annee, mois, jour] = dateDebutStr.split('-').map(Number);
@@ -119,7 +118,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       const queue = JSON.parse(localStorage.getItem(`4ts_cycles_queue_${entrepriseId}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions cycles hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -135,7 +133,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action cycle ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -143,7 +140,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       localStorage.setItem(`4ts_cycles_queue_${entrepriseId}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des cycles effectuée avec succès !');
         chargerDonneesInitiale();
       }
     } catch (err) {
@@ -152,22 +148,19 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   };
 
   const chargerDonneesInitiale = async () => {
-    setChargement(true);
     const idEnt = entrepriseId || '4TS-290136';
 
-    if (!navigator.onLine) {
-      try {
-        const cacheCycles = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
-        const cacheMembres = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
-        if (cacheCycles) setCycles(JSON.parse(cacheCycles));
-        if (cacheMembres) setTousLesMembresActifs(JSON.parse(cacheMembres));
-      } catch (e) {
-        console.warn('Erreur lecture cache local cycles :', e);
-      } finally {
-        setChargement(false);
-      }
-      return;
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
+    try {
+      const cacheCycles = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
+      const cacheMembres = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
+      if (cacheCycles) setCycles(JSON.parse(cacheCycles));
+      if (cacheMembres) setTousLesMembresActifs(JSON.parse(cacheMembres));
+    } catch (e) {
+      console.warn('Erreur lecture cache local cycles :', e);
     }
+
+    if (!navigator.onLine) return;
 
     try {
       const { data: cyclesData, error } = await supabase
@@ -214,15 +207,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       setCycles(cyclesAvecTours);
       localStorage.setItem(`4ts_cache_cycles_list_${idEnt}`, JSON.stringify(cyclesAvecTours));
     } catch (err) {
-      console.error('Erreur chargement cycles, bascule cache :', err.message);
-      try {
-        const cacheCycles = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
-        if (cacheCycles) setCycles(JSON.parse(cacheCycles));
-      } catch (e) {
-        console.error(e);
-      }
-    } finally {
-      setChargement(false);
+      console.error('Erreur chargement cycles :', err.message);
     }
   };
 
@@ -351,8 +336,8 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
         const membresARattacher = [];
         tousLesMembresActifs.forEach(m => {
-          const cleMap = m.id || m.nom_participant;
-          const configMembre = selectionMembresCycle[cleMap];
+          const cle = m.id || m.nom_participant;
+          const configMembre = selectionMembresCycle[cle];
           const estCoche = modeActivationMembres === 'tous' ? true : (configMembre?.coche || false);
 
           if (estCoche) {
@@ -369,12 +354,9 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         });
 
         if (membresARattacher.length > 0) {
-          const { error: errPart } = await supabase
+          await supabase
             .from('tontine_participants')
             .insert(membresARattacher);
-          if (errPart) {
-            console.warn('Erreur rattachement membres :', errPart.message);
-          }
         }
       }
 
@@ -411,7 +393,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     }
   };
 
-  const ouvrirCreation = async () => {
+  const ouvrirCreation = () => {
     setCycleEnEdition(null);
     setModeActivationMembres('tous');
     initialiserSelectionMembres(tousLesMembresActifs, null, []);
@@ -488,19 +470,19 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   return (
     <div className={`w-full h-full space-y-2 font-sans text-xs ${bgPrincipal}`}>
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION MIS À JOUR */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
@@ -846,7 +828,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     value={calculerToursAutomatiqueDepuisSelection()}
                     className={`w-full p-1.5 rounded border text-xs font-bold font-mono cursor-not-allowed opacity-80 ${inputBg}`}
                   />
-                  <span className={`text-[8px] block mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Calculé automatiquement selon les parts des membres activés.</span>
                 </div>
               )}
 
