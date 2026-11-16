@@ -14,9 +14,9 @@ const LISTE_FREQUENCES = [
 ];
 
 const LISTE_STATUTS = [
-  { id: 'ACTIF', label: 'Actif', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-  { id: 'EN_COURS', label: 'En cours', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  { id: 'CLÔTURÉ', label: 'Clôturé', color: 'bg-slate-500/20 text-slate-400 border-slate-500/30' },
+  { id: 'ACTIF', label: 'Actif' },
+  { id: 'EN_COURS', label: 'En cours' },
+  { id: 'CLÔTURÉ', label: 'Clôturé' },
 ];
 
 const LISTE_TYPES_CYCLE = [
@@ -64,9 +64,8 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     statut: 'ACTIF',
   });
 
-  // États pour l'activation des membres lors de la création du cycle
-  const [modeActivationMembres, setModeActivationMembres] = useState('tous'); // 'tous' | 'personnalise'
-  const [selectionMembresCycle, setSelectionMembresCycle] = useState({}); // { [idMembre]: { coche: true, parts: 1 } }
+  const [modeActivationMembres, setModeActivationMembres] = useState('tous');
+  const [selectionMembresCycle, setSelectionMembresCycle] = useState({});
 
   const chargerDonneesInitiale = async () => {
     setChargement(true);
@@ -79,13 +78,11 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
       if (error) throw error;
 
-      // Récupérer tous les membres distincts ou de base enregistrés dans l'entreprise
       const { data: membresData } = await supabase
         .from('tontine_participants')
         .select('*')
         .eq('id_entreprise', entrepriseId);
 
-      // Dédoublonner les membres si nécessaire pour avoir la liste de référence unique
       const mapMembresUniques = new Map();
       (membresData || []).forEach(m => {
         const cle = `${(m.nom_participant || m.nom_complet || '').trim().toLowerCase()}_${(m.prenom || '').trim().toLowerCase()}`;
@@ -128,14 +125,13 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const initialiserSelectionMembres = (membresRef, cycleIdCible = null, participantsExistantsCycle = []) => {
     const mapSel = {};
     membresRef.forEach(m => {
-      // Vérifier si le membre est déjà rattaché à ce cycle
       const dejaInscrit = participantsExistantsCycle.find(p => 
         (p.id?.toString() === m.id?.toString()) ||
         ((p.nom_participant || p.nom_complet || '').trim().toLowerCase() === (m.nom_participant || m.nom_complet || '').trim().toLowerCase())
       );
 
       mapSel[m.id || m.nom_participant] = {
-        coche: cycleIdCible ? !!dejaInscrit : true, // Par défaut tout coché pour un nouveau cycle
+        coche: cycleIdCible ? !!dejaInscrit : true,
         parts: dejaInscrit?.nombre_parts || m.nombre_parts || 1,
         idMembreOriginal: m.id
       };
@@ -214,9 +210,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         }
       }
 
-      // Gérer l'affectation ou la mise à jour des membres rattachés à ce cycle
       if (idCycleEffectif) {
-        // En mode édition, on nettoie les anciennes attributions de ce cycle pour réinsérer proprement les choix cochés
         if (cycleEnEdition) {
           await supabase
             .from('tontine_participants')
@@ -351,24 +345,27 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     return texte.includes(recherche.toLowerCase());
   });
 
+  // Adaptation dynamique des styles selon le mode nuit/jour (Gris - Rouge - Noir)
+  const bgPrincipal = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-slate-900';
   const inputBg = isDarkMode ? 'bg-[#1b263b] text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
   const labelColor = isDarkMode ? 'text-slate-200' : 'text-slate-800';
+  const cardBg = isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900';
 
   return (
-    <div className="w-full h-full space-y-2 font-sans text-xs">
+    <div className={`w-full h-full space-y-2 font-sans text-xs ${bgPrincipal}`}>
       
-      {/* BARRE D'EN-TÊTE SANS LE BOUTON RETOUR */}
-      <div className="flex justify-end items-center bg-white/5 px-2 py-1.5 rounded border border-slate-700/20 gap-1 overflow-x-auto">
+      {/* BARRE D'EN-TÊTE */}
+      <div className={`flex justify-end items-center px-2 py-1.5 rounded border gap-1 overflow-x-auto ${isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-300 shadow-2xs'}`}>
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={ouvrirCreation}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-1.5 rounded transition shadow text-[10px] uppercase cursor-pointer"
+            className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1.5 rounded transition shadow text-[10px] uppercase cursor-pointer"
           >
             ➕ Créer
           </button>
 
-          <div className="bg-slate-800 text-white px-2.5 py-1.5 rounded font-black text-[10px] uppercase border border-slate-600">
+          <div className={`px-2.5 py-1.5 rounded font-black text-[10px] uppercase border ${isDarkMode ? 'bg-slate-800 text-slate-100 border-slate-700' : 'bg-slate-200 text-slate-900 border-slate-300'}`}>
             📋 Cycles ({cycles.length})
           </div>
         </div>
@@ -377,9 +374,9 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       {/* MODALE DE CRÉATION / MODIFICATION DE CYCLE */}
       {modalCreationOuverte && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-3 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 w-full max-w-xl space-y-2.5 shadow-2xl text-white my-auto max-h-[92vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-1.5 border-slate-800">
-              <h4 className="font-black text-orange-500 uppercase text-xs">
+          <div className={`border rounded-lg p-3 w-full max-w-xl space-y-2.5 shadow-2xl my-auto max-h-[92vh] overflow-y-auto ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+            <div className={`flex justify-between items-center border-b pb-1.5 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+              <h4 className={`font-black uppercase text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
                 {cycleEnEdition ? '✏️ Modifier le cycle' : '➕ Créer un nouveau cycle & Activer les membres'}
               </h4>
               <button
@@ -418,15 +415,15 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                         onClick={() => setNouveauCycle({ ...nouveauCycle, type_cycle: typeC.id })}
                         className={`p-1.5 rounded border font-bold text-[10px] transition cursor-pointer flex items-center justify-center gap-1.5 text-center ${
                           estCoche
-                            ? 'bg-slate-800 text-white border-slate-600 shadow'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                            ? (isDarkMode ? 'bg-slate-800 text-white border-slate-600 shadow' : 'bg-slate-200 text-slate-900 border-slate-400 shadow')
+                            : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100')
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={estCoche}
                           onChange={() => {}}
-                          className="w-3.5 h-3.5 accent-slate-600 cursor-pointer rounded pointer-events-none"
+                          className="w-3.5 h-3.5 accent-red-600 cursor-pointer rounded pointer-events-none"
                         />
                         <span>{typeC.id === 'BOUFFER' ? '🎯 Tontine à bouffer' : '🏦 Fonds de Caisse / Épargne'}</span>
                       </button>
@@ -435,15 +432,15 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 </div>
               </div>
 
-              <div className="space-y-1 p-2 rounded bg-white/5 border border-slate-700/20">
+              <div className={`space-y-1 p-2 rounded border ${isDarkMode ? 'bg-slate-800/40 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex justify-between items-center">
                   <label className={`font-black text-[9px] uppercase ${labelColor}`}>Montant de la Cotisation / Fonds</label>
-                  <label className="flex items-center gap-1 cursor-pointer text-[9px] font-bold text-orange-400">
+                  <label className={`flex items-center gap-1 cursor-pointer text-[9px] font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                     <input
                       type="checkbox"
                       checked={nouveauCycle.montant_libre}
                       onChange={(e) => setNouveauCycle({ ...nouveauCycle, montant_libre: e.target.checked })}
-                      className="rounded accent-orange-600 cursor-pointer"
+                      className="rounded accent-red-600 cursor-pointer"
                     />
                     Montant libre / Au choix
                   </label>
@@ -470,7 +467,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     className={`w-full p-1.5 rounded border text-xs font-bold flex justify-between items-center cursor-pointer ${inputBg}`}
                   >
                     <span className="truncate">{LISTE_FREQUENCES.find(f => f.id === nouveauCycle.frequence)?.label || nouveauCycle.frequence}</span>
-                    <span className="text-orange-500 font-black">▼</span>
+                    <span className={`font-black ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>▼</span>
                   </button>
                 </div>
 
@@ -482,7 +479,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     className={`w-full p-1.5 rounded border text-xs font-bold flex justify-between items-center cursor-pointer ${inputBg}`}
                   >
                     <span className="truncate">{LISTE_STATUTS.find(s => s.id === nouveauCycle.statut)?.label || nouveauCycle.statut}</span>
-                    <span className="text-orange-500 font-black">▼</span>
+                    <span className={`font-black ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>▼</span>
                   </button>
                 </div>
               </div>
@@ -511,15 +508,15 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
               </div>
 
               {/* SECTION ACTIVATION ET RATTACHEMENT DES MEMBRES */}
-              <div className="space-y-2 p-2.5 rounded-lg bg-slate-800/80 border border-slate-700">
+              <div className={`space-y-2 p-2.5 rounded-lg border ${isDarkMode ? 'bg-slate-800/80 border-slate-700 text-slate-100' : 'bg-slate-100 border-slate-300 text-slate-900'}`}>
                 <div className="flex justify-between items-center">
-                  <label className="font-black text-xs uppercase text-orange-400">👥 Activation & Rattachement des Membres</label>
+                  <label className={`font-black text-xs uppercase ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>👥 Activation & Rattachement des Membres</label>
                   <div className="flex gap-1">
                     <button
                       type="button"
                       onClick={() => setModeActivationMembres('tous')}
                       className={`px-2 py-1 rounded text-[9px] font-black uppercase transition cursor-pointer ${
-                        modeActivationMembres === 'tous' ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'
+                        modeActivationMembres === 'tous' ? 'bg-red-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')
                       }`}
                     >
                       🚀 Activer tous ({tousLesMembresActifs.length})
@@ -528,7 +525,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                       type="button"
                       onClick={() => setModeActivationMembres('personnalise')}
                       className={`px-2 py-1 rounded text-[9px] font-black uppercase transition cursor-pointer ${
-                        modeActivationMembres === 'personnalise' ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'
+                        modeActivationMembres === 'personnalise' ? 'bg-red-600 text-white' : (isDarkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-700')
                       }`}
                     >
                       ☑️ Sélection précise
@@ -537,13 +534,13 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 </div>
 
                 {modeActivationMembres === 'tous' ? (
-                  <div className="text-[10px] text-slate-300 font-bold bg-emerald-950/40 p-2 rounded border border-emerald-500/30">
+                  <div className={`text-[10px] font-bold p-2 rounded border ${isDarkMode ? 'bg-emerald-950/40 text-slate-200 border-emerald-500/30' : 'bg-emerald-50 text-emerald-900 border-emerald-200'}`}>
                     ✅ Ce cycle sera automatiquement rattaché à <b>TOUS les {tousLesMembresActifs.length} membres</b> enregistrés dans l'entreprise.
                   </div>
                 ) : (
                   <div className="space-y-2 pt-1">
                     <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-300 font-bold">Cochez les membres concernés et leurs parts :</span>
+                      <span className={`font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Cochez les membres concernés et leurs parts :</span>
                       <div className="flex gap-1.5">
                         <button
                           type="button"
@@ -554,7 +551,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                             });
                             setSelectionMembresCycle(maj);
                           }}
-                          className="text-[9px] bg-slate-700 hover:bg-slate-600 text-white px-2 py-0.5 rounded font-bold cursor-pointer"
+                          className={`text-[9px] px-2 py-0.5 rounded font-bold cursor-pointer ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-300 hover:bg-slate-400 text-slate-800'}`}
                         >
                           Tout cocher
                         </button>
@@ -567,16 +564,16 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                             });
                             setSelectionMembresCycle(maj);
                           }}
-                          className="text-[9px] bg-slate-700 hover:bg-slate-600 text-white px-2 py-0.5 rounded font-bold cursor-pointer"
+                          className={`text-[9px] px-2 py-0.5 rounded font-bold cursor-pointer ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-300 hover:bg-slate-400 text-slate-800'}`}
                         >
                           Tout décocher
                         </button>
                       </div>
                     </div>
 
-                    <div className="max-h-44 overflow-y-auto space-y-1 bg-slate-950 p-2 rounded border border-slate-800">
+                    <div className={`max-h-44 overflow-y-auto space-y-1 p-2 rounded border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-300'}`}>
                       {tousLesMembresActifs.length === 0 ? (
-                        <p className="text-center text-slate-500 py-2">Aucun membre enregistré dans l'application.</p>
+                        <p className={`text-center py-2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Aucun membre enregistré dans l'application.</p>
                       ) : (
                         tousLesMembresActifs.map((m) => {
                           const cle = m.id || m.nom_participant;
@@ -584,7 +581,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                           const nomComplet = `${m.nom_participant || m.nom_complet || ''} ${m.prenom || ''}`;
 
                           return (
-                            <div key={cle} className={`flex items-center justify-between p-1.5 rounded transition ${donneesMembre.coche ? 'bg-slate-800 font-bold' : 'bg-slate-900/50 opacity-60'}`}>
+                            <div key={cle} className={`flex items-center justify-between p-1.5 rounded transition ${donneesMembre.coche ? (isDarkMode ? 'bg-slate-800 font-bold text-white' : 'bg-slate-100 font-bold text-slate-900') : (isDarkMode ? 'bg-slate-900/50 opacity-60 text-slate-400' : 'bg-slate-50 opacity-60 text-slate-500')}`}>
                               <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
                                 <input
                                   type="checkbox"
@@ -596,14 +593,14 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                                       [cle]: { ...prev[cle], coche: actif }
                                     }));
                                   }}
-                                  className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer"
+                                  className="w-3.5 h-3.5 accent-red-600 rounded cursor-pointer"
                                 />
                                 <span className="truncate uppercase text-[10px]">{nomComplet}</span>
                               </label>
 
                               {nouveauCycle.type_cycle === 'BOUFFER' && (
                                 <div className="flex items-center gap-1 shrink-0">
-                                  <span className="text-[9px] text-slate-400">Parts:</span>
+                                  <span className={`text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Parts:</span>
                                   <input
                                     type="number"
                                     min="1"
@@ -617,7 +614,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                                         [cle]: { ...prev[cle], parts: pVal }
                                       }));
                                     }}
-                                    className="w-12 p-0.5 text-center bg-slate-950 border border-slate-700 rounded font-mono text-xs font-bold text-emerald-400"
+                                    className={`w-12 p-0.5 text-center border rounded font-mono text-xs font-bold text-emerald-600 ${isDarkMode ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-300'}`}
                                   />
                                 </div>
                               )}
@@ -630,22 +627,22 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 )}
               </div>
 
-              {/* SECTION AVEC BOUTON DE COCHAGE POUR LE DÉLAI DE PAIEMENT */}
-              <div className="space-y-2 p-2.5 rounded-lg bg-orange-950/25 border border-orange-500/40">
-                <label className="flex items-center gap-2 cursor-pointer font-black text-xs text-orange-400">
+              {/* SECTION AVEC DÉLAI DE PAIEMENT */}
+              <div className={`space-y-2 p-2.5 rounded-lg border ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-100 border-slate-300'}`}>
+                <label className={`flex items-center gap-2 cursor-pointer font-black text-xs ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
                   <input
                     type="checkbox"
                     checked={nouveauCycle.activer_delai}
                     onChange={(e) => setNouveauCycle({ ...nouveauCycle, activer_delai: e.target.checked })}
-                    className="w-4 h-4 rounded accent-orange-600 cursor-pointer"
+                    className="w-4 h-4 rounded accent-red-600 cursor-pointer"
                   />
                   <span>⏳ Activer un délai de paiement</span>
                 </label>
 
                 {nouveauCycle.activer_delai && (
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-orange-500/30 animate-fadeIn">
+                  <div className={`grid grid-cols-2 gap-2 pt-2 border-t animate-fadeIn ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}>
                     <div>
-                      <label className={`block font-black mb-0.5 text-[9px] uppercase text-orange-300`}>Délai (Mois)</label>
+                      <label className={`block font-black mb-0.5 text-[9px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Délai (Mois)</label>
                       <div className="flex items-center gap-1">
                         <input
                           type="number"
@@ -659,7 +656,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                           <button
                             type="button"
                             onClick={() => setNouveauCycle(prev => ({ ...prev, delai_paiement_mois: Math.min(36, prev.delai_paiement_mois + 1) }))}
-                            className="bg-slate-800 hover:bg-slate-700 text-orange-400 font-black px-1.5 py-0.5 text-[9px] rounded-t border border-slate-600 cursor-pointer"
+                            className={`font-black px-1.5 py-0.5 text-[9px] rounded-t border cursor-pointer ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'}`}
                             title="Augmenter"
                           >
                             ▲
@@ -667,7 +664,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                           <button
                             type="button"
                             onClick={() => setNouveauCycle(prev => ({ ...prev, delai_paiement_mois: Math.max(1, prev.delai_paiement_mois - 1) }))}
-                            className="bg-slate-800 hover:bg-slate-700 text-orange-400 font-black px-1.5 py-0.5 text-[9px] rounded-b border border-slate-600 cursor-pointer"
+                            className={`font-black px-1.5 py-0.5 text-[9px] rounded-b border cursor-pointer ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-slate-200 border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'}`}
                             title="Diminuer"
                           >
                             ▼
@@ -677,12 +674,12 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     </div>
 
                     <div>
-                      <label className={`block font-black mb-0.5 text-[9px] uppercase text-orange-300`}>Date d'échéance (Auto)</label>
+                      <label className={`block font-black mb-0.5 text-[9px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Date d'échéance (Auto)</label>
                       <input
                         type="date"
                         disabled
                         value={calculerDateEcheance(nouveauCycle.date_debut, nouveauCycle.delai_paiement_mois)}
-                        className={`w-full p-1.5 rounded border text-xs font-bold font-mono bg-slate-950 text-orange-300 cursor-not-allowed opacity-90 ${inputBg}`}
+                        className={`w-full p-1.5 rounded border text-xs font-bold font-mono cursor-not-allowed opacity-90 ${isDarkMode ? 'bg-slate-950 text-slate-300 border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300'}`}
                       />
                     </div>
                   </div>
@@ -696,13 +693,13 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     type="number"
                     disabled
                     value={calculerToursAutomatiqueDepuisSelection()}
-                    className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-slate-300 cursor-not-allowed opacity-80 ${inputBg}`}
+                    className={`w-full p-1.5 rounded border text-xs font-bold font-mono cursor-not-allowed opacity-80 ${inputBg}`}
                   />
-                  <span className="text-[8px] text-slate-400 block mt-0.5">Calculé automatiquement selon les parts des membres activés.</span>
+                  <span className={`text-[8px] block mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Calculé automatiquement selon les parts des membres activés.</span>
                 </div>
               )}
 
-              <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+              <div className={`flex justify-between items-center pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
                 <div>
                   {cycleEnEdition && (
                     <button
@@ -715,7 +712,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setModalCreationOuverte(false)} className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-2.5 py-1 rounded text-[10px] cursor-pointer">
+                  <button type="button" onClick={() => setModalCreationOuverte(false)} className={`font-bold px-2.5 py-1 rounded text-[10px] cursor-pointer ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-300 hover:bg-slate-400 text-slate-800'}`}>
                     Annuler
                   </button>
                   <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-3 py-1 rounded text-[10px] shadow cursor-pointer">
@@ -732,9 +729,9 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       {/* MODALES DE SÉLECTION */}
       {modalFrequenceOuverte && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-8 p-3">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl text-white">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-              <h5 className="font-black uppercase text-[10px] text-orange-500">Sélectionner la Fréquence</h5>
+          <div className={`border rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+            <div className={`flex justify-between items-center border-b pb-1 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+              <h5 className={`font-black uppercase text-[10px] ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>Sélectionner la Fréquence</h5>
               <button type="button" onClick={() => setModalFrequenceOuverte(false)} className="bg-red-600 hover:bg-red-500 text-white font-bold px-1.5 py-0.5 rounded text-xs transition cursor-pointer">✖</button>
             </div>
             <div className="space-y-1 max-h-60 overflow-y-auto">
@@ -747,7 +744,9 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     setModalFrequenceOuverte(false);
                   }}
                   className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center cursor-pointer ${
-                    nouveauCycle.frequence === freq.id ? 'bg-slate-800 text-white border border-slate-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                    nouveauCycle.frequence === freq.id 
+                      ? (isDarkMode ? 'bg-slate-800 text-white border border-slate-600' : 'bg-slate-200 text-slate-900 border border-slate-400') 
+                      : (isDarkMode ? 'bg-slate-900 hover:bg-slate-800 text-slate-200' : 'bg-white hover:bg-slate-100 text-slate-800')
                   }`}
                 >
                   <span>{freq.label}</span>
@@ -761,9 +760,9 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
       {modalStatutOuverte && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-8 p-3">
-          <div className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl text-white">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-              <h5 className="font-black uppercase text-[10px] text-orange-500">Sélectionner le Statut</h5>
+          <div className={`border rounded-lg p-2.5 w-full max-w-sm space-y-2 shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+            <div className={`flex justify-between items-center border-b pb-1 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+              <h5 className={`font-black uppercase text-[10px] ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>Sélectionner le Statut</h5>
               <button type="button" onClick={() => setModalStatutOuverte(false)} className="bg-red-600 hover:bg-red-500 text-white font-bold px-1.5 py-0.5 rounded text-xs transition cursor-pointer">✖</button>
             </div>
             <div className="space-y-1">
@@ -776,7 +775,9 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     setModalStatutOuverte(false);
                   }}
                   className={`w-full text-left px-2.5 py-2 rounded font-bold text-xs transition flex justify-between items-center cursor-pointer ${
-                    nouveauCycle.statut === st.id ? 'bg-slate-800 text-white border border-slate-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                    nouveauCycle.statut === st.id 
+                      ? (isDarkMode ? 'bg-slate-800 text-white border border-slate-600' : 'bg-slate-200 text-slate-900 border border-slate-400') 
+                      : (isDarkMode ? 'bg-slate-900 hover:bg-slate-800 text-slate-200' : 'bg-white hover:bg-slate-100 text-slate-800')
                   }`}
                 >
                   <span>{st.label}</span>
@@ -790,20 +791,20 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
       {/* TABLEAU DES CYCLES */}
       <div className="space-y-2 w-full">
-        <div className="bg-white p-1 rounded border border-slate-200 shadow-2xs">
+        <div className={`p-1 rounded border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'}`}>
           <input
             type="text"
             value={recherche}
             onFocus={(e) => e.target.select()}
             onChange={(e) => setRecherche(e.target.value)}
-            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 font-bold text-slate-900 text-xs focus:outline-none"
+            className={`w-full border rounded px-2.5 py-1.5 font-bold text-xs focus:outline-none ${inputBg}`}
             placeholder="🔍 Rechercher un cycle ou un fonds de caisse..."
           />
         </div>
 
-        <div className="overflow-x-auto border border-slate-700/20 rounded bg-white shadow-2xs w-full">
+        <div className={`overflow-x-auto border rounded shadow-2xs w-full ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-300'}`}>
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-800 border-b uppercase text-[9px] font-black select-none">
+            <thead className={`border-b uppercase text-[9px] font-black select-none ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-slate-100 text-slate-800 border-slate-200'}`}>
               <tr>
                 <th className="p-2.5">Nom du Cycle / Fonds</th>
                 <th className="p-2.5 text-center">Montant</th>
@@ -812,11 +813,11 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                 <th className="p-2.5 text-center">Statut</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-[10px]">
+            <tbody className={`divide-y text-[10px] ${isDarkMode ? 'divide-slate-800 text-slate-200' : 'divide-slate-200 text-slate-900'}`}>
               {chargement ? (
-                <tr><td colSpan="5" className="p-4 text-center animate-pulse text-slate-500">Chargement...</td></tr>
+                <tr><td colSpan="5" className="p-4 text-center animate-pulse text-slate-400">Chargement...</td></tr>
               ) : cyclesFiltres.length === 0 ? (
-                <tr><td colSpan="5" className="p-4 text-center text-slate-500 font-bold">Aucun cycle configuré. Cliquez sur "Créer".</td></tr>
+                <tr><td colSpan="5" className="p-4 text-center text-slate-400 font-bold">Aucun cycle configuré. Cliquez sur "Créer".</td></tr>
               ) : (
                 cyclesFiltres.map((c) => {
                   const nomAffiche = c.nom_cycle || c.libelle || 'CYCLE';
@@ -825,34 +826,34 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     <tr 
                       key={c.id} 
                       onClick={() => ouvrirEdition(c)} 
-                      className="hover:bg-orange-50/70 cursor-pointer transition select-none text-slate-900"
+                      className={`cursor-pointer transition select-none ${isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-slate-100'}`}
                       title="Cliquez pour modifier ou supprimer"
                     >
-                      <td className="p-2.5 font-black uppercase text-slate-900">
+                      <td className="p-2.5 font-black uppercase">
                         <div className="flex items-center gap-1.5">
                           <span>{nomAffiche}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${estEpargne ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-orange-100 text-orange-800 border-orange-200'}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${estEpargne ? (isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300') : (isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300')}`}>
                             {estEpargne ? '🏦 FONDS / ÉPARGNE' : '🎯 BÉNÉFICIÉ'}
                           </span>
                         </div>
-                        {c.regle_reunion && <div className="text-[8px] text-slate-500 font-normal mt-0.5">🗓️ {c.regle_reunion}</div>}
+                        {c.regle_reunion && <div className={`text-[8px] font-normal mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>🗓️ {c.regle_reunion}</div>}
                       </td>
-                      <td className="p-2.5 text-center font-black font-mono text-emerald-700 whitespace-nowrap">
-                        {c.montant_libre ? <span className="text-slate-700 font-bold">Au choix</span> : `${c.montant_cotisation?.toLocaleString()} F`}
+                      <td className="p-2.5 text-center font-black font-mono text-emerald-600 whitespace-nowrap">
+                        {c.montant_libre ? <span className={`font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Au choix</span> : `${c.montant_cotisation?.toLocaleString()} F`}
                       </td>
-                      <td className="p-2.5 text-center font-bold font-mono text-orange-600">
+                      <td className={`p-2.5 text-center font-bold font-mono ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                         {c.delai_paiement_mois && c.delai_paiement_mois > 0 ? (
                           <div>
                             <div>{c.delai_paiement_mois} mois</div>
-                            {c.date_fin && <div className="text-[8px] text-slate-500 font-normal">Éch: {c.date_fin}</div>}
+                            {c.date_fin && <div className={`text-[8px] font-normal ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Éch: {c.date_fin}</div>}
                           </div>
                         ) : (
                           <span className="text-slate-400">Aucun</span>
                         )}
                       </td>
-                      <td className="p-2.5 text-center font-bold text-slate-700 uppercase">{c.frequence}</td>
+                      <td className="p-2.5 text-center font-bold uppercase">{c.frequence}</td>
                       <td className="p-2.5 text-center">
-                        <span className="bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded text-[8px] uppercase border border-emerald-200">
+                        <span className={`font-black px-2 py-0.5 rounded text-[8px] uppercase border ${isDarkMode ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-emerald-100 text-emerald-800 border-emerald-300'}`}>
                           {c.statut}
                         </span>
                       </td>

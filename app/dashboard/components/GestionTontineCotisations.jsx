@@ -18,6 +18,10 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const [caisseDetailSession, setCaisseDetailSession] = useState(null);
   const [filtreCycleId, setFiltreCycleId] = useState('');
   
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   // États pour la date de saisie, l'état membre et la caisse
   const [dateSaisie, setDateSaisie] = useState(new Date().toISOString().split('T')[0]);
   const [etatCycleId, setEtatCycleId] = useState('');
@@ -43,13 +47,110 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
   const estSuperAdmin = (userEmail || '').trim().toLowerCase() === 'stephs7352@gmail.com';
 
+  // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Charger le compteur d'actions en attente au démarrage
+    mettreAJourCompteurFileAttente();
     chargerDonnees();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [entrepriseId]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_offline_queue_${entrepriseId}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_offline_queue_${entrepriseId}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_offline_queue_${entrepriseId}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_offline_queue_${entrepriseId}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions hors ligne...`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'COTISATION') {
+            const { error } = await supabase.from('tontine_cotisations').insert(action.payload);
+            if (error) throw error;
+          } else if (action.type === 'ATTRIBUTION') {
+            const { error } = await supabase.from('tontine_attributions').insert([action.payload]);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_offline_queue_${entrepriseId}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation hors ligne effectuée avec succès !');
+        chargerDonnees();
+      }
+    } catch (err) {
+      console.error('Erreur globale de synchronisation :', err);
+    }
+  };
 
   const chargerDonnees = async () => {
     setChargement(true);
     const idEnt = entrepriseId || '4TS-234321';
+    
+    if (!navigator.onLine) {
+      // Chargement depuis le Cache Local en mode Hors Ligne
+      try {
+        const cachePart = localStorage.getItem(`4ts_cache_participants_${idEnt}`);
+        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_${idEnt}`);
+        const cacheCot = localStorage.getItem(`4ts_cache_cotisations_${idEnt}`);
+        const cacheAtt = localStorage.getItem(`4ts_cache_attributions_${idEnt}`);
+        const cacheCai = localStorage.getItem(`4ts_cache_caisse_${idEnt}`);
+
+        if (cachePart) setParticipants(JSON.parse(cachePart));
+        if (cacheCyc) setCycles(JSON.parse(cacheCyc));
+        if (cacheCot) setCotisations(JSON.parse(cacheCot));
+        if (cacheAtt) setAttributions(JSON.parse(cacheAtt));
+        if (cacheCai) setCaisseRecords(JSON.parse(cacheCai));
+      } catch (e) {
+        console.warn('Erreur lecture cache local :', e);
+      } finally {
+        setChargement(false);
+      }
+      return;
+    }
+
     try {
       const { data: part, error: errPart } = await supabase
         .from('tontine_participants')
@@ -87,17 +188,43 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         .order('created_at', { ascending: false });
       if (errCai && errCai.code !== '42P01') console.warn('Table tontine_caisse :', errCai.message);
 
-      if (part) setParticipants(part);
-      if (cyc) setCycles(cyc);
-      if (cot) setCotisations(cot);
-      if (att) setAttributions(att);
-      if (cai) setCaisseRecords(cai);
+      if (part) {
+        setParticipants(part);
+        localStorage.setItem(`4ts_cache_participants_${idEnt}`, JSON.stringify(part));
+      }
+      if (cyc) {
+        setCycles(cyc);
+        localStorage.setItem(`4ts_cache_cycles_${idEnt}`, JSON.stringify(cyc));
+      }
+      if (cot) {
+        setCotisations(cot);
+        localStorage.setItem(`4ts_cache_cotisations_${idEnt}`, JSON.stringify(cot));
+      }
+      if (att) {
+        setAttributions(att);
+        localStorage.setItem(`4ts_cache_attributions_${idEnt}`, JSON.stringify(att));
+      }
+      if (cai) {
+        setCaisseRecords(cai);
+        localStorage.setItem(`4ts_cache_caisse_${idEnt}`, JSON.stringify(cai));
+      }
 
       if (cycleId) {
         calculerTourAutomatique(cycleId, part, cot, att);
       }
     } catch (err) {
-      console.error('Erreur chargement :', err.message);
+      console.error('Erreur chargement Supabase, bascule sur le cache :', err.message);
+      // Fallback cache local en cas d'erreur réseau
+      try {
+        const cachePart = localStorage.getItem(`4ts_cache_participants_${idEnt}`);
+        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_${idEnt}`);
+        const cacheCot = localStorage.getItem(`4ts_cache_cotisations_${idEnt}`);
+        if (cachePart) setParticipants(JSON.parse(cachePart));
+        if (cacheCyc) setCycles(JSON.parse(cacheCyc));
+        if (cacheCot) setCotisations(JSON.parse(cacheCot));
+      } catch (e) {
+        console.error('Erreur lecture cache :', e);
+      }
     } finally {
       setChargement(false);
     }
@@ -394,6 +521,23 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         date_versement: dateHeureVersement
       }));
 
+      if (!navigator.onLine) {
+        // Mode Hors Ligne : Enregistrement dans la file d'attente locale
+        ajouterActionHorsLigne('COTISATION', payloadInsertions);
+        
+        // Mise à jour optimiste locale de l'état des cotisations
+        const nouvellesCotisLocales = [...payloadInsertions.map(p => ({ ...p, id: 'local_' + Math.random() })), ...cotisations];
+        setCotisations(nouvellesCotisLocales);
+        localStorage.setItem(`4ts_cache_cotisations_${idEnt}`, JSON.stringify(nouvellesCotisLocales));
+
+        alert('📴 Pas de connexion Internet. Cotisations enregistrées localement et mises en file d’attente pour synchronisation ultérieure !');
+        setSelectionMembres({});
+        setSousVue(estEp ? 'caisse' : 'liste');
+        if (estEp) setCaisseCycleId(cycleId);
+        setChargement(false);
+        return;
+      }
+
       const { error } = await supabase.from('tontine_cotisations').insert(payloadInsertions);
       if (error) throw error;
 
@@ -462,6 +606,16 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         statut: 'VERSE'
       };
 
+      if (!navigator.onLine) {
+        ajouterActionHorsLigne('ATTRIBUTION', payloadAttribution);
+        alert('📴 Hors ligne : Attribution enregistrée localement en attente de synchronisation.');
+        setModalAttributionOuverte(false);
+        setSelectionMembres({});
+        setNumeroTour(prev => prev + 1);
+        setSousVue('liste');
+        return;
+      }
+
       let error;
       if (attributionExistante) {
         const { error: errUpd } = await supabase
@@ -515,6 +669,12 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     try {
       setChargement(true);
       const idEnt = entrepriseId || '4TS-234321';
+
+      if (!navigator.onLine) {
+        alert('⚠️ Impossible de supprimer une session en mode hors ligne. Veuillez vous reconnecter.');
+        setChargement(false);
+        return;
+      }
 
       const { error: errCotis } = await supabase
         .from('tontine_cotisations')
@@ -757,9 +917,26 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         }
       `}</style>
 
-      {/* CONTENEUR PRINCIPAL ÉPURÉ POUR ÉCRAN DE TÉLÉPHONE */}
+      {/* CONTENEUR PRINCIPAL ÉPURÉ AVEC STATUT HORS LIGNE */}
       <div className={`w-full max-w-3xl mx-auto p-2 sm:p-3 rounded-xl border shadow-md space-y-2.5 text-xs font-sans ${containerBg}`}>
         
+        {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+        <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+          <div className="flex items-center gap-1.5">
+            <span>{isOnline ? '🟢' : '🔴'}</span>
+            <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          </div>
+          {pendingActionsCount > 0 && (
+            <button 
+              type="button" 
+              onClick={verifierEtSynchroniserFileAttente}
+              className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            >
+              🔄 Synchroniser ({pendingActionsCount})
+            </button>
+          )}
+        </div>
+
         {/* EN-TÊTE DE NAVIGATION MOBILE-FRIENDLY */}
         <div className="flex justify-between items-center gap-1 border-b pb-2 border-slate-700/30 overflow-x-auto text-[9px] sm:text-[10px]">
           <button
