@@ -70,6 +70,8 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const [modeActivationMembres, setModeActivationMembres] = useState('tous');
   const [selectionMembresCycle, setSelectionMembresCycle] = useState({});
 
+  const cleCacheQueue = `4ts_cycles_queue_${entrepriseId}`;
+
   // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
     const handleOnline = () => {
@@ -94,7 +96,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
   const mettreAJourCompteurFileAttente = () => {
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_cycles_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       setPendingActionsCount(queue.length);
     } catch (e) {
       setPendingActionsCount(0);
@@ -103,9 +105,9 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
 
   const ajouterActionHorsLigne = (typeAction, payload) => {
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_cycles_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
-      localStorage.setItem(`4ts_cycles_queue_${entrepriseId}`, JSON.stringify(queue));
+      localStorage.setItem(cleCacheQueue, JSON.stringify(queue));
       mettreAJourCompteurFileAttente();
     } catch (err) {
       console.error('Erreur mise en cache hors ligne cycles :', err);
@@ -115,15 +117,21 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const verifierEtSynchroniserFileAttente = async () => {
     if (!navigator.onLine) return;
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_cycles_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       if (queue.length === 0) return;
 
+      console.log(`🔄 Synchronisation de ${queue.length} actions tontine cycles en attente...`);
       const resteQueue = [];
 
       for (const action of queue) {
         try {
           if (action.type === 'INSERT_CYCLE') {
-            const { error } = await supabase.from('tontine_cycles').insert([action.payload]);
+            // Nettoyage de l'ID temporaire local pour laisser Supabase générer son UUID
+            const payloadPropre = { ...action.payload };
+            if (payloadPropre.id && payloadPropre.id.toString().startsWith('local_')) {
+              delete payloadPropre.id;
+            }
+            const { error } = await supabase.from('tontine_cycles').insert([payloadPropre]);
             if (error) throw error;
           } else if (action.type === 'UPDATE_CYCLE') {
             const { error } = await supabase.from('tontine_cycles').update(action.payload.data).eq('id', action.payload.id);
@@ -133,13 +141,15 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
             if (error) throw error;
           }
         } catch (err) {
+          console.error(`Échec synchro action cycle ${action.id}:`, err.message);
           resteQueue.push(action);
         }
       }
 
-      localStorage.setItem(`4ts_cycles_queue_${entrepriseId}`, JSON.stringify(resteQueue));
+      localStorage.setItem(cleCacheQueue, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des cycles effectuée avec succès !');
         chargerDonneesInitiale();
       }
     } catch (err) {
@@ -470,7 +480,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   return (
     <div className={`w-full h-full space-y-2 font-sans text-xs ${bgPrincipal}`}>
       
-      {/* BANDEAU DE STATUT CONNEXION MIS À JOUR */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>

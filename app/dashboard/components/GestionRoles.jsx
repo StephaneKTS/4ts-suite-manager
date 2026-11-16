@@ -124,7 +124,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       const queue = JSON.parse(localStorage.getItem(`4ts_roles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions rôles hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -140,7 +139,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action rôle ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -148,7 +146,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       localStorage.setItem(`4ts_roles_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des rôles effectuée avec succès !');
         chargerRolesEtPermissions();
       }
     } catch (err) {
@@ -157,6 +154,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const chargerRolesEtPermissions = async () => {
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
     if (rolesLocaux && rolesLocaux.length > 0) {
       setRoles(rolesLocaux);
@@ -242,7 +240,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       setRoles(listRoles);
       localSync.sauvegarderDonneesLocales(cleCacheRoles, listRoles);
     } catch (err) {
-      console.error('Erreur chargement rôles :', err.message);
+      console.error('Erreur chargement rôles Supabase :', err.message);
       if (!rolesLocaux || rolesLocaux.length === 0) {
         setRoles([]);
       }
@@ -325,7 +323,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         if (error) throw error;
 
         setRoles(prev => prev.map(r => r.id === roleEnEdition.id ? { ...r, ...payload } : r));
-        alert('Rôle et permissions mis à jour avec succès !');
+        alert('✅ Rôle et permissions mis à jour avec succès !');
       } else {
         const existeDeja = roles.some(r => (r.nom_role || '').trim().toUpperCase() === nomSaisi);
         if (existeDeja) {
@@ -353,14 +351,14 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         if (data) {
           setRoles(prev => [data, ...prev.filter(r => r.id !== data.id)]);
         }
-        alert('Rôle créé avec succès !');
+        alert('✅ Rôle créé avec succès !');
       }
 
       localStorage.removeItem(cleCacheRoles);
       annulerForm();
       await chargerRolesEtPermissions();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('❌ Erreur : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -440,11 +438,11 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       setRoles(prev => prev.filter(r => r.id !== roleEnEdition.id));
       localStorage.removeItem(cleCacheRoles);
 
-      alert('Rôle supprimé avec succès.');
+      alert('✅ Rôle supprimé avec succès.');
       annulerForm();
       await chargerRolesEtPermissions();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('❌ Erreur : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -486,19 +484,19 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden">
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
@@ -527,7 +525,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               setAfficherForm(true);
             }
           }}
-          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0"
+          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0 cursor-pointer"
         >
           {afficherForm ? '✖' : '＋ Nouveau Rôle'}
         </button>
@@ -538,7 +536,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           type="button"
           disabled={enTrainDeSauvegarder}
           onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs cursor-pointer ${
             !afficherForm 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
@@ -558,7 +556,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={annulerForm}
-              className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5"
+              className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5 cursor-pointer"
             >
               ✖
             </button>
@@ -616,7 +614,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                         <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.modification} onChange={() => togglePermissionRole(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
                         <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.suppression} onChange={() => togglePermissionRole(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
                         <td className="p-2 text-center">
-                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => accorderToutModuleRole(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => accorderToutModuleRole(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black cursor-pointer ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
                             {estToutAccorde ? 'Aucun' : 'Tous'}
                           </button>
                         </td>
@@ -634,7 +632,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={supprimerRole}
-                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs shrink-0"
+                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs shrink-0 cursor-pointer"
               >
                 {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
               </button>
@@ -644,11 +642,11 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={annulerForm}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] cursor-pointer"
               >
                 Annuler
               </button>
-              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs">
+              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs cursor-pointer">
                 {enTrainDeSauvegarder ? 'Enregistrement...' : (roleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
               </button>
             </div>
@@ -730,7 +728,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                     type="button"
                     disabled={enTrainDeSauvegarder}
                     onClick={() => setLimiteRoles(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
+                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full cursor-pointer"
                   >
                     📥 Charger plus ({rolesFiltres.length - limiteRoles} restants)
                   </button>

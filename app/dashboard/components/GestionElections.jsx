@@ -101,7 +101,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       const queue = JSON.parse(localStorage.getItem(`4ts_elections_queue_${entrepriseId}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions élections hors ligne...[cite: 19]`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -132,7 +131,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
             if (error && error.code !== '23505') throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action élection ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -140,7 +138,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       localStorage.setItem(`4ts_elections_queue_${entrepriseId}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des élections effectuée avec succès ![cite: 19]');
         chargerDonneesInitiales();
       }
     } catch (err) {
@@ -149,28 +146,25 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   };
 
   const chargerDonneesInitiales = async () => {
-    setChargement(true);
     const idEnt = entrepriseId || '4TS-290136';
 
-    if (!navigator.onLine) {
-      try {
-        const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
-        const cacheElec = localStorage.getItem(`4ts_cache_elections_list_${idEnt}`);
-        if (cachePart) setParticipants(JSON.parse(cachePart));
-        if (cacheElec) setElections(JSON.parse(cacheElec));
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
+    try {
+      const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
+      const cacheElec = localStorage.getItem(`4ts_cache_elections_list_${idEnt}`);
+      if (cachePart) setParticipants(JSON.parse(cachePart));
+      if (cacheElec) setElections(JSON.parse(cacheElec));
 
-        const emailLocal = typeof window !== 'undefined' ? localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com' : 'stephs7352@gmail.com';
-        setEmailConnecte(emailLocal);
-        const userLocal = typeof window !== 'undefined' ? localStorage.getItem('utilisateurConnecte') || '' : '';
-        const isSuper = emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com';
-        setEstAdmin(isSuper || userLocal.toUpperCase().includes('STEPHANE'));
-      } catch (e) {
-        console.warn('Erreur lecture cache local élections :', e);
-      } finally {
-        setChargement(false);
-      }
-      return;
+      const emailLocal = typeof window !== 'undefined' ? localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com' : 'stephs7352@gmail.com';
+      setEmailConnecte(emailLocal);
+      const userLocal = typeof window !== 'undefined' ? localStorage.getItem('utilisateurConnecte') || '' : '';
+      const isSuper = emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com';
+      setEstAdmin(isSuper || userLocal.toUpperCase().includes('STEPHANE'));
+    } catch (e) {
+      console.warn('Erreur lecture cache local élections :', e);
     }
+
+    if (!navigator.onLine) return;
 
     try {
       const emailLocal = typeof window !== 'undefined' ? localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com' : 'stephs7352@gmail.com';
@@ -178,7 +172,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       const userLocal = typeof window !== 'undefined' ? localStorage.getItem('utilisateurConnecte') || '' : '';
       const isSuper = emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-      // 1. Charger les participants[cite: 19]
       const { data: dataPart } = await supabase
         .from('tontine_participants')
         .select('*')
@@ -189,7 +182,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       setParticipants(listeParticipants);
       localStorage.setItem(`4ts_cache_participants_list_${idEnt}`, JSON.stringify(listeParticipants));
 
-      // Identifier le participant connecté par son nom ou email[cite: 19]
       const participantConnecte = listeParticipants.find(p => 
         p.nom_participant?.toUpperCase() === userLocal.toUpperCase() ||
         p.nom_participant?.toUpperCase().includes(userLocal.toUpperCase())
@@ -213,7 +205,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
       setEstAdmin(Boolean(isUserAdmin));
 
-      // 2. Charger les élections[cite: 19]
       const { data: dataElec, error } = await supabase
         .from('tontine_elections')
         .select('*')
@@ -224,15 +215,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       setElections(dataElec || []);
       localStorage.setItem(`4ts_cache_elections_list_${idEnt}`, JSON.stringify(dataElec || []));
     } catch (err) {
-      console.error('Erreur chargement élections, bascule cache :', err.message);
-      try {
-        const cacheElec = localStorage.getItem(`4ts_cache_elections_list_${idEnt}`);
-        if (cacheElec) setElections(JSON.parse(cacheElec));
-      } catch (e) {
-        console.error(e);
-      }
-    } finally {
-      setChargement(false);
+      console.error('Erreur chargement élections Supabase :', err.message);
     }
   };
 
@@ -240,7 +223,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
     chargerDonneesInitiales();
   }, [entrepriseId]);
 
-  // DÉDUPLICATION ET FILTRAGE STRICT : Uniquement les membres dotés d'un identifiant unique valide[cite: 19]
   const mapMembresUniques = new Map();
   const participantstries = [...participants].sort((a, b) => {
     const hasA = Boolean(a.identifiant_unique && a.identifiant_unique.trim() !== '');
@@ -260,22 +242,18 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
   const chargerDetailsElection = async (election) => {
     setElectionActive(election);
-    setChargement(true);
     const idElec = election.id;
 
-    if (!navigator.onLine) {
-      try {
-        const cachePostes = localStorage.getItem(`4ts_cache_postes_${idElec}`);
-        const cacheCands = localStorage.getItem(`4ts_cache_candidats_${idElec}`);
-        if (cachePostes) setPostes(JSON.parse(cachePostes));
-        if (cacheCands) setCandidats(JSON.parse(cacheCands));
-      } catch (e) {
-        console.warn(e);
-      } finally {
-        setChargement(false);
-      }
-      return;
+    try {
+      const cachePostes = localStorage.getItem(`4ts_cache_postes_${idElec}`);
+      const cacheCands = localStorage.getItem(`4ts_cache_candidats_${idElec}`);
+      if (cachePostes) setPostes(JSON.parse(cachePostes));
+      if (cacheCands) setCandidats(JSON.parse(cacheCands));
+    } catch (e) {
+      console.warn(e);
     }
+
+    if (!navigator.onLine) return;
 
     try {
       const { data: dataPostes } = await supabase
@@ -296,9 +274,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       localStorage.setItem(`4ts_cache_candidats_${idElec}`, JSON.stringify(dataCands || []));
       await chargerResultats(idElec);
     } catch (err) {
-      console.error('Erreur détails élection :', err.message);
-    } finally {
-      setChargement(false);
+      console.error('Erreur détails élection Supabase :', err.message);
     }
   };
 
@@ -328,9 +304,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         setElections(majElecs);
         localStorage.setItem(`4ts_cache_elections_list_${entrepriseId}`, JSON.stringify(majElecs));
 
-        alert('📴 Mode Hors Ligne : Élection enregistrée localement et mise en file d’attente.');
+        alert('📴 Mode Hors Ligne : Élection enregistrée localement.');
         setNouveauTitre('');
-        setChargement(false);
         setActionEnCours(false);
         setVue('liste');
         return;
@@ -652,12 +627,12 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
     }
 
     if (candidats.length === 0) {
-      alert("⚠️ Impossible d'ouvrir le scrutin : aucune candidature n'a été créée pour cette élection. Veuillez d'abord ajouter des candidats.");
+      alert("⚠️ Impossible d'ouvrir le scrutin : aucune candidature n'a été créée pour cette élection.");
       return;
     }
 
     const confirmation = window.confirm(
-      "Voulez-vous valider la liste des candidatures et ouvrir officiellement le scrutin pour permettre aux membres de voter ?\n\nCliquez sur [OK] pour VALIDER et OUVRIR, ou sur [Annuler] si vous souhaitez faire des modifications."
+      "Voulez-vous valider la liste des candidatures et ouvrir officiellement le scrutin pour permettre aux membres de voter?\n\nCliquez sur [OK] pour VALIDER et OUVRIR."
     );
 
     if (confirmation) {
@@ -829,19 +804,19 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   return (
     <div className={`w-full h-full space-y-3 font-sans text-xs relative ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
@@ -890,7 +865,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                 return (
                   <div key={el.id} className={`${cardBg} p-3.5 rounded-xl shadow-md border border-red-600/50 space-y-2.5 w-full`}>
                     
-                    {/* LIGNE 1 : Titre, Statut et Date sur une seule ligne */}
                     <div className="flex justify-between items-center flex-wrap gap-2">
                       <span className={`font-black text-xs uppercase ${titleColor}`}>📌 {el.titre_election}</span>
                       <div className="flex items-center gap-2">
@@ -905,7 +879,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                       </div>
                     </div>
 
-                    {/* LIGNE 2 : Boutons d'action principaux (Candidature, Ouvrir l'Urne, Résultats & PV) alignés et réduits */}
                     <div className="flex items-center gap-1.5 justify-center pt-1 border-t border-slate-700/40">
                       {estAdmin && (
                         <button
@@ -951,7 +924,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                       </button>
                     </div>
 
-                    {/* LIGNE 3 : Supprimer (Super Admin stephs7352@gmail.com), Modifier à droite (Si admin) - Boutons réduits */}
                     {estAdmin && (
                       <div className="flex justify-between items-center pt-1.5 border-t border-slate-700/40">
                         {isSuperAdminUser ? (
@@ -959,7 +931,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                             type="button"
                             onClick={() => supprimerElection(el)}
                             className="bg-red-700 hover:bg-red-600 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer border border-red-600"
-                            title="Suppression réservée au Super Admin (stephs7352@gmail.com)"
+                            title="Suppression réservée au Super Admin"
                           >
                             🗑️ Supprimer
                           </button>
@@ -1026,7 +998,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         </div>
       )}
 
-      {/* VUE 3 : GESTION DES POSTES ET DES CANDIDATS (CANDIDATURE) */}
+      {/* VUE 3 : GESTION DES POSTES ET DES CANDIDATS */}
       {vue === 'gestion' && electionActive && (
         <div className="space-y-4 w-full">
           <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border border-red-600/60`}>
@@ -1066,7 +1038,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                           ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500 cursor-pointer' 
                           : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 cursor-pointer'
                     }`}
-                    title={aucuneCandidature && !estOuvert ? "Veuillez d'abord enregistrer au moins une candidature pour ouvrir le scrutin." : ""}
                   >
                     {estOuvert ? '🔒 Scrutin Ouvert (Bloquer)' : '🚀 Ouvrir le Scrutin'}
                   </button>
@@ -1085,15 +1056,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                 ⚠️ Le bouton d'ouverture du scrutin est désactivé car aucune candidature n'a encore été enregistrée.
               </div>
             )}
-
-            {estValide && (
-              <div className={`p-2.5 rounded-xl font-bold text-center border ${isDarkMode ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800' : 'bg-emerald-100 text-emerald-800 border-emerald-300'}`}>
-                ✅ Cette élection a été officiellement validée et clôturée. Mode consultation uniquement.
-              </div>
-            )}
           </div>
 
-          {/* LISTE DES CANDIDATS VALIDÉS PAR POSTE AVEC BOUTON DE SUPPRESSION UNIQUEMENT */}
           <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border border-red-600/60`}>
             <h6 className={`font-bold text-[10px] uppercase ${textMuted}`}>Candidats validés :</h6>
             <div className="space-y-2">
@@ -1116,7 +1080,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                             >
                               <span>{c.tontine_participants?.nom_participant} {c.tontine_participants?.prenom || ''}</span>
                               
-                              {/* BOUTON SUPPRIMER LA CANDIDATURE (AVANT OUVERTURE DU SCRUTIN) */}
                               {!estOuvert && !estValide && estAdmin && (
                                 <button
                                   type="button"
@@ -1177,7 +1140,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         </div>
       )}
 
-      {/* MODALE 2 : ENREGISTREMENT DES CANDIDATURES MULTIPLES PAR POSTE */}
+      {/* MODALE 2 : ENREGISTREMENT DES CANDIDATURES MULTIPLES */}
       {modalCandidatOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-2xl rounded-2xl shadow-2xl border border-red-600 p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}>
@@ -1196,7 +1159,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
             ) : (
               <div className="space-y-4 w-full">
                 
-                {/* 1. SÉLECTION DU POSTE */}
                 <div className="space-y-1.5">
                   <label className={`block text-[10px] font-bold uppercase ${textMuted}`}>1. Choisir le poste à pourvoir :</label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -1224,7 +1186,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   </div>
                 </div>
 
-                {/* 2. SÉLECTION DES MEMBRES CANDIDATS (Uniques avec ID) */}
                 <div className="space-y-1.5">
                   <label className={`block text-[10px] font-bold uppercase ${textMuted}`}>
                     2. Cocher les membres candidats pour ce poste {!posteCandidatureId && <span className="text-red-400 font-bold">(Veuillez d'abord choisir un poste ci-dessus)</span>} :
@@ -1381,16 +1342,13 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   {actionEnCours && <span className="animate-spin">⏳</span>}
                   📥 Soumettre mon bulletin
                 </button>
-                <p className={`text-[10px] text-center font-bold italic pt-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                  ⚠️ Attention : Après soumission de votre bulletin, vous ne pourrez plus modifier vos choix. Vous pouvez modifier vos sélections autant de fois que nécessaire avant de soumettre.
-                </p>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* MODALE DE VOTE ÉPURÉE ET ÉTIRÉE POUR UN POSTE SPÉCIFIQUE */}
+      {/* MODALE DE VOTE */}
       {posteVoteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-xl rounded-2xl shadow-2xl border border-red-600 p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}>
@@ -1403,7 +1361,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               <p className={`text-[10px] font-bold uppercase ${textMuted}`}>Sélectionnez votre candidat ou optez pour l'abstention :</p>
               
               <div className="grid grid-cols-1 gap-2">
-                {/* Option Abstention */}
                 <div
                   onClick={() => {
                     setBulletinVote(prev => ({ ...prev, [posteVoteModal.id]: '' }));
@@ -1419,7 +1376,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   {!bulletinVote[posteVoteModal.id] && <span className="font-bold">✓ Choisi</span>}
                 </div>
 
-                {/* Liste des candidats */}
                 {candidats.filter(c => c.id_poste === posteVoteModal.id).length === 0 ? (
                   <p className="text-center text-xs py-4 text-slate-400 italic">Aucun candidat enregistré pour ce poste.</p>
                 ) : (
@@ -1462,7 +1418,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         </div>
       )}
 
-      {/* MODALE DE CONFIRMATION DE SOUMISSION DU BULLETIN */}
+      {/* MODALE DE CONFIRMATION DE SOUMISSION */}
       {modalConfirmationSoumissionOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border border-red-600 p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}>
@@ -1484,7 +1440,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                 onClick={() => setModalConfirmationSoumissionOuverte(false)} 
                 className={`font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300'}`}
               >
-                Annuler / Modifier encore
+                Annuler
               </button>
               <button 
                 type="button" 
@@ -1503,12 +1459,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         </div>
       )}
 
-      {/* VUE 5 : RÉSULTATS & PROCÈS-VERBAL (PV) GLOBAL */}
+      {/* VUE 5 : RÉSULTATS & PROCÈS-VERBAL */}
       {vue === 'resultats' && electionActive && (
         <div className="space-y-4 w-full">
           <div className={`${cardBg} p-4 rounded-2xl shadow-xl space-y-4 w-full border border-red-600/60`}>
             
-            {/* EN-TÊTE DU PV OFFICIEL AVEC BOUTON IMPRIMER */}
             <div className={`text-center border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'} pb-3 space-y-2`}>
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${estValide ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : estOuvert ? 'bg-red-950 text-red-300 border-red-800' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
@@ -1528,7 +1483,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               <p className={`text-[10px] ${textMuted}`}>Scrutin du : {electionActive.date_scrutin}</p>
             </div>
 
-            {/* TABLEAUX DES SCORES PAR POSTE (PLEINE LARGEUR) */}
             <div className="space-y-4 w-full">
               {postes.map((poste) => {
                 const scores = calculerScoresPourPoste(poste.id);
@@ -1577,7 +1531,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               })}
             </div>
 
-            {/* BOUTON VALIDATION FINALE & CLÔTURE (RÉSERVÉ AUX ADMINS) */}
             <div className={`pt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               {estValide ? (
                 <div className={`w-full font-black py-3 rounded-xl text-xs uppercase text-center flex items-center justify-center gap-2 border ${isDarkMode ? 'bg-slate-800 text-emerald-400 border-slate-700' : 'bg-emerald-50 text-emerald-700 border-emerald-300'}`}>

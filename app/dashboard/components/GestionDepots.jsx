@@ -85,7 +85,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       const queue = JSON.parse(localStorage.getItem(`4ts_depots_queue_${entrepriseId}_${moduleActuel}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions dépôts hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -101,7 +100,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action dépôt ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -109,7 +107,6 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       localStorage.setItem(`4ts_depots_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des dépôts effectuée avec succès !');
         chargerDepots(true);
       }
     } catch (err) {
@@ -177,6 +174,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   ];
 
   const chargerDepots = async (silencieux = false) => {
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     const donneesLocales = localSync.recupererDonneesLocales(cleCacheDepots);
     if (donneesLocales && donneesLocales.length > 0) {
       setDepots(donneesLocales);
@@ -225,7 +223,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       setEmplacementsParDepot(mapEmplacements);
       localSync.sauvegarderDonneesLocales(cleCacheEmplacements, mapEmplacements);
     } catch (err) {
-      console.error('Erreur chargement (mode hors-ligne actif) :', err.message);
+      console.error('Erreur chargement dépôts Supabase :', err.message);
     } finally {
       setChargement(false);
     }
@@ -308,7 +306,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         setDepots(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheDepots, listeMaj);
 
-        alert('Dépôt mis à jour avec succès !');
+        alert('✅ Dépôt mis à jour avec succès !');
       } else {
         const idTemp = 'temp_' + Date.now();
         const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
@@ -334,14 +332,14 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
         setDepots(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheDepots, listeMaj);
 
-        alert('Dépôt enregistré avec succès !');
+        alert('✅ Dépôt enregistré avec succès !');
       }
 
       localStorage.removeItem(cleCacheDepots);
       annulerFormDepot();
       await chargerDepots(true);
     } catch (err) {
-      alert('Erreur lors de l’enregistrement : ' + err.message);
+      alert('❌ Erreur lors de l’enregistrement : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -434,12 +432,12 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
       localSync.sauvegarderDonneesLocales(cleCacheDepots, listeMaj);
 
       localStorage.removeItem(cleCacheDepots);
-      alert('Dépôt et ses emplacements associés supprimés avec succès.');
+      alert('✅ Dépôt et ses emplacements associés supprimés avec succès.');
       if (depotOuvertId === depotIdCible) setDepotOuvertId(null);
       annulerFormDepot();
       await chargerDepots(true);
     } catch (err) {
-      alert('Erreur lors de la suppression : ' + err.message);
+      alert('❌ Erreur lors de la suppression : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -454,19 +452,19 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
@@ -497,7 +495,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                 setAfficherFormDepot(true);
               }
             }}
-            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs cursor-pointer"
           >
             {afficherFormDepot ? '✖' : 'Nouveau'}
           </button>
@@ -509,7 +507,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
           type="button"
           disabled={enTrainDeSauvegarder}
           onClick={() => { if (!enTrainDeSauvegarder) annulerFormDepot(); }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs cursor-pointer ${
             !afficherFormDepot 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
@@ -525,7 +523,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
               {depotEnEdition ? `✏️ Modifier : ${depotEnEdition.nom_depot || depotEnEdition.Nom_Depot}` : `Nouveau Dépôt / Magasin`}
             </span>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1 cursor-pointer">✕</button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[10px]">
@@ -560,7 +558,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                 disabled={enTrainDeSauvegarder}
                 value={nouveauDepot.responsable_depot}
                 onChange={(e) => setNouveauDepot({ ...nouveauDepot, responsable_depot: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs"
+                className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-extrabold text-slate-900 text-[10px] shadow-xs cursor-pointer"
               >
                 <option value="">-- Choisir --</option>
                 {listePersonnel.map((p) => (
@@ -590,16 +588,16 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                 type="button" 
                 disabled={enTrainDeSauvegarder}
                 onClick={supprimerDepotDepuisFormulaire} 
-                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded-lg text-[10px] shadow-xs transition"
+                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded-lg text-[10px] shadow-xs transition cursor-pointer"
               >
                 {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
               </button>
             ) : <div />}
 
             <div className="flex gap-1.5">
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-[10px]">Annuler</button>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerFormDepot} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-3 py-1.5 rounded-lg text-[10px] cursor-pointer">Annuler</button>
               {permissions.modification && (
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-xs">
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-xs cursor-pointer">
                   {enTrainDeSauvegarder ? 'Enregistrement...' : (depotEnEdition ? 'Mettre à jour' : 'Enregistrer')}
                 </button>
               )}
@@ -655,7 +653,7 @@ export default function GestionDepots({ entrepriseId = '4TS-TEST' }) {
                   type="button"
                   disabled={enTrainDeSauvegarder}
                   onClick={() => setLimiteDepots(prev => prev + 20)}
-                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
+                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full cursor-pointer"
                 >
                   📥 Charger 20 dépôts de plus ({depots.length - limiteDepots} restants)
                 </button>

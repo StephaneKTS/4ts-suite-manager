@@ -159,7 +159,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       const queue = JSON.parse(localStorage.getItem(`4ts_fournisseurs_queue_${entrepriseId}_${moduleActuel}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions fournisseurs hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -175,7 +174,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action fournisseur ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -183,7 +181,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       localStorage.setItem(`4ts_fournisseurs_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des fournisseurs effectuée avec succès !');
         chargerPermissionsEtDonnees(true);
       }
     } catch (err) {
@@ -192,6 +189,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const chargerPermissionsEtDonnees = async (silencieux = false) => {
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     const donneesLocales = localSync.recupererDonneesLocales(cleCacheFournisseurs);
     if (donneesLocales && donneesLocales.length > 0) {
       setPartenaires(donneesLocales);
@@ -257,7 +255,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       }
 
     } catch (err) {
-      console.error('Erreur chargement données :', err.message);
+      console.error('Erreur chargement données Supabase :', err.message);
     } finally {
       setChargement(false);
     }
@@ -388,7 +386,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         setPartenaires(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
-        alert('Mise à jour réussie !');
+        alert('✅ Mise à jour réussie !');
       } else {
         const idTemp = 'temp_' + Date.now();
         const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
@@ -411,14 +409,14 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         setPartenaires(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
-        alert('Enregistrement réussi avec création du dépôt de stockage associé !');
+        alert('✅ Enregistrement réussi avec création du dépôt de stockage associé !');
       }
 
       localStorage.removeItem(cleCacheFournisseurs);
       annulerForm();
       await chargerPermissionsEtDonnees(true);
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('❌ Erreur : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -534,11 +532,11 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
       localStorage.removeItem(cleCacheFournisseurs);
-      alert('Suppression effectuée avec succès.');
+      alert('✅ Suppression effectuée avec succès.');
       annulerForm();
       await chargerPermissionsEtDonnees(true);
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('❌ Erreur : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -586,19 +584,19 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-3 text-[11px] font-sans max-w-6xl mx-auto p-1 sm:p-3">
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
@@ -635,7 +633,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 }, 50);
               }
             }}
-            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs uppercase"
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs uppercase cursor-pointer"
           >
             {afficherForm ? '✖ Fermer' : '+ Nouveau'}
           </button>
@@ -650,7 +648,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 <h4 className="font-extrabold text-orange-600 uppercase text-xs">
                   {partenaireEnEdition ? `✏️ Fiche du ${estModeLivraison ? 'partenaire' : 'fournisseur'}` : `➕ Nouveau ${estModeLivraison ? 'partenaire' : 'fournisseur'}`}
                 </h4>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✖</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1 cursor-pointer">✖</button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -690,7 +688,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                     disabled={enTrainDeSauvegarder}
                     value={nouveauPartenaire.pays}
                     onChange={(e) => setNouveauPartenaire({ ...nouveauPartenaire, pays: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold text-slate-900 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold text-slate-900 text-xs shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none cursor-pointer"
                   >
                     {LISTE_PAYS.map((p) => (
                       <option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>
@@ -728,7 +726,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                         ...nouveauPartenaire,
                         statut_stockage: e.target.checked ? 'AVEC_STOCKAGE' : 'SANS_STOCKAGE'
                       })}
-                      className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500"
+                      className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
                     />
                     <div>
                       <span className="font-extrabold text-slate-900 text-xs uppercase block">📦 AVEC STOCKAGE</span>
@@ -754,7 +752,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                             key={taxe.id}
                             type="button"
                             onClick={() => toggleTaxeSelection(taxe.code_taxe)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border flex items-center gap-1.5 cursor-pointer ${
                               estCoche 
                                 ? 'bg-orange-600 text-white border-orange-700 shadow-2xs' 
                                 : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
@@ -772,14 +770,14 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
               <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
                 {partenaireEnEdition && permissions.suppression && (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerPartenaire} className="bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white font-black px-3 py-2 rounded-xl text-xs transition border border-rose-200">
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerPartenaire} className="bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white font-black px-3 py-2 rounded-xl text-xs transition border border-rose-200 cursor-pointer">
                     🗑️ Supprimer
                   </button>
                 )}
                 <div className="flex items-center gap-2 ml-auto">
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 text-slate-800 font-black px-4 py-2 rounded-xl text-xs">Annuler</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 text-slate-800 font-black px-4 py-2 rounded-xl text-xs cursor-pointer">Annuler</button>
                   {permissions.modification && (
-                    <button type="submit" disabled={enTrainDeSauvegarder} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-5 py-2 rounded-xl text-xs shadow-xs uppercase tracking-wide">
+                    <button type="submit" disabled={enTrainDeSauvegarder} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-5 py-2 rounded-xl text-xs shadow-xs uppercase tracking-wide cursor-pointer">
                       {enTrainDeSauvegarder ? 'Enregistrement...' : (partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer')}
                     </button>
                   )}

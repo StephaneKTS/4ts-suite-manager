@@ -92,7 +92,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       const queue = JSON.parse(localStorage.getItem(`4ts_familles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions familles hors ligne...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -108,7 +107,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action famille ${action.id}:`, err);
           resteQueue.push(action);
         }
       }
@@ -116,7 +114,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       localStorage.setItem(`4ts_familles_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
-        alert('✅ Synchronisation des familles effectuée avec succès !');
         chargerFamilles();
       }
     } catch (err) {
@@ -145,6 +142,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [nouveauFamille, setNouveauFamille] = useState({ nom_famille: '', suivi_stock: true });
 
   const chargerFamilles = async () => {
+    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     const cacheLocal = localSync.recupererDonneesLocales(cleCacheFamilles);
     if (cacheLocal && cacheLocal.length > 0) {
       setFamilles(cacheLocal);
@@ -183,7 +181,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       setFamilles(listeFinale);
       localSync.sauvegarderDonneesLocales(cleCacheFamilles, listeFinale);
     } catch (err) {
-      console.error('Erreur :', err.message);
+      console.error('Erreur chargement familles Supabase :', err.message);
     } finally {
       setChargement(false);
     }
@@ -242,7 +240,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
           .eq('id', familleSelectionnee.id);
 
         if (error) throw error;
-        alert('Famille mise à jour avec succès !');
+        alert('✅ Famille mise à jour avec succès !');
       } else {
         if (!navigator.onLine) {
           const fakeId = 'local_' + Date.now();
@@ -261,7 +259,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         const { error } = await supabase.from('familles_articles').insert([payload]);
 
         if (error) throw error;
-        alert('Famille créée avec succès !');
+        alert('✅ Famille créée avec succès !');
       }
 
       if (typeof window !== 'undefined') localStorage.removeItem(cleCacheFamilles);
@@ -269,7 +267,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       await chargerFamilles();
       setModeAffichage('LISTE');
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('❌ Erreur : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -355,11 +353,11 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
 
       if (typeof window !== 'undefined') localStorage.removeItem(cleCacheFamilles);
 
-      alert('Famille supprimée avec succès.');
+      alert('✅ Famille supprimée avec succès.');
       reinitialiser();
       await chargerFamilles();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      alert('❌ Erreur : ' + err.message);
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -370,19 +368,19 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
-      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
-          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
         </div>
         {pendingActionsCount > 0 && (
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
-            🔄 Synchroniser ({pendingActionsCount})
+            <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
@@ -411,7 +409,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 setModeAffichage('SAISIE');
               }
             }}
-            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+            className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs cursor-pointer"
           >
             {modeAffichage === 'SAISIE' ? '✖' : 'Nouveau'}
           </button>
@@ -426,7 +424,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             reinitialiser();
             setModeAffichage('LISTE');
           }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs cursor-pointer ${
             modeAffichage === 'LISTE' 
               ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
@@ -442,7 +440,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
             <span className="font-extrabold text-[11px] text-orange-600 uppercase">
               Nouvelle famille d'articles
             </span>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1">✕</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { reinitialiser(); setModeAffichage('LISTE'); }} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1 cursor-pointer">✕</button>
           </div>
 
           <div className="space-y-2.5 text-[11px]">
@@ -472,7 +470,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   disabled={enTrainDeSauvegarder}
                   checked={nouveauFamille.suivi_stock}
                   onChange={(e) => setNouveauFamille({ ...nouveauFamille, suivi_stock: e.target.checked })}
-                  className="sr-only peer"
+                  className="sr-only peer cursor-pointer"
                 />
                 <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
               </label>
@@ -487,14 +485,14 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 reinitialiser();
                 setModeAffichage('LISTE');
               }}
-              className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-black px-3 py-1.5 rounded text-[10px]"
+              className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-black px-3 py-1.5 rounded text-[10px] cursor-pointer"
             >
               Annuler
             </button>
             <button
               type="submit"
               disabled={enTrainDeSauvegarder}
-              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs"
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs cursor-pointer"
             >
               {enTrainDeSauvegarder ? 'Enregistrement...' : '✅ Enregistrer'}
             </button>
@@ -557,7 +555,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={() => setLimiteFamilles(prev => prev + 20)}
-                className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full cursor-pointer"
               >
                 📥 Charger 20 familles de plus ({familles.length - limiteFamilles} restantes)
               </button>
@@ -571,7 +569,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl overflow-hidden flex flex-col">
             <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-xs font-black">
               <span>🏷️ MODIFIER LA FAMILLE</span>
-              <button disabled={enTrainDeSauvegarder} onClick={reinitialiser} className="text-slate-300 hover:text-white font-black text-xs">✕</button>
+              <button disabled={enTrainDeSauvegarder} onClick={reinitialiser} className="text-slate-300 hover:text-white font-black text-xs cursor-pointer">✕</button>
             </div>
 
             <div className="p-3 space-y-2.5 text-[11px] bg-slate-50">
@@ -599,7 +597,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                     disabled={enTrainDeSauvegarder || !permissions.modification}
                     checked={nouveauFamille.suivi_stock}
                     onChange={(e) => setNouveauFamille({ ...nouveauFamille, suivi_stock: e.target.checked })}
-                    className="sr-only peer"
+                    className="sr-only peer cursor-pointer"
                   />
                   <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
                 </label>
@@ -612,7 +610,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   type="button"
                   disabled={enTrainDeSauvegarder}
                   onClick={supprimerFamille}
-                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs"
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs cursor-pointer"
                 >
                   {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
                 </button>
@@ -623,7 +621,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                   type="button"
                   disabled={enTrainDeSauvegarder}
                   onClick={reinitialiser}
-                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px]"
+                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] cursor-pointer"
                 >
                   Fermer
                 </button>
@@ -632,7 +630,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                     type="button"
                     disabled={enTrainDeSauvegarder}
                     onClick={enregistrerFamille}
-                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3.5 py-1.5 rounded text-[10px] shadow-xs"
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3.5 py-1.5 rounded text-[10px] shadow-xs cursor-pointer"
                   >
                     {enTrainDeSauvegarder ? 'Mise à jour...' : '✅ Mettre à jour'}
                   </button>

@@ -22,6 +22,10 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
     suppression: false,
   });
 
+  // --- ÉTATS POUR LE MODE HORS LIGNE & SYNCHRONISATION ---
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   // --- RÈGLE 1 : PAGINATION / LIMITES D'AFFICHAGE MOBILES ---
   const [limiteChallenges, setLimiteChallenges] = useState(20);
 
@@ -46,6 +50,83 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
   const moduleActuel = obtenirModuleActuel();
   const cleCacheChallenges = `challenges_commerciaux_${entrepriseId}_${moduleActuel}`;
 
+  // Gestion de la connectivité et synchronisation hors ligne
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
+    chargerChallenges();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [entrepriseId, moduleActuel]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_challenges_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_challenges_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_challenges_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne challenges :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_challenges_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      if (queue.length === 0) return;
+
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_CHALLENGE') {
+            const { error } = await supabase.from('challenges_commerciaux').insert([action.payload]);
+            if (error) throw error;
+          } else if (action.type === 'UPDATE_CHALLENGE') {
+            const { error } = await supabase.from('challenges_commerciaux').update(action.payload.data).eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_CHALLENGE') {
+            const { error } = await supabase.from('challenges_commerciaux').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_challenges_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        chargerChallenges(true);
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation challenges :', err);
+    }
+  };
+
   // État du formulaire de challenge
   const [nouveauChallenge, setNouveauChallenge] = useState({
     nom_challenge: '',
@@ -64,19 +145,19 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
   const [volumeCourses, setVolumeCourses] = useState(10);
   const [fraisMoyen, setFraisMoyen] = useState(1500);
 
-  // --- RÈGLE 2 : FONCTION RPC SUPABASE AVEC FALLBACK ROBUSTE ---
-  const chargerChallenges = async () => {
-    // 1. Chargement instantané depuis le cache local (Zéro attente)
+  // --- FONCTION DE CHARGEMENT AVEC CACHE LOCAL & FALLBACK ROBUSTE ---
+  const chargerChallenges = async (silencieux = false) => {
+    // ⚡ Chargement instantané depuis le cache local (Zéro attente perçue)
     const challengesLocaux = localSync.recupererDonneesLocales(cleCacheChallenges);
     if (challengesLocaux && challengesLocaux.length > 0) {
       setChallenges(challengesLocaux);
       setChargement(false);
-    } else {
+    } else if (!silencieux) {
       setChargement(true);
     }
 
     try {
-      // 2. Charger et analyser les permissions de l'employé connecté
+      // Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
@@ -93,7 +174,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
               modification: permChallenges.modification ?? true,
               suppression: permChallenges.suppression ?? false,
             });
-          } else {
+          } else if (navigator.onLine) {
             const { data: roleData } = await supabase
               .from('roles')
               .select('*')
@@ -116,45 +197,51 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
       }
 
       let liste = [];
-      const { data: challengesRpc, error: rpcError } = await supabase.rpc('recuperer_challenges_commerciaux', {
-        p_entreprise_id: entrepriseId,
-        p_module: moduleActuel
-      });
-
-      if (rpcError) {
-        const { data, error } = await supabase
-          .from('challenges_commerciaux')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        liste = data || [];
+      if (!navigator.onLine) {
+        liste = challengesLocaux || [];
       } else {
-        liste = challengesRpc || [];
+        const { data: challengesRpc, error: rpcError } = await supabase.rpc('recuperer_challenges_commerciaux', {
+          p_entreprise_id: entrepriseId,
+          p_module: moduleActuel
+        });
+
+        if (rpcError) {
+          const { data, error } = await supabase
+            .from('challenges_commerciaux')
+            .select('*')
+            .eq('id_entreprise', entrepriseId)
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+          liste = data || [];
+        } else {
+          liste = challengesRpc || [];
+        }
       }
 
       setChallenges(liste);
       localSync.sauvegarderDonneesLocales(cleCacheChallenges, liste);
 
-      // Charger la liste des employés
-      const { data: empData } = await supabase
-        .from('employes')
-        .select('*')
-        .eq('id_entreprise', entrepriseId);
-      setEmployesList(empData || []);
+      if (navigator.onLine) {
+        // Charger la liste des employés
+        const { data: empData } = await supabase
+          .from('employes')
+          .select('*')
+          .eq('id_entreprise', entrepriseId);
+        setEmployesList(empData || []);
 
-      // Charger dynamiquement les rôles depuis la table 'roles'
-      const { data: rolesData } = await supabase
-        .from('roles')
-        .select('*')
-        .eq('id_entreprise', entrepriseId);
-      
-      if (rolesData && rolesData.length > 0) {
-        const nomsRoles = [...new Set(rolesData.map(r => (r.nom_role || r.role || '').trim().toUpperCase()).filter(Boolean))];
-        setRolesList(nomsRoles);
-      } else {
-        setRolesList(['LIVREUR', 'COMPTABLE', 'SUPERVISEUR', 'COMMERCIAL', 'CHAUFFEUR']);
+        // Charger dynamiquement les rôles depuis la table 'roles'
+        const { data: rolesData } = await supabase
+          .from('roles')
+          .select('*')
+          .eq('id_entreprise', entrepriseId);
+        
+        if (rolesData && rolesData.length > 0) {
+          const nomsRoles = [...new Set(rolesData.map(r => (r.nom_role || r.role || '').trim().toUpperCase()).filter(Boolean))];
+          setRolesList(nomsRoles);
+        } else {
+          setRolesList(['LIVREUR', 'COMPTABLE', 'SUPERVISEUR', 'COMMERCIAL', 'CHAUFFEUR']);
+        }
       }
     } catch (err) {
       console.error('Erreur chargement challenges :', err.message);
@@ -167,7 +254,6 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
   };
 
   useEffect(() => { 
-    chargerChallenges(); 
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
@@ -223,27 +309,54 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
 
       if (challengeEnEdition) {
         payloadChallenge.id = challengeEnEdition.id;
-        const { error } = await supabase.from('challenges_commerciaux').update(payloadChallenge).eq('id', challengeEnEdition.id);
-        if (error) {
-          localSync.ajouterFileAttente('UPDATE', 'challenges_commerciaux', payloadChallenge);
+
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('UPDATE_CHALLENGE', { id: challengeEnEdition.id, data: payloadChallenge });
+          const listeMaj = challenges.map(c => c.id === challengeEnEdition.id ? { ...c, ...payloadChallenge } : c);
+          setChallenges(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheChallenges, listeMaj);
+          alert('📴 Mode Hors Ligne : Challenge mis à jour localement.');
+          annulerForm();
+          setEnTrainDeSauvegarder(false);
+          return;
         }
-        alert('Challenge commercial mis à jour avec succès !');
+
+        const { error } = await supabase.from('challenges_commerciaux').update(payloadChallenge).eq('id', challengeEnEdition.id);
+        if (error) throw error;
+
+        const listeMaj = challenges.map(c => c.id === challengeEnEdition.id ? { ...c, ...payloadChallenge } : c);
+        setChallenges(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheChallenges, listeMaj);
+        alert('✅ Challenge commercial mis à jour avec succès !');
       } else {
         const idTemp = 'temp_' + Date.now();
-        const payloadInsertion = { ...payloadChallenge, id: idTemp };
+        const nouvelObjet = { ...payloadChallenge, id: idTemp, created_at: new Date().toISOString() };
 
-        const { error, data } = await supabase.from('challenges_commerciaux').insert([payloadChallenge]).select().maybeSingle();
-        if (error) {
-          localSync.ajouterFileAttente('INSERT', 'challenges_commerciaux', payloadInsertion);
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('INSERT_CHALLENGE', nouvelObjet);
+          const listeMaj = [nouvelObjet, ...challenges];
+          setChallenges(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheChallenges, listeMaj);
+          alert('📴 Mode Hors Ligne : Challenge créé localement.');
+          annulerForm();
+          setEnTrainDeSauvegarder(false);
+          return;
         }
-        alert('Challenge commercial créé avec succès !');
+
+        const { error } = await supabase.from('challenges_commerciaux').insert([payloadChallenge]);
+        if (error) throw error;
+
+        const listeMaj = [nouvelObjet, ...challenges];
+        setChallenges(listeMaj);
+        localSync.sauvegarderDonneesLocales(cleCacheChallenges, listeMaj);
+        alert('✅ Challenge commercial créé avec succès !');
       }
 
       localStorage.removeItem(cleCacheChallenges);
       annulerForm();
-      await chargerChallenges();
+      await chargerChallenges(true);
     } catch (err) { 
-      alert('Erreur : ' + err.message); 
+      alert('❌ Erreur : ' + err.message); 
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -297,21 +410,28 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
       return;
     }
 
+    if (!navigator.onLine) {
+      alert('⚠️ Impossible de supprimer un challenge en mode hors ligne.');
+      return;
+    }
+
     if (!confirm(`Voulez-vous vraiment supprimer définitivement le challenge "${challengeEnEdition.nom_challenge}" ?`)) return;
 
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('challenges_commerciaux').delete().eq('id', challengeEnEdition.id);
-      if (error) {
-        localSync.ajouterFileAttente('DELETE', 'challenges_commerciaux', { id: challengeEnEdition.id });
-      }
+      if (error) throw error;
+
+      const listeMaj = challenges.filter(c => c.id !== challengeEnEdition.id);
+      setChallenges(listeMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheChallenges, listeMaj);
 
       localStorage.removeItem(cleCacheChallenges);
-      alert('Challenge supprimé avec succès.');
+      alert('✅ Challenge supprimé avec succès.');
       annulerForm();
-      await chargerChallenges();
+      await chargerChallenges(true);
     } catch (err) { 
-      alert('Erreur : ' + err.message); 
+      alert('❌ Erreur : ' + err.message); 
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -348,6 +468,23 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
   return (
     <div className="space-y-2.5 text-[11px] font-sans">
       
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
+          >
+            <span>🔄</span> <span>({pendingActionsCount})</span>
+          </button>
+        )}
+      </div>
+
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-800 uppercase text-xs">
@@ -365,7 +502,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) { setChallengeEnEdition(null); setAfficherForm(true); } }}
-              className="px-3 py-1.5 rounded-lg font-bold text-[11px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white"
+              className="px-3 py-1.5 rounded-lg font-bold text-[11px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white cursor-pointer"
             >
               ＋ Nouveau Challenge
             </button>
@@ -374,7 +511,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
             type="button"
             disabled={enTrainDeSauvegarder}
             onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
-            className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition border shadow-2xs ${
+            className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition border shadow-2xs cursor-pointer ${
               !afficherForm 
                 ? 'bg-slate-900 text-white border-slate-900' 
                 : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
@@ -391,7 +528,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
             <h4 className="font-bold text-orange-600 uppercase text-[10px]">
               {challengeEnEdition ? '✏️ Édition du Challenge' : '➕ Nouveau Challenge Commercial'}
             </h4>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 font-bold text-xs">✖</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 font-bold text-xs cursor-pointer">✖</button>
           </div>
 
           <div className="space-y-2">
@@ -403,7 +540,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
               <div>
                 <label className="block font-semibold mb-0.5 text-[9px] text-slate-500">Type Commission *</label>
-                <select value={nouveauChallenge.type_commission} disabled={enTrainDeSauvegarder} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, type_commission: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800">
+                <select value={nouveauChallenge.type_commission} disabled={enTrainDeSauvegarder} onChange={(e) => setNouveauChallenge({ ...nouveauChallenge, type_commission: e.target.value })} className="w-full bg-white border rounded p-1.5 font-bold text-xs text-slate-800 cursor-pointer">
                   <option value="POURCENTAGE">Pourcentage (%)</option>
                   <option value="MONTANT">Montant fixe (F)</option>
                 </select>
@@ -424,10 +561,10 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
               <div className="flex justify-between items-center text-[10px] font-extrabold text-amber-900 uppercase">
                 <span>📊 Tableau de Simulation Dynamique</span>
                 <div className="flex items-center gap-1 bg-white border border-amber-300 rounded p-0.5">
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('JOUR')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'JOUR' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Jour</button>
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('SEMAINE')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'SEMAINE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Semaine (7j)</button>
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('MOIS')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'MOIS' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Mois (26j)</button>
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('PERSONNALISE')} className={`px-2 py-0.5 rounded font-black text-[9px] ${periodeSimulation === 'PERSONNALISE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Perso</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('JOUR')} className={`px-2 py-0.5 rounded font-black text-[9px] cursor-pointer ${periodeSimulation === 'JOUR' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Jour</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('SEMAINE')} className={`px-2 py-0.5 rounded font-black text-[9px] cursor-pointer ${periodeSimulation === 'SEMAINE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Semaine (7j)</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('MOIS')} className={`px-2 py-0.5 rounded font-black text-[9px] cursor-pointer ${periodeSimulation === 'MOIS' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Mois (26j)</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setPeriodeSimulation('PERSONNALISE')} className={`px-2 py-0.5 rounded font-black text-[9px] cursor-pointer ${periodeSimulation === 'PERSONNALISE' ? 'bg-amber-600 text-white' : 'text-slate-700'}`}>Perso</button>
                 </div>
               </div>
 
@@ -495,6 +632,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
                               setNouveauChallenge({ ...nouveauChallenge, statuts_concernes: nouveauChallenge.statuts_concernes.filter(s => s !== statut) });
                             }
                           }}
+                          className="cursor-pointer"
                         />
                         <span 
                           onClick={() => setStatutSelectionnePourAffichage(estActifAffichage ? null : statut)}
@@ -513,7 +651,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
                 <div className="bg-blue-50/80 border border-blue-200 rounded-lg p-2.5 space-y-1.5 animate-fadeIn">
                   <div className="flex justify-between items-center text-[10px] font-black text-blue-900 uppercase">
                     <span>👥 Employés ayant le rôle : {statutSelectionnePourAffichage} ({employesDuStatutClique.length})</span>
-                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setStatutSelectionnePourAffichage(null)} className="text-slate-500 hover:text-rose-600 font-bold">✕ Fermer</button>
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setStatutSelectionnePourAffichage(null)} className="text-slate-500 hover:text-rose-600 font-bold cursor-pointer">✕ Fermer</button>
                   </div>
                   {employesDuStatutClique.length === 0 ? (
                     <p className="text-[10px] text-slate-500 italic">Aucun employé enregistré avec le rôle "{statutSelectionnePourAffichage}".</p>
@@ -565,6 +703,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
                                 setNouveauChallenge({ ...nouveauChallenge, employes_concernes: nouveauChallenge.employes_concernes.filter(id => id !== empId) });
                               }
                             }}
+                            className="cursor-pointer"
                           />
                         </label>
                       );
@@ -577,13 +716,13 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
 
           <div className="pt-1.5 border-t flex justify-between items-center">
             {challengeEnEdition && permissions.suppression ? (
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerChallenge} className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2.5 py-1 rounded text-[10px]">
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerChallenge} className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-2.5 py-1 rounded text-[10px] cursor-pointer">
                 {enTrainDeSauvegarder ? 'Patientez...' : 'Supprimer'}
               </button>
             ) : <div />}
 
             {((challengeEnEdition && permissions.modification) || (!challengeEnEdition && permissions.creation)) && (
-              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px]">
+              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px] cursor-pointer">
                 {enTrainDeSauvegarder ? 'Enregistrement...' : (challengeEnEdition ? 'Mettre à jour' : 'Enregistrer')}
               </button>
             )}
@@ -607,7 +746,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
                 <table className="w-full text-left text-xs table-fixed">
                   <thead className="bg-slate-50 text-slate-700 border-b uppercase text-[9px] font-extrabold select-none">
                     <tr>
-                      <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_challenge')} className="p-2 w-[30%] cursor-pointer">
+                      <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_challenge')} className="p-2 w-[30%] cursor-pointer hover:bg-slate-100 transition">
                         <div className="flex items-center gap-1 whitespace-nowrap"><span>Challenge</span> {rendreFlecheTri('nom_challenge')}</div>
                       </th>
                       <th className="p-2 w-[25%]">Période</th>
@@ -617,7 +756,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
                   </thead>
                   <tbody className="divide-y text-[10.5px]">
                     {challengesAffiches.map((item) => (
-                      <tr key={item.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(item)} className="hover:bg-orange-50/70 cursor-pointer">
+                      <tr key={item.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(item)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
                         <td className="p-2 font-extrabold uppercase text-slate-900 truncate">🏆 {item.nom_challenge}</td>
                         <td className="p-2 font-mono text-[9.5px] text-slate-600 font-bold">{item.date_debut || '-'} au {item.date_fin || '-'}</td>
                         <td className="p-2 font-bold text-emerald-600">
@@ -640,7 +779,7 @@ export default function GestionChallengesCommerciaux({ entrepriseId = '4TS-23432
                     type="button"
                     disabled={enTrainDeSauvegarder}
                     onClick={() => setLimiteChallenges(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full"
+                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full cursor-pointer"
                   >
                     📥 Charger 20 challenges de plus ({challengesFiltres.length - limiteChallenges} restants)
                   </button>
