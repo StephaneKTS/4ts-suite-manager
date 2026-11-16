@@ -439,19 +439,19 @@ function DashboardContent() {
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && moduleCourant === 'TONTINE' ? (
-          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Emprunts intégrés) */
+          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Cycles en 1er, Participants en 2e) */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE TONTINE
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 w-full">
-              <div onClick={() => setModuleActif('tontine_participants')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">👥</span>
-                <span className="font-bold text-xs leading-tight">Gestion des Participants</span>
-              </div>
               <div onClick={() => setModuleActif('tontine_cycles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🔄</span>
                 <span className="font-bold text-xs leading-tight">Cycles & Sessions</span>
+              </div>
+              <div onClick={() => setModuleActif('tontine_participants')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                <span className="text-3xl group-hover:scale-110 transition">👥</span>
+                <span className="font-bold text-xs leading-tight">Gestion des Participants</span>
               </div>
               <div onClick={() => setModuleActif('tontine_cotisations')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">💰</span>
@@ -675,17 +675,19 @@ function DashboardContent() {
           <span className="text-[10px]">Accueil</span>
         </button>
 
-        <button
-          onClick={() => { setOngletNavigation('rapports'); setModuleActif(null); }}
-          className={`flex flex-col items-center space-y-0.5 transition cursor-pointer ${
-            ongletNavigation === 'rapports' && !moduleActif 
-              ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
-              : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
-          }`}
-        >
-          <span className="text-lg">📊</span>
-          <span className="text-[10px]">Comptabilité</span>
-        </button>
+        {!estModeTontine && (
+          <button
+            onClick={() => { setOngletNavigation('rapports'); setModuleActif(null); }}
+            className={`flex flex-col items-center space-y-0.5 transition cursor-pointer ${
+              ongletNavigation === 'rapports' && !moduleActif 
+                ? (isDarkMode ? 'text-cyan-400 font-extrabold scale-105' : 'text-blue-600 font-extrabold scale-105') 
+                : (isDarkMode ? 'text-cyan-200/60 hover:text-slate-100' : 'text-slate-500 hover:text-slate-900')
+            }`}
+          >
+            <span className="text-lg">📊</span>
+            <span className="text-[10px]">Comptabilité</span>
+          </button>
+        )}
 
         <button
           onClick={() => { setOngletNavigation('explorer'); setModuleActif(null); }}
