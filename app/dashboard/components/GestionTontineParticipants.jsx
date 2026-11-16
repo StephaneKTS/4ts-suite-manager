@@ -65,6 +65,8 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const fileInputRef = useRef(null);
 
+  const cleCacheQueue = `4ts_participants_queue_${entrepriseId}`;
+
   // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
     const handleOnline = () => {
@@ -89,7 +91,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const mettreAJourCompteurFileAttente = () => {
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_participants_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       setPendingActionsCount(queue.length);
     } catch (e) {
       setPendingActionsCount(0);
@@ -98,27 +100,38 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
 
   const ajouterActionHorsLigne = (typeAction, payload) => {
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_participants_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
-      localStorage.setItem(`4ts_participants_queue_${entrepriseId}`, JSON.stringify(queue));
+      localStorage.setItem(cleCacheQueue, JSON.stringify(queue));
       mettreAJourCompteurFileAttente();
     } catch (err) {
-      console.error('Erreur mise en cache hors ligne :', err);
+      console.error('Erreur mise en cache hors ligne participants :', err);
     }
   };
 
   const verifierEtSynchroniserFileAttente = async () => {
     if (!navigator.onLine) return;
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_participants_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       if (queue.length === 0) return;
 
+      console.log(`🔄 Synchronisation de ${queue.length} actions participants en attente...`);
       const resteQueue = [];
 
       for (const action of queue) {
         try {
           if (action.type === 'INSERT_PARTICIPANTS') {
-            const { error } = await supabase.from('tontine_participants').insert(action.payload);
+            const payloadPropre = Array.isArray(action.payload)
+              ? action.payload.map(item => {
+                  const copy = { ...item };
+                  if (copy.id && copy.id.toString().startsWith('local_')) {
+                    delete copy.id;
+                  }
+                  return copy;
+                })
+              : action.payload;
+
+            const { error } = await supabase.from('tontine_participants').insert(payloadPropre);
             if (error) throw error;
           } else if (action.type === 'DELETE_PARTICIPANTS') {
             let query = supabase.from('tontine_participants').delete().eq('id_entreprise', entrepriseId);
@@ -131,13 +144,15 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
             if (error) throw error;
           }
         } catch (err) {
+          console.error(`Échec synchro action participant ${action.id}:`, err.message);
           resteQueue.push(action);
         }
       }
 
-      localStorage.setItem(`4ts_participants_queue_${entrepriseId}`, JSON.stringify(resteQueue));
+      localStorage.setItem(cleCacheQueue, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des participants effectuée avec succès !');
         chargerDonnees();
       }
     } catch (err) {
@@ -382,7 +397,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         setParticipants(nouvellesParts);
         localStorage.setItem(`4ts_cache_participants_list_${entrepriseId}`, JSON.stringify(nouvellesParts));
 
-        alert('📴 Pas de connexion Internet. Membre enregistré localement et mis en file d’attente !');
+        alert('📴 Mode Hors Ligne : Membre enregistré localement et mis en file d’attente !');
         fermerModal();
         setEnTrainDeSauvegarder(false);
         return;
@@ -456,7 +471,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
   };
 
-  // ⚡ Ouverture instantanée de l'édition (vérification cotisations en arrière-plan non bloquante)
   const ouvrirEdition = (p) => {
     setParticipantEnEdition(p);
     const paysTrouve = LISTE_PAYS.find(item => p.telephone && p.telephone.startsWith(item.indicatif)) || LISTE_PAYS[0];
@@ -695,7 +709,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   return (
     <div className={`w-full h-full space-y-2.5 font-sans text-xs relative ${bgPrincipal}`}>
       
-      {/* BANDEAU DE STATUT CONNEXION MIS À JOUR */}
+      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>

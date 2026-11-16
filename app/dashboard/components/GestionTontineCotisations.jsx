@@ -46,6 +46,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const [montantCagnotteGlobal, setMontantCagnotteGlobal] = useState(0);
 
   const estSuperAdmin = (userEmail || '').trim().toLowerCase() === 'stephs7352@gmail.com';
+  const cleCacheQueue = `4ts_offline_queue_${entrepriseId}`;
 
   // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
@@ -71,7 +72,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
   const mettreAJourCompteurFileAttente = () => {
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_offline_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       setPendingActionsCount(queue.length);
     } catch (e) {
       setPendingActionsCount(0);
@@ -80,40 +81,57 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
   const ajouterActionHorsLigne = (typeAction, payload) => {
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_offline_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
-      localStorage.setItem(`4ts_offline_queue_${entrepriseId}`, JSON.stringify(queue));
+      localStorage.setItem(cleCacheQueue, JSON.stringify(queue));
       mettreAJourCompteurFileAttente();
     } catch (err) {
-      console.error('Erreur mise en cache hors ligne :', err);
+      console.error('Erreur mise en cache hors ligne cotisations :', err);
     }
   };
 
   const verifierEtSynchroniserFileAttente = async () => {
     if (!navigator.onLine) return;
     try {
-      const queue = JSON.parse(localStorage.getItem(`4ts_offline_queue_${entrepriseId}`) || '[]');
+      const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       if (queue.length === 0) return;
 
+      console.log(`🔄 Synchronisation de ${queue.length} actions cotisations en attente...`);
       const resteQueue = [];
 
       for (const action of queue) {
         try {
           if (action.type === 'COTISATION') {
-            const { error } = await supabase.from('tontine_cotisations').insert(action.payload);
+            const payloadPropre = Array.isArray(action.payload)
+              ? action.payload.map(item => {
+                  const copy = { ...item };
+                  if (copy.id && copy.id.toString().startsWith('local_')) {
+                    delete copy.id;
+                  }
+                  return copy;
+                })
+              : action.payload;
+
+            const { error } = await supabase.from('tontine_cotisations').insert(payloadPropre);
             if (error) throw error;
           } else if (action.type === 'ATTRIBUTION') {
-            const { error } = await supabase.from('tontine_attributions').insert([action.payload]);
+            const payloadPropre = { ...action.payload };
+            if (payloadPropre.id && payloadPropre.id.toString().startsWith('local_')) {
+              delete payloadPropre.id;
+            }
+            const { error } = await supabase.from('tontine_attributions').insert([payloadPropre]);
             if (error) throw error;
           }
         } catch (err) {
+          console.error(`Échec synchro action cotisation ${action.id}:`, err.message);
           resteQueue.push(action);
         }
       }
 
-      localStorage.setItem(`4ts_offline_queue_${entrepriseId}`, JSON.stringify(resteQueue));
+      localStorage.setItem(cleCacheQueue, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des cotisations et attributions effectuée avec succès !');
         chargerDonnees();
       }
     } catch (err) {
@@ -507,7 +525,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
         setCotisations(nouvellesCotisLocales);
         localStorage.setItem(`4ts_cache_cotisations_${idEnt}`, JSON.stringify(nouvellesCotisLocales));
 
-        alert('📴 Pas de connexion Internet. Cotisations enregistrées localement et mises en file d’attente pour synchronisation ultérieure !');
+        alert('📴 Mode Hors Ligne : Cotisations enregistrées localement et mises en file d’attente pour synchronisation ultérieure !');
         setSelectionMembres({});
         setSousVue(estEp ? 'caisse' : 'liste');
         if (estEp) setCaisseCycleId(cycleId);
@@ -585,7 +603,7 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
 
       if (!navigator.onLine) {
         ajouterActionHorsLigne('ATTRIBUTION', payloadAttribution);
-        alert('📴 Hors ligne : Attribution enregistrée localement en attente de synchronisation.');
+        alert('📴 Mode Hors Ligne : Attribution enregistrée localement en attente de synchronisation.');
         setModalAttributionOuverte(false);
         setSelectionMembres({});
         setNumeroTour(prev => prev + 1);

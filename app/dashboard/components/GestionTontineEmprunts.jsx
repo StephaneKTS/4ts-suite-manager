@@ -96,7 +96,11 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
       for (const action of queue) {
         try {
           if (action.type === 'INSERT_EMPRUNT') {
-            const { error } = await supabase.from('tontine_emprunts').insert([action.payload.emprunt]);
+            const payloadPropre = { ...action.payload.emprunt };
+            if (payloadPropre.id && payloadPropre.id.toString().startsWith('local_')) {
+              delete payloadPropre.id;
+            }
+            const { error } = await supabase.from('tontine_emprunts').insert([payloadPropre]);
             if (error) throw error;
             if (action.payload.caisseMovements) {
               await supabase.from('tontine_caisse').insert(action.payload.caisseMovements);
@@ -122,6 +126,7 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
       localStorage.setItem(`4ts_emprunts_queue_${entrepriseId}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des emprunts effectuée avec succès !');
         chargerDonnees();
       }
     } catch (err) {

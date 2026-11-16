@@ -106,7 +106,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       for (const action of queue) {
         try {
           if (action.type === 'INSERT_ELECTION') {
-            const { error } = await supabase.from('tontine_elections').insert([action.payload]);
+            const payloadPropre = { ...action.payload };
+            if (payloadPropre.id && payloadPropre.id.toString().startsWith('local_')) {
+              delete payloadPropre.id;
+            }
+            const { error } = await supabase.from('tontine_elections').insert([payloadPropre]);
             if (error) throw error;
           } else if (action.type === 'UPDATE_ELECTION') {
             const { error } = await supabase.from('tontine_elections').update(action.payload.data).eq('id', action.payload.id);
@@ -118,16 +122,31 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
             const { error } = await supabase.from('tontine_elections').delete().eq('id', action.payload.id);
             if (error) throw error;
           } else if (action.type === 'INSERT_POSTE') {
-            const { error } = await supabase.from('tontine_postes_electoraux').insert([action.payload]);
+            const payloadPropre = { ...action.payload };
+            if (payloadPropre.id && payloadPropre.id.toString().startsWith('local_')) {
+              delete payloadPropre.id;
+            }
+            const { error } = await supabase.from('tontine_postes_electoraux').insert([payloadPropre]);
             if (error) throw error;
           } else if (action.type === 'INSERT_CANDIDATURES') {
-            const { error } = await supabase.from('tontine_candidatures').insert(action.payload);
+            const payloadsPropres = action.payload.map(item => {
+              const copie = { ...item };
+              if (copie.id && copie.id.toString().startsWith('local_')) {
+                delete copie.id;
+              }
+              return copie;
+            });
+            const { error } = await supabase.from('tontine_candidatures').insert(payloadsPropres);
             if (error) throw error;
           } else if (action.type === 'DELETE_CANDIDATURE') {
             const { error } = await supabase.from('tontine_candidatures').delete().eq('id', action.payload.id);
             if (error) throw error;
           } else if (action.type === 'INSERT_VOTE') {
-            const { error } = await supabase.from('tontine_votes').insert([action.payload]);
+            const payloadPropre = { ...action.payload };
+            if (payloadPropre.id && payloadPropre.id.toString().startsWith('local_')) {
+              delete payloadPropre.id;
+            }
+            const { error } = await supabase.from('tontine_votes').insert([payloadPropre]);
             if (error && error.code !== '23505') throw error;
           }
         } catch (err) {
@@ -138,6 +157,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       localStorage.setItem(`4ts_elections_queue_${entrepriseId}`, JSON.stringify(resteQueue));
       mettreAJourCompteurFileAttente();
       if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des élections effectuée avec succès !');
         chargerDonneesInitiales();
       }
     } catch (err) {
@@ -970,7 +990,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                 disabled={actionEnCours}
                 value={nouveauTitre}
                 onChange={(e) => setNouveauTitre(e.target.value)}
-                placeholder="EX: ÉLECTION DU BUREAU EXÉCUTIF 2026-2028"
                 className={`w-full p-2.5 rounded-lg border font-bold text-xs uppercase disabled:opacity-50 ${inputBg}`}
               />
             </div>
@@ -1121,7 +1140,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   disabled={actionEnCours}
                   value={nouveauPoste}
                   onChange={(e) => setNouveauPoste(e.target.value)}
-                  placeholder="EX: SECRÉTAIRE GÉNÉRAL"
                   className={`w-full p-2.5 rounded-lg border font-bold text-xs uppercase disabled:opacity-50 ${inputBg}`}
                 />
               </div>
@@ -1188,7 +1206,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
                 <div className="space-y-1.5">
                   <label className={`block text-[10px] font-bold uppercase ${textMuted}`}>
-                    2. Cocher les membres candidats pour ce poste {!posteCandidatureId && <span className="text-red-400 font-bold">(Veuillez d'abord choisir un poste ci-dessus)</span>} :
+                    2. Cocher les membres candidats pour este poste {!posteCandidatureId && <span className="text-red-400 font-bold">(Veuillez d'abord choisir un poste ci-dessus)</span>} :
                   </label>
                   
                   <div className="max-h-56 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-slate-950/40 rounded-xl border border-slate-800">

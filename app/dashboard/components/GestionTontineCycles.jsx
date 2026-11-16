@@ -120,13 +120,11 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions tontine cycles en attente...`);
       const resteQueue = [];
 
       for (const action of queue) {
         try {
           if (action.type === 'INSERT_CYCLE') {
-            // Nettoyage de l'ID temporaire local pour laisser Supabase générer son UUID
             const payloadPropre = { ...action.payload };
             if (payloadPropre.id && payloadPropre.id.toString().startsWith('local_')) {
               delete payloadPropre.id;
@@ -141,7 +139,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action cycle ${action.id}:`, err.message);
           resteQueue.push(action);
         }
       }
@@ -541,7 +538,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                   value={nouveauCycle.nom_cycle}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setNouveauCycle({ ...nouveauCycle, nom_cycle: e.target.value.toUpperCase() })}
-                  placeholder="EX: FONDS DE CAISSE, GRANDE TONTINE..."
                   className={`w-full p-1.5 rounded border text-xs font-bold uppercase ${inputBg}`}
                 />
               </div>
@@ -595,7 +591,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                     value={nouveauCycle.montant_cotisation}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauCycle({ ...nouveauCycle, montant_cotisation: e.target.value })}
-                    placeholder="Ex: 50000"
                     className={`w-full p-1.5 rounded border text-xs font-bold font-mono text-emerald-600 ${inputBg}`}
                   />
                 )}
@@ -634,7 +629,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
                   value={nouveauCycle.regle_reunion}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setNouveauCycle({ ...nouveauCycle, regle_reunion: e.target.value.toUpperCase() })}
-                  placeholder="EX: CHAQUE 1ER DIMANCHE DU MOIS"
                   className={`w-full p-1.5 rounded border text-xs font-bold uppercase ${inputBg}`}
                 />
               </div>
@@ -940,7 +934,6 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
             onFocus={(e) => e.target.select()}
             onChange={(e) => setRecherche(e.target.value)}
             className={`w-full border rounded px-2.5 py-1.5 font-bold text-xs focus:outline-none ${inputBg}`}
-            placeholder="🔍 Rechercher un cycle ou un fonds de caisse..."
           />
         </div>
 
