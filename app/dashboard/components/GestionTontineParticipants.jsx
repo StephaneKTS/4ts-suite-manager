@@ -115,7 +115,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
       const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions participants en attente...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -135,7 +134,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
             if (error) throw error;
           } else if (action.type === 'DELETE_PARTICIPANTS') {
             let query = supabase.from('tontine_participants').delete().eq('id_entreprise', entrepriseId);
-            if (action.payload.identifiant_unique) {
+            if (action.payload.identifiant_unique && action.payload.identifiant_unique !== 'N/A') {
               query = query.eq('identifiant_unique', action.payload.identifiant_unique);
             } else {
               query = query.eq('nom_participant', action.payload.nom_participant);
@@ -144,7 +143,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action participant ${action.id}:`, err.message);
           resteQueue.push(action);
         }
       }
@@ -185,7 +183,6 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
   const chargerDonnees = async () => {
     const idEnt = entrepriseId || '4TS-290136';
 
-    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     try {
       const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
       const cacheCyc = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
@@ -240,8 +237,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         const rolesFiltres = dataRoles.filter(r => !['LIVREUR', 'SUPERVISEUR'].includes((r.nom_role || '').trim().toUpperCase()));
         setListeRolesComplet(rolesFiltres);
         localStorage.setItem(`4ts_cache_roles_list_${idEnt}`, JSON.stringify(rolesFiltres));
-        const nomsRoles = rolesFiltres.map(r => r.nom_role);
-        setRolesDisponibles(nomsRoles);
+        setRolesDisponibles(rolesFiltres.map(r => r.nom_role));
       } else {
         const rolesDefaut = [
           { nom_role: 'ADHERANT', description: 'Membre standard de l’association.' },
@@ -358,7 +354,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
 
     const telephoneComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : null;
-    const identifiantFinal = nouveauParticipant.identifiant_unique;
+    const identifiantFinal = nouveauParticipant.identifiant_unique || genererCodeMembreUnique(entrepriseNom);
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -409,10 +405,10 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
           .delete()
           .eq('id_entreprise', entrepriseId);
 
-        if (participantEnEdition.identifiant_unique) {
+        if (participantEnEdition.identifiant_unique && participantEnEdition.identifiant_unique !== 'N/A') {
           deleteQuery = deleteQuery.eq('identifiant_unique', participantEnEdition.identifiant_unique);
         } else {
-          deleteQuery = deleteQuery.eq('nom_participant', participantEnEdition.nom_participant);
+          deleteQuery = deleteQuery.eq('nom_participant', participantEnEdition.nom_participant || participantEnEdition.nom_complet);
         }
 
         const { error: errDel } = await deleteQuery;
@@ -454,7 +450,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
         .delete()
         .eq('id_entreprise', entrepriseId);
 
-      if (p.identifiant_unique) {
+      if (p.identifiant_unique && p.identifiant_unique !== 'N/A') {
         query = query.eq('identifiant_unique', p.identifiant_unique);
       } else {
         query = query.eq('nom_participant', p.nom_participant || p.nom_complet);
@@ -480,8 +476,8 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
 
     const participationsMembre = participants.filter(
-      item => (p.identifiant_unique && item.identifiant_unique === p.identifiant_unique) ||
-              (item.nom_participant === p.nom_participant || item.nom_complet === p.nom_complet)
+      item => (p.identifiant_unique && p.identifiant_unique !== 'N/A' && item.identifiant_unique === p.identifiant_unique) ||
+              ((item.nom_participant || item.nom_complet) === (p.nom_participant || p.nom_complet))
     );
 
     const cyclesMap = {};
@@ -508,7 +504,7 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     }
 
     const formulaireData = {
-      identifiant_unique: p.identifiant_unique || genererCodeMembreUnique(entrepriseNom),
+      identifiant_unique: (p.identifiant_unique && p.identifiant_unique !== 'N/A') ? p.identifiant_unique : genererCodeMembreUnique(entrepriseNom),
       nom_participant: p.nom_participant || p.nom_complet || '',
       prenom: p.prenom || '',
       pays: p.pays || paysTrouve.code,
@@ -554,16 +550,27 @@ export default function GestionTontineParticipants({ entrepriseId = '4TS-290136'
     });
   };
 
+  // 🛡️ CORRECTION ANTI-DUPLICATION DES LIGNES MULTI-CYCLES
   const mapMembres = new Map();
   participants.forEach(p => {
-    const cle = p.identifiant_unique || `${(p.nom_participant || p.nom_complet || '').trim().toUpperCase()}_${(p.prenom || '').trim().toUpperCase()}_${(p.telephone || 'N/A').trim()}`;
+    const nomNorm = (p.nom_participant || p.nom_complet || '').trim().toUpperCase();
+    const prenomNorm = (p.prenom || '').trim().toUpperCase();
+    const idUniqueVal = (p.identifiant_unique && p.identifiant_unique !== 'N/A') ? p.identifiant_unique : '';
+    
+    // Clé de fusion unifiée par Nom + Prénom + Téléphone ou ID unique valide
+    const cle = idUniqueVal || `${nomNorm}_${prenomNorm}_${(p.telephone || 'N/A').trim()}`;
+    
     if (!mapMembres.has(cle)) {
       mapMembres.set(cle, {
         ...p,
+        identifiant_unique: idUniqueVal || p.identifiant_unique || 'N/A',
         cyclesMap: {}
       });
     }
     const membreObj = mapMembres.get(cle);
+    if (idUniqueVal && (!membreObj.identifiant_unique || membreObj.identifiant_unique === 'N/A')) {
+      membreObj.identifiant_unique = idUniqueVal;
+    }
     if (p.id_cycle) {
       membreObj.cyclesMap[p.id_cycle] = p.nombre_parts || 1;
     }

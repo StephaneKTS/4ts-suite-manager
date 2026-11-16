@@ -96,7 +96,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
       const queue = JSON.parse(localStorage.getItem(cleCacheQueue) || '[]');
       if (queue.length === 0) return;
 
-      console.log(`🔄 Synchronisation de ${queue.length} actions cotisations en attente...`);
       const resteQueue = [];
 
       for (const action of queue) {
@@ -123,7 +122,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
             if (error) throw error;
           }
         } catch (err) {
-          console.error(`Échec synchro action cotisation ${action.id}:`, err.message);
           resteQueue.push(action);
         }
       }
@@ -142,7 +140,6 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
   const chargerDonnees = async () => {
     const idEnt = entrepriseId || '4TS-234321';
     
-    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     try {
       const cachePart = localStorage.getItem(`4ts_cache_participants_${idEnt}`);
       const cacheCyc = localStorage.getItem(`4ts_cache_cycles_${idEnt}`);
@@ -234,13 +231,8 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
     return nom.includes('banque') || nom.includes('epargne') || nom.includes('projet') || type.includes('epargne') || type.includes('banque');
   };
 
+  // 🛡️ CORRECTION : Permet aux tours de s'incrémeter correctement (Tour 1, Tour 2...) même pour l'épargne
   const calculerTourAutomatique = (idC, listeParticipants, listeCotisations, listeAttributions) => {
-    const cycleObj = cycles.find(c => c.id?.toString() === idC?.toString());
-    if (estCycleEpargne(cycleObj)) {
-      setNumeroTour(1);
-      return;
-    }
-
     const cotisCycle = listeCotisations.filter(c => c.id_cycle?.toString() === idC.toString());
     if (cotisCycle.length === 0) {
       setNumeroTour(1);
@@ -256,7 +248,8 @@ export default function GestionTontineCotisations({ entrepriseId = '4TS-234321',
       return aCyc === idC.toString() && aTour === maxTour;
     });
 
-    if (attMaxTour) {
+    const cycleObj = cycles.find(c => c.id?.toString() === idC?.toString());
+    if (attMaxTour || estCycleEpargne(cycleObj)) {
       setNumeroTour(maxTour + 1);
     } else {
       setNumeroTour(maxTour);

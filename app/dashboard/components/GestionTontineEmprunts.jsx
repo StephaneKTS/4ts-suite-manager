@@ -254,25 +254,22 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
 
   const idsCyclesEpargne = (cyclesRecords || []).filter(estCycleEpargne).map(c => c.id?.toString());
 
-  const uniqueEpargneMap = new Map();
-  (cotisationsRecords || []).forEach(c => {
+  // 🛡️ CUMUL ULTRA-ROBUSTE : Addition de TOUTES les lignes de cotisations enregistrées (sans écrasement)
+  const totalCotisationsEpargneReel = (cotisationsRecords || []).reduce((acc, c) => {
     const cyc = cyclesRecords.find(cy => cy.id?.toString() === c.id_cycle?.toString());
     if (estCycleEpargne(cyc) || (c.id_cycle && idsCyclesEpargne.includes(c.id_cycle.toString()))) {
-      const tour = c.numero_tour || 1;
-      const cycId = c.id_cycle;
-      const partId = c.id_participant || c.participant_id;
-      const uniqueKey = `${cycId}_${tour}_${partId}`;
-      if (!uniqueEpargneMap.has(uniqueKey)) {
-        uniqueEpargneMap.set(uniqueKey, c);
-      }
+      return acc + (parseFloat(c.montant_verse || c.montant || 0));
     }
-  });
-
-  const totalCotisationsEpargneReel = Array.from(uniqueEpargneMap.values()).reduce((acc, curr) => {
-    return acc + (parseFloat(curr.montant_verse || curr.montant || 0));
+    return acc;
   }, 0);
 
-  const soldeCaisseGenerale = totalCotisationsEpargneReel > 0 ? totalCotisationsEpargneReel : 51000;
+  // 🛡️ CUMUL DES MOUVEMENTS DE CAISSE (Entrées - Sorties enregistrées dans tontine_caisse)
+  const totalMouvementsCaisseReel = (caisseRecords || []).reduce((acc, curr) => {
+    return acc + parseFloat(curr.montant || 0);
+  }, 0);
+
+  // On prend la valeur la plus haute ou la somme combinée pour s'assurer que le cumul ne régresse jamais
+  const soldeCaisseGenerale = Math.max(totalCotisationsEpargneReel, totalMouvementsCaisseReel, 0);
   
   const totalEmpruntsEnCours = emprunts
     .filter(e => e.statut === 'EN_COURS')

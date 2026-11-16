@@ -150,7 +150,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         chargerDonneesInitiale();
       }
     } catch (err) {
-      console.error('Erreur globale synchronisation cycles :', err);
+      console.warn('Erreur globale synchronisation cycles :', err.message);
     }
   };
 
@@ -214,7 +214,8 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       setCycles(cyclesAvecTours);
       localStorage.setItem(`4ts_cache_cycles_list_${idEnt}`, JSON.stringify(cyclesAvecTours));
     } catch (err) {
-      console.error('Erreur chargement cycles :', err.message);
+      // 🛡️ Gestion silencieuse des erreurs réseau / fetch pour éviter le crash de l'interface
+      console.warn('Mode hors ligne ou échec réseau (cycles) :', err.message);
     }
   };
 
