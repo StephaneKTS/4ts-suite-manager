@@ -40,6 +40,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [emailConnecte, setEmailConnecte] = useState('');
   const nomInputRef = useRef(null);
 
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
@@ -107,33 +111,124 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     taxes_ristournes_associees: [],
   });
 
+  // Gestion de la connectivité et synchronisation hors ligne
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
+    chargerPermissionsEtDonnees();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [entrepriseId, moduleActuel]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_fournisseurs_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_fournisseurs_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_fournisseurs_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne fournisseurs :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_fournisseurs_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions fournisseurs hors ligne...`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_FOURNISSEUR') {
+            const { error } = await supabase.from('fournisseurs').insert([action.payload]);
+            if (error) throw error;
+          } else if (action.type === 'UPDATE_FOURNISSEUR') {
+            const { error } = await supabase.from('fournisseurs').update(action.payload.data).eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_FOURNISSEUR') {
+            const { error } = await supabase.from('fournisseurs').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action fournisseur ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_fournisseurs_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des fournisseurs effectuée avec succès !');
+        chargerPermissionsEtDonnees(true);
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation fournisseurs :', err);
+    }
+  };
+
   const chargerPermissionsEtDonnees = async (silencieux = false) => {
-    if (!silencieux && partenaires.length === 0) setChargement(true);
+    const donneesLocales = localSync.recupererDonneesLocales(cleCacheFournisseurs);
+    if (donneesLocales && donneesLocales.length > 0) {
+      setPartenaires(donneesLocales);
+      setChargement(false);
+    } else if (!silencieux) {
+      setChargement(true);
+    }
+
     try {
       let listPartenaires = [];
-      const { data: partenairesRpc, error: rpcError } = await supabase.rpc('recuperer_fournisseurs', {
-        p_entreprise_id: entrepriseId,
-        p_module: moduleActuel
-      });
-
-      if (rpcError) {
-        const { data: dataPartenaires, error: errPartenaires } = await supabase
-          .from('fournisseurs')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', moduleActuel)
-          .order('created_at', { ascending: false });
-
-        if (errPartenaires) throw errPartenaires;
-        listPartenaires = dataPartenaires || [];
+      if (!navigator.onLine) {
+        listPartenaires = donneesLocales || [];
       } else {
-        listPartenaires = partenairesRpc || [];
+        const { data: partenairesRpc, error: rpcError } = await supabase.rpc('recuperer_fournisseurs', {
+          p_entreprise_id: entrepriseId,
+          p_module: moduleActuel
+        });
+
+        if (rpcError) {
+          const { data: dataPartenaires, error: errPartenaires } = await supabase
+            .from('fournisseurs')
+            .select('*')
+            .eq('id_entreprise', entrepriseId)
+            .eq('module', moduleActuel)
+            .order('created_at', { ascending: false });
+
+          if (errPartenaires) throw errPartenaires;
+          listPartenaires = dataPartenaires || [];
+        } else {
+          listPartenaires = partenairesRpc || [];
+        }
       }
 
       setPartenaires(listPartenaires);
       localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listPartenaires);
 
-      if (moduleActuel === 'BOUTIQUE') {
+      if (moduleActuel === 'BOUTIQUE' && navigator.onLine) {
         const { data: dataTaxes } = await supabase
           .from('types_taxes_ristournes')
           .select('*')
@@ -145,19 +240,21 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         setTaxesDisponibles(dataTaxes || []);
       }
 
-      const { data: dataAppro } = await supabase
-        .from('approvisionnements')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      setApprovisionnements(dataAppro || []);
+      if (navigator.onLine) {
+        const { data: dataAppro } = await supabase
+          .from('approvisionnements')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel);
+        setApprovisionnements(dataAppro || []);
 
-      const { data: dataBC } = await supabase
-        .from('bons_commande_fournisseurs')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      setBonsCommandes(dataBC || []);
+        const { data: dataBC } = await supabase
+          .from('bons_commande_fournisseurs')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel);
+        setBonsCommandes(dataBC || []);
+      }
 
     } catch (err) {
       console.error('Erreur chargement données :', err.message);
@@ -214,12 +311,10 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     try {
       let idDepotAssocie = partenaireEnEdition ? partenaireEnEdition.id_depot : null;
 
-      // Création automatique du dépôt dans la table correcte "depots_stock"
-      if (estModeLivraison && nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE') {
+      if (estModeLivraison && nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' && navigator.onLine) {
         if (!idDepotAssocie) {
           const nomDepot = nomPartenaireClean;
           
-          // Vérifier si le dépôt existe déjà dans depots_stock
           const { data: depotExistant } = await supabase
             .from('depots_stock')
             .select('id')
@@ -270,14 +365,24 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
       if (partenaireEnEdition) {
         payload.id = partenaireEnEdition.id;
+        
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('UPDATE_FOURNISSEUR', { id: partenaireEnEdition.id, data: payload });
+          const listeMaj = partenaires.map(p => p.id === partenaireEnEdition.id ? { ...p, ...payload } : p);
+          setPartenaires(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
+          alert('📴 Mode Hors Ligne : Fournisseur mis à jour localement.');
+          annulerForm();
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
         let { error } = await supabase
           .from('fournisseurs')
           .update(payload)
           .eq('id', partenaireEnEdition.id);
 
-        if (error) {
-          localSync.ajouterFileAttente('UPDATE', 'fournisseurs', payload);
-        }
+        if (error) throw error;
 
         const listeMaj = partenaires.map(p => p.id === partenaireEnEdition.id ? { ...p, ...payload } : p);
         setPartenaires(listeMaj);
@@ -288,11 +393,19 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         const idTemp = 'temp_' + Date.now();
         const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
         
-        let { error } = await supabase.from('fournisseurs').insert([payload]);
-
-        if (error) {
-          localSync.ajouterFileAttente('INSERT', 'fournisseurs', payload);
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('INSERT_FOURNISSEUR', nouvelObjet);
+          const listeMaj = [nouvelObjet, ...partenaires];
+          setPartenaires(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
+          alert('📴 Mode Hors Ligne : Fournisseur enregistré localement.');
+          annulerForm();
+          setEnTrainDeSauvegarder(false);
+          return;
         }
+
+        let { error } = await supabase.from('fournisseurs').insert([payload]);
+        if (error) throw error;
 
         const listeMaj = [nouvelObjet, ...partenaires];
         setPartenaires(listeMaj);
@@ -366,6 +479,11 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    if (!navigator.onLine) {
+      alert('⚠️ Impossible de supprimer un fournisseur en mode hors ligne.');
+      return;
+    }
+
     setEnTrainDeSauvegarder(true);
     try {
       const partenaireIdStr = String(partenaireEnEdition.id);
@@ -404,15 +522,12 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         return;
       }
 
-      // Suppression du dépôt associé dans depots_stock si existant
       if (partenaireEnEdition.id_depot) {
         await supabase.from('depots_stock').delete().eq('id', partenaireEnEdition.id_depot);
       }
 
       const { error } = await supabase.from('fournisseurs').delete().eq('id', partenaireEnEdition.id);
-      if (error) {
-        localSync.ajouterFileAttente('DELETE', 'fournisseurs', { id: partenaireEnEdition.id });
-      }
+      if (error) throw error;
 
       const listeMaj = partenaires.filter(p => p.id !== partenaireEnEdition.id);
       setPartenaires(listeMaj);
@@ -470,6 +585,24 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
   return (
     <div className="space-y-3 text-[11px] font-sans max-w-6xl mx-auto p-1 sm:p-3">
+      
+      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+          >
+            🔄 Synchroniser ({pendingActionsCount})
+          </button>
+        )}
+      </div>
+
       <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-900 uppercase text-xs sm:text-sm flex items-center gap-1.5">
@@ -584,7 +717,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
               </div>
 
-              {/* BOUTON À COCHER POUR LA GESTION DU STOCK (MODULE LIVRAISON) */}
               {estModeLivraison && (
                 <div className="pt-3 border-t border-slate-100">
                   <label className="flex items-center gap-3 cursor-pointer p-2.5 bg-orange-50/50 border border-orange-200 rounded-xl hover:bg-orange-50 transition">
@@ -606,7 +738,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                 </div>
               )}
 
-              {/* GESTION DU RATTACHEMENT DES TAXES & RISTOURNES (DEDUCTIBLE) - UNIQUEMENT EN MODULE BOUTIQUE */}
               {!estModeLivraison && moduleActuel === 'BOUTIQUE' && (
                 <div className="pt-3 border-t border-slate-200 space-y-2">
                   <label className="block font-black text-[10px] uppercase text-slate-800">

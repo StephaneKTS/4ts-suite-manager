@@ -11,6 +11,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const [roleEnEdition, setRoleEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
 
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   const [limiteRoles, setLimiteRoles] = useState(20);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
@@ -72,6 +76,86 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     permissions: initialiserPermissionsDefaut(),
   });
 
+  // Gestion de la connectivité et synchronisation hors ligne
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
+    chargerRolesEtPermissions();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [entrepriseId, moduleActuel]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_roles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_roles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_roles_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne rôles :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_roles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions rôles hors ligne...`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_ROLE') {
+            const { error } = await supabase.from('roles').insert([action.payload]);
+            if (error) throw error;
+          } else if (action.type === 'UPDATE_ROLE') {
+            const { error } = await supabase.from('roles').update(action.payload.data).eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_ROLE') {
+            const { error } = await supabase.from('roles').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action rôle ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_roles_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des rôles effectuée avec succès !');
+        chargerRolesEtPermissions();
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation rôles :', err);
+    }
+  };
+
   const chargerRolesEtPermissions = async () => {
     const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
     if (rolesLocaux && rolesLocaux.length > 0) {
@@ -99,7 +183,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       if (error) throw error;
       let listRoles = data || [];
 
-      // 1. Vérification et auto-création du rôle système ADMINISTRATEUR
+      // 1. Vérification et auto-création du rôle système ADMINISTRATEUR[cite: 20]
       const adminExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR');
 
       if (!adminExiste) {
@@ -111,21 +195,23 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           permissions: { _plein_acces: true }
         };
 
-        const { data: newAdmin, error: errAdmin } = await supabase
-          .from('roles')
-          .insert([payloadAdmin])
-          .select()
-          .single();
+        if (navigator.onLine) {
+          const { data: newAdmin, error: errAdmin } = await supabase
+            .from('roles')
+            .insert([payloadAdmin])
+            .select()
+            .single();
 
-        if (!errAdmin && newAdmin) {
-          listRoles = [newAdmin, ...listRoles];
+          if (!errAdmin && newAdmin) {
+            listRoles = [newAdmin, ...listRoles];
+          }
         }
       }
 
-      // 2. Rôles LIVREUR et SUPERVISEUR (Uniquement hors Tontine)
+      // 2. Rôles LIVREUR et SUPERVISEUR (Uniquement hors Tontine)[cite: 20]
       if (!estTontine) {
         const livreurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'LIVREUR');
-        if (!livreurExiste) {
+        if (!livreurExiste && navigator.onLine) {
           const payloadLivreur = {
             id_entreprise: entrepriseId,
             module: moduleActuel,
@@ -138,7 +224,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         }
 
         const superviseurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'SUPERVISEUR');
-        if (!superviseurExiste) {
+        if (!superviseurExiste && navigator.onLine) {
           const payloadSuperviseur = {
             id_entreprise: entrepriseId,
             module: moduleActuel,
@@ -150,7 +236,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           if (!errSuperviseur && newSuperviseur) listRoles = [newSuperviseur, ...listRoles];
         }
       } else {
-        // Filtrer pour s'assurer qu'aucun ancien livreur/superviseur ne s'affiche en Tontine
         listRoles = listRoles.filter(r => !['LIVREUR', 'SUPERVISEUR'].includes((r.nom_role || '').trim().toUpperCase()));
       }
 
@@ -165,11 +250,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       setChargement(false);
     }
   };
-
-  useEffect(() => {
-    chargerRolesEtPermissions();
-    localSync.synchroniserVersCloud(supabase);
-  }, [entrepriseId, moduleActuel]);
 
   const togglePermissionRole = (moduleId, action) => {
     setNouveauRole((prev) => {
@@ -226,6 +306,17 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           return;
         }
 
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('UPDATE_ROLE', { id: roleEnEdition.id, data: payload });
+          const majRoles = roles.map(r => r.id === roleEnEdition.id ? { ...r, ...payload } : r);
+          setRoles(majRoles);
+          localSync.sauvegarderDonneesLocales(cleCacheRoles, majRoles);
+          alert('📴 Mode Hors Ligne : Rôle mis à jour localement.');
+          annulerForm();
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
         const { error } = await supabase
           .from('roles')
           .update(payload)
@@ -239,6 +330,19 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         const existeDeja = roles.some(r => (r.nom_role || '').trim().toUpperCase() === nomSaisi);
         if (existeDeja) {
           alert('⚠️ Ce rôle existe déjà.');
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
+        if (!navigator.onLine) {
+          const fakeId = 'local_' + Date.now();
+          const roleLocal = { ...payload, id: fakeId, created_at: new Date().toISOString() };
+          ajouterActionHorsLigne('INSERT_ROLE', roleLocal);
+          const majRoles = [roleLocal, ...roles];
+          setRoles(majRoles);
+          localSync.sauvegarderDonneesLocales(cleCacheRoles, majRoles);
+          alert('📴 Mode Hors Ligne : Rôle créé localement.');
+          annulerForm();
           setEnTrainDeSauvegarder(false);
           return;
         }
@@ -292,6 +396,11 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
     if (rolesSystemeInterditsSuppression.includes(nomRoleCible)) {
       alert(`❌ SUPPRESSION INTERDITE : Le rôle système ${nomRoleCible} ne peut pas être supprimé.`);
+      return;
+    }
+
+    if (!navigator.onLine) {
+      alert('⚠️ Impossible de supprimer un rôle en mode hors ligne.');
       return;
     }
 
@@ -377,10 +486,27 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden">
       
+      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+          >
+            🔄 Synchroniser ({pendingActionsCount})
+          </button>
+        )}
+      </div>
+
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2 overflow-hidden">
           <h3 className="font-extrabold text-slate-900 uppercase text-xs truncate flex items-center gap-1.5">
-            <span>🛡️</span> RÔLES [{moduleActuel}] ({rolesAffiches.length} / {rolesFiltres.length})
+            <span>🛡️</span> RÔLES [{moduleActuel}] ({rolesAffiches.length} / {rolesFiltres.length})[cite: 20]
           </h3>
           {roleNomConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200 shrink-0 hidden sm:inline">
@@ -418,7 +544,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste ({roles.length})
+          📋 Liste ({roles.length})[cite: 20]
         </button>
       </div>
 
@@ -544,14 +670,14 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
-            <span>Répertoire : <strong>{rolesAffiches.length} / {rolesFiltres.length}</strong> rôle(s)</span>
+            <span>Répertoire : <strong>{rolesAffiches.length} / {rolesFiltres.length}</strong> rôle(s)[cite: 20]</span>
           </div>
 
           {chargement ? (
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : rolesAffiches.length === 0 ? (
             <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-              Aucun rôle personnalisé enregistré. Cliquez sur "＋ Nouveau Rôle".
+              Aucun rôle personnalisé enregistré. Cliquez sur "＋ Nouveau Rôle"[cite: 20].
             </div>
           ) : (
             <div className="space-y-2">
@@ -560,10 +686,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                   <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                     <tr>
                       <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_role')} className="p-2.5 cursor-pointer hover:bg-slate-200 transition w-1/3">
-                        Intitulé {rendreFlecheTri('nom_role')}
+                        Intitulé {rendreFlecheTri('nom_role')}[cite: 20]
                       </th>
-                      <th className="p-2.5 w-1/2">Description</th>
-                      <th className="p-2.5 text-center w-1/6">Modules</th>
+                      <th className="p-2.5 w-1/2">Description[cite: 20]</th>
+                      <th className="p-2.5 text-center w-1/6">Modules[cite: 20]</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">

@@ -44,6 +44,10 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const [recherche, setRecherche] = useState('');
   const [cycleEnEdition, setCycleEnEdition] = useState(null);
 
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   const [modalCreationOuverte, setModalCreationOuverte] = useState(false);
   const [modalFrequenceOuverte, setModalFrequenceOuverte] = useState(false);
   const [modalStatutOuverte, setModalStatutOuverte] = useState(false);
@@ -67,13 +71,109 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const [modeActivationMembres, setModeActivationMembres] = useState('tous');
   const [selectionMembresCycle, setSelectionMembresCycle] = useState({});
 
+  // Gestion de la connectivité et synchronisation hors ligne
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
+    chargerDonneesInitiale();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [entrepriseId]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_cycles_queue_${entrepriseId}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_cycles_queue_${entrepriseId}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_cycles_queue_${entrepriseId}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne cycles :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_cycles_queue_${entrepriseId}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions cycles hors ligne...`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_CYCLE') {
+            const { error } = await supabase.from('tontine_cycles').insert([action.payload]);
+            if (error) throw error;
+          } else if (action.type === 'UPDATE_CYCLE') {
+            const { error } = await supabase.from('tontine_cycles').update(action.payload.data).eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_CYCLE') {
+            const { error } = await supabase.from('tontine_cycles').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action cycle ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_cycles_queue_${entrepriseId}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des cycles effectuée avec succès !');
+        chargerDonneesInitiale();
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation cycles :', err);
+    }
+  };
+
   const chargerDonneesInitiale = async () => {
     setChargement(true);
+    const idEnt = entrepriseId || '4TS-290136';
+
+    if (!navigator.onLine) {
+      try {
+        const cacheCycles = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
+        const cacheMembres = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
+        if (cacheCycles) setCycles(JSON.parse(cacheCycles));
+        if (cacheMembres) setTousLesMembresActifs(JSON.parse(cacheMembres));
+      } catch (e) {
+        console.warn('Erreur lecture cache local cycles :', e);
+      } finally {
+        setChargement(false);
+      }
+      return;
+    }
+
     try {
       const { data: cyclesData, error } = await supabase
         .from('tontine_cycles')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
+        .eq('id_entreprise', idEnt)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -81,7 +181,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       const { data: membresData } = await supabase
         .from('tontine_participants')
         .select('*')
-        .eq('id_entreprise', entrepriseId);
+        .eq('id_entreprise', idEnt);
 
       const mapMembresUniques = new Map();
       (membresData || []).forEach(m => {
@@ -92,6 +192,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       });
       const listeMembresRef = Array.from(mapMembresUniques.values());
       setTousLesMembresActifs(listeMembresRef);
+      localStorage.setItem(`4ts_cache_participants_list_${idEnt}`, JSON.stringify(listeMembresRef));
 
       const cyclesAvecTours = await Promise.all((cyclesData || []).map(async (c) => {
         if (c.type_cycle === 'EPARGNE') {
@@ -100,7 +201,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         const { data: partsData } = await supabase
           .from('tontine_participants')
           .select('nombre_parts')
-          .eq('id_entreprise', entrepriseId)
+          .eq('id_entreprise', idEnt)
           .eq('id_cycle', c.id);
 
         const totalParts = (partsData || []).reduce((acc, p) => acc + (parseInt(p.nombre_parts || 1) || 1), 0);
@@ -111,8 +212,15 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
       }));
 
       setCycles(cyclesAvecTours);
+      localStorage.setItem(`4ts_cache_cycles_list_${idEnt}`, JSON.stringify(cyclesAvecTours));
     } catch (err) {
-      console.error('Erreur chargement cycles :', err.message);
+      console.error('Erreur chargement cycles, bascule cache :', err.message);
+      try {
+        const cacheCycles = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
+        if (cacheCycles) setCycles(JSON.parse(cacheCycles));
+      } catch (e) {
+        console.error(e);
+      }
     } finally {
       setChargement(false);
     }
@@ -190,6 +298,28 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
         statut: nouveauCycle.statut || 'ACTIF',
       };
 
+      if (!navigator.onLine) {
+        if (cycleEnEdition) {
+          ajouterActionHorsLigne('UPDATE_CYCLE', { id: cycleEnEdition.id, data: payloadCycle });
+          const majCycles = cycles.map(c => c.id === cycleEnEdition.id ? { ...c, ...payloadCycle } : c);
+          setCycles(majCycles);
+          localStorage.setItem(`4ts_cache_cycles_list_${entrepriseId}`, JSON.stringify(majCycles));
+        } else {
+          const fakeId = 'local_' + Date.now();
+          const nouveauLocal = { ...payloadCycle, id: fakeId, created_at: new Date().toISOString() };
+          ajouterActionHorsLigne('INSERT_CYCLE', nouveauLocal);
+          const majCycles = [nouveauLocal, ...cycles];
+          setCycles(majCycles);
+          localStorage.setItem(`4ts_cache_cycles_list_${entrepriseId}`, JSON.stringify(majCycles));
+        }
+
+        alert('📴 Mode Hors Ligne : Cycle enregistré localement et mis en file d’attente.');
+        setCycleEnEdition(null);
+        setModalCreationOuverte(false);
+        setEnTrainDeSauvegarder(false);
+        return;
+      }
+
       let idCycleEffectif = null;
 
       if (cycleEnEdition) {
@@ -243,7 +373,7 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
             .from('tontine_participants')
             .insert(membresARattacher);
           if (errPart) {
-            console.warn('Erreur lors du rattachement automatique des membres au cycle :', errPart.message);
+            console.warn('Erreur rattachement membres :', errPart.message);
           }
         }
       }
@@ -263,6 +393,10 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
   const supprimerCycle = async (id) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer ce cycle de tontine ?')) return;
     try {
+      if (!navigator.onLine) {
+        alert('⚠️ Impossible de supprimer un cycle en mode hors ligne.');
+        return;
+      }
       const { error } = await supabase
         .from('tontine_cycles')
         .delete()
@@ -303,14 +437,16 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     setCycleEnEdition(c);
     let participantsCycle = [];
     try {
-      const { data: partsData } = await supabase
-        .from('tontine_participants')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('id_cycle', c.id);
+      if (navigator.onLine) {
+        const { data: partsData } = await supabase
+          .from('tontine_participants')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('id_cycle', c.id);
 
-      if (partsData) {
-        participantsCycle = partsData;
+        if (partsData) {
+          participantsCycle = partsData;
+        }
       }
     } catch (e) {
       console.warn(e);
@@ -345,15 +481,30 @@ export default function GestionTontineCycles({ entrepriseId = '4TS-290136', isDa
     return texte.includes(recherche.toLowerCase());
   });
 
-  // Adaptation dynamique des styles selon le mode nuit/jour (Gris - Rouge - Noir)
   const bgPrincipal = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-slate-900';
   const inputBg = isDarkMode ? 'bg-[#1b263b] text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
   const labelColor = isDarkMode ? 'text-slate-200' : 'text-slate-800';
-  const cardBg = isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900';
 
   return (
     <div className={`w-full h-full space-y-2 font-sans text-xs ${bgPrincipal}`}>
       
+      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+          >
+            🔄 Synchroniser ({pendingActionsCount})
+          </button>
+        )}
+      </div>
+
       {/* BARRE D'EN-TÊTE */}
       <div className={`flex justify-end items-center px-2 py-1.5 rounded border gap-1 overflow-x-auto ${isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-300 shadow-2xs'}`}>
         <div className="flex items-center gap-1 shrink-0">

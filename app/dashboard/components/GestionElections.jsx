@@ -11,6 +11,10 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   // Vues du module : 'liste' | 'creation' | 'gestion' | 'vote' | 'resultats'
   const [vue, setVue] = useState('liste');
 
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   // États pour une nouvelle élection
   const [nouveauTitre, setNouveauTitre] = useState('');
   const [dateScrutin, setDateScrutin] = useState(new Date().toISOString().split('T')[0]);
@@ -49,25 +53,143 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const subTitleColor = isDarkMode ? 'text-red-400' : 'text-red-600';
   const textMuted = isDarkMode ? 'text-slate-400' : 'text-slate-600';
 
+  // Gestion de la connectivité et synchronisation hors ligne
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
+    chargerDonneesInitiales();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [entrepriseId]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_elections_queue_${entrepriseId}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_elections_queue_${entrepriseId}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_elections_queue_${entrepriseId}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne élections :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_elections_queue_${entrepriseId}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions élections hors ligne...[cite: 19]`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_ELECTION') {
+            const { error } = await supabase.from('tontine_elections').insert([action.payload]);
+            if (error) throw error;
+          } else if (action.type === 'UPDATE_ELECTION') {
+            const { error } = await supabase.from('tontine_elections').update(action.payload.data).eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_ELECTION') {
+            await supabase.from('tontine_votes').delete().eq('id_election', action.payload.id);
+            await supabase.from('tontine_candidatures').delete().eq('id_election', action.payload.id);
+            await supabase.from('tontine_postes_electoraux').delete().eq('id_election', action.payload.id);
+            const { error } = await supabase.from('tontine_elections').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'INSERT_POSTE') {
+            const { error } = await supabase.from('tontine_postes_electoraux').insert([action.payload]);
+            if (error) throw error;
+          } else if (action.type === 'INSERT_CANDIDATURES') {
+            const { error } = await supabase.from('tontine_candidatures').insert(action.payload);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_CANDIDATURE') {
+            const { error } = await supabase.from('tontine_candidatures').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'INSERT_VOTE') {
+            const { error } = await supabase.from('tontine_votes').insert([action.payload]);
+            if (error && error.code !== '23505') throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action élection ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_elections_queue_${entrepriseId}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des élections effectuée avec succès ![cite: 19]');
+        chargerDonneesInitiales();
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation élections :', err);
+    }
+  };
+
   const chargerDonneesInitiales = async () => {
     setChargement(true);
+    const idEnt = entrepriseId || '4TS-290136';
+
+    if (!navigator.onLine) {
+      try {
+        const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
+        const cacheElec = localStorage.getItem(`4ts_cache_elections_list_${idEnt}`);
+        if (cachePart) setParticipants(JSON.parse(cachePart));
+        if (cacheElec) setElections(JSON.parse(cacheElec));
+
+        const emailLocal = typeof window !== 'undefined' ? localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com' : 'stephs7352@gmail.com';
+        setEmailConnecte(emailLocal);
+        const userLocal = typeof window !== 'undefined' ? localStorage.getItem('utilisateurConnecte') || '' : '';
+        const isSuper = emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com';
+        setEstAdmin(isSuper || userLocal.toUpperCase().includes('STEPHANE'));
+      } catch (e) {
+        console.warn('Erreur lecture cache local élections :', e);
+      } finally {
+        setChargement(false);
+      }
+      return;
+    }
+
     try {
       const emailLocal = typeof window !== 'undefined' ? localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com' : 'stephs7352@gmail.com';
       setEmailConnecte(emailLocal);
       const userLocal = typeof window !== 'undefined' ? localStorage.getItem('utilisateurConnecte') || '' : '';
       const isSuper = emailLocal.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-      // 1. Charger les participants
+      // 1. Charger les participants[cite: 19]
       const { data: dataPart } = await supabase
         .from('tontine_participants')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
+        .eq('id_entreprise', idEnt)
         .order('nom_participant', { ascending: true });
       
       const listeParticipants = dataPart || [];
       setParticipants(listeParticipants);
+      localStorage.setItem(`4ts_cache_participants_list_${idEnt}`, JSON.stringify(listeParticipants));
 
-      // Identifier le participant connecté par son nom ou email
+      // Identifier le participant connecté par son nom ou email[cite: 19]
       const participantConnecte = listeParticipants.find(p => 
         p.nom_participant?.toUpperCase() === userLocal.toUpperCase() ||
         p.nom_participant?.toUpperCase().includes(userLocal.toUpperCase())
@@ -91,17 +213,24 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
       setEstAdmin(Boolean(isUserAdmin));
 
-      // 2. Charger les élections
+      // 2. Charger les élections[cite: 19]
       const { data: dataElec, error } = await supabase
         .from('tontine_elections')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
+        .eq('id_entreprise', idEnt)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setElections(dataElec || []);
+      localStorage.setItem(`4ts_cache_elections_list_${idEnt}`, JSON.stringify(dataElec || []));
     } catch (err) {
-      console.error('Erreur chargement élections :', err.message);
+      console.error('Erreur chargement élections, bascule cache :', err.message);
+      try {
+        const cacheElec = localStorage.getItem(`4ts_cache_elections_list_${idEnt}`);
+        if (cacheElec) setElections(JSON.parse(cacheElec));
+      } catch (e) {
+        console.error(e);
+      }
     } finally {
       setChargement(false);
     }
@@ -111,7 +240,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
     chargerDonneesInitiales();
   }, [entrepriseId]);
 
-  // DÉDUPLICATION ET FILTRAGE STRICT : Uniquement les membres dotés d'un identifiant unique valide
+  // DÉDUPLICATION ET FILTRAGE STRICT : Uniquement les membres dotés d'un identifiant unique valide[cite: 19]
   const mapMembresUniques = new Map();
   const participantstries = [...participants].sort((a, b) => {
     const hasA = Boolean(a.identifiant_unique && a.identifiant_unique.trim() !== '');
@@ -132,22 +261,40 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const chargerDetailsElection = async (election) => {
     setElectionActive(election);
     setChargement(true);
+    const idElec = election.id;
+
+    if (!navigator.onLine) {
+      try {
+        const cachePostes = localStorage.getItem(`4ts_cache_postes_${idElec}`);
+        const cacheCands = localStorage.getItem(`4ts_cache_candidats_${idElec}`);
+        if (cachePostes) setPostes(JSON.parse(cachePostes));
+        if (cacheCands) setCandidats(JSON.parse(cacheCands));
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        setChargement(false);
+      }
+      return;
+    }
+
     try {
       const { data: dataPostes } = await supabase
         .from('tontine_postes_electoraux')
         .select('*')
-        .eq('id_election', election.id)
+        .eq('id_election', idElec)
         .order('ordre_priorite', { ascending: true });
       
       setPostes(dataPostes || []);
+      localStorage.setItem(`4ts_cache_postes_${idElec}`, JSON.stringify(dataPostes || []));
 
       const { data: dataCands } = await supabase
         .from('tontine_candidatures')
         .select('*, tontine_participants(*)')
-        .eq('id_election', election.id);
+        .eq('id_election', idElec);
       
       setCandidats(dataCands || []);
-      await chargerResultats(election.id);
+      localStorage.setItem(`4ts_cache_candidats_${idElec}`, JSON.stringify(dataCands || []));
+      await chargerResultats(idElec);
     } catch (err) {
       console.error('Erreur détails élection :', err.message);
     } finally {
@@ -165,17 +312,36 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
     setActionEnCours(true);
     try {
+      const payload = {
+        id_entreprise: entrepriseId,
+        titre_election: nouveauTitre.toUpperCase(),
+        date_scrutin: dateScrutin,
+        statut: 'BROUILLON'
+      };
+
+      if (!navigator.onLine) {
+        const fakeId = 'local_' + Date.now();
+        const electionLocal = { ...payload, id: fakeId, created_at: new Date().toISOString() };
+        ajouterActionHorsLigne('INSERT_ELECTION', electionLocal);
+
+        const majElecs = [electionLocal, ...elections];
+        setElections(majElecs);
+        localStorage.setItem(`4ts_cache_elections_list_${entrepriseId}`, JSON.stringify(majElecs));
+
+        alert('📴 Mode Hors Ligne : Élection enregistrée localement et mise en file d’attente.');
+        setNouveauTitre('');
+        setChargement(false);
+        setActionEnCours(false);
+        setVue('liste');
+        return;
+      }
+
       const { error } = await supabase
         .from('tontine_elections')
-        .insert([{
-          id_entreprise: entrepriseId,
-          titre_election: nouveauTitre.toUpperCase(),
-          date_scrutin: dateScrutin,
-          statut: 'BROUILLON'
-        }]);
+        .insert([payload]);
 
       if (error) throw error;
-      alert('✅ Élection créée avec succès !');
+      alert('✅ Élection créée avec succès ![cite: 19]');
       setNouveauTitre('');
       await chargerDonneesInitiales();
       setVue('liste');
@@ -200,16 +366,28 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
     setActionEnCours(true);
     try {
+      const dataUpdate = {
+        titre_election: nouveauTitreSaisi.toUpperCase(),
+        date_scrutin: nouvelleDateSaisie || el.date_scrutin
+      };
+
+      if (!navigator.onLine) {
+        ajouterActionHorsLigne('UPDATE_ELECTION', { id: el.id, data: dataUpdate });
+        const majElecs = elections.map(e => e.id === el.id ? { ...e, ...dataUpdate } : e);
+        setElections(majElecs);
+        localStorage.setItem(`4ts_cache_elections_list_${entrepriseId}`, JSON.stringify(majElecs));
+        alert('📴 Mode Hors Ligne : Modification enregistrée localement.');
+        setActionEnCours(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('tontine_elections')
-        .update({
-          titre_election: nouveauTitreSaisi.toUpperCase(),
-          date_scrutin: nouvelleDateSaisie || el.date_scrutin
-        })
+        .update(dataUpdate)
         .eq('id', el.id);
 
       if (error) throw error;
-      alert('✅ Élection modifiée avec succès !');
+      alert('✅ Élection modifiée avec succès ![cite: 19]');
       await chargerDonneesInitiales();
     } catch (err) {
       alert('❌ Erreur lors de la modification : ' + err.message);
@@ -230,6 +408,12 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
     setActionEnCours(true);
     try {
+      if (!navigator.onLine) {
+        alert('⚠️ Impossible de supprimer une élection en mode hors ligne.');
+        setActionEnCours(false);
+        return;
+      }
+
       await supabase.from('tontine_votes').delete().eq('id_election', el.id);
       await supabase.from('tontine_candidatures').delete().eq('id_election', el.id);
       await supabase.from('tontine_postes_electoraux').delete().eq('id_election', el.id);
@@ -240,7 +424,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         .eq('id', el.id);
 
       if (error) throw error;
-      alert('✅ Élection supprimée avec succès !');
+      alert('✅ Élection supprimée avec succès ![cite: 19]');
       await chargerDonneesInitiales();
     } catch (err) {
       alert('❌ Erreur lors de la suppression : ' + err.message);
@@ -259,13 +443,31 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
     setActionEnCours(true);
     try {
+      const payload = {
+        id_election: electionActive.id,
+        libelle_poste: nouveauPoste.toUpperCase(),
+        ordre_priorite: postes.length + 1
+      };
+
+      if (!navigator.onLine) {
+        const fakeId = 'local_' + Date.now();
+        const posteLocal = { ...payload, id: fakeId };
+        ajouterActionHorsLigne('INSERT_POSTE', posteLocal);
+
+        const majPostes = [...postes, posteLocal];
+        setPostes(majPostes);
+        localStorage.setItem(`4ts_cache_postes_${electionActive.id}`, JSON.stringify(majPostes));
+
+        alert('📴 Mode Hors Ligne : Poste enregistré localement.');
+        setNouveauPoste('');
+        setModalPosteOuverte(false);
+        setActionEnCours(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('tontine_postes_electoraux')
-        .insert([{
-          id_election: electionActive.id,
-          libelle_poste: nouveauPoste.toUpperCase(),
-          ordre_priorite: postes.length + 1
-        }]);
+        .insert([payload]);
 
       if (error) throw error;
       setNouveauPoste('');
@@ -303,12 +505,28 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         statut_candidat: 'VALIDE'
       }));
 
+      if (!navigator.onLine) {
+        const candsLocaux = inserts.map((ins, idx) => ({ ...ins, id: 'local_' + Date.now() + '_' + idx }));
+        ajouterActionHorsLigne('INSERT_CANDIDATURES', inserts);
+
+        const majCands = [...candidats, ...candsLocaux];
+        setCandidats(majCands);
+        localStorage.setItem(`4ts_cache_candidats_${electionActive.id}`, JSON.stringify(majCands));
+
+        alert('📴 Mode Hors Ligne : Candidatures enregistrées localement.');
+        setParticipantsCoches({});
+        setPosteCandidatureId('');
+        setModalCandidatOuverte(false);
+        setActionEnCours(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('tontine_candidatures')
         .insert(inserts);
 
       if (error) throw error;
-      alert('✅ Candidatures enregistrées avec succès !');
+      alert('✅ Candidatures enregistrées avec succès ![cite: 19]');
       setParticipantsCoches({});
       setPosteCandidatureId('');
       setModalCandidatOuverte(false);
@@ -320,7 +538,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
     }
   };
 
-  // SUPPRIMER / RETIRER UNE CANDIDATURE
   const supprimerCandidature = async (candidatId) => {
     if (electionActive.statut === 'EN_COURS' || electionActive.statut === 'VALIDE') {
       alert("⚠️ Impossible de modifier les candidatures une fois le scrutin ouvert ou validé.");
@@ -330,13 +547,23 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
     setActionEnCours(true);
     try {
+      if (!navigator.onLine) {
+        ajouterActionHorsLigne('DELETE_CANDIDATURE', { id: candidatId });
+        const majCands = candidats.filter(c => c.id !== candidatId);
+        setCandidats(majCands);
+        localStorage.setItem(`4ts_cache_candidats_${electionActive.id}`, JSON.stringify(majCands));
+        alert('📴 Mode Hors Ligne : Candidature retirée localement.');
+        setActionEnCours(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('tontine_candidatures')
         .delete()
         .eq('id', candidatId);
 
       if (error) throw error;
-      alert('✅ Candidature retirée avec succès !');
+      alert('✅ Candidature retirée avec succès ![cite: 19]');
       await chargerDetailsElection(electionActive);
     } catch (err) {
       alert('❌ Erreur : ' + err.message);
@@ -366,21 +593,21 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
     try {
       for (const [posteId, candidatId] of choixPostes) {
         if (!candidatId) continue;
-        const { error } = await supabase
-          .from('tontine_votes')
-          .insert([{
-            id_election: electionActive.id,
-            id_poste: posteId,
-            id_electeur: Number(electeurId),
-            id_candidat_vote: candidatId
-          }]);
+        const payloadVote = {
+          id_election: electionActive.id,
+          id_poste: posteId,
+          id_electeur: Number(electeurId),
+          id_candidat_vote: candidatId
+        };
 
-        if (error) {
-          if (error.code === '23505') {
-            console.warn(`Déjà voté pour le poste ${posteId}`);
-          } else {
-            throw error;
-          }
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('INSERT_VOTE', payloadVote);
+        } else {
+          const { error } = await supabase
+            .from('tontine_votes')
+            .insert([payloadVote]);
+
+          if (error && error.code !== '23505') throw error;
         }
       }
 
@@ -396,6 +623,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   };
 
   const chargerResultats = async (electionId) => {
+    if (!navigator.onLine) return;
     try {
       const { data, error } = await supabase
         .from('tontine_votes')
@@ -440,6 +668,14 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const changerStatutElection = async (nouveauStatut) => {
     setActionEnCours(true);
     try {
+      if (!navigator.onLine) {
+        ajouterActionHorsLigne('UPDATE_ELECTION', { id: electionActive.id, data: { statut: nouveauStatut } });
+        setElectionActive({ ...electionActive, statut: nouveauStatut });
+        alert(`📴 Mode Hors Ligne : Statut mis à jour localement : ${nouveauStatut}`);
+        setActionEnCours(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('tontine_elections')
         .update({ statut: nouveauStatut })
@@ -593,6 +829,23 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   return (
     <div className={`w-full h-full space-y-3 font-sans text-xs relative ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
       
+      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+          >
+            🔄 Synchroniser ({pendingActionsCount})
+          </button>
+        )}
+      </div>
+
       {/* BARRE D'EN-TÊTE DU MODULE */}
       <div className={`flex justify-between items-center px-3 py-2 rounded-xl gap-2 ${isDarkMode ? 'bg-slate-900/40 text-slate-100' : 'bg-white text-slate-900 shadow-xs'}`}>
         <div className="flex items-center gap-2">

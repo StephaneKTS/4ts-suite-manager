@@ -11,6 +11,10 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
   const [cyclesRecords, setCyclesRecords] = useState([]);
   const [chargement, setChargement] = useState(false);
   
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   const [modalEmpruntOuverte, setModalEmpruntOuverte] = useState(false);
   const [modalSelectionMembreOuverte, setModalSelectionMembreOuverte] = useState(false);
   const [modalModeInteretOuverte, setModalModeInteretOuverte] = useState(false);
@@ -39,9 +43,94 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
     motif: ''
   });
 
+  // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
     chargerDonnees();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [entrepriseId]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_emprunts_queue_${entrepriseId}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_emprunts_queue_${entrepriseId}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_emprunts_queue_${entrepriseId}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne emprunts :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_emprunts_queue_${entrepriseId}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions emprunts hors ligne...`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_EMPRUNT') {
+            const { error } = await supabase.from('tontine_emprunts').insert([action.payload.emprunt]);
+            if (error) throw error;
+            if (action.payload.caisseMovements) {
+              await supabase.from('tontine_caisse').insert(action.payload.caisseMovements);
+            }
+          } else if (action.type === 'UPDATE_REMBOURSEMENT') {
+            const { error } = await supabase
+              .from('tontine_emprunts')
+              .update({ statut: 'REMBOURSE', date_remboursement: action.payload.dateRemboursement })
+              .eq('id', action.payload.id);
+            if (error) throw error;
+            if (action.payload.caisseMovements) {
+              await supabase.from('tontine_caisse').insert(action.payload.caisseMovements);
+            }
+          } else if (action.type === 'DELETE_EMPRUNT') {
+            const { error } = await supabase.from('tontine_emprunts').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action emprunt ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_emprunts_queue_${entrepriseId}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des emprunts effectuée avec succès !');
+        chargerDonnees();
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation emprunts :', err);
+    }
+  };
 
   // Calcul automatique et rigoureux de la date d'échéance en dur
   useEffect(() => {
@@ -57,30 +146,65 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
   const chargerDonnees = async () => {
     setChargement(true);
     const idEnt = entrepriseId || '4TS-234321';
+
+    if (!navigator.onLine) {
+      try {
+        const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
+        const cacheEmp = localStorage.getItem(`4ts_cache_emprunts_list_${idEnt}`);
+        const cacheCyc = localStorage.getItem(`4ts_cache_cycles_list_${idEnt}`);
+        const cacheCai = localStorage.getItem(`4ts_cache_caisse_list_${idEnt}`);
+        const cacheCotis = localStorage.getItem(`4ts_cache_cotis_list_${idEnt}`);
+
+        if (cachePart) setParticipants(JSON.parse(cachePart));
+        if (cacheEmp) setEmprunts(JSON.parse(cacheEmp));
+        if (cacheCyc) setCyclesRecords(JSON.parse(cacheCyc));
+        if (cacheCai) setCaisseRecords(JSON.parse(cacheCai));
+        if (cacheCotis) setCotisationsRecords(JSON.parse(cacheCotis));
+      } catch (e) {
+        console.warn('Erreur lecture cache local emprunts :', e);
+      } finally {
+        setChargement(false);
+      }
+      return;
+    }
+
     try {
       const { data: part, error: errPart } = await supabase
         .from('tontine_participants')
         .select('*')
         .eq('id_entreprise', idEnt);
       if (errPart) throw errPart;
+      if (part) {
+        setParticipants(part);
+        localStorage.setItem(`4ts_cache_participants_list_${idEnt}`, JSON.stringify(part));
+      }
 
       const { data: cyc, error: errCyc } = await supabase
         .from('tontine_cycles')
         .select('*')
         .eq('id_entreprise', idEnt);
-      if (errCyc && errCyc.code !== '42P01') console.warn('Table tontine_cycles :', errCyc.message);
+      if (cyc) {
+        setCyclesRecords(cyc);
+        localStorage.setItem(`4ts_cache_cycles_list_${idEnt}`, JSON.stringify(cyc));
+      }
 
       const { data: cai, error: errCai } = await supabase
         .from('tontine_caisse')
         .select('*')
         .eq('id_entreprise', idEnt);
-      if (errCai && errCai.code !== '42P01') console.warn('Table tontine_caisse :', errCai.message);
+      if (cai) {
+        setCaisseRecords(cai);
+        localStorage.setItem(`4ts_cache_caisse_list_${idEnt}`, JSON.stringify(cai));
+      }
 
       const { data: cotis, error: errCotis } = await supabase
         .from('tontine_cotisations')
         .select('*')
         .eq('id_entreprise', idEnt);
-      if (errCotis && errCotis.code !== '42P01') console.warn('Table tontine_cotisations :', errCotis.message);
+      if (cotis) {
+        setCotisationsRecords(cotis);
+        localStorage.setItem(`4ts_cache_cotis_list_${idEnt}`, JSON.stringify(cotis));
+      }
 
       const { data: emp, error: errEmp } = await supabase
         .from('tontine_emprunts')
@@ -88,17 +212,18 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
         .eq('id_entreprise', idEnt)
         .order('created_at', { ascending: false });
       
-      if (errEmp && errEmp.code !== '42P01') {
-        console.warn('Table tontine_emprunts inexistante ou erreur :', errEmp.message);
+      if (emp) {
+        setEmprunts(emp);
+        localStorage.setItem(`4ts_cache_emprunts_list_${idEnt}`, JSON.stringify(emp));
       }
-
-      if (part) setParticipants(part);
-      if (cyc) setCyclesRecords(cyc);
-      if (cai) setCaisseRecords(cai);
-      if (cotis) setCotisationsRecords(cotis);
-      if (emp) setEmprunts(emp);
     } catch (err) {
-      console.error('Erreur chargement emprunts :', err.message);
+      console.error('Erreur chargement emprunts, bascule cache :', err.message);
+      try {
+        const cacheEmp = localStorage.getItem(`4ts_cache_emprunts_list_${idEnt}`);
+        if (cacheEmp) setEmprunts(JSON.parse(cacheEmp));
+      } catch (e) {
+        console.error(e);
+      }
     } finally {
       setChargement(false);
     }
@@ -117,20 +242,16 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
     return acc;
   }, []);
 
-  // Fonction utilitaire robuste pour retrouver un membre par son ID ou par correspondance de nom/téléphone
   const trouverMembreParEmprunt = (emp) => {
-    // 1. Recherche par ID direct
     let m = participants.find(p => p.id?.toString() === emp.id_participant?.toString());
     if (m) return m;
 
-    // 2. Fallback de secours par nom si l'ID a changé suite à une mise à jour des cycles
     if (emp.nom_participant || emp.nom_complet) {
       m = participants.find(p => 
         ((p.nom_participant || p.nom_complet || '').trim().toUpperCase() === (emp.nom_participant || emp.nom_complet || '').trim().toUpperCase())
       );
       if (m) return m;
     }
-
     return null;
   };
 
@@ -169,7 +290,6 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
 
   const soldeDisponibleCaisse = soldeCaisseGenerale - totalEmpruntsEnCours;
 
-  // Calcul dynamique et robuste de tous les intérêts collectés (immédiats ou remboursés)
   const interetsCollectesRecords = [];
   emprunts.forEach(emp => {
     const m = trouverMembreParEmprunt(emp);
@@ -250,26 +370,55 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
         statut: 'EN_COURS'
       };
 
-      const { error: errEmp } = await supabase.from('tontine_emprunts').insert([payload]);
-      if (errEmp) throw errEmp;
-
-      await supabase.from('tontine_caisse').insert([{
-        id_entreprise: idEnt,
-        montant: -principal,
-        libelle: `OCTROI DE PRÊT (Principal) - ${nomMembre}`,
-        date_operation: formEmprunt.date_emprunt,
-        type_mouvement: 'SORTIE'
-      }]);
+      const caisseMovements = [
+        {
+          id_entreprise: idEnt,
+          montant: -principal,
+          libelle: `OCTROI DE PRÊT (Principal) - ${nomMembre}`,
+          date_operation: formEmprunt.date_emprunt,
+          type_mouvement: 'SORTIE'
+        }
+      ];
 
       if (formEmprunt.mode_paiement_interet === 'IMMEDIAT' && montantInteret > 0) {
-        await supabase.from('tontine_caisse').insert([{
+        caisseMovements.push({
           id_entreprise: idEnt,
           montant: montantInteret,
           libelle: `INTÉRÊTS COLLECTÉS (Prêt Immédiat) - ${nomMembre} (${formEmprunt.taux_interet}% sur ${formEmprunt.nombre_mois} mois)`,
           date_operation: formEmprunt.date_emprunt,
           type_mouvement: 'ENTREE_INTERET'
-        }]);
+        });
       }
+
+      if (!navigator.onLine) {
+        const fauxId = 'local_' + Date.now();
+        const empruntLocal = { ...payload, id: fauxId, created_at: new Date().toISOString() };
+        ajouterActionHorsLigne('INSERT_EMPRUNT', { emprunt: empruntLocal, caisseMovements });
+
+        const majEmp = [empruntLocal, ...emprunts];
+        setEmprunts(majEmp);
+        localStorage.setItem(`4ts_cache_emprunts_list_${idEnt}`, JSON.stringify(majEmp));
+
+        alert('📴 Mode Hors Ligne : Prêt enregistré localement et mis en file d’attente.');
+        setModalEmpruntOuverte(false);
+        setFormEmprunt({
+          id_participant: '',
+          montant_principal: '',
+          taux_interet: '5',
+          nombre_mois: '3',
+          mode_paiement_interet: 'REMBOURSE',
+          date_emprunt: todayStr,
+          date_echeance: defaultEcheance,
+          motif: ''
+        });
+        setChargement(false);
+        return;
+      }
+
+      const { error: errEmp } = await supabase.from('tontine_emprunts').insert([payload]);
+      if (errEmp) throw errEmp;
+
+      await supabase.from('tontine_caisse').insert(caisseMovements);
 
       alert('✅ Prêt octroyé avec succès avec sa date d’échéance en dur !');
       setModalEmpruntOuverte(false);
@@ -296,33 +445,45 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
 
     try {
       const dateDuJour = new Date().toISOString().split('T')[0];
+      const m = trouverMembreParEmprunt(emp);
+      const nomMembre = m ? `${m.nom_participant || m.nom_complet || ''} ${m.prenom || ''}` : `Membre #${emp.id_participant}`;
+
+      const caisseMovements = [
+        {
+          id_entreprise: entrepriseId || '4TS-234321',
+          montant: emp.montant_principal,
+          libelle: `REMBOURSEMENT PRÊT (Principal) - ${nomMembre}`,
+          date_operation: dateDuJour,
+          type_mouvement: 'ENTREE'
+        }
+      ];
+
+      if (emp.mode_paiement_interet === 'REMBOURSE' && parseFloat(emp.montant_interet || 0) > 0) {
+        caisseMovements.push({
+          id_entreprise: entrepriseId || '4TS-234321',
+          montant: emp.montant_interet,
+          libelle: `INTÉRÊTS COLLECTÉS (Au remboursement) - ${nomMembre}`,
+          date_operation: dateDuJour,
+          type_mouvement: 'ENTREE_INTERET'
+        });
+      }
+
+      if (!navigator.onLine) {
+        ajouterActionHorsLigne('UPDATE_REMBOURSEMENT', { id: emp.id, dateRemboursement: dateDuJour, caisseMovements });
+        const majEmp = emprunts.map(e => e.id === emp.id ? { ...e, statut: 'REMBOURSE', date_remboursement: dateDuJour } : e);
+        setEmprunts(majEmp);
+        localStorage.setItem(`4ts_cache_emprunts_list_${entrepriseId}`, JSON.stringify(majEmp));
+        alert('📴 Mode Hors Ligne : Remboursement enregistré localement et mis en file d’attente.');
+        return;
+      }
+
       const { error } = await supabase
         .from('tontine_emprunts')
         .update({ statut: 'REMBOURSE', date_remboursement: dateDuJour })
         .eq('id', emp.id);
 
       if (error) throw error;
-
-      const m = trouverMembreParEmprunt(emp);
-      const nomMembre = m ? `${m.nom_participant || m.nom_complet || ''} ${m.prenom || ''}` : `Membre #${emp.id_participant}`;
-
-      await supabase.from('tontine_caisse').insert([{
-        id_entreprise: entrepriseId || '4TS-234321',
-        montant: emp.montant_principal,
-        libelle: `REMBOURSEMENT PRÊT (Principal) - ${nomMembre}`,
-        date_operation: dateDuJour,
-        type_mouvement: 'ENTREE'
-      }]);
-
-      if (emp.mode_paiement_interet === 'REMBOURSE' && parseFloat(emp.montant_interet || 0) > 0) {
-        await supabase.from('tontine_caisse').insert([{
-          id_entreprise: entrepriseId || '4TS-234321',
-          montant: emp.montant_interet,
-          libelle: `INTÉRÊTS COLLECTÉS (Au remboursement) - ${nomMembre}`,
-          date_operation: dateDuJour,
-          type_mouvement: 'ENTREE_INTERET'
-        }]);
-      }
+      await supabase.from('tontine_caisse').insert(caisseMovements);
 
       alert('✅ Prêt marqué comme remboursé, intérêts cumulés et caisse mise à jour !');
       await chargerDonnees();
@@ -340,6 +501,10 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
     if (!confirm(`⚠️ SUPER ADMIN : Êtes-vous sûr de vouloir supprimer définitivement ce prêt ?`)) return;
 
     try {
+      if (!navigator.onLine) {
+        alert('⚠️ Impossible de supprimer un prêt en mode hors ligne.');
+        return;
+      }
       const { error } = await supabase
         .from('tontine_emprunts')
         .delete()
@@ -366,6 +531,23 @@ export default function GestionTontineEmprunts({ entrepriseId = '4TS-234321', is
   return (
     <div className={`w-full max-w-4xl mx-auto p-2.5 rounded-xl border shadow-md space-y-2.5 text-xs font-sans ${containerBg}`}>
       
+      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+          >
+            🔄 Synchroniser ({pendingActionsCount})
+          </button>
+        )}
+      </div>
+
       {/* EN-TÊTE PRINCIPAL ET BOUTONS */}
       <div className={`p-2.5 rounded-xl border space-y-2 ${headerBarBg}`}>
         <div>

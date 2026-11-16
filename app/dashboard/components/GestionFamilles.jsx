@@ -12,6 +12,10 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [modeAffichage, setModeAffichage] = useState('LISTE'); // 'LISTE' ou 'SAISIE'
   const [familleSelectionnee, setFamilleSelectionnee] = useState(null);
   
+  // États pour le mode hors ligne & synchronisation
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
+
   // États initialisés vides pour éviter les faux droits par défaut au démarrage
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
@@ -26,8 +30,21 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const moduleActuel = obtenirModuleActuel();
   const cleCacheFamilles = `cache_familles_${entrepriseId}_${moduleActuel}`;
 
-  // Récupération propre de la session locale au montage
+  // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      verifierEtSynchroniserFileAttente();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    mettreAJourCompteurFileAttente();
+
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
       const emailLocal = localStorage.getItem('emailConnecte') || localStorage.getItem('email_connecte');
@@ -42,12 +59,74 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       }
       if (emailLocal) setEmailConnecte(emailLocal);
     }
-  }, []);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [entrepriseId, moduleActuel]);
+
+  const mettreAJourCompteurFileAttente = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_familles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      setPendingActionsCount(queue.length);
+    } catch (e) {
+      setPendingActionsCount(0);
+    }
+  };
+
+  const ajouterActionHorsLigne = (typeAction, payload) => {
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_familles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      queue.push({ id: Date.now(), type: typeAction, payload, timestamp: new Date().toISOString() });
+      localStorage.setItem(`4ts_familles_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(queue));
+      mettreAJourCompteurFileAttente();
+    } catch (err) {
+      console.error('Erreur mise en cache hors ligne familles :', err);
+    }
+  };
+
+  const verifierEtSynchroniserFileAttente = async () => {
+    if (!navigator.onLine) return;
+    try {
+      const queue = JSON.parse(localStorage.getItem(`4ts_familles_queue_${entrepriseId}_${moduleActuel}`) || '[]');
+      if (queue.length === 0) return;
+
+      console.log(`🔄 Synchronisation de ${queue.length} actions familles hors ligne...`);
+      const resteQueue = [];
+
+      for (const action of queue) {
+        try {
+          if (action.type === 'INSERT_FAMILLE') {
+            const { error } = await supabase.from('familles_articles').insert([action.payload]);
+            if (error) throw error;
+          } else if (action.type === 'UPDATE_FAMILLE') {
+            const { error } = await supabase.from('familles_articles').update(action.payload.data).eq('id', action.payload.id);
+            if (error) throw error;
+          } else if (action.type === 'DELETE_FAMILLE') {
+            const { error } = await supabase.from('familles_articles').delete().eq('id', action.payload.id);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`Échec synchro action famille ${action.id}:`, err);
+          resteQueue.push(action);
+        }
+      }
+
+      localStorage.setItem(`4ts_familles_queue_${entrepriseId}_${moduleActuel}`, JSON.stringify(resteQueue));
+      mettreAJourCompteurFileAttente();
+      if (resteQueue.length === 0) {
+        alert('✅ Synchronisation des familles effectuée avec succès !');
+        chargerFamilles();
+      }
+    } catch (err) {
+      console.error('Erreur globale synchronisation familles :', err);
+    }
+  };
 
   const emailActuel = emailConnecte || '';
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  // Utilisation du hook centralisé unifié pour des permissions exactes et instantanées
   const { verifierPermission, verifierCreation, verifierModification, verifierSuppression } = usePermissions(
     entrepriseId,
     utilisateurConnecte,
@@ -66,7 +145,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   const [nouveauFamille, setNouveauFamille] = useState({ nom_famille: '', suivi_stock: true });
 
   const chargerFamilles = async () => {
-    // ⚡ Affichage instantané depuis le cache local (zéro latence perçue)
     const cacheLocal = localSync.recupererDonneesLocales(cleCacheFamilles);
     if (cacheLocal && cacheLocal.length > 0) {
       setFamilles(cacheLocal);
@@ -76,27 +154,32 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     }
 
     try {
-      let { data, error } = await supabase
-        .from('familles_articles')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .order('created_at', { ascending: false });
-
-      if (error && error.message.includes('column')) {
-        const resSecours = await supabase
+      let listeFinale = [];
+      if (!navigator.onLine) {
+        listeFinale = cacheLocal || [];
+      } else {
+        let { data, error } = await supabase
           .from('familles_articles')
           .select('*')
           .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
           .order('created_at', { ascending: false });
-        
-        if (resSecours.error) throw resSecours.error;
-        data = resSecours.data;
-      } else if (error) {
-        throw error;
+
+        if (error && error.message.includes('column')) {
+          const resSecours = await supabase
+            .from('familles_articles')
+            .select('*')
+            .eq('id_entreprise', entrepriseId)
+            .order('created_at', { ascending: false });
+          
+          if (resSecours.error) throw resSecours.error;
+          data = resSecours.data;
+        } else if (error) {
+          throw error;
+        }
+        listeFinale = data || [];
       }
 
-      const listeFinale = data || [];
       setFamilles(listeFinale);
       localSync.sauvegarderDonneesLocales(cleCacheFamilles, listeFinale);
     } catch (err) {
@@ -109,6 +192,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   useEffect(() => {
     if (entrepriseId) {
       chargerFamilles();
+      localSync.synchroniserVersCloud(supabase);
     }
   }, [entrepriseId, moduleActuel]);
 
@@ -140,6 +224,18 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
       };
 
       if (familleSelectionnee) {
+        if (!navigator.onLine) {
+          ajouterActionHorsLigne('UPDATE_FAMILLE', { id: familleSelectionnee.id, data: payload });
+          const listeMaj = familles.map(f => f.id === familleSelectionnee.id ? { ...f, ...payload } : f);
+          setFamilles(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheFamilles, listeMaj);
+          alert('📴 Mode Hors Ligne : Famille mise à jour localement.');
+          reinitialiser();
+          setModeAffichage('LISTE');
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
         const { error } = await supabase
           .from('familles_articles')
           .update(payload)
@@ -148,6 +244,20 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
         if (error) throw error;
         alert('Famille mise à jour avec succès !');
       } else {
+        if (!navigator.onLine) {
+          const fakeId = 'local_' + Date.now();
+          const familleLocale = { ...payload, id: fakeId, created_at: new Date().toISOString() };
+          ajouterActionHorsLigne('INSERT_FAMILLE', familleLocale);
+          const listeMaj = [familleLocale, ...familles];
+          setFamilles(listeMaj);
+          localSync.sauvegarderDonneesLocales(cleCacheFamilles, listeMaj);
+          alert('📴 Mode Hors Ligne : Famille créée localement.');
+          reinitialiser();
+          setModeAffichage('LISTE');
+          setEnTrainDeSauvegarder(false);
+          return;
+        }
+
         const { error } = await supabase.from('familles_articles').insert([payload]);
 
         if (error) throw error;
@@ -188,6 +298,11 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
     if (enTrainDeSauvegarder || !familleSelectionnee) return;
     if (!permissions.suppression) {
       alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
+      return;
+    }
+
+    if (!navigator.onLine) {
+      alert('⚠️ Impossible de supprimer une famille en mode hors ligne.');
       return;
     }
 
@@ -255,6 +370,23 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
   return (
     <div className="space-y-2.5 font-sans text-xs">
       
+      {/* BANDEAU DE STATUT CONNEXION HORS LIGNE */}
+      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+        <div className="flex items-center gap-1.5">
+          <span>{isOnline ? '🟢' : '🔴'}</span>
+          <span>{isOnline ? 'Mode En Ligne (Cloud Supabase)' : 'Mode Hors Ligne (Sauvegarde locale active)'}</span>
+        </div>
+        {pendingActionsCount > 0 && (
+          <button 
+            type="button" 
+            onClick={verifierEtSynchroniserFileAttente}
+            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer"
+          >
+            🔄 Synchroniser ({pendingActionsCount})
+          </button>
+        )}
+      </div>
+
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
@@ -329,7 +461,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
               />
             </div>
 
-            {/* --- NOUVELLE ZONE : SUIVI DE STOCK PAR DÉFAUT POUR LA FAMILLE --- */}
             <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
               <div>
                 <span className="block font-black text-slate-900 text-[10px] uppercase">Articles suivis en stock par défaut</span>
@@ -457,7 +588,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST' }) {
                 />
               </div>
 
-              {/* --- ZONE DE MODIFICATION DU SUIVI DE STOCK --- */}
               <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
                 <div>
                   <span className="block font-black text-slate-900 text-[10px] uppercase">Articles suivis en stock</span>
