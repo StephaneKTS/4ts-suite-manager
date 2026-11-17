@@ -94,9 +94,6 @@ export default function ConnexionEntreprise() {
         if (entrepriseTrouvee) {
           const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
           
-          console.log("Tentative de connexion Entreprise :", entrepriseTrouvee.email);
-          console.log("Mot de passe saisi :", cleanPin, "| Mot de passe en base :", mdpBase);
-
           if (!mdpBase || mdpBase !== cleanPin) {
             throw new Error("Mot de passe ou code PIN incorrect.");
           }
@@ -105,12 +102,17 @@ export default function ConnexionEntreprise() {
           nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
           moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'TOUT').trim().toUpperCase();
 
-          if (moduleActifEntreprise.includes('BOUTIQUE')) {
-            matrixPermissions = { boutique: true, stock: true, ventes: true, _plein_acces: false };
-          } else if (moduleActifEntreprise.includes('TONTINE')) {
-            matrixPermissions = { tontine: true, _plein_acces: false };
-          } else if (moduleActifEntreprise.includes('LIVRAISON')) {
-            matrixPermissions = { livraison: true, _plein_acces: false };
+          // Vérification s'il existe un profil utilisateur administrateur associé dans la table utilisateurs
+          const { data: userAdminData } = await supabase
+            .from('utilisateurs')
+            .select('*')
+            .eq('id_entreprise', entrepriseIdCible)
+            .eq('nom_role', 'ADMINISTRATEUR')
+            .maybeSingle();
+
+          if (userAdminData) {
+            nomUtilisateurConnecte = userAdminData.nom_complet || nomUtilisateurConnecte;
+            matrixPermissions = { _plein_acces: true };
           } else {
             matrixPermissions = { _plein_acces: true };
           }

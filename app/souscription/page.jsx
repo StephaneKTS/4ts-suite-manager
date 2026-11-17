@@ -233,8 +233,10 @@ export default function SouscriptionWizard() {
     const supabase = getSupabaseClient();
     const cleanEmail = formData.email ? formData.email.trim() : '';
     const cleanPin = formData.pinCode ? formData.pinCode.trim() : 'Keita@shop50';
+    const nomAdmin = formData.nomEntreprise ? formData.nomEntreprise.trim() : 'ADMINISTRATEUR';
 
-    const { error } = await supabase.from('entreprises').insert([
+    // 1. Insertion de l'entreprise
+    const { error: entError } = await supabase.from('entreprises').insert([
       {
         id_entreprise: formData.entrepriseId,
         nom_entreprise: formData.nomEntreprise,
@@ -250,8 +252,65 @@ export default function SouscriptionWizard() {
       },
     ]);
 
-    if (error) {
-      throw new Error(error.message);
+    if (entError) {
+      throw new Error(entError.message);
+    }
+
+    // 2. Création automatique de l'administrateur et liaison avec le rôle pour chaque module
+    for (const mod of espacesList) {
+      const moduleNom = mod.toUpperCase();
+
+      // Recherche ou création de l'ID du rôle ADMINISTRATEUR pour ce module
+      let roleAdminId = null;
+      const { data: roleData } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('id_entreprise', formData.entrepriseId)
+        .eq('module', moduleNom)
+        .eq('nom_role', 'ADMINISTRATEUR')
+        .maybeSingle();
+
+      if (roleData) {
+        roleAdminId = roleData.id;
+      } else {
+        const { data: newRole } = await supabase
+          .from('roles')
+          .insert([{
+            id_entreprise: formData.entrepriseId,
+            module: moduleNom,
+            nom_role: 'ADMINISTRATEUR',
+            description: 'Rôle système administrateur avec tous les droits par défaut.',
+            permissions: { _plein_acces: true }
+          }])
+          .select()
+          .single();
+
+        if (newRole) {
+          roleAdminId = newRole.id;
+        }
+      }
+
+      // Insertion du souscripteur dans la table utilisateurs (Gestion du personnel)
+      const { error: userError } = await supabase.from('utilisateurs').insert([
+        {
+          id_entreprise: formData.entrepriseId,
+          module: moduleNom,
+          nom_complet: nomAdmin,
+          prenom: '',
+          email: cleanEmail,
+          telephone: formData.telephone,
+          mot_de_passe: cleanPin,
+          id_role: roleAdminId,
+          nom_role: 'ADMINISTRATEUR',
+          statut: 'ACTIF',
+          acces_application: true,
+          permissions: { _plein_acces: true }
+        }
+      ]);
+
+      if (userError) {
+        console.warn(`Avertissement création utilisateur pour le module ${mod}:`, userError.message);
+      }
     }
   };
 

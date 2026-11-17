@@ -41,6 +41,10 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [moduleEnAttenteDeBasculement, setModuleEnAttenteDeBasculement] = useState(null);
   const [modalConfirmationBasculementOuverte, setModalConfirmationBasculementOuverte] = useState(false);
 
+  // 🌟 État pour la jolie modale d'avertissement "Module non souscrit" avec CTA
+  const [moduleNonSouscritMessage, setModuleNonSouscritMessage] = useState(null);
+  const [modalModuleNonSouscritOuverte, setModalModuleNonSouscritOuverte] = useState(false);
+
   const fileInputLogoRef = useRef(null);
 
   const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com') : 'stephs7352@gmail.com';
@@ -207,7 +211,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     }
   };
 
-  // 🌟 Interception du clic sur un module pour ouvrir la modale de confirmation
+  // 🌟 Interception du clic sur un module pour ouvrir la modale correspondante
   const initierBasculementModule = (nouveauModule) => {
     const modUpper = nouveauModule.toUpperCase();
 
@@ -217,7 +221,8 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     }
 
     if (!espacesSouscrits.includes(modUpper)) {
-      alert(`⚠️ Vous n'avez pas souscrit au module ${modUpper}. Veuillez l'ajouter depuis le bouton "Ajouter" de votre profil.`);
+      setModuleNonSouscritMessage(modUpper);
+      setModalModuleNonSouscritOuverte(true);
       return;
     }
 
@@ -281,7 +286,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       await chargerInfosUtilisateurEtEntreprise();
       window.location.reload();
     } catch (err) {
-      alert('Erreur lors de l’activation des modules : ' + err.message);
+      alert('Erreur lors l’activation des modules : ' + err.message);
     } finally {
       setActivationEnCours(false);
     }
@@ -709,6 +714,54 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-orange-600 hover:bg-orange-500 text-white transition shadow-md"
               >
                 Oui, basculer
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 JOLIE MODALE D'AVERTISSEMENT "MODULE NON SOUSCRIT" AVEC APPEL À L'ACTION */}
+      {modalModuleNonSouscritOuverte && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`${isDarkMode ? 'bg-[#0f1c3f] border-orange-500/50 text-white' : 'bg-white border-orange-300 text-slate-900'} w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4 text-center`}>
+            
+            <div className="w-12 h-12 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto text-xl font-black">
+              🔒
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="font-black text-sm uppercase tracking-wider text-orange-500">
+                Module non souscrit
+              </h4>
+              <p className={`text-[11px] font-medium leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                Vous n'avez pas souscrit au module <strong className="text-orange-500 uppercase">{moduleNonSouscritMessage}</strong>. Veuillez l'ajouter tout de suite pour en profiter.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalModuleNonSouscritOuverte(false);
+                  setModeAction('nouveau_module'); // Ouvre directement le panneau d'ajout de module
+                }}
+                className="w-full py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-orange-600 hover:bg-orange-500 text-white transition shadow-lg flex items-center justify-center gap-1.5"
+              >
+                <span>➕</span>
+                <span>Ajouter tout de suite ➔</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalModuleNonSouscritOuverte(false)}
+                className={`w-full py-2 px-3 rounded-xl font-black text-xs uppercase transition border ${
+                  isDarkMode 
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+              >
+                Fermer
               </button>
             </div>
 
