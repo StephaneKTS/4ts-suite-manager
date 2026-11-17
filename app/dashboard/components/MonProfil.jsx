@@ -37,6 +37,10 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [activationEnCours, setActivationEnCours] = useState(false);
   const [changementModuleEnCours, setChangementModuleEnCours] = useState(false);
 
+  // 🌟 États pour la modale de confirmation de basculement
+  const [moduleEnAttenteDeBasculement, setModuleEnAttenteDeBasculement] = useState(null);
+  const [modalConfirmationBasculementOuverte, setModalConfirmationBasculementOuverte] = useState(false);
+
   const fileInputLogoRef = useRef(null);
 
   const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com') : 'stephs7352@gmail.com';
@@ -203,7 +207,8 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     }
   };
 
-  const basculerModuleActif = async (nouveauModule) => {
+  // 🌟 Interception du clic sur un module pour ouvrir la modale de confirmation
+  const initierBasculementModule = (nouveauModule) => {
     const modUpper = nouveauModule.toUpperCase();
 
     if (modUpper === 'LOGISTIQUE') {
@@ -216,7 +221,17 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       return;
     }
 
-    if (!entreprise) return;
+    if (modUpper === moduleActif) return;
+
+    setModuleEnAttenteDeBasculement(modUpper);
+    setModalConfirmationBasculementOuverte(true);
+  };
+
+  const confirmerBasculementModule = async () => {
+    if (!moduleEnAttenteDeBasculement || !entreprise) return;
+    const modUpper = moduleEnAttenteDeBasculement;
+    
+    setModalConfirmationBasculementOuverte(false);
     setChangementModuleEnCours(true);
 
     try {
@@ -231,11 +246,9 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
         .update({ module_actif: modUpper })
         .eq(entreprise.id_entreprise ? 'id_entreprise' : 'id', identifiantCible);
 
-      alert(`Affichage basculé vers le module : ${modUpper} 🚀`);
       window.location.reload(); 
     } catch (err) {
       alert('Erreur lors du changement de module : ' + err.message);
-    } finally {
       setChangementModuleEnCours(false);
     }
   };
@@ -321,7 +334,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
           </h3>
         </div>
 
-        {/* ➕ PANNEAU DE RÉABONNEMENT (S'affiche lorsque modeAction === 'reabonnement') */}
+        {/* ➕ PANNEAU DE RÉABONNEMENT */}
         {modeAction === 'reabonnement' && (
           <div className={`${innerCardBg} border border-orange-500/50 p-4 rounded-xl space-y-3 shadow-lg`}>
             <div className="flex justify-between items-center border-b pb-2">
@@ -470,7 +483,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                       key={mod}
                       type="button"
                       disabled={estActif || changementModuleEnCours}
-                      onClick={() => basculerModuleActif(mod)}
+                      onClick={() => initierBasculementModule(mod)}
                       className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${
                         estActif 
                           ? 'bg-orange-600 border-orange-500 text-white font-black' 
@@ -658,6 +671,51 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
 
         </form>
       </div>
+
+      {/* 🌟 MODALE DE CONFIRMATION DE BASCULEMENT DE MODULE */}
+      {modalConfirmationBasculementOuverte && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`${isDarkMode ? 'bg-[#0f1c3f] border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'} w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4 text-center`}>
+            
+            <div className="w-12 h-12 bg-orange-500/20 text-orange-500 rounded-full flex items-center justify-center mx-auto text-xl font-black">
+              ⚡
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-black text-sm uppercase tracking-wider">
+                Confirmation de basculement
+              </h4>
+              <p className={`text-[11px] ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                Voulez-vous réellement basculer vers le module <strong className="text-orange-500 uppercase">{moduleEnAttenteDeBasculement}</strong> 🚀 ?
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalConfirmationBasculementOuverte(false)}
+                className={`py-2 px-3 rounded-xl font-black text-xs uppercase transition border ${
+                  isDarkMode 
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+              >
+                Annuler
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmerBasculementModule}
+                className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-orange-600 hover:bg-orange-500 text-white transition shadow-md"
+              >
+                Oui, basculer
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
