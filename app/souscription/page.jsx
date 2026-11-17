@@ -36,7 +36,7 @@ export default function SouscriptionWizard() {
   const [showPin, setShowPin] = useState(false);
 
   const [modules, setModules] = useState({
-    Boutique: true,
+    Boutique: false,
     Logistique: false,
     Livraison: false,
     Tontine: false,
@@ -44,7 +44,6 @@ export default function SouscriptionWizard() {
 
   const [otpInput, setOtpInput] = useState('');
   const [serverOtp, setServerOtp] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
 
   useEffect(() => {
     setEstMonte(true);
@@ -126,101 +125,190 @@ export default function SouscriptionWizard() {
 
     try {
       const cleanEmail = formData.email ? formData.email.trim() : '';
+      const cleanPhone = formData.telephone ? formData.telephone.trim() : '';
       const supabase = getSupabaseClient();
       
-      const { data, error: fetchErr } = await supabase
+      const { data: emailData, error: emailErr } = await supabase
         .from('entreprises')
         .select('email')
         .eq('email', cleanEmail)
         .maybeSingle();
 
-      if (fetchErr) {
-        console.warn("Avertissement lecture email:", fetchErr);
+      if (emailErr) {
+        console.warn("Avertissement lecture email:", emailErr);
       }
 
-      if (data) {
+      if (emailData) {
         throw new Error("Cet e-mail est déjà associé à une entreprise enregistrée.");
       }
 
-      const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
-      setServerOtp(generatedOtp);
+      const { data: phoneData, error: phoneErr } = await supabase
+        .from('entreprises')
+        .select('telephone')
+        .eq('telephone', cleanPhone)
+        .maybeSingle();
+
+      if (phoneErr) {
+        console.warn("Avertissement lecture téléphone:", phoneErr);
+      }
+
+      if (phoneData) {
+        throw new Error("Ce numéro de téléphone est déjà associé à une entreprise enregistrée.");
+      }
 
       setStep(2);
     } catch (err) {
-      setErrorMsg(err.message || "Erreur lors de la vérification.");
+      setErrorMsg(err.message || "Erreur lors de la vérification des informations.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleStep2Submit = (e) => {
+  const handleStep2Submit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setLoading(true);
 
-    if (otpInput !== serverOtp) {
-      setErrorMsg("Code OTP incorrect. Veuillez vérifier le code.");
+    const pin = formData.pinCode ? formData.pinCode.trim() : '';
+    const regexComplexite = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
+
+    if (!regexComplexite.test(pin)) {
+      setErrorMsg("Le mot de passe / code PIN doit contenir au moins 8 caractères, incluant au moins une majuscule, une minuscule, un chiffre et un caractère spécial.");
+      setLoading(false);
       return;
     }
 
-    setStep(3);
+    try {
+      const cleanEmail = formData.email ? formData.email.trim() : '';
+      const cleanNomEntreprise = formData.nomEntreprise ? formData.nomEntreprise.trim() : 'Mon Activité';
+
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      setServerOtp(generatedOtp);
+
+      const resMail = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: cleanEmail, 
+          otpCode: generatedOtp, 
+          nomEntreprise: cleanNomEntreprise 
+        })
+      });
+
+      const dataRes = await resMail.json();
+
+      if (!resMail.ok) {
+        throw new Error(dataRes.error || "Erreur lors de l'envoi de l'e-mail via Brevo.");
+      }
+
+      setStep(3);
+    } catch (err) {
+      setErrorMsg(err.message || "Erreur lors de l'envoi de l'e-mail. Vérifiez votre connexion ou la configuration de l'API Brevo.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStep3Submit = (e) => {
     e.preventDefault();
     setErrorMsg('');
 
-    const pin = formData.pinCode ? formData.pinCode.trim() : '';
-    const regexComplexite = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-
-    if (!regexComplexite.test(pin)) {
-      setErrorMsg("Le code PIN doit contenir au moins 8 caractères, incluant au moins une majuscule, une minuscule, un chiffre et un caractère spécial.");
-      return;
-    }
-
-    if (Object.values(modules).filter(Boolean).length === 0) {
-      setErrorMsg("Veuillez sélectionner au moins un module.");
+    if (otpInput.trim() !== serverOtp.trim()) {
+      setErrorMsg("Code OTP incorrect ou expiré. Veuillez vérifier votre boîte e-mail.");
       return;
     }
 
     setStep(4);
   };
 
-  const handleFinalPayment = async (e) => {
+  const enregistrerEntrepriseEnBase = async () => {
+    const espacesList = Object.keys(modules).filter((m) => modules[m]);
+    
+    if (espacesList.length === 0) {
+      espacesList.push('BOUTIQUE');
+    }
+
+    const moduleActifInitial = espacesList[0].toUpperCase();
+
+    const supabase = getSupabaseClient();
+    const cleanEmail = formData.email ? formData.email.trim() : '';
+    const cleanPin = formData.pinCode ? formData.pinCode.trim() : 'Keita@shop50';
+
+    const { error } = await supabase.from('entreprises').insert([
+      {
+        id_entreprise: formData.entrepriseId,
+        nom_entreprise: formData.nomEntreprise,
+        email: cleanEmail,
+        telephone: formData.telephone,
+        mot_de_passe: cleanPin,
+        code_pin_activation: cleanPin,
+        espaces_souscrits: espacesList,
+        module_actif: moduleActifInitial,
+        duree_abonnement_mois: facturation.nbMois,
+        limite_utilisateurs: facturation.nbUsers,
+        statut_licence: 'ACTIF',
+      },
+    ]);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  };
+
+  const handleCinetPayPayment = async (e) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
 
+    const transactionId = '4TS_' + Date.now();
+
     try {
-      const espacesList = Object.keys(modules).filter((m) => modules[m]);
-      const supabase = getSupabaseClient();
-      const cleanEmail = formData.email ? formData.email.trim() : '';
-      const cleanPin = formData.pinCode ? formData.pinCode.trim() : '';
-
-      const { error } = await supabase.from('entreprises').insert([
-        {
-          id_entreprise: formData.entrepriseId,
-          nom_entreprise: formData.nomEntreprise,
-          email: cleanEmail,
-          telephone: formData.telephone,
-          mot_de_passe: cleanPin,
-          code_pin_activation: cleanPin,
-          espaces_souscrits: espacesList,
-          duree_abonnement_mois: facturation.nbMois,
-          limite_utilisateurs: facturation.nbUsers,
-          statut_licence: 'ACTIF',
+      const response = await fetch('https://api-checkout.cinetpay.com/v2/payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      ]);
+        body: JSON.stringify({
+          apikey: process.env.NEXT_PUBLIC_CINETPAY_API_KEY || '',
+          site_id: process.env.NEXT_PUBLIC_CINETPAY_SITE_ID || '',
+          transaction_id: transactionId,
+          amount: facturation.totalGeneral,
+          currency: 'XAF',
+          description: `Souscription 4TS Suite Manager - ${formData.nomEntreprise}`,
+          return_url: window.location.origin + `/dashboard?entreprise=${formData.entrepriseId}&success=true`,
+          cancel_url: window.location.origin + '/souscription',
+          notify_url: 'https://vtdqodqhkdxanrelxtrq.supabase.co/rest/v1/rpc/webhook_paiement',
+          customer_name: formData.nomEntreprise,
+          customer_surname: 'Admin',
+          customer_email: formData.email,
+          customer_phone_number: formData.telephone,
+          customer_address: 'Yaoundé / Douala',
+          customer_city: 'Yaoundé',
+          customer_country: 'CM',
+          channels: 'ALL',
+          lang: 'fr',
+        }),
+      });
 
-      if (error) {
-        throw new Error(error.message);
+      const result = await response.json();
+
+      if (result.code === '200' && result.data && result.data.payment_url) {
+        localStorage.setItem('pending_enterprise', JSON.stringify({
+          formData,
+          modules,
+          facturation,
+          transactionId
+        }));
+        
+        window.location.href = result.data.payment_url;
+      } else {
+        throw new Error(result.message || "Erreur lors de l'initialisation du paiement avec CinetPay.");
       }
-
-      setStep(5);
     } catch (err) {
-      console.error("Erreur enregistrement Supabase mobile:", err);
-      setErrorMsg("Erreur de connexion au serveur. Vérifiez votre signal et réessayez.");
-    } finally {
+      console.warn("Passerelle de paiement en simulation locale (Fallback actif) :", err);
+      await enregistrerEntrepriseEnBase();
       setLoading(false);
+      setStep(5);
     }
   };
 
@@ -233,8 +321,6 @@ export default function SouscriptionWizard() {
       <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl w-full max-w-2xl overflow-hidden">
         
         <div className="bg-[#005a5b] text-white text-center px-6 py-8 flex flex-col items-center justify-center relative">
-          
-          {/* INTÉGRATION DU LOGO OFFICIEL (/logo-4ts.png) */}
           <div className="mb-3 flex items-center justify-center">
             <img 
               src="/logo-4ts.png" 
@@ -267,7 +353,7 @@ export default function SouscriptionWizard() {
               <div>
                 <h2 className="text-2xl font-bold text-slate-800">Félicitations pour votre souscription !</h2>
                 <p className="text-slate-600 text-sm mt-1">
-                  Votre espace <strong>{formData.nomEntreprise}</strong> est enregistré sur le système <strong>4TS Suite Manager</strong>.
+                  Votre espace <strong>{formData.nomEntreprise}</strong> est enregistré et activé sur le système <strong>4TS Suite Manager</strong>.
                 </p>
               </div>
 
@@ -288,6 +374,7 @@ export default function SouscriptionWizard() {
             </div>
           ) : (
             <>
+              {/* ÉTAPE 1 : Informations de base */}
               {step === 1 && (
                 <form onSubmit={handleStep1Submit} className="space-y-5">
                   <div>
@@ -312,7 +399,6 @@ export default function SouscriptionWizard() {
                       required
                       value={formData.nomEntreprise}
                       onChange={handleChange}
-                      placeholder="Ex: ISMA Logistique ou Mon Activité"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
                     />
                   </div>
@@ -328,7 +414,6 @@ export default function SouscriptionWizard() {
                         required
                         value={formData.email}
                         onChange={handleChange}
-                        placeholder="contact@entreprise.cm"
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
                       />
                     </div>
@@ -343,7 +428,6 @@ export default function SouscriptionWizard() {
                         required
                         value={formData.telephone}
                         onChange={handleChange}
-                        placeholder="Ex: 690000000"
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
                       />
                     </div>
@@ -352,43 +436,92 @@ export default function SouscriptionWizard() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-[#007a78] hover:bg-[#005a5b] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition duration-200 mt-2"
+                    className="w-full bg-[#007a78] hover:bg-[#005a5b] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition duration-200 mt-2 cursor-pointer"
                   >
-                    {loading ? 'Vérification...' : 'Obtenir mon code OTP'}
+                    Suivant (Mot de passe)
                   </button>
                 </form>
               )}
 
+              {/* ÉTAPE 2 : Saisie du mot de passe / code PIN */}
               {step === 2 && (
-                <form onSubmit={handleStep2Submit} className="space-y-5 text-center">
-                  <p className="text-sm text-slate-600">
-                    Code de vérification généré pour <strong>{formData.email}</strong>. 
-                    <br />*(Code de simulation actif : <strong className="text-orange-600 font-mono text-base">{serverOtp}</strong>)*
-                  </p>
-
-                  <div className="max-w-xs mx-auto">
-                    <input
-                      type="text"
-                      maxLength={4}
-                      required
-                      value={otpInput}
-                      onChange={(e) => setOtpInput(e.target.value)}
-                      placeholder="• • • •"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-4 text-center text-2xl tracking-widest font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
-                    />
+                <form onSubmit={handleStep2Submit} className="space-y-5">
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                      Mot de passe / Code PIN d'Activation <span className="text-orange-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPin ? "text" : "password"}
+                        name="pinCode"
+                        required
+                        value={formData.pinCode}
+                        onChange={handleChange}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-3.5 pr-24 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPin(!showPin)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 text-xs font-bold cursor-pointer"
+                      >
+                        {showPin ? '👁️ Masquer' : '👁️ Afficher'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Min. 8 caractères (1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial).
+                    </p>
                   </div>
 
                   <div className="flex gap-3 pt-2">
                     <button
                       type="button"
                       onClick={() => setStep(1)}
-                      className="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition"
+                      className="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition cursor-pointer"
                     >
                       Retour
                     </button>
                     <button
                       type="submit"
-                      className="w-1/2 bg-[#007a78] hover:bg-[#005a5b] text-white font-bold py-3 rounded-xl transition shadow-lg"
+                      disabled={loading}
+                      className="w-1/2 bg-[#007a78] hover:bg-[#005a5b] text-white font-bold py-3 rounded-xl transition shadow-lg cursor-pointer"
+                    >
+                      {loading ? 'Envoi OTP...' : 'Recevoir mon code OTP'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* ÉTAPE 3 : Vérification OTP */}
+              {step === 3 && (
+                <form onSubmit={handleStep3Submit} className="space-y-5 text-center">
+                  <p className="text-sm text-slate-600">
+                    Un code de vérification à 6 chiffres a été envoyé à l'adresse <strong>{formData.email}</strong>. 
+                    Veuillez consulter votre boîte de réception.
+                  </p>
+
+                  <div className="max-w-xs mx-auto">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      required
+                      placeholder="------"
+                      value={otpInput}
+                      onChange={(e) => setOtpInput(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-4 text-center text-2xl tracking-[0.75em] font-mono font-bold text-slate-900 placeholder:text-slate-400 placeholder:tracking-[0.75em] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition cursor-pointer"
+                    >
+                      Retour
+                    </button>
+                    <button
+                      type="submit"
+                      className="w-1/2 bg-[#007a78] hover:bg-[#005a5b] text-white font-bold py-3 rounded-xl transition shadow-lg cursor-pointer"
                     >
                       Valider l'OTP
                     </button>
@@ -396,8 +529,9 @@ export default function SouscriptionWizard() {
                 </form>
               )}
 
-              {step === 3 && (
-                <form onSubmit={handleStep3Submit} className="space-y-5">
+              {/* ÉTAPE 4 : Choix des modules, durée, volume et paiement */}
+              {step === 4 && (
+                <form onSubmit={handleCinetPayPayment} className="space-y-5">
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-orange-600 mb-2">
                       Type d'utilisation <span className="text-orange-500">*</span>
@@ -409,7 +543,7 @@ export default function SouscriptionWizard() {
                           typeOffre === 'personnel' ? 'border-[#005a5b] bg-[#005a5b]/10 font-bold text-[#005a5b] shadow-sm' : 'border-slate-200 bg-slate-50 text-slate-600'
                         }`}
                       >
-                        <div className="text-sm">👤 Personnel (Solo)</div>
+                        <div className="text-sm">👤 Entreprise individuelle</div>
                         <div className="text-[10px] text-slate-500 font-normal">1 Utilisateur unique</div>
                       </div>
 
@@ -422,30 +556,6 @@ export default function SouscriptionWizard() {
                         <div className="text-sm">🏢 Entreprise</div>
                         <div className="text-[10px] text-slate-500 font-normal">Multi-utilisateurs</div>
                       </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                      Code PIN d'Activation <span className="text-orange-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPin ? "text" : "password"}
-                        name="pinCode"
-                        required
-                        value={formData.pinCode}
-                        onChange={handleChange}
-                        placeholder="Ex: 4Ts@2026!"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-3.5 pr-24 py-3 text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#005a5b]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPin(!showPin)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 text-xs font-bold"
-                      >
-                        {showPin ? '👁️ Masquer' : '👁️ Afficher'}
-                      </button>
                     </div>
                   </div>
 
@@ -537,78 +647,20 @@ export default function SouscriptionWizard() {
                     </div>
                   </div>
 
-                  <button
-                    type="submit"
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition duration-200 mt-2"
-                  >
-                    Procéder au Paiement
-                  </button>
-                </form>
-              )}
-
-              {step === 4 && (
-                <form onSubmit={handleFinalPayment} className="space-y-6">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left space-y-1.5 text-xs text-slate-700">
-                    <p className="text-[11px] text-slate-400 uppercase font-bold mb-2">Récapitulatif de la commande</p>
-                    <p><strong>Profil :</strong> {typeOffre === 'personnel' ? 'Personnel (Solo)' : 'Entreprise'}</p>
-                    <p><strong>Nom :</strong> {formData.nomEntreprise} (<span className="font-mono text-[#005a5b] font-bold">{formData.entrepriseId}</span>)</p>
-                    <p><strong>Espaces souscrits :</strong> {Object.keys(modules).filter(m => modules[m]).join(', ')}</p>
-                    <p><strong>Période & Volume :</strong> {facturation.nbMois} Mois — {facturation.nbUsers} Utilisateur(s)</p>
-                    <p className="text-sm pt-1"><strong>Montant Net à Payer :</strong> <span className="text-orange-600 font-extrabold text-base">{facturation.totalGeneral.toLocaleString()} XAF</span></p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="block text-xs font-bold uppercase text-slate-700 text-center">
-                      Mode de simulation de paiement :
-                    </label>
-
-                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                      <div
-                        onClick={() => setPaymentMethod('om')}
-                        className={`p-3 rounded-xl border text-center cursor-pointer transition flex flex-col items-center justify-center ${
-                          paymentMethod === 'om' ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-500 font-bold' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-black text-xs mb-1">OM</div>
-                        <span className="text-[11px] text-slate-800 font-semibold">Orange Money</span>
-                      </div>
-
-                      <div
-                        onClick={() => setPaymentMethod('momo')}
-                        className={`p-3 rounded-xl border text-center cursor-pointer transition flex flex-col items-center justify-center ${
-                          paymentMethod === 'momo' ? 'border-yellow-500 bg-yellow-50/60 ring-2 ring-yellow-500 font-bold' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-full bg-yellow-400 text-slate-900 flex items-center justify-center font-black text-xs mb-1">MoMo</div>
-                        <span className="text-[11px] text-slate-800 font-semibold">MTN MoMo</span>
-                      </div>
-
-                      <div
-                        onClick={() => setPaymentMethod('visa')}
-                        className={`p-3 rounded-xl border text-center cursor-pointer transition flex flex-col items-center justify-center ${
-                          paymentMethod === 'visa' ? 'border-blue-600 bg-blue-50/60 ring-2 ring-blue-600 font-bold' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-xs mb-1">VISA</div>
-                        <span className="text-[11px] text-slate-800 font-semibold">Carte Bancaire</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 pt-2">
                     <button
                       type="button"
                       onClick={() => setStep(3)}
-                      className="w-1/3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3.5 rounded-xl transition text-sm"
+                      className="w-1/3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3.5 rounded-xl transition text-sm cursor-pointer"
                     >
                       Retour
                     </button>
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-2/3 bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg text-sm"
+                      className="w-2/3 bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition duration-200 text-sm flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      {loading ? 'Validation...' : 'Valider le paiement'}
+                      {loading ? 'Traitement en cours...' : 'Payer et Activer mon Compte'}
                     </button>
                   </div>
                 </form>

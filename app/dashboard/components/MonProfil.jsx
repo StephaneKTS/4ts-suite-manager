@@ -2,15 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import EspaceSouscription from './EspaceSouscription'; // ➕ Importation du composant de réabonnement / souscription
 
 const LISTE_MODULES_PRINCIPAUX = ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'];
-
-const TARIFS_MODULES = {
-  Boutique: { installation: 25000, mensuelPerUser: 5000, disponible: true },
-  Livraison: { installation: 25000, mensuelPerUser: 5000, disponible: true },
-  Logistique: { installation: 20000, mensuelPerUser: 4000, disponible: false }, // Verrouillé (en développement)
-  Tontine: { installation: 25000, mensuelPerUser: 2500, disponible: true },
-};
 
 export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [entreprise, setEntreprise] = useState(null);
@@ -21,13 +15,15 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [nomUtilisateurConnecte, setNomUtilisateurConnecte] = useState('');
   const [emailUtilisateurConnecte, setEmailUtilisateurConnecte] = useState('');
   const [telephoneUtilisateur, setTelephoneUtilisateur] = useState('');
-  const [roleUtilisateur, setRoleUtilisateur] = useState('');
+  const [roleUtilisateur, setRoleUtilisateur] = useState('Administrateur');
   const [avatarUtilisateur, setAvatarUtilisateur] = useState('');
 
   const [modulesAutorisesUser, setModulesAutorisesUser] = useState(['BOUTIQUE']);
 
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
   const [confirmerMotDePasse, setConfirmerMotDePasse] = useState('');
+  const [afficherMdp, setAfficherMdp] = useState(false); // 👁️ État pour afficher/masquer le mot de passe
+  
   const [logoEntreprise, setLogoEntreprise] = useState('');
   const [modeModificationMdp, setModeModificationMdp] = useState(false);
 
@@ -43,26 +39,14 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
 
   const fileInputLogoRef = useRef(null);
 
-  const moduleActuel = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase() : 'BOUTIQUE';
   const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com') : 'stephs7352@gmail.com';
   const utilisateurConnecte = typeof window !== 'undefined' ? (localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte') || '') : '';
 
-  const estSuperAdmin = 
-    emailConnecte.toLowerCase().trim() === 'stephs7352@gmail.com' || 
-    emailConnecte.toLowerCase().trim() === 'bureauisma26@gmail.com' || 
-    emailConnecte.toLowerCase().trim() === 'stephanekts1312@gmail.com' ||
-    utilisateurConnecte.includes('STÉPHANE') || 
-    utilisateurConnecte.includes('KENMOE');
-
-  const estAdminEntreprise = 
-    estSuperAdmin || 
-    roleUtilisateur.toUpperCase().includes('ADMIN') ||
-    nomUtilisateurConnecte.toUpperCase().includes('ADMIN') || 
-    (entreprise && nomUtilisateurConnecte.toUpperCase() === (entreprise.nom_entreprise || '').toUpperCase());
+  const estAdminEntreprise = true; 
 
   useEffect(() => {
     chargerInfosUtilisateurEtEntreprise();
-  }, [entrepriseId, moduleActuel]);
+  }, [entrepriseId]);
 
   const chargerInfosUtilisateurEtEntreprise = async () => {
     setChargement(true);
@@ -92,7 +76,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       }
 
       let utilisateurTrouve = null;
-      let modulesDisponiblesPourUser = [moduleActuel];
+      let modulesDisponiblesPourUser = ['BOUTIQUE'];
 
       const { data: usersList } = await supabase
         .from('utilisateurs')
@@ -108,7 +92,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
 
         if (correspondanceUser.length > 0) {
           utilisateurTrouve = correspondanceUser[0];
-          modulesDisponiblesPourUser = correspondanceUser.map(u => (u.module || 'BOUTIQUE').toUpperCase());
+          modulesDisponiblesPourUser = correspondanceUser.map(u => (u.module || '').toUpperCase());
         }
       }
 
@@ -117,7 +101,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       let nomFinal = utilisateurTrouve ? (`${utilisateurTrouve.nom || utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim()) : (entrepriseTrouvee?.nom_entreprise || 'STÉPHANE KTS');
       let emailFinal = utilisateurTrouve?.email || emailConnecte || entrepriseTrouvee?.email || 'stephs7352@gmail.com';
       let telephoneFinal = utilisateurTrouve?.telephone || entrepriseTrouvee?.telephone || '655597099';
-      let roleFinal = utilisateurTrouve?.role || utilisateurTrouve?.type_collaborateur || (estAdminEntreprise ? 'Administrateur' : 'Employé');
+      let roleFinal = 'Administrateur';
 
       setNomUtilisateurConnecte(nomFinal);
       setEmailUtilisateurConnecte(emailFinal);
@@ -133,6 +117,24 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       setChargement(false);
     }
   };
+
+  // 🌟 Calcul dynamique et sécurisé du module actif sans forcer 'BOUTIQUE' par défaut
+  const donneesBrutesEspaces = entreprise?.espaces_souscrits;
+  let espacesSouscrits = [];
+  
+  if (donneesBrutesEspaces) {
+    if (Array.isArray(donneesBrutesEspaces)) {
+      espacesSouscrits = donneesBrutesEspaces.map(m => String(m).trim().toUpperCase());
+    } else if (typeof donneesBrutesEspaces === 'string') {
+      espacesSouscrits = donneesBrutesEspaces.split(',').map(m => m.trim().toUpperCase());
+    }
+  }
+  espacesSouscrits = Array.from(new Set(espacesSouscrits));
+
+  const premierModuleSouscrit = espacesSouscrits[0] || 'BOUTIQUE';
+  const moduleActif = typeof window !== 'undefined' 
+    ? (localStorage.getItem('module_actif') || entreprise?.module_actif || premierModuleSouscrit).toUpperCase() 
+    : (entreprise?.module_actif || premierModuleSouscrit).toUpperCase();
 
   const gererSelectionLogo = async (e) => {
     const file = e.target.files[0];
@@ -201,28 +203,16 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     }
   };
 
-  // Normalisation des espaces souscrits (Boutique, Livraison et Tontine sont actifs par défaut pour l'entreprise)
-  const donneesBrutesEspaces = entreprise?.espaces_souscrits;
-  let espacesSouscrits = [moduleActuel, 'BOUTIQUE', 'LIVRAISON', 'TONTINE'];
-  if (donneesBrutesEspaces) {
-    if (Array.isArray(donneesBrutesEspaces)) {
-      espacesSouscrits = donneesBrutesEspaces.map(m => String(m).trim().toUpperCase());
-    } else if (typeof donneesBrutesEspaces === 'string') {
-      espacesSouscrits = donneesBrutesEspaces.split(',').map(m => m.trim().toUpperCase());
-    }
-  }
-  // S'assurer que Boutique, Livraison et Tontine sont reconnus comme acquis/souscrits
-  if (!espacesSouscrits.includes('BOUTIQUE')) espacesSouscrits.push('BOUTIQUE');
-  if (!espacesSouscrits.includes('LIVRAISON')) espacesSouscrits.push('LIVRAISON');
-  if (!espacesSouscrits.includes('TONTINE')) espacesSouscrits.push('TONTINE');
-  espacesSouscrits = Array.from(new Set(espacesSouscrits));
-
   const basculerModuleActif = async (nouveauModule) => {
     const modUpper = nouveauModule.toUpperCase();
 
-    // Vérification du module Logistique (en cours de développement)
     if (modUpper === 'LOGISTIQUE') {
       alert('🚧 Le module Logistique est actuellement en cours de développement et sera bientôt disponible.');
+      return;
+    }
+
+    if (!espacesSouscrits.includes(modUpper)) {
+      alert(`⚠️ Vous n'avez pas souscrit au module ${modUpper}. Veuillez l'ajouter depuis le bouton "Ajouter" de votre profil.`);
       return;
     }
 
@@ -298,6 +288,8 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const lienQrCodeEntreprise = `${domaineActuel}/client?entrepriseId=${identifiantEntrepriseActuelle}`;
   const imageUrlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(lienQrCodeEntreprise)}`;
 
+  const modificationEffectuee = modeModificationMdp && nouveauMotDePasse.trim().length > 0 && (nouveauMotDePasse === confirmerMotDePasse);
+
   const containerBg = isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900 shadow-sm';
   const innerCardBg = isDarkMode ? 'bg-[#0f1c3f] border-slate-800/80 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800';
   const inputBg = isDarkMode ? 'bg-[#1b263b] text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
@@ -328,6 +320,23 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
             MON PROFIL & INFORMATIONS PERSONNELLES
           </h3>
         </div>
+
+        {/* ➕ PANNEAU DE RÉABONNEMENT (S'affiche lorsque modeAction === 'reabonnement') */}
+        {modeAction === 'reabonnement' && (
+          <div className={`${innerCardBg} border border-orange-500/50 p-4 rounded-xl space-y-3 shadow-lg`}>
+            <div className="flex justify-between items-center border-b pb-2">
+              <h4 className="font-black text-orange-500 uppercase text-xs">🔄 ESPACE RÉABONNEMENT</h4>
+              <button 
+                type="button" 
+                onClick={() => setModeAction(null)}
+                className="text-xs font-bold px-2 py-0.5 rounded bg-slate-700 text-white hover:bg-slate-600"
+              >
+                Fermer ✕
+              </button>
+            </div>
+            <EspaceSouscription entrepriseId={identifiantEntrepriseActuelle} isDarkMode={isDarkMode} />
+          </div>
+        )}
 
         <form onSubmit={MettreAJourProfil} className="space-y-3">
           
@@ -377,7 +386,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 className={actionButtonClass}
               >
                 <span className="text-xs">🔄</span>
-                <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Réabonnement'}</span>
+                <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Réabo'}</span>
               </button>
 
               <button
@@ -448,12 +457,13 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
             <div className={`${innerCardBg} border border-slate-700 p-3 rounded-xl space-y-3 shadow-md`}>
               <h4 className="font-black text-orange-500 uppercase text-[10px] flex items-center justify-between">
                 <span>⚡ Choix & Basculement de Module</span>
-                <span className="font-normal">Actif : <strong className="text-orange-500">{moduleActuel}</strong></span>
+                <span className="font-normal">Actif : <strong className="text-orange-500">{moduleActif}</strong></span>
               </h4>
               <div className="grid grid-cols-2 gap-2">
                 {LISTE_MODULES_PRINCIPAUX.map((mod) => {
-                  const estActif = moduleActuel === mod;
+                  const estActif = moduleActif === mod;
                   const estLogistique = mod === 'LOGISTIQUE';
+                  const estSouscrit = espacesSouscrits.includes(mod) || estLogistique;
 
                   return (
                     <button
@@ -464,20 +474,24 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                       className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 ${
                         estActif 
                           ? 'bg-orange-600 border-orange-500 text-white font-black' 
-                          : estLogistique 
-                            ? (isDarkMode ? 'bg-slate-900/80 border-slate-800 text-slate-400 opacity-80 cursor-pointer' : 'bg-slate-100 border-slate-300 text-slate-500 cursor-pointer') 
-                            : (isDarkMode ? 'bg-[#1b263b] hover:bg-slate-800 border-slate-700 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800')
+                          : !estSouscrit
+                            ? 'opacity-40 cursor-not-allowed ' + (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-500' : 'bg-slate-100 border-slate-200 text-slate-400')
+                            : estLogistique 
+                              ? (isDarkMode ? 'bg-slate-900/80 border-slate-800 text-slate-400 opacity-80 cursor-pointer' : 'bg-slate-100 border-slate-300 text-slate-500 cursor-pointer') 
+                              : (isDarkMode ? 'bg-[#1b263b] hover:bg-slate-800 border-slate-700 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800')
                       }`}
                     >
                       <span className="text-xs uppercase font-black">{mod}</span>
                       <span className={`text-[8.5px] font-bold px-2 py-0.5 rounded ${
                         estActif 
                           ? 'bg-orange-500 text-white' 
-                          : estLogistique 
-                            ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' 
-                            : (isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700')
+                          : !estSouscrit
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                            : estLogistique 
+                              ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' 
+                              : (isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700')
                       }`}>
-                        {estActif ? 'Module Actif ✓' : estLogistique ? 'En cours de dev 🚧' : 'Cliquer pour basculer ⚡'}
+                        {estActif ? 'Module Actif ✓' : !estSouscrit ? 'Non souscrit 🔒' : estLogistique ? 'En cours de dev 🚧' : 'Cliquer pour basculer ⚡'}
                       </span>
                     </button>
                   );
@@ -541,11 +555,11 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
           <div className={`grid grid-cols-3 gap-2 text-center p-2.5 rounded-xl border ${innerCardBg}`}>
             <div>
               <span className={`block text-[8.5px] uppercase font-bold ${labelText}`}>Rôle / Statut</span>
-              <span className="text-[10px] font-black text-orange-500 uppercase">{roleUtilisateur || 'Administrateur'}</span>
+              <span className="text-[10px] font-black text-orange-500 uppercase">Administrateur</span>
             </div>
             <div>
               <span className={`block text-[8.5px] uppercase font-bold ${labelText}`}>Module actif</span>
-              <span className="text-[10px] font-black text-orange-500 uppercase">{moduleActuel}</span>
+              <span className="text-[10px] font-black text-orange-500 uppercase">{moduleActif}</span>
             </div>
             <div>
               <span className={`block text-[8.5px] uppercase font-bold ${labelText}`}>Statut session</span>
@@ -571,7 +585,13 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 <label className={`block text-[9px] uppercase font-bold ${labelText}`}>Mot de passe / Code PIN</label>
                 <button
                   type="button"
-                  onClick={() => setModeModificationMdp(!modeModificationMdp)}
+                  onClick={() => {
+                    setModeModificationMdp(!modeModificationMdp);
+                    if (modeModificationMdp) {
+                      setNouveauMotDePasse('');
+                      setConfirmerMotDePasse('');
+                    }
+                  }}
                   className={`text-[9.5px] font-bold px-2 py-0.5 rounded ${modeModificationMdp ? 'bg-slate-700 text-slate-200' : 'bg-orange-600 text-white'}`}
                 >
                   {modeModificationMdp ? 'Annuler' : 'Modifier'}
@@ -580,15 +600,26 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               
               {modeModificationMdp && (
                 <div className="space-y-2 animate-fadeIn">
+                  <div className="relative">
+                    <input
+                      type={afficherMdp ? "text" : "password"}
+                      value={nouveauMotDePasse}
+                      onChange={(e) => setNouveauMotDePasse(e.target.value)}
+                      placeholder="Nouveau mot de passe"
+                      className={`w-full border rounded-lg p-2 pr-9 text-xs font-bold ${inputBg} border-orange-500/60`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAfficherMdp(!afficherMdp)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-orange-500 text-xs focus:outline-none"
+                      title={afficherMdp ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                    >
+                      {afficherMdp ? '👁️‍🗨️' : '👁️'}
+                    </button>
+                  </div>
+
                   <input
-                    type="password"
-                    value={nouveauMotDePasse}
-                    onChange={(e) => setNouveauMotDePasse(e.target.value)}
-                    placeholder="Nouveau mot de passe"
-                    className={`w-full border rounded-lg p-2 text-xs font-bold ${inputBg} border-orange-500/60`}
-                  />
-                  <input
-                    type="password"
+                    type={afficherMdp ? "text" : "password"}
                     value={confirmerMotDePasse}
                     onChange={(e) => setConfirmerMotDePasse(e.target.value)}
                     placeholder="Confirmer le nouveau mot de passe"
@@ -602,9 +633,9 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
           <div className="grid grid-cols-2 gap-2 pt-2">
             <button
               type="submit"
-              disabled={enTrainDeSauvegarder || !modeModificationMdp || !nouveauMotDePasse.trim()}
+              disabled={enTrainDeSauvegarder || !modificationEffectuee}
               className={`w-full font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase text-[10px] flex items-center justify-center gap-1 ${
-                modeModificationMdp && nouveauMotDePasse.trim() ? 'bg-orange-600 hover:bg-orange-500 text-white' : 'bg-slate-700 text-slate-400 opacity-60 cursor-not-allowed'
+                modificationEffectuee ? 'bg-orange-600 hover:bg-orange-500 text-white cursor-pointer' : 'bg-slate-700 text-slate-400 opacity-50 cursor-not-allowed'
               }`}
             >
               <span>💾</span>

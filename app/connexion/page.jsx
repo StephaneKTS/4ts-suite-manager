@@ -66,111 +66,111 @@ export default function ConnexionEntreprise() {
     try {
       let entrepriseIdCible = null;
       let nomUtilisateurConnecte = '';
-      let matrixPermissions = { _aucun_acces: true };
+      let matrixPermissions = { _plein_acces: true };
       let moduleActifEntreprise = 'TOUT';
       let authenticated = false;
 
-      // 1. Vérification dans la table des utilisateurs personnels
-      const { data: userList, error: errUser } = await supabase
-        .from('utilisateurs')
+      // 1. RECHERCHE PRIORITAIRE DANS LA TABLE DES ENTREPRISES (Admin / Propriétaire)
+      const { data: entList, error: errEnt } = await supabase
+        .from('entreprises')
         .select('*');
 
-      if (!errUser && userList) {
-        const utilisateurTrouve = userList.find(u => {
-          const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
-          const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
-
-          let telBase = u.telephone ? String(u.telephone).replace(/[^0-9]/g, '') : '';
-          if (telBase.startsWith('237')) telBase = telBase.substring(3);
+      if (!errEnt && entList) {
+        const entrepriseTrouvee = entList.find(ent => {
+          const matchId = ent.id_entreprise && ent.id_entreprise.trim().toUpperCase() === cleanIdentifiant.toUpperCase();
+          const matchEmail = ent.email && ent.email.trim().toLowerCase() === cleanIdentifiant.toLowerCase();
+          
+          let telEnt = ent.telephone ? String(ent.telephone).replace(/[^0-9]/g, '') : '';
+          if (telEnt.startsWith('237')) telEnt = telEnt.substring(3);
 
           let telSaisi = cleanIdentifiant.replace(/[^0-9]/g, '');
           if (telSaisi.startsWith('237')) telSaisi = telSaisi.substring(3);
 
-          const matchTel = telBase && telSaisi && telBase === telSaisi;
+          const matchTel = telEnt && telSaisi && telEnt === telSaisi;
 
-          return matchEmail || matchTel || matchNom;
+          return matchId || matchEmail || matchTel;
         });
 
-        if (utilisateurTrouve) {
-          if (utilisateurTrouve.acces_application === false) {
-            throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion.");
-          }
-
-          const mdpUser = String(utilisateurTrouve.mot_de_passe || '').trim();
+        if (entrepriseTrouvee) {
+          const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
           
-          if (!mdpUser || mdpUser !== cleanPin) {
+          console.log("Tentative de connexion Entreprise :", entrepriseTrouvee.email);
+          console.log("Mot de passe saisi :", cleanPin, "| Mot de passe en base :", mdpBase);
+
+          if (!mdpBase || mdpBase !== cleanPin) {
             throw new Error("Mot de passe ou code PIN incorrect.");
           }
 
-          entrepriseIdCible = utilisateurTrouve.id_entreprise;
-          nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
+          entrepriseIdCible = entrepriseTrouvee.id_entreprise;
+          nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
+          moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'TOUT').trim().toUpperCase();
 
-          if (utilisateurTrouve.id_role) {
-            const { data: roleData, error: errRole } = await supabase
-              .from('roles')
-              .select('permissions, nom_role')
-              .eq('id', utilisateurTrouve.id_role)
-              .maybeSingle();
-
-            if (!errRole && roleData) {
-              if ((roleData.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR') {
-                matrixPermissions = { _plein_acces: true };
-              } else if (roleData.permissions) {
-                matrixPermissions = roleData.permissions;
-              }
-            }
-          } else if (utilisateurTrouve.permissions) {
-            matrixPermissions = utilisateurTrouve.permissions;
+          if (moduleActifEntreprise.includes('BOUTIQUE')) {
+            matrixPermissions = { boutique: true, stock: true, ventes: true, _plein_acces: false };
+          } else if (moduleActifEntreprise.includes('TONTINE')) {
+            matrixPermissions = { tontine: true, _plein_acces: false };
+          } else if (moduleActifEntreprise.includes('LIVRAISON')) {
+            matrixPermissions = { livraison: true, _plein_acces: false };
+          } else {
+            matrixPermissions = { _plein_acces: true };
           }
 
           authenticated = true;
         }
       }
 
-      // 2. Vérification dans la table des entreprises (Admin Entreprise)
+      // 2. SI NON TROUVÉ, VÉRIFICATION DANS LA TABLE DES UTILISATEURS SECONDAIRES
       if (!authenticated) {
-        const { data: entList, error: errEnt } = await supabase
-          .from('entreprises')
+        const { data: userList, error: errUser } = await supabase
+          .from('utilisateurs')
           .select('*');
 
-        if (!errEnt && entList) {
-          const entrepriseTrouvee = entList.find(ent => {
-            const matchId = ent.id_entreprise && ent.id_entreprise.toUpperCase() === cleanIdentifiant.toUpperCase();
-            const matchEmail = ent.email && ent.email.toLowerCase() === cleanIdentifiant.toLowerCase();
-            
-            let telEnt = ent.telephone ? String(ent.telephone).replace(/[^0-9]/g, '') : '';
-            if (telEnt.startsWith('237')) telEnt = telEnt.substring(3);
+        if (!errUser && userList) {
+          const utilisateurTrouve = userList.find(u => {
+            const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
+            const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
+
+            let telBase = u.telephone ? String(u.telephone).replace(/[^0-9]/g, '') : '';
+            if (telBase.startsWith('237')) telBase = telBase.substring(3);
 
             let telSaisi = cleanIdentifiant.replace(/[^0-9]/g, '');
             if (telSaisi.startsWith('237')) telSaisi = telSaisi.substring(3);
 
-            const matchTel = telEnt && telSaisi && telEnt === telSaisi;
+            const matchTel = telBase && telSaisi && telBase === telSaisi;
 
-            return matchId || matchEmail || matchTel;
+            return matchEmail || matchTel || matchNom;
           });
 
-          if (entrepriseTrouvee) {
-            const mdpBase = String(entrepriseTrouvee.mot_de_passe || entrepriseTrouvee.code_pin_activation || '').trim();
+          if (utilisateurTrouve) {
+            if (utilisateurTrouve.acces_application === false) {
+              throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion.");
+            }
+
+            const mdpUser = String(utilisateurTrouve.mot_de_passe || '').trim();
             
-            if (!mdpBase || mdpBase !== cleanPin) {
+            if (!mdpUser || mdpUser !== cleanPin) {
               throw new Error("Mot de passe ou code PIN incorrect.");
             }
 
-            entrepriseIdCible = entrepriseTrouvee.id_entreprise;
-            nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-            
-            // 🌟 RÉCUPÉRATION DU MODULE ACTIF DE LA BASE DE DONNÉES
-            moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'TOUT').trim().toUpperCase();
+            entrepriseIdCible = utilisateurTrouve.id_entreprise;
+            nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
 
-            // Restriction des permissions selon le module souscrit en base
-            if (moduleActifEntreprise.includes('BOUTIQUE')) {
-              matrixPermissions = { boutique: true, stock: true, ventes: true, _plein_acces: false };
-            } else if (moduleActifEntreprise.includes('TONTINE')) {
-              matrixPermissions = { tontine: true, _plein_acces: false };
-            } else if (moduleActifEntreprise.includes('LIVRAISON')) {
-              matrixPermissions = { livraison: true, _plein_acces: false };
-            } else {
-              matrixPermissions = { _plein_acces: true };
+            if (utilisateurTrouve.id_role) {
+              const { data: roleData, error: errRole } = await supabase
+                .from('roles')
+                .select('permissions, nom_role')
+                .eq('id', utilisateurTrouve.id_role)
+                .maybeSingle();
+
+              if (!errRole && roleData) {
+                if ((roleData.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR') {
+                  matrixPermissions = { _plein_acces: true };
+                } else if (roleData.permissions) {
+                  matrixPermissions = roleData.permissions;
+                }
+              }
+            } else if (utilisateurTrouve.permissions) {
+              matrixPermissions = utilisateurTrouve.permissions;
             }
 
             authenticated = true;
@@ -182,7 +182,6 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant ou mot de passe incorrect. Accès non autorisé.");
       }
 
-      // Enregistrement de la session et du module actif restreint
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
@@ -255,7 +254,6 @@ export default function ConnexionEntreprise() {
               spellCheck="false"
               value={identifiant}
               onChange={(e) => setIdentifiant(e.target.value)}
-              placeholder="ex: 673289431 ou email@domaine.com"
               className="w-full bg-[#0d1b2a] border border-blue-900 rounded-xl px-3.5 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>
@@ -273,7 +271,6 @@ export default function ConnexionEntreprise() {
                 autoCorrect="off"
                 value={pinCode}
                 onChange={(e) => setPinCode(e.target.value)}
-                placeholder="••••••••"
                 className="w-full bg-[#0d1b2a] border border-blue-900 rounded-xl pl-3.5 pr-24 py-3 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
               <button

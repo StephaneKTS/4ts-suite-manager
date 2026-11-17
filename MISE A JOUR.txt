@@ -1,9 +1,12 @@
+cd 4ts-suite-web ; git add . ; git commit -m "Mise à jour rapide" ; git push origin main
 
-cd 4ts-suite-web
-git add .
-git commit -m "Mise à jour"
-git branch -M main
-git push origin main
+git add . ; git commit -m "Sauvegarde avant mise à jour de sécurité Next.js"
 
-git add . ; git commit -m "Mise à jour rapide" ; git push origin main
 
+http://tplinkrepeater.net
+
+
+Dave@business2
+
+DELETE FROM tontine_cotisations WHERE id_entreprise = '4TS-290136';
+DELETE FROM tontine_attributions WHERE id_entreprise = '4TS-290136';

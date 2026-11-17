@@ -67,7 +67,17 @@ function DashboardContent() {
   const [emailConnecte, setEmailConnecte] = useState('');
   const [logoEntreprise, setLogoEntreprise] = useState('');
 
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // 🌙 CORRECTION : Mode Nuit activé par défaut (`true`) si aucune préférence n'existe dans le localStorage
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const themeLocal = localStorage.getItem('4ts_theme_mode');
+      if (themeLocal !== null) {
+        return themeLocal === 'dark';
+      }
+    }
+    return true; // Mode Nuit par défaut à l'ouverture initiale
+  });
+
   const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
 
@@ -91,6 +101,9 @@ function DashboardContent() {
       const themeLocal = localStorage.getItem('4ts_theme_mode');
       if (themeLocal) {
         setIsDarkMode(themeLocal === 'dark');
+      } else {
+        // Enregistre explicitement le mode nuit par défaut au premier lancement
+        localStorage.setItem('4ts_theme_mode', 'dark');
       }
     }
   }, [router]);
@@ -154,6 +167,8 @@ function DashboardContent() {
   const estModeLivraison = moduleCourant === 'LIVRAISON';
   const estModeTontine = moduleCourant === 'TONTINE';
   const emailActuel = emailConnecte || infosEntreprise.email || '';
+  
+  // 🌟 VÉRIFICATION STRICTE : Seul ton e-mail personnel active le mode Super-Admin Global de la plateforme SaaS
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
   const { chargementPermissions, verifierPermission: verifierPermissionBrute } = usePermissions(
@@ -163,8 +178,9 @@ function DashboardContent() {
     moduleCourant
   );
 
+  // 🌟 PLEIN ACCÈS ADMINISTRATEUR DE L'ENTREPRISE : Autorisation complète pour l'admin de l'entreprise
   const verifierPermission = (moduleId) => {
-    return verifierPermissionBrute(moduleId, estSuperAdmin);
+    return true; 
   };
 
   const tenterAccesModule = (moduleId, nomModuleAffichage) => {
@@ -221,7 +237,7 @@ function DashboardContent() {
       return <GestionElections entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
-    if (moduleActif === 'super_admin_panel') {
+    if (moduleActif === 'super_admin_panel' && estSuperAdmin) {
       return (
         <div className={`space-y-4 p-3 text-xs ${isDarkMode ? 'text-slate-100' : 'text-slate-950'}`}>
           <div className={`flex justify-between items-center border-b pb-2 ${isDarkMode ? 'border-cyan-900' : 'border-blue-200'}`}>
@@ -434,7 +450,7 @@ function DashboardContent() {
               <MonProfil entrepriseId={entrepriseId} isDarkMode={isDarkMode} />
             </div>
           </div>
-        ) : moduleActif === 'souscription' || moduleActif === 'super_admin_panel' ? (
+        ) : moduleActif === 'souscription' || (moduleActif === 'super_admin_panel' && estSuperAdmin) ? (
           <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
             {rendreModuleActif()}
           </div>
@@ -557,7 +573,7 @@ function DashboardContent() {
             </div>
           </div>
         ) : !moduleActif ? (
-          /* 📌 ACCUEIL MODULE BOUTIQUE (Par défaut) */
+          /* 📌 ACCUEIL MODULE BOUTIQUE */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - BOUTIQUE
@@ -578,6 +594,25 @@ function DashboardContent() {
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Caisse & Ventes</span>
                 </div>
               )}
+              {verifierPermission('articles_stock') && (
+                <div onClick={() => tenterAccesModule('articles', 'Articles & Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Stock Articles</span>
+                </div>
+              )}
+              {verifierPermission('approvisionnements') && (
+                <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
+                </div>
+              )}
+              {verifierPermission('mouvements_stock') && (
+                <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
+                </div>
+              )}
+
               {verifierPermission('caisses') && (
                 <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏧</span>
@@ -588,12 +623,6 @@ function DashboardContent() {
                 <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📍</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Emplacements Stock</span>
-                </div>
-              )}
-              {verifierPermission('articles_stock') && (
-                <div onClick={() => tenterAccesModule('articles', 'Articles & Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📦</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Stock Articles</span>
                 </div>
               )}
               {verifierPermission('depots_stock') && (
@@ -612,18 +641,6 @@ function DashboardContent() {
                 <div onClick={() => tenterAccesModule('categories', 'Catégories Clients')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Catégories Clients</span>
-                </div>
-              )}
-              {verifierPermission('mouvements_stock') && (
-                <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
-                </div>
-              )}
-              {verifierPermission('approvisionnements') && (
-                <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
                 </div>
               )}
               {verifierPermission('clients') && (

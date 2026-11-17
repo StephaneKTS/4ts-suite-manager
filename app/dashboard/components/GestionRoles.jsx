@@ -154,7 +154,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   };
 
   const chargerRolesEtPermissions = async () => {
-    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
+    // ⚡ Chargement instantané depuis le cache local
     const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
     if (rolesLocaux && rolesLocaux.length > 0) {
       setRoles(rolesLocaux);
@@ -181,7 +181,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       if (error) throw error;
       let listRoles = data || [];
 
-      // 1. Vérification et auto-création du rôle système ADMINISTRATEUR[cite: 20]
+      // Vérification et auto-création unique du rôle système ADMINISTRATEUR
       const adminExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR');
 
       if (!adminExiste) {
@@ -204,37 +204,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
             listRoles = [newAdmin, ...listRoles];
           }
         }
-      }
-
-      // 2. Rôles LIVREUR et SUPERVISEUR (Uniquement hors Tontine)[cite: 20]
-      if (!estTontine) {
-        const livreurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'LIVREUR');
-        if (!livreurExiste && navigator.onLine) {
-          const payloadLivreur = {
-            id_entreprise: entrepriseId,
-            module: moduleActuel,
-            nom_role: 'LIVREUR',
-            description: 'Rôle système figé pour les livreurs et chauffeurs.',
-            permissions: initialiserPermissionsDefaut()
-          };
-          const { data: newLivreur, error: errLivreur } = await supabase.from('roles').insert([payloadLivreur]).select().single();
-          if (!errLivreur && newLivreur) listRoles = [newLivreur, ...listRoles];
-        }
-
-        const superviseurExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'SUPERVISEUR');
-        if (!superviseurExiste && navigator.onLine) {
-          const payloadSuperviseur = {
-            id_entreprise: entrepriseId,
-            module: moduleActuel,
-            nom_role: 'SUPERVISEUR',
-            description: 'Rôle système figé pour la supervision et le contrôle.',
-            permissions: initialiserPermissionsDefaut()
-          };
-          const { data: newSuperviseur, error: errSuperviseur } = await supabase.from('roles').insert([payloadSuperviseur]).select().single();
-          if (!errSuperviseur && newSuperviseur) listRoles = [newSuperviseur, ...listRoles];
-        }
-      } else {
-        listRoles = listRoles.filter(r => !['LIVREUR', 'SUPERVISEUR'].includes((r.nom_role || '').trim().toUpperCase()));
       }
 
       setRoles(listRoles);
@@ -294,7 +263,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         permissions: nouveauRole.permissions,
       };
 
-      const rolesSystemeInterditsModification = estTontine ? ['ADMINISTRATEUR'] : ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'];
+      const rolesSystemeInterditsModification = ['ADMINISTRATEUR'];
 
       if (roleEnEdition) {
         const nomRoleAncien = (roleEnEdition.nom_role || '').trim().toUpperCase();
@@ -390,7 +359,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     if (enTrainDeSauvegarder || !roleEnEdition) return;
 
     const nomRoleCible = (roleEnEdition.nom_role || '').trim().toUpperCase();
-    const rolesSystemeInterditsSuppression = estTontine ? ['ADMINISTRATEUR'] : ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'];
+    const rolesSystemeInterditsSuppression = ['ADMINISTRATEUR'];
 
     if (rolesSystemeInterditsSuppression.includes(nomRoleCible)) {
       alert(`❌ SUPPRESSION INTERDITE : Le rôle système ${nomRoleCible} ne peut pas être supprimé.`);
@@ -479,7 +448,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const rolesAffiches = rolesFiltres.slice(0, limiteRoles);
 
-  const rolesSystemeInterditsModification = estTontine ? ['ADMINISTRATEUR'] : ['ADMINISTRATEUR', 'LIVREUR', 'SUPERVISEUR'];
+  const rolesSystemeInterditsModification = ['ADMINISTRATEUR'];
 
   return (
     <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden">
@@ -504,7 +473,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2 overflow-hidden">
           <h3 className="font-extrabold text-slate-900 uppercase text-xs truncate flex items-center gap-1.5">
-            <span>🛡️</span> RÔLES [{moduleActuel}] ({rolesAffiches.length} / {rolesFiltres.length})[cite: 20]
+            <span>🛡️</span> RÔLES ({rolesAffiches.length} / {rolesFiltres.length})
           </h3>
           {roleNomConnecte && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200 shrink-0 hidden sm:inline">
@@ -542,7 +511,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          📋 Liste ({roles.length})[cite: 20]
+          Liste ({roles.length})
         </button>
       </div>
 
@@ -571,7 +540,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                 disabled={enTrainDeSauvegarder || (roleEnEdition && rolesSystemeInterditsModification.includes((roleEnEdition.nom_role || '').trim().toUpperCase()))}
                 value={nouveauRole.nom_role}
                 onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
-                placeholder="EX: PRESIDENT..."
+                placeholder="EX: RESPONSABLE..."
                 className="w-full border border-slate-300 rounded p-1.5 font-extrabold uppercase text-xs shadow-xs bg-white text-slate-900 disabled:bg-slate-100"
               />
             </div>
@@ -668,14 +637,14 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           </div>
 
           <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
-            <span>Répertoire : <strong>{rolesAffiches.length} / {rolesFiltres.length}</strong> rôle(s)[cite: 20]</span>
+            <span>Répertoire : <strong>{rolesAffiches.length} / {rolesFiltres.length}</strong> rôle(s)</span>
           </div>
 
           {chargement ? (
             <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
           ) : rolesAffiches.length === 0 ? (
             <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-              Aucun rôle personnalisé enregistré. Cliquez sur "＋ Nouveau Rôle"[cite: 20].
+              Aucun rôle personnalisé enregistré. Cliquez sur "＋ Nouveau Rôle".
             </div>
           ) : (
             <div className="space-y-2">
@@ -684,10 +653,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
                   <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                     <tr>
                       <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_role')} className="p-2.5 cursor-pointer hover:bg-slate-200 transition w-1/3">
-                        Intitulé {rendreFlecheTri('nom_role')}[cite: 20]
+                        Intitulé {rendreFlecheTri('nom_role')}
                       </th>
-                      <th className="p-2.5 w-1/2">Description[cite: 20]</th>
-                      <th className="p-2.5 text-center w-1/6">Modules[cite: 20]</th>
+                      <th className="p-2.5 w-1/2">Description</th>
+                      <th className="p-2.5 text-center w-1/6">Modules</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">

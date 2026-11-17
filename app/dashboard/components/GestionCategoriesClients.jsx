@@ -304,7 +304,7 @@ export default function GestionCategoriesClients({ entrepriseId = '4TS-234321' }
       
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2">
-          <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS [{moduleActuel}] ({categoriesAffichees.length} / {categoriesFiltrees.length})</h3>
+          <h3 className="font-extrabold text-slate-800 uppercase text-xs">🏷️ CATÉGORIES CLIENTS ({categoriesAffichees.length} / {categoriesFiltrees.length})</h3>
           {roleNom && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
               Rôle : {roleNom}

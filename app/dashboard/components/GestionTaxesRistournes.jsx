@@ -240,7 +240,7 @@ export default function GestionTaxesRistournes({ entrepriseId = '4TS-234321' }) 
       {/* En-tête principal */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-3">
         <div>
-          <h3 className="font-black text-slate-900 uppercase text-sm sm:text-base">⚙️ GESTION DES TAXES & PROMOS [{moduleActuel}]</h3>
+          <h3 className="font-black text-slate-900 uppercase text-sm sm:text-base">⚙️ GESTION DES TAXES & PROMOS</h3>
           <p className="text-[10px] sm:text-xs text-slate-600 mt-0.5">Gérez vos TVA, ristournes, soldes et promotions ciblées sur les articles de ce module.</p>
         </div>
 

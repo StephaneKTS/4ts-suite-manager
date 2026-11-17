@@ -10,6 +10,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [filtreDate, setFiltreDate] = useState('AUJOURDHUI');
   
   const [audioActive, setAudioActive] = useState(true);
+  const [pushActif, setPushActif] = useState(false);
 
   // File d'attente audio et vocale strictement séquentielle
   const fileDAbsolueAudio = useRef([]);
@@ -20,6 +21,22 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     const preferenceAudio = localStorage.getItem('4ts_audio_active');
     if (preferenceAudio !== null) {
       setAudioActive(preferenceAudio === 'true');
+    }
+
+    // Vérification sécurisée de l'abonnement push existant au chargement
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.ready.then(async (registration) => {
+        try {
+          const sub = await registration.pushManager.getSubscription();
+          if (sub && Notification.permission === 'granted') {
+            setPushActif(true);
+          } else {
+            setPushActif(false);
+          }
+        } catch (e) {
+          setPushActif(false);
+        }
+      }).catch(() => {});
     }
   }, []);
 
@@ -39,7 +56,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  const sAbonnerAuxNotifications = async () => {
+  const basculerPush = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert("Les notifications Push ne sont pas supportées par ce navigateur.");
       return;
@@ -49,8 +66,20 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       const registration = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
 
+      let subscription = await registration.pushManager.getSubscription().catch(() => null);
+
+      if (pushActif && subscription) {
+        // Si déjà actif, on désabonne l'appareil
+        await subscription.unsubscribe();
+        setPushActif(false);
+        alert("🔕 Notifications push désactivées.");
+        return;
+      }
+
+      // Sinon, on demande l'activation
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
+        setPushActif(false);
         alert("Permission de notification refusée. Veuillez l'autoriser dans les paramètres du téléphone.");
         return;
       }
@@ -63,7 +92,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         return;
       }
 
-      const subscription = await registration.pushManager.subscribe({
+      subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: convertedKey
       });
@@ -80,9 +109,11 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         }, { onConflict: 'endpoint' });
 
       if (error) throw error;
+      setPushActif(true);
       alert("🔔 Notifications push activées ! Votre téléphone est configuré pour sonner même en veille.");
     } catch (err) {
       console.error("Erreur détaillée push :", err);
+      setPushActif(false);
       alert("Erreur Push : " + (err.message || err.name || "Erreur inconnue"));
     }
   };
@@ -402,25 +433,39 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             <p className="text-[9px] text-slate-500 font-bold">Temps Réel Instantané & Déstockage auto</p>
           </div>
           
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Bouton Push Veille avec bascule ON/OFF interactive */}
             <button
               type="button"
-              onClick={sAbonnerAuxNotifications}
-              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-2 py-1 rounded text-[8px] uppercase tracking-wide transition shadow-xs whitespace-nowrap animate-pulse"
+              onClick={basculerPush}
+              title={pushActif ? "Push Veille : Actif (Cliquer pour désactiver)" : "Push Veille : Inactif (Cliquer pour activer)"}
+              className={`p-1.5 rounded-lg text-xs font-black transition shadow-xs flex items-center justify-center relative cursor-pointer ${
+                pushActif 
+                  ? 'bg-slate-900 text-amber-400 ring-2 ring-amber-400/60' 
+                  : 'bg-slate-800 text-white hover:bg-slate-700'
+              }`}
             >
-              🔔 Activer Push Veille
+              🔔
+              <span className={`absolute -bottom-0.5 -right-0.5 text-[7px] px-1 rounded font-extrabold ${pushActif ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'}`}>
+                {pushActif ? 'ON' : 'OFF'}
+              </span>
             </button>
 
+            {/* Bouton Audio avec icône haut-parleur et bascule ON/OFF interactive */}
             <button
               type="button"
               onClick={toggleAudio}
-              className={`font-black px-2.5 py-1 rounded text-[8px] uppercase tracking-wide transition shadow-xs whitespace-nowrap ${
+              title={audioActive ? "Audio : Actif (Cliquer pour couper)" : "Audio : Coupé (Cliquer pour activer)"}
+              className={`p-1.5 rounded-lg text-xs font-black transition shadow-xs flex items-center justify-center relative cursor-pointer ${
                 audioActive 
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
-                  : 'bg-slate-300 hover:bg-slate-400 text-slate-800'
+                  ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/60' 
+                  : 'bg-slate-300 text-slate-700 hover:bg-slate-400'
               }`}
             >
-              {audioActive ? '🔊 Audio : Actif' : '🔇 Audio : Coupé'}
+              {audioActive ? '🔊' : '🔇'}
+              <span className={`absolute -bottom-0.5 -right-0.5 text-[7px] px-1 rounded font-extrabold ${audioActive ? 'bg-white text-emerald-700' : 'bg-red-600 text-white'}`}>
+                {audioActive ? 'ON' : 'OFF'}
+              </span>
             </button>
           </div>
         </div>
