@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
-import dns from 'dns';
 
-try {
-  dns.setDefaultResultOrder('ipv4first');
-} catch (e) {
-  // Ignorer si non supporté
-}
+export const runtime = 'edge';
 
 export async function POST(request) {
   try {
@@ -47,7 +42,6 @@ export async function POST(request) {
       lang: 'fr',
     };
 
-    // Appel serveur à serveur vers CinetPay (sécurisé, sans restriction CORS de navigateur)
     const response = await fetch('https://api-checkout.cinetpay.com/v2/payment', {
       method: 'POST',
       headers: {
@@ -62,7 +56,6 @@ export async function POST(request) {
     if (result.code === '200' && result.data && result.data.payment_url) {
       return NextResponse.json({ success: true, payment_url: result.data.payment_url });
     } else {
-      console.error("Erreur CinetPay API :", result);
       return NextResponse.json({ 
         success: false, 
         error: `Erreur CinetPay [${result.code}] : ${result.message || 'Identifiants invalides'}` 
@@ -70,7 +63,6 @@ export async function POST(request) {
     }
 
   } catch (err) {
-    console.error("Erreur critique fetch CinetPay:", err);
-    return NextResponse.json({ success: false, error: "Erreur réseau / fetch failed : " + err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Erreur passerelle : " + err.message }, { status: 500 });
   }
 }
