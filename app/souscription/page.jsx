@@ -232,28 +232,24 @@ export default function SouscriptionWizard() {
       const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
       setServerOtp(generatedOtp);
 
-      try {
-        const resMail = await fetch('/api/send-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            email: cleanEmail, 
-            otpCode: generatedOtp, 
-            nomEntreprise: cleanNomEntreprise 
-          })
-        });
+      const resMail = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: cleanEmail, 
+          otpCode: generatedOtp, 
+          nomEntreprise: cleanNomEntreprise 
+        })
+      });
 
-        const dataRes = await resMail.json();
-        if (!resMail.ok) {
-          console.warn("Avertissement service mail (mobile) :", dataRes.error);
-        }
-      } catch (mailErr) {
-        console.warn("Service mail injoignable, code OTP généré en simulation locale :", generatedOtp);
+      const dataRes = await resMail.json();
+      if (!resMail.ok) {
+        throw new Error(dataRes.error || "Impossible d'envoyer l'e-mail OTP.");
       }
 
       setStep(3);
     } catch (err) {
-      setErrorMsg(err.message || "Erreur lors de l'envoi de l'e-mail. Vérifiez votre connexion.");
+      setErrorMsg("Erreur d'envoi OTP : " + (err.message || "Vérifiez votre connexion internet."));
     } finally {
       setLoading(false);
     }
@@ -279,7 +275,7 @@ export default function SouscriptionWizard() {
     const transactionId = '4TS_' + Date.now();
 
     try {
-      // Appel de notre propre route serveur sécurisée (/api/initier-paiement)
+      // 1. Préparation sécurisée du payload via notre API Vercel
       const response = await fetch('/api/initier-paiement', {
         method: 'POST',
         headers: {
@@ -297,7 +293,33 @@ export default function SouscriptionWizard() {
 
       const result = await response.json();
 
-      if (response.ok && result.success && result.payment_url) {
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Erreur lors de la préparation du paiement.");
+      }
+
+      let paymentUrl = result.payment_url;
+
+      // 2. Exécution directe vers CinetPay depuis le navigateur (contourne le blocage réseau Vercel)
+      if (result.direct_checkout && result.endpoint && result.payload) {
+        const cinetRes = await fetch(result.endpoint, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(result.payload),
+        });
+
+        const cinetData = await cinetRes.json();
+
+        if (cinetData.code === '200' && cinetData.data && cinetData.data.payment_url) {
+          paymentUrl = cinetData.data.payment_url;
+        } else {
+          throw new Error(`Erreur CinetPay [${cinetData.code}] : ${cinetData.message || 'Échec initialisation'}`);
+        }
+      }
+
+      if (paymentUrl) {
         localStorage.setItem('pending_enterprise', JSON.stringify({
           formData,
           modules,
@@ -305,10 +327,11 @@ export default function SouscriptionWizard() {
           transactionId
         }));
         
-        window.location.href = result.payment_url;
+        window.location.href = paymentUrl;
       } else {
-        throw new Error(result.error || "Erreur lors de l'initialisation du paiement avec CinetPay.");
+        throw new Error("URL de paiement introuvable dans la réponse CinetPay.");
       }
+
     } catch (err) {
       setErrorMsg("Erreur passerelle de paiement : " + err.message);
       setLoading(false);
