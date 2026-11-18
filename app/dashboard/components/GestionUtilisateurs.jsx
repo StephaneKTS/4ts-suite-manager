@@ -106,6 +106,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     if (caissesLocales && caissesLocales.length > 0) setCaisses(caissesLocales);
 
     try {
+      // 1. Récupérer les infos de l'entreprise
       const { data: dataEnt } = await supabase
         .from('entreprises')
         .select('*')
@@ -123,16 +124,40 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      const { data: dataRoles } = await supabase
+      // 2. Récupérer les rôles
+      let { data: dataRoles } = await supabase
         .from('roles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
+
+      // Auto-création du rôle Administrateur s'il n'existe pas
+      let adminRole = dataRoles?.find(r => (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR');
+      if (!adminRole) {
+        const { data: newRole } = await supabase
+          .from('roles')
+          .insert([{
+            id_entreprise: entrepriseId,
+            module: moduleActuel,
+            nom_role: 'ADMINISTRATEUR',
+            description: 'Rôle système administrateur avec tous les droits par défaut.',
+            permissions: { _plein_acces: true }
+          }])
+          .select()
+          .single();
+        
+        if (newRole) {
+          adminRole = newRole;
+          dataRoles = dataRoles ? [...dataRoles, newRole] : [newRole];
+        }
+      }
+
       if (dataRoles) {
         setRoles(dataRoles);
         localSync.sauvegarderDonneesLocales(cleCacheRoles, dataRoles);
       }
 
+      // 3. Récupérer les caisses et emplacements
       const { data: dataCaisses } = await supabase
         .from('caisses')
         .select('*')
@@ -150,6 +175,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       if (dataEmplacements) setEmplacements(dataEmplacements);
 
+      // 4. Récupérer les utilisateurs
       const { data: dataUsers, error } = await supabase
         .from('utilisateurs')
         .select('*')
@@ -158,7 +184,36 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
       if (error) throw error;
       
-      const rawUsers = dataUsers || [];
+      let rawUsers = dataUsers || [];
+
+      // AUTO-RÉPARATION : Si aucun utilisateur n'existe, on injecte automatiquement le propriétaire en Administrateur lié au rôle !
+      if (rawUsers.length === 0 && dataEnt) {
+        const payloadAdminAuto = {
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          nom_complet: (dataEnt.nom_entreprise || 'ADMINISTRATEUR').trim().toUpperCase(),
+          prenom: '',
+          email: (dataEnt.email || '').trim().toLowerCase(),
+          telephone: dataEnt.telephone || '',
+          mot_de_passe: dataEnt.mot_de_passe || dataEnt.code_pin_activation || 'Keita@shop50',
+          id_role: adminRole ? adminRole.id : null,
+          nom_role: 'ADMINISTRATEUR',
+          statut: 'ACTIF',
+          acces_application: true,
+          permissions: { _plein_acces: true }
+        };
+
+        const { data: insertedAdmin, error: errInsAdmin } = await supabase
+          .from('utilisateurs')
+          .insert([payloadAdminAuto])
+          .select()
+          .maybeSingle();
+
+        if (!errInsAdmin && insertedAdmin) {
+          rawUsers = [insertedAdmin];
+        }
+      }
+
       const mapUniques = new Map();
       rawUsers.forEach((u) => {
         const cleUnique = (u.nom_complet || '').trim().toUpperCase() + '_' + (u.prenom || '').trim().toUpperCase();
@@ -253,12 +308,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : null;
     const emailFinal = emailNettoye ? emailNettoye : null;
 
+    // Récupérer le nom du rôle sélectionné pour l'enregistrer proprement
+    const selectedRoleObj = roles.find(r => String(r.id) === String(nouveauUser.id_role));
+    const nomRoleFinal = selectedRoleObj ? selectedRoleObj.nom_role : 'EMPLOYE';
+    const isRoleAdmin = nomRoleFinal.trim().toUpperCase() === 'ADMINISTRATEUR';
+
     setEnTrainDeSauvegarder(true);
     try {
       let emplacementIdFinal = nouveauUser.id_emplacement;
       const nomNomCollab = (nouveauUser.nom_complet || '').trim().toUpperCase();
 
-      // Création automatique de l'emplacement UNIQUEMENT pour les utilisateurs ayant strictement le rôle LIVREUR
       if (estRoleLivreurStrict) {
         if (!emplacementIdFinal) {
           const payloadNouvelEmplacement = {
@@ -298,11 +357,13 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         telephone: numeroComplet,
         mot_de_passe: nouveauUser.acces_application ? nouveauUser.mot_de_passe : null,
         id_role: nouveauUser.id_role || null,
+        nom_role: nomRoleFinal,
         id_caisse: estModeLivraison ? null : (nouveauUser.id_caisse || null),
         id_emplacement: estRoleLivreurStrict ? (emplacementIdFinal || null) : null,
         photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
+        permissions: isRoleAdmin ? { _plein_acces: true } : (selectedRoleObj?.permissions || { _plein_acces: false })
       };
 
       if (userEnEdition) {
@@ -340,14 +401,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           }
         }
 
-        alert('✅ Accès multi-modules mis à jour et figés avec succès !');
+        alert('✅ Accès multi-modules mis à jour avec succès !');
       } else {
         for (const modCible of modulesPayload) {
           let payloadModule = { ...basePayload, module: modCible };
           const { error } = await supabase.from('utilisateurs').insert([payloadModule]);
           if (error) console.error(`Erreur insertion module ${modCible}:`, error.message);
         }
-        alert('✅ Collaborateur créé et affecté aux modules sélectionnés !');
+        alert('✅ Collaborateur créé avec succès !');
       }
 
       localStorage.removeItem(cleCacheUtilisateurs);
@@ -576,16 +637,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               </label>
             </div>
 
-            {/* SELECTION DES MODULES */}
             <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl space-y-1.5 shadow-2xs">
               <span className="font-black text-slate-900 text-[10px] uppercase block">
                 💳 Modules et accès autorisés pour cet employé :
               </span>
-              <p className="text-[9px] text-slate-500 font-medium">
-                {userEnEdition 
-                  ? "Cochez de nouveaux modules souscrits pour lui accorder l'accès." 
-                  : "Seuls les modules souscrits par votre entreprise sont cliquables."}
-              </p>
               <div className="grid grid-cols-2 gap-1.5 pt-1">
                 {MODULES_DISPONIBLES.map((mod) => {
                   const estSouscrit = modulesSouscrits.includes(mod.id);
@@ -613,29 +668,18 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                         />
                         <span className="text-[10px] truncate">{mod.label}</span>
                       </div>
-                      {!estSouscrit ? (
-                        <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold shrink-0">Non souscrit</span>
-                      ) : estCoche && userEnEdition ? (
-                        <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold shrink-0">Accès actif</span>
-                      ) : null}
+                      {!estSouscrit && <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold shrink-0">Non souscrit</span>}
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={gererSelectionImage} 
-              accept="image/*" 
-              className="hidden" 
-            />
+            <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
 
             <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div 
                 onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
-                title="Cliquez pour choisir une photo"
                 className="w-14 h-14 rounded-full bg-slate-200 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
               >
                 {nouveauUser.photo ? (
@@ -643,13 +687,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 ) : (
                   <span className="text-slate-600 text-lg font-black">📷</span>
                 )}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[9px] font-bold text-center p-0.5">
-                  Modifier
-                </div>
               </div>
               <div className="flex-1">
                 <p className="font-black text-[10px] text-slate-800 uppercase">Photo de profil du collaborateur</p>
-                <p className="text-[9px] text-slate-500 font-semibold mt-0.5">Cliquez sur l'icône pour ajouter une photo depuis votre appareil.</p>
+                <p className="text-[9px] text-slate-500 font-semibold mt-0.5">Cliquez sur l'icône pour ajouter une photo.</p>
               </div>
             </div>
 
@@ -661,44 +702,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Prénom</label>
                 <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Date de naissance</label>
-                <input type="date" disabled={enTrainDeSauvegarder} value={nouveauUser.date_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, date_naissance: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
-              </div>
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de naissance</label>
-                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_naissance} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_naissance: e.target.value.toUpperCase() })} placeholder="EX: YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut Matrimonial</label>
-                <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut_matrimonial} onChange={(e) => setNouveauUser({ ...nouveauUser, statut_matrimonial: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
-                  <option value="CELIBATAIRE">Célibataire</option>
-                  <option value="MARIE">Marié(e)</option>
-                  <option value="DIVORCE">Divorcé(e)</option>
-                  <option value="VEUF">Veuf(ve)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nombre d'enfants</label>
-                <input type="number" min="0" disabled={enTrainDeSauvegarder} value={nouveauUser.nombre_enfants} onChange={(e) => setNouveauUser({ ...nouveauUser, nombre_enfants: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Lieu de résidence</label>
-                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.lieu_residence} onChange={(e) => setNouveauUser({ ...nouveauUser, lieu_residence: e.target.value.toUpperCase() })} placeholder="EX: BASTOS, YAOUNDÉ" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-              </div>
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro CNI</label>
-                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_cni} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_cni: e.target.value.toUpperCase() })} placeholder="EX: 112233445" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
               </div>
             </div>
 
@@ -720,32 +723,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
               </div>
             </div>
 
-            {estRoleLivreurOuChauffeur && (
-              <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-xl space-y-2">
-                <span className="font-black text-orange-900 text-[10px] uppercase block">🚚 Informations Transport / Permis</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Catégorie de permis</label>
-                    <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.categorie_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, categorie_permis: e.target.value.toUpperCase() })} placeholder="EX: A ou B" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                  </div>
-                  <div>
-                    <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Numéro de permis</label>
-                    <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.numero_permis} onChange={(e) => setNouveauUser({ ...nouveauUser, numero_permis: e.target.value.toUpperCase() })} placeholder="EX: 123456789" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!estModeLivraison && (
-              <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Attribuer une Caisse</label>
-                <select disabled={enTrainDeSauvegarder} value={nouveauUser.id_caisse} onChange={(e) => setNouveauUser({ ...nouveauUser, id_caisse: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold text-slate-900 text-xs shadow-xs truncate">
-                  <option value="">-- Aucune caisse --</option>
-                  {caisses.map((c) => (<option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>))}
-                </select>
-              </div>
-            )}
-
             {nouveauUser.acces_application && (
               <div>
                 <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
@@ -757,10 +734,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     value={nouveauUser.mot_de_passe} 
                     onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
                     placeholder="••••••••" 
-                    autoComplete="new-password"
                     className="w-full bg-white border border-slate-300 rounded p-1.5 pr-8 font-mono font-extrabold text-slate-900 text-xs shadow-xs" 
                   />
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs focus:outline-none">
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs">
                     {afficherMotDePasse ? '🙈' : '👁️'}
                   </button>
                 </div>
@@ -785,15 +761,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
             <div>
               <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-              <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs placeholder:text-slate-400" />
-            </div>
-
-            <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Statut</label>
-              <select disabled={enTrainDeSauvegarder} value={nouveauUser.statut} onChange={(e) => setNouveauUser({ ...nouveauUser, statut: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
-                <option value="ACTIF">🟢 Actif</option>
-                <option value="INACTIF">🔴 Inactif</option>
-              </select>
+              <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs" />
             </div>
 
             <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
@@ -806,7 +774,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-lg text-xs transition">
                   Annuler
                 </button>
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-5 py-2 rounded-lg text-xs shadow-xs transition">
+                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-5 py-2 rounded-lg text-xs shadow-xs transition">
                   {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : 'Valider & Enregistrer')}
                 </button>
               </div>
@@ -860,7 +828,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                         </td>
                         <td className="p-2.5">
                           <span className="inline-block bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap">
-                            🛡️ {roleTrouve ? roleTrouve.nom_role : 'Aucun'}
+                            🛡️ {roleTrouve ? roleTrouve.nom_role : (u.nom_role || 'Administrateur')}
                           </span>
                         </td>
                         <td className="p-2.5 text-center">

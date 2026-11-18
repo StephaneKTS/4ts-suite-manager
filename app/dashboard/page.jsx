@@ -409,7 +409,7 @@ function DashboardContent() {
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               COMPTABILITÉ
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 w-full">
               {verifierPermission('ventes_historiques') && (
                 <div onClick={() => tenterAccesModule('journal', 'Saisie des Opérations')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📝</span>
@@ -425,6 +425,15 @@ function DashboardContent() {
                   <div>
                     <h3 className="font-extrabold text-xs sm:text-sm">Plan Comptable</h3>
                     <p className={`text-[10px] mt-0.5 ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Gestion et consultation du plan comptable.</p>
+                  </div>
+                </div>
+              )}
+              {verifierPermission('caisses') && (
+                <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
+                  <div>
+                    <h3 className="font-extrabold text-xs sm:text-sm">Création Caisse</h3>
+                    <p className={`text-[10px] mt-0.5 ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Gestion et création des caisses de l'entreprise.</p>
                   </div>
                 </div>
               )}
@@ -613,12 +622,6 @@ function DashboardContent() {
                 </div>
               )}
 
-              {verifierPermission('caisses') && (
-                <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">🏧</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Création Caisse</span>
-                </div>
-              )}
               {verifierPermission('depots_stock') && (
                 <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📍</span>
