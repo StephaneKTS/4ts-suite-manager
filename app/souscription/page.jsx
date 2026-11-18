@@ -48,6 +48,53 @@ export default function SouscriptionWizard() {
   useEffect(() => {
     setEstMonte(true);
     setFormData((prev) => ({ ...prev, entrepriseId: generateUniqueId() }));
+
+    // Interception sécurisée du retour de paiement CinetPay
+    const queryParams = new URLSearchParams(window.location.search);
+    const transactionIdParam = queryParams.get('transaction_id');
+    
+    if (transactionIdParam) {
+      const pendingData = localStorage.getItem('pending_enterprise');
+      if (pendingData) {
+        const { formData: savedForm, modules: savedModules, facturation: savedFacturation } = JSON.parse(pendingData);
+        
+        const verifierEtActiverCompte = async () => {
+          setLoading(true);
+          setErrorMsg('');
+          try {
+            const res = await fetch('/api/verifier-paiement', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                transaction_id: transactionIdParam,
+                entrepriseId: savedForm.entrepriseId,
+                formData: savedForm,
+                modules: savedModules,
+                facturation: savedFacturation
+              })
+            });
+
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+              setFormData(savedForm);
+              setStep(5); // Étape de succès de l'inscription
+              localStorage.removeItem('pending_enterprise');
+            } else {
+              setErrorMsg(data.message || "Échec de la validation du paiement par le serveur.");
+              setStep(4);
+            }
+          } catch (err) {
+            setErrorMsg("Erreur réseau lors de la vérification du paiement : " + err.message);
+            setStep(4);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        verifierEtActiverCompte();
+      }
+    }
   }, []);
 
   const handleChange = (e) => {
@@ -185,7 +232,6 @@ export default function SouscriptionWizard() {
       const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
       setServerOtp(generatedOtp);
 
-      // Tentative sécurisée d'envoi d'e-mail (ne bloque pas si la clé API est absente sur mobile)
       try {
         const resMail = await fetch('/api/send-otp', {
           method: 'POST',
@@ -225,99 +271,6 @@ export default function SouscriptionWizard() {
     setStep(4);
   };
 
-  const enregistrerEntrepriseEnBase = async () => {
-    const espacesList = Object.keys(modules).filter((m) => modules[m]);
-    
-    if (espacesList.length === 0) {
-      espacesList.push('BOUTIQUE');
-    }
-
-    const moduleActifInitial = espacesList[0].toUpperCase();
-
-    const supabase = getSupabaseClient();
-    const cleanEmail = formData.email ? formData.email.trim() : '';
-    const cleanPin = formData.pinCode ? formData.pinCode.trim() : 'Keita@shop50';
-    const nomAdmin = formData.nomEntreprise ? formData.nomEntreprise.trim() : 'ADMINISTRATEUR';
-
-    // 1. Insertion de l'entreprise
-    const { error: entError } = await supabase.from('entreprises').insert([
-      {
-        id_entreprise: formData.entrepriseId,
-        nom_entreprise: formData.nomEntreprise,
-        email: cleanEmail,
-        telephone: formData.telephone,
-        mot_de_passe: cleanPin,
-        code_pin_activation: cleanPin,
-        espaces_souscrits: espacesList,
-        module_actif: moduleActifInitial,
-        duree_abonnement_mois: facturation.nbMois,
-        limite_utilisateurs: facturation.nbUsers,
-        statut_licence: 'ACTIF',
-      },
-    ]);
-
-    if (entError) {
-      throw new Error(entError.message);
-    }
-
-    // 2. Création automatique de l'administrateur et liaison avec le rôle pour chaque module
-    for (const mod of espacesList) {
-      const moduleNom = mod.toUpperCase();
-
-      // Recherche ou création de l'ID du rôle ADMINISTRATEUR pour ce module
-      let roleAdminId = null;
-      const { data: roleData } = await supabase
-        .from('roles')
-        .select('id')
-        .eq('id_entreprise', formData.entrepriseId)
-        .eq('module', moduleNom)
-        .eq('nom_role', 'ADMINISTRATEUR')
-        .maybeSingle();
-
-      if (roleData) {
-        roleAdminId = roleData.id;
-      } else {
-        const { data: newRole } = await supabase
-          .from('roles')
-          .insert([{
-            id_entreprise: formData.entrepriseId,
-            module: moduleNom,
-            nom_role: 'ADMINISTRATEUR',
-            description: 'Rôle système administrateur avec tous les droits par défaut.',
-            permissions: { _plein_acces: true }
-          }])
-          .select()
-          .single();
-
-        if (newRole) {
-          roleAdminId = newRole.id;
-        }
-      }
-
-      // Insertion du souscripteur dans la table utilisateurs (Gestion du personnel)
-      const { error: userError } = await supabase.from('utilisateurs').insert([
-        {
-          id_entreprise: formData.entrepriseId,
-          module: moduleNom,
-          nom_complet: nomAdmin,
-          prenom: '',
-          email: cleanEmail,
-          telephone: formData.telephone,
-          mot_de_passe: cleanPin,
-          id_role: roleAdminId,
-          nom_role: 'ADMINISTRATEUR',
-          statut: 'ACTIF',
-          acces_application: true,
-          permissions: { _plein_acces: true }
-        }
-      ]);
-
-      if (userError) {
-        console.warn(`Avertissement création utilisateur pour le module ${mod}:`, userError.message);
-      }
-    }
-  };
-
   const handleCinetPayPayment = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -338,7 +291,7 @@ export default function SouscriptionWizard() {
           amount: facturation.totalGeneral,
           currency: 'XAF',
           description: `Souscription 4TS Suite Manager - ${formData.nomEntreprise}`,
-          return_url: window.location.origin + `/dashboard?entreprise=${formData.entrepriseId}&success=true`,
+          return_url: window.location.origin + `/souscription?transaction_id=${transactionId}`,
           cancel_url: window.location.origin + '/souscription',
           notify_url: 'https://vtdqodqhkdxanrelxtrq.supabase.co/rest/v1/rpc/webhook_paiement',
           customer_name: formData.nomEntreprise,
@@ -368,10 +321,8 @@ export default function SouscriptionWizard() {
         throw new Error(result.message || "Erreur lors de l'initialisation du paiement avec CinetPay.");
       }
     } catch (err) {
-      console.warn("Passerelle de paiement en simulation locale (Fallback actif) :", err);
-      await enregistrerEntrepriseEnBase();
+      setErrorMsg("Erreur passerelle de paiement : " + err.message);
       setLoading(false);
-      setStep(5);
     }
   };
 
