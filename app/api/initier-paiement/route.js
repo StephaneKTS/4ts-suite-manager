@@ -1,4 +1,11 @@
 import { NextResponse } from 'next/server';
+import dns from 'dns';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+  // Ignorer si non supporté
+}
 
 export async function POST(request) {
   try {
@@ -21,8 +28,7 @@ export async function POST(request) {
 
     const origin = request.headers.get('origin') || 'https://4ts-suite-manager.vercel.app';
 
-    // Préparation sécurisée des paramètres CinetPay V2
-    const paymentPayload = {
+    const payload = {
       apikey: apiKey.trim(),
       site_id: siteId.trim(),
       transaction_id: String(transaction_id),
@@ -41,16 +47,30 @@ export async function POST(request) {
       lang: 'fr',
     };
 
-    // On délègue l'appel au client (navigateur) pour éviter le blocage réseau Vercel
-    return NextResponse.json({ 
-      success: true, 
-      direct_checkout: true,
-      endpoint: 'https://api-checkout.cinetpay.com/v2/payment',
-      payload: paymentPayload 
+    // Appel serveur à serveur vers CinetPay (sécurisé, sans restriction CORS de navigateur)
+    const response = await fetch('https://api-checkout.cinetpay.com/v2/payment', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
 
+    const result = await response.json();
+
+    if (result.code === '200' && result.data && result.data.payment_url) {
+      return NextResponse.json({ success: true, payment_url: result.data.payment_url });
+    } else {
+      console.error("Erreur CinetPay API :", result);
+      return NextResponse.json({ 
+        success: false, 
+        error: `Erreur CinetPay [${result.code}] : ${result.message || 'Identifiants invalides'}` 
+      }, { status: 400 });
+    }
+
   } catch (err) {
-    console.error("Erreur préparation paiement CinetPay:", err);
-    return NextResponse.json({ success: false, error: "Erreur serveur : " + err.message }, { status: 500 });
+    console.error("Erreur critique fetch CinetPay:", err);
+    return NextResponse.json({ success: false, error: "Erreur réseau / fetch failed : " + err.message }, { status: 500 });
   }
 }
