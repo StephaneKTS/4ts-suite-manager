@@ -4,12 +4,13 @@ export async function POST(request) {
   try {
     const { email, otpCode, nomEntreprise } = await request.json();
 
-    const apiKey = process.env.BREVO_API_KEY;
-    const senderEmail = process.env.SENDER_EMAIL || 'stephs7352@gmail.com';
+    // Nettoyage rigoureux pour éviter les erreurs d'espaces masqués sur Vercel
+    const apiKey = process.env.BREVO_API_KEY ? process.env.BREVO_API_KEY.trim() : '';
+    const senderEmail = (process.env.SENDER_EMAIL || 'stephs7352@gmail.com').trim();
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "La clé BREVO_API_KEY n'est pas définie dans .env.local" },
+        { error: "La clé BREVO_API_KEY n'est pas définie ou est invalide dans l'environnement." },
         { status: 500 }
       );
     }
