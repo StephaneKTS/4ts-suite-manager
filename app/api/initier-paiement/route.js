@@ -8,12 +8,12 @@ export async function POST(request) {
     const { transaction_id, amount, description, customer_name, customer_email, customer_phone_number } = body;
 
     const apiKey = process.env.CINETPAY_API_KEY || process.env.NEXT_PUBLIC_CINETPAY_API_KEY;
-    const siteId = process.env.CINETPAY_SITE_ID || process.env.NEXT_PUBLIC_CINETPAY_SITE_ID;
+    const apiPassword = process.env.CINETPAY_API_PASSWORD;
 
-    if (!apiKey || !siteId) {
+    if (!apiKey || !apiPassword) {
       return NextResponse.json({ 
         success: false, 
-        error: "Configuration CinetPay manquante dans les variables Vercel." 
+        error: "Configuration CinetPay manquante dans les variables Vercel (API_KEY ou API_PASSWORD)." 
       }, { status: 400 });
     }
 
@@ -21,44 +21,64 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: "Paramètres de paiement manquants." }, { status: 400 });
     }
 
-    const origin = request.headers.get('origin') || 'https://4ts-suite-manager.vercel.app';
-
-    const payload = {
-      apikey: apiKey.trim(),
-      site_id: siteId.trim(),
-      transaction_id: String(transaction_id),
-      amount: Number(amount),
-      currency: 'XAF',
-      description: description || 'Souscription 4TS Suite Manager',
-      return_url: `${origin}/souscription?transaction_id=${transaction_id}`,
-      cancel_url: `${origin}/souscription`,
-      notify_url: 'https://vtdqodqhkdxanrelxtrq.supabase.co/rest/v1/rpc/webhook_paiement',
-      customer_name: customer_name || 'Client',
-      customer_surname: 'Admin',
-      customer_email: customer_email || 'client@4ts.cm',
-      customer_phone_number: customer_phone_number || '600000000',
-      customer_country: 'CM',
-      channels: 'ALL',
-      lang: 'fr',
-    };
-
-    const response = await fetch('https://api-checkout.cinetpay.com/v2/payment', {
+    // Étape 1 : Obtenir le Jeton d'accès (OAuth) auprès de la nouvelle API Aurore
+    const authResponse = await fetch('https://api.cinetpay.net/v1/oauth/login', {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        api_key: apiKey.trim(),
+        api_password: apiPassword.trim(),
+      }),
+    });
+
+    const authResult = await authResponse.json();
+
+    if (authResult.code !== 200 || !authResult.access_token) {
+      return NextResponse.json({ 
+        success: false, 
+        error: `Erreur Authentification CinetPay [${authResult.code || 'Inconnu'}] : ${authResult.message || 'Identifiants invalides'}` 
+      }, { status: 400 });
+    }
+
+    const accessToken = authResult.access_token;
+    const origin = request.headers.get('origin') || 'https://4ts-suite-manager.vercel.app';
+
+    // Étape 2 : Initialiser la transaction de paiement web avec le token Bearer
+    const payload = {
+      currency: 'XAF',
+      merchant_transaction_id: String(transaction_id),
+      amount: Number(amount),
+      lang: 'fr',
+      designation: description || 'Souscription 4TS Suite Manager',
+      client_email: customer_email || 'client@4ts.cm',
+      client_first_name: customer_name || 'Client',
+      client_last_name: 'Admin',
+      client_phone_number: customer_phone_number || '600000000',
+      success_url: `${origin}/souscription?transaction_id=${transaction_id}`,
+      failed_url: `${origin}/souscription`,
+    };
+
+    const paymentResponse = await fetch('https://api.cinetpay.net/v1/payment', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
       body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
+    const paymentResult = await paymentResponse.json();
 
-    if (result.code === '200' && result.data && result.data.payment_url) {
-      return NextResponse.json({ success: true, payment_url: result.data.payment_url });
+    if (paymentResult.code === 200 && paymentResult.data && paymentResult.data.payment_url) {
+      return NextResponse.json({ success: true, payment_url: paymentResult.data.payment_url });
     } else {
       return NextResponse.json({ 
         success: false, 
-        error: `Erreur CinetPay [${result.code}] : ${result.message || 'Identifiants invalides'}` 
+        error: `Erreur CinetPay [${paymentResult.code}] : ${paymentResult.message || 'Échec d\'initialisation'}` 
       }, { status: 400 });
     }
 

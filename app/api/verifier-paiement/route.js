@@ -13,37 +13,57 @@ export async function POST(request) {
     }
 
     const apiKey = process.env.CINETPAY_API_KEY || process.env.NEXT_PUBLIC_CINETPAY_API_KEY;
-    const siteId = process.env.CINETPAY_SITE_ID || process.env.NEXT_PUBLIC_CINETPAY_SITE_ID;
+    const apiPassword = process.env.CINETPAY_API_PASSWORD;
 
-    if (!apiKey || !siteId) {
-      return NextResponse.json({ success: false, error: "Configuration CinetPay manquante sur le serveur." }, { status: 500 });
+    if (!apiKey || !apiPassword) {
+      return NextResponse.json({ success: false, error: "Configuration CinetPay manquante sur le serveur (API_KEY ou API_PASSWORD)." }, { status: 500 });
     }
 
-    // Interrogation officielle et obligatoire de l'API de vérification CinetPay
-    const responseCheck = await fetch('https://api-checkout.cinetpay.com/v2/payment/check', {
+    // Étape 1 : Obtenir le Jeton d'accès (OAuth) auprès de l'API Aurore
+    const authResponse = await fetch('https://api.cinetpay.net/v1/oauth/login', {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        apikey: apiKey.trim(),
-        site_id: siteId.trim(),
-        transaction_id: String(transaction_id).trim(),
+        api_key: apiKey.trim(),
+        api_password: apiPassword.trim(),
       }),
+    });
+
+    const authResult = await authResponse.json();
+
+    if (authResult.code !== 200 || !authResult.access_token) {
+      return NextResponse.json({ 
+        success: false, 
+        error: `Erreur Authentification CinetPay [${authResult.code || 'Inconnu'}] : ${authResult.message || 'Identifiants invalides'}` 
+      }, { status: 400 });
+    }
+
+    const accessToken = authResult.access_token;
+    const cleanTransactionId = String(transaction_id).trim();
+
+    // Étape 2 : Interrogation officielle et obligatoire de l'API de vérification CinetPay 1.0 Aurore
+    const responseCheck = await fetch(`https://api.cinetpay.net/v1/payment/${cleanTransactionId}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
     });
 
     const result = await responseCheck.json();
 
-    const paiementValide =
-      result.code === '00' &&
-      result.data &&
-      result.data.status === 'ACCEPTED';
+    // La nouvelle API Aurore renvoie le statut dans result.status ou result.data.status (code 100 pour SUCCESS)
+    const statutPaiement = result.status || result.data?.status;
+    const paiementValide = (result.code === 100 || result.code === '100' || result.code === 200 || result.code === '200') && 
+                           (statutPaiement === 'SUCCESS' || statutPaiement === 'ACCEPTED');
 
     if (!paiementValide) {
       return NextResponse.json({
         success: false,
-        message: `Paiement non validé par CinetPay (${result.data?.status || result.message || 'Statut en attente ou refusé'}).`
+        message: `Paiement non validé par CinetPay (${statutPaiement || result.message || 'Statut en attente ou refusé'}).`
       }, { status: 400 });
     }
 
