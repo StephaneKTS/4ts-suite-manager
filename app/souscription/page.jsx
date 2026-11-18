@@ -279,36 +279,25 @@ export default function SouscriptionWizard() {
     const transactionId = '4TS_' + Date.now();
 
     try {
-      const response = await fetch('https://api-checkout.cinetpay.com/v2/payment', {
+      // Appel de notre propre route serveur sécurisée (/api/initier-paiement)
+      const response = await fetch('/api/initier-paiement', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          apikey: process.env.NEXT_PUBLIC_CINETPAY_API_KEY || '',
-          site_id: process.env.NEXT_PUBLIC_CINETPAY_SITE_ID || '',
           transaction_id: transactionId,
           amount: facturation.totalGeneral,
-          currency: 'XAF',
           description: `Souscription 4TS Suite Manager - ${formData.nomEntreprise}`,
-          return_url: window.location.origin + `/souscription?transaction_id=${transactionId}`,
-          cancel_url: window.location.origin + '/souscription',
-          notify_url: 'https://vtdqodqhkdxanrelxtrq.supabase.co/rest/v1/rpc/webhook_paiement',
           customer_name: formData.nomEntreprise,
-          customer_surname: 'Admin',
           customer_email: formData.email,
           customer_phone_number: formData.telephone,
-          customer_address: 'Yaoundé / Douala',
-          customer_city: 'Yaoundé',
-          customer_country: 'CM',
-          channels: 'ALL',
-          lang: 'fr',
         }),
       });
 
       const result = await response.json();
 
-      if (result.code === '200' && result.data && result.data.payment_url) {
+      if (response.ok && result.success && result.payment_url) {
         localStorage.setItem('pending_enterprise', JSON.stringify({
           formData,
           modules,
@@ -316,9 +305,9 @@ export default function SouscriptionWizard() {
           transactionId
         }));
         
-        window.location.href = result.data.payment_url;
+        window.location.href = result.payment_url;
       } else {
-        throw new Error(result.message || "Erreur lors de l'initialisation du paiement avec CinetPay.");
+        throw new Error(result.error || "Erreur lors de l'initialisation du paiement avec CinetPay.");
       }
     } catch (err) {
       setErrorMsg("Erreur passerelle de paiement : " + err.message);
