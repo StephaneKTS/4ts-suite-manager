@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dns from 'dns';
 
-// Correction indispensable pour forcer l'IPv4 et éviter le "fetch failed" sur Windows en local
+// Correction pour forcer l'IPv4 et éviter les erreurs réseau en local
 try {
   dns.setDefaultResultOrder('ipv4first');
 } catch (e) {
@@ -19,7 +19,7 @@ export async function POST(request) {
     if (!apiKey || !siteId) {
       return NextResponse.json({ 
         success: false, 
-        error: "Configuration CinetPay manquante dans .env.local" 
+        error: "Configuration CinetPay manquante dans les variables d'environnement." 
       }, { status: 400 });
     }
 
@@ -27,9 +27,10 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: "Paramètres de paiement manquants." }, { status: 400 });
     }
 
-    const origin = request.headers.get('origin') || 'http://localhost:3000';
+    // Récupération dynamique de l'origine (fonctionne sur Vercel et en local)
+    const origin = request.headers.get('origin') || 'https://4ts-suite-manager.vercel.app';
 
-    // Appel officiel et sécurisé vers l'API CinetPay
+    // Appel officiel et sécurisé vers l'API CinetPay V2
     const response = await fetch('https://api-checkout.cinetpay.com/v2/payment', {
       method: 'POST',
       headers: {
@@ -66,7 +67,7 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-} catch (err) {
+  } catch (err) {
     return NextResponse.json({ success: false, error: "Erreur réseau / fetch failed : " + err.message }, { status: 500 });
   }
 }
