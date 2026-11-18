@@ -275,7 +275,7 @@ export default function SouscriptionWizard() {
     const transactionId = '4TS_' + Date.now();
 
     try {
-      // 1. Préparation sécurisée du payload via notre API Vercel
+      // Appel direct vers notre route API serveur pour contourner les restrictions CORS
       const response = await fetch('/api/initier-paiement', {
         method: 'POST',
         headers: {
@@ -293,33 +293,7 @@ export default function SouscriptionWizard() {
 
       const result = await response.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Erreur lors de la préparation du paiement.");
-      }
-
-      let paymentUrl = result.payment_url;
-
-      // 2. Exécution directe vers CinetPay depuis le navigateur (contourne le blocage réseau Vercel)
-      if (result.direct_checkout && result.endpoint && result.payload) {
-        const cinetRes = await fetch(result.endpoint, {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(result.payload),
-        });
-
-        const cinetData = await cinetRes.json();
-
-        if (cinetData.code === '200' && cinetData.data && cinetData.data.payment_url) {
-          paymentUrl = cinetData.data.payment_url;
-        } else {
-          throw new Error(`Erreur CinetPay [${cinetData.code}] : ${cinetData.message || 'Échec initialisation'}`);
-        }
-      }
-
-      if (paymentUrl) {
+      if (response.ok && result.success && result.payment_url) {
         localStorage.setItem('pending_enterprise', JSON.stringify({
           formData,
           modules,
@@ -327,11 +301,10 @@ export default function SouscriptionWizard() {
           transactionId
         }));
         
-        window.location.href = paymentUrl;
+        window.location.href = result.payment_url;
       } else {
-        throw new Error("URL de paiement introuvable dans la réponse CinetPay.");
+        throw new Error(result.error || "Erreur lors de l'initialisation du paiement avec CinetPay.");
       }
-
     } catch (err) {
       setErrorMsg("Erreur passerelle de paiement : " + err.message);
       setLoading(false);
