@@ -66,7 +66,7 @@ export default function ConnexionEntreprise() {
     try {
       let entrepriseIdCible = null;
       let nomUtilisateurConnecte = '';
-      let matrixPermissions = { _plein_acces: true };
+      let matrixPermissions = { _aucun_acces: true }; // Sécurité par défaut : aucun accès
       let moduleActifEntreprise = 'TOUT';
       let authenticated = false;
 
@@ -102,21 +102,8 @@ export default function ConnexionEntreprise() {
           nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
           moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'TOUT').trim().toUpperCase();
 
-          // Vérification s'il existe un profil utilisateur administrateur associé dans la table utilisateurs
-          const { data: userAdminData } = await supabase
-            .from('utilisateurs')
-            .select('*')
-            .eq('id_entreprise', entrepriseIdCible)
-            .eq('nom_role', 'ADMINISTRATEUR')
-            .maybeSingle();
-
-          if (userAdminData) {
-            nomUtilisateurConnecte = userAdminData.nom_complet || nomUtilisateurConnecte;
-            matrixPermissions = { _plein_acces: true };
-          } else {
-            matrixPermissions = { _plein_acces: true };
-          }
-
+          // Propriétaire / Admin principal : Pleins accès
+          matrixPermissions = { _plein_acces: true };
           authenticated = true;
         }
       }
@@ -157,6 +144,7 @@ export default function ConnexionEntreprise() {
             entrepriseIdCible = utilisateurTrouve.id_entreprise;
             nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
 
+            // RECUPÉRATION STRICTE DES PERMISSIONS DEPUIS LE RÔLE ASSOCIÉ
             if (utilisateurTrouve.id_role) {
               const { data: roleData, error: errRole } = await supabase
                 .from('roles')
@@ -165,14 +153,20 @@ export default function ConnexionEntreprise() {
                 .maybeSingle();
 
               if (!errRole && roleData) {
-                if ((roleData.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR') {
+                const nomRoleUpper = (roleData.nom_role || '').trim().toUpperCase();
+                if (nomRoleUpper === 'ADMINISTRATEUR') {
                   matrixPermissions = { _plein_acces: true };
                 } else if (roleData.permissions) {
                   matrixPermissions = roleData.permissions;
+                } else {
+                  matrixPermissions = { _aucun_acces: true };
                 }
               }
             } else if (utilisateurTrouve.permissions) {
+              // Fallback si les permissions sont stockées directement sur l'utilisateur
               matrixPermissions = utilisateurTrouve.permissions;
+            } else {
+              matrixPermissions = { _aucun_acces: true };
             }
 
             authenticated = true;

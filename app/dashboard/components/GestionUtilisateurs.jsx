@@ -29,7 +29,7 @@ const MODULES_DISPONIBLES = [
   { id: 'COMPTABILITE', label: '📊 Comptabilité & Caisse' },
 ];
 
-export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
+export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkMode = false }) {
   const [utilisateurs, setUtilisateurs] = useState([]);
   const [roles, setRoles] = useState([]);
   const [caisses, setCaisses] = useState([]);
@@ -43,10 +43,70 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
   const [afficherMotDePasse, setAfficherMotDePasse] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
+  // 🪟 États pour les modales (permissions et confirmations stylisées)
+  const [afficherModalePermissions, setAfficherModalePermissions] = useState(false);
+  const [etatModale, setEtatModale] = useState({
+    ouverte: false,
+    titre: '',
+    message: '',
+    type: 'info', // 'confirmation', 'succes', 'erreur'
+    onConfirmer: null
+  });
+
   const fileInputRef = useRef(null);
 
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
+
+  const modulesBoutique = [
+    { id: 'caisse', nom: '🛒 Caisse & Vente' },
+    { id: 'articles_stock', nom: '📦 Articles & Stock' },
+    { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
+    { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' },
+    { id: 'familles_articles', nom: '🏷️ Familles & Catégories' },
+    { id: 'mouvements_stock', nom: '🔄 Mouvements Stock' },
+    { id: 'approvisionnements', nom: '📥 Approvisionnements' },
+    { id: 'clients', nom: '👥 Fichier Clients' },
+    { id: 'categories_clients', nom: '🏷️ Catégories Clients' },
+    { id: 'fournisseurs', nom: '🤝 Fournisseurs' },
+    { id: 'caisses', nom: '💵 Gestion Caisses' },
+    { id: 'ventes_historiques', nom: '📊 Historique Ventes & Rapports' },
+    { id: 'commandes_livraison', nom: '📦 Commandes & Livraisons' },
+    { id: 'grille_tarifaire', nom: '🗺️ Grille Tarifaire Livraison' },
+    { id: 'challenges_commerciaux', nom: '🏆 Challenges Commerciaux' },
+    { id: 'plan_comptable', nom: '📚 Plan Comptable & Journal' },
+    { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
+  ];
+
+  const modulesTontine = [
+    { id: 'tontine_participants', nom: '👥 Participants & Membres' },
+    { id: 'tontine_cycles', nom: '🔄 Cycles & Sessions' },
+    { id: 'tontine_cotisations', nom: '💰 Suivi des Cotisations' },
+    { id: 'tontine_attributions', nom: '🏆 Attributions & Cagnottes' }
+  ];
+
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const estTontine = moduleActuel === 'TONTINE';
+  const modulesApp = estTontine ? modulesTontine : modulesBoutique;
+  const cleCacheUtilisateurs = `utilisateurs_${entrepriseId}_${moduleActuel}`;
+  const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
+  const cleCacheCaisses = `caisses_${entrepriseId}_${moduleActuel}`;
+  const estModeLivraison = moduleActuel === 'LIVRAISON';
+
+  const initialiserPermissionsDefaut = () => {
+    const perms = {};
+    modulesApp.forEach((m) => {
+      perms[m.id] = { lecture: false, creation: false, modification: false, suppression: false };
+    });
+    return perms;
+  };
 
   const [nouveauUser, setNouveauUser] = useState({
     nom_complet: '',
@@ -71,20 +131,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     statut: 'ACTIF',
     acces_application: true,
     modules_cibles: [],
+    permissions: initialiserPermissionsDefaut(),
   });
-
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-  const cleCacheUtilisateurs = `utilisateurs_${entrepriseId}_${moduleActuel}`;
-  const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
-  const cleCacheCaisses = `caisses_${entrepriseId}_${moduleActuel}`;
-  const estModeLivraison = moduleActuel === 'LIVRAISON';
 
   const roleActuelObj = roles.find((r) => String(r.id) === String(nouveauUser.id_role));
   const estRoleLivreurStrict = roleActuelObj && (roleActuelObj.nom_role || '').trim().toUpperCase() === 'LIVREUR';
@@ -106,7 +154,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     if (caissesLocales && caissesLocales.length > 0) setCaisses(caissesLocales);
 
     try {
-      // 1. Récupérer les infos de l'entreprise
       const { data: dataEnt } = await supabase
         .from('entreprises')
         .select('*')
@@ -124,14 +171,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         }
       }
 
-      // 2. Récupérer les rôles
       let { data: dataRoles } = await supabase
         .from('roles')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel);
 
-      // Auto-création du rôle Administrateur s'il n'existe pas
       let adminRole = dataRoles?.find(r => (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR');
       if (!adminRole) {
         const { data: newRole } = await supabase
@@ -157,7 +202,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         localSync.sauvegarderDonneesLocales(cleCacheRoles, dataRoles);
       }
 
-      // 3. Récupérer les caisses et emplacements
       const { data: dataCaisses } = await supabase
         .from('caisses')
         .select('*')
@@ -175,7 +219,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         .eq('module', moduleActuel);
       if (dataEmplacements) setEmplacements(dataEmplacements);
 
-      // 4. Récupérer les utilisateurs
       const { data: dataUsers, error } = await supabase
         .from('utilisateurs')
         .select('*')
@@ -186,7 +229,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       
       let rawUsers = dataUsers || [];
 
-      // AUTO-RÉPARATION : Si aucun utilisateur n'existe, on injecte automatiquement le propriétaire en Administrateur lié au rôle !
       if (rawUsers.length === 0 && dataEnt) {
         const payloadAdminAuto = {
           id_entreprise: entrepriseId,
@@ -258,7 +300,13 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   const basculerModuleCible = (modId) => {
     if (!modulesSouscrits.includes(modId)) {
-      alert(`⚠️ Votre entreprise n'a pas souscrit au module "${modId}". Veuillez souscrire à ce module pour y autoriser du personnel.`);
+      setEtatModale({
+        ouverte: true,
+        titre: 'Module non souscrit',
+        message: `Votre entreprise n'a pas souscrit au module "${modId}". Veuillez souscrire à ce module pour y autoriser du personnel.`,
+        type: 'erreur',
+        onConfirmer: null
+      });
       return;
     }
 
@@ -272,16 +320,64 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     });
   };
 
-  const enregistrerUtilisateurDefinitif = async (e) => {
+  const togglePermissionUser = (moduleId, action) => {
+    setNouveauUser((prev) => {
+      const permsModule = prev.permissions[moduleId] || { lecture: false, creation: false, modification: false, suppression: false };
+      const nouvelleValeur = !permsModule[action];
+      let majModule = { ...permsModule, [action]: nouvelleValeur };
+      if ((action === 'creation' || action === 'modification' || action === 'suppression') && nouvelleValeur) {
+        majModule.lecture = true;
+      }
+      return {
+        ...prev,
+        permissions: { ...prev.permissions, [moduleId]: majModule },
+      };
+    });
+  };
+
+  const accorderToutModuleUser = (moduleId, toutAccorder) => {
+    setNouveauUser((prev) => ({
+      ...prev,
+      permissions: {
+        ...prev.permissions,
+        [moduleId]: { lecture: toutAccorder, creation: toutAccorder, modification: toutAccorder, suppression: toutAccorder },
+      },
+    }));
+  };
+
+  const changerRoleUtilisateur = (e) => {
+    const roleId = e.target.value;
+    const roleObj = roles.find(r => String(r.id) === String(roleId));
+    
+    setNouveauUser(prev => ({
+      ...prev,
+      id_role: roleId,
+      permissions: roleObj && roleObj.permissions ? { ...initialiserPermissionsDefaut(), ...roleObj.permissions } : prev.permissions
+    }));
+  };
+
+  const preparerEnregistrement = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
     if (!nouveauUser.nom_complet.trim()) {
-      alert('⚠️ Veuillez renseigner le nom du collaborateur.');
+      setEtatModale({
+        ouverte: true,
+        titre: 'Champ requis',
+        message: 'Veuillez renseigner le nom du collaborateur.',
+        type: 'erreur',
+        onConfirmer: null
+      });
       return;
     }
     if (!nouveauUser.id_role) {
-      alert('⚠️ Veuillez sélectionner un rôle ou une fonction.');
+      setEtatModale({
+        ouverte: true,
+        titre: 'Champ requis',
+        message: 'Veuillez sélectionner un rôle ou une fonction.',
+        type: 'erreur',
+        onConfirmer: null
+      });
       return;
     }
 
@@ -291,15 +387,43 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
     if (nouveauUser.acces_application) {
       if (!emailNettoye && chiffresPur.length === 0) {
-        alert('⚠️ Veuillez renseigner soit un email, soit un numéro de téléphone pour permettre la connexion.');
+        setEtatModale({
+          ouverte: true,
+          titre: 'Information de connexion requise',
+          message: 'Veuillez renseigner soit un email, soit un numéro de téléphone pour permettre la connexion.',
+          type: 'erreur',
+          onConfirmer: null
+        });
         return;
       }
 
       if (chiffresPur.length > 0 && chiffresPur.length !== paysObj.longueur) {
-        alert(`⚠️ Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`);
+        setEtatModale({
+          ouverte: true,
+          titre: 'Numéro invalide',
+          message: `Numéro invalide pour ${paysObj.code}. Le numéro doit comporter exactement ${paysObj.longueur} chiffres.`,
+          type: 'erreur',
+          onConfirmer: null
+        });
         return;
       }
     }
+
+    setEtatModale({
+      ouverte: true,
+      titre: 'Confirmation requise',
+      message: `Voulez-vous véritablement valider et enregistrer les accès et permissions pour "${nouveauUser.nom_complet}" ?`,
+      type: 'confirmation',
+      onConfirmer: enregistrerUtilisateurDefinitif
+    });
+  };
+
+  const enregistrerUtilisateurDefinitif = async () => {
+    if (enTrainDeSauvegarder) return;
+
+    const emailNettoye = (nouveauUser.email || '').trim().toLowerCase();
+    const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
+    const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
 
     const modulesPayload = nouveauUser.modules_cibles.length > 0 
       ? nouveauUser.modules_cibles 
@@ -308,7 +432,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : null;
     const emailFinal = emailNettoye ? emailNettoye : null;
 
-    // Récupérer le nom du rôle sélectionné pour l'enregistrer proprement
     const selectedRoleObj = roles.find(r => String(r.id) === String(nouveauUser.id_role));
     const nomRoleFinal = selectedRoleObj ? selectedRoleObj.nom_role : 'EMPLOYE';
     const isRoleAdmin = nomRoleFinal.trim().toUpperCase() === 'ADMINISTRATEUR';
@@ -363,7 +486,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
-        permissions: isRoleAdmin ? { _plein_acces: true } : (selectedRoleObj?.permissions || { _plein_acces: false })
+        permissions: isRoleAdmin ? { _plein_acces: true } : nouveauUser.permissions
       };
 
       if (userEnEdition) {
@@ -400,22 +523,34 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
             }
           }
         }
-
-        alert('✅ Accès multi-modules mis à jour avec succès !');
       } else {
         for (const modCible of modulesPayload) {
           let payloadModule = { ...basePayload, module: modCible };
           const { error } = await supabase.from('utilisateurs').insert([payloadModule]);
           if (error) console.error(`Erreur insertion module ${modCible}:`, error.message);
         }
-        alert('✅ Collaborateur créé avec succès !');
       }
 
       localStorage.removeItem(cleCacheUtilisateurs);
       annulerForm();
       await chargerDonnees();
+
+      setEtatModale({
+        ouverte: true,
+        titre: 'Opération réussie',
+        message: 'Accès et permissions mis à jour avec succès !',
+        type: 'succes',
+        onConfirmer: null
+      });
+
     } catch (err) {
-      alert('❌ Erreur lors de l’enregistrement : ' + err.message);
+      setEtatModale({
+        ouverte: true,
+        titre: 'Erreur',
+        message: 'Erreur lors de l’enregistrement : ' + err.message,
+        type: 'erreur',
+        onConfirmer: null
+      });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -474,6 +609,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
       modules_cibles: Array.from(new Set([...modulesActuelsUser, moduleActuel])),
+      permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
     });
     setAfficherForm(true);
   };
@@ -485,38 +621,59 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
       nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
       nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
       numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
-      id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel]
+      id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel],
+      permissions: initialiserPermissionsDefaut()
     });
     setAfficherForm(false);
   };
 
   const supprimerUtilisateur = async () => {
     if (enTrainDeSauvegarder || !userEnEdition) return;
-    if (!confirm(`Voulez-vous vraiment supprimer définitivement le collaborateur "${userEnEdition.nom_complet}" ?`)) return;
+    
+    setEtatModale({
+      ouverte: true,
+      titre: 'Confirmer la suppression',
+      message: `Voulez-vous vraiment supprimer définitivement le collaborateur "${userEnEdition.nom_complet}" ?`,
+      type: 'confirmation',
+      onConfirmer: async () => {
+        setEnTrainDeSauvegarder(true);
+        try {
+          const nomCollab = (userEnEdition.nom_complet || '').trim();
+          let queryDel = supabase.from('utilisateurs').delete().eq('id_entreprise', entrepriseId);
+          if (nomCollab) {
+            queryDel = queryDel.or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomCollab}`);
+          } else {
+            queryDel = queryDel.eq('id', userEnEdition.id);
+          }
 
-    setEnTrainDeSauvegarder(true);
-    try {
-      const nomCollab = (userEnEdition.nom_complet || '').trim();
-      let queryDel = supabase.from('utilisateurs').delete().eq('id_entreprise', entrepriseId);
-      if (nomCollab) {
-        queryDel = queryDel.or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomCollab}`);
-      } else {
-        queryDel = queryDel.eq('id', userEnEdition.id);
+          const { error } = await queryDel;
+          if (error) throw error;
+
+          setUtilisateurs(prev => prev.filter(u => u.id !== userEnEdition.id));
+          localStorage.removeItem(cleCacheUtilisateurs);
+          annulerForm();
+          await chargerDonnees();
+
+          setEtatModale({
+            ouverte: true,
+            titre: 'Succès',
+            message: 'Collaborateur supprimé avec succès.',
+            type: 'succes',
+            onConfirmer: null
+          });
+        } catch (err) {
+          setEtatModale({
+            ouverte: true,
+            titre: 'Erreur',
+            message: 'Erreur : ' + err.message,
+            type: 'erreur',
+            onConfirmer: null
+          });
+        } finally {
+          setEnTrainDeSauvegarder(false);
+        }
       }
-
-      const { error } = await queryDel;
-      if (error) throw error;
-
-      setUtilisateurs(prev => prev.filter(u => u.id !== userEnEdition.id));
-      localStorage.removeItem(cleCacheUtilisateurs);
-      alert('Collaborateur supprimé avec succès.');
-      annulerForm();
-      await chargerDonnees();
-    } catch (err) {
-      alert('Erreur : ' + err.message);
-    } finally {
-      setEnTrainDeSauvegarder(false);
-    }
+    });
   };
 
   const gererTri = (colonne) => {
@@ -561,16 +718,25 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
 
+  // 🎨 CLASSES DYNAMIQUES SELON LE MODE (NUIT vs JOUR) AVEC BORDURES RENFORCÉES
+  const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-[#0a1931]';
+  const headerCardBg = isDarkMode ? 'bg-[#0b1329] border-2 border-slate-600 text-slate-100 shadow-md' : 'bg-white border-2 border-[#0a1931]/60 text-[#0a1931] shadow-md';
+  const subTextColor = isDarkMode ? 'text-slate-300' : 'text-slate-900 font-bold';
+  const inputBg = isDarkMode ? 'bg-slate-900 border-2 border-slate-600 text-slate-100 placeholder:text-slate-500' : 'bg-white border-2 border-slate-400 text-black font-semibold placeholder:text-slate-400';
+  const tableHeaderBg = isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900';
+  const rowHoverBg = isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-blue-50';
+
   return (
-    <div className="space-y-2.5 text-[11px] font-sans">
+    <div className={`space-y-3 text-[11px] font-sans ${containerBg} p-2 rounded-xl transition-colors`}>
       
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+      {/* EN-TÊTE */}
+      <div className={`flex justify-between items-center p-3 rounded-xl ${headerCardBg}`}>
         <div>
-          <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
-            <span>👥</span> GESTION DU PERSONNEL
+          <h3 className={`font-black uppercase text-xs sm:text-sm flex items-center gap-1.5 ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
+            <span>👥</span> GESTION DU PERSONNEL & PERMISSIONS
           </h3>
-          <p className="text-[9.5px] text-slate-600 font-bold mt-0.5">
-            Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-600' : 'text-emerald-700'}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
+          <p className={`text-[10px] mt-0.5 ${subTextColor}`}>
+            Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-500' : (isDarkMode ? 'text-emerald-400' : 'text-emerald-700 font-extrabold')}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
           </p>
         </div>
         <button
@@ -585,15 +751,20 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                 nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
                 nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
                 numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
-                id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel]
+                id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel],
+                permissions: initialiserPermissionsDefaut()
               });
               setUserEnEdition(null);
               setAfficherForm(true);
             }
           }}
-          className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+          className={`font-black px-3.5 py-2 rounded-lg transition shadow-md text-xs cursor-pointer ${
+            isDarkMode 
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-2 border-slate-600' 
+              : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-2 border-[#0a1931]'
+          }`}
         >
-          {afficherForm ? '✖' : 'Nouveau'}
+          {afficherForm ? '✖ Fermer' : '＋ Nouveau'}
         </button>
       </div>
 
@@ -602,46 +773,48 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
           type="button"
           disabled={enTrainDeSauvegarder}
           onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border-2 shadow-xs cursor-pointer ${
             !afficherForm 
-              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
-              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+              ? (isDarkMode ? 'bg-slate-800 text-white border-slate-500' : 'bg-[#0a1931] text-white border-[#0a1931]') 
+              : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800' : 'bg-white text-[#0a1931] border-slate-400 hover:bg-slate-50')
           }`}
         >
           📋 Liste du personnel ({utilisateurs.length})
         </button>
       </div>
 
+      {/* FORMULAIRE D'EDITION / CREATION AVEC BORDURES RENFORCÉES */}
       {afficherForm && (
-        <div className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-2.5 shadow-md max-h-[75vh] overflow-y-auto pr-2 pb-24">
-          <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-            <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur & Licences modules'}
+        <div className={`border-3 p-3.5 rounded-xl space-y-3.5 shadow-xl max-h-[80vh] overflow-y-auto pr-2 pb-24 ${isDarkMode ? 'bg-[#0b1329] border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
+          <div className="flex justify-between items-center border-b-2 pb-2 border-slate-400/40">
+            <h4 className={`font-black uppercase text-xs ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
+              {userEnEdition ? '✏️ Fiche du collaborateur & Permissions' : '➕ Nouveau collaborateur & Permissions'}
             </h4>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5">✖</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-white font-bold text-xs p-0.5 cursor-pointer">✖</button>
           </div>
 
-          <form onSubmit={enregistrerUtilisateurDefinitif} className="space-y-2.5">
-            <div className="bg-amber-50/80 border border-amber-200 p-2.5 rounded-xl space-y-1 shadow-2xs">
+          <form onSubmit={preparerEnregistrement} className="space-y-3">
+            <div className={`p-3 rounded-xl space-y-1 border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-400 text-[#0a1931]'}`}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   disabled={enTrainDeSauvegarder}
                   checked={nouveauUser.acces_application}
                   onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
-                  className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
                 />
-                <span className="font-black text-amber-950 text-[11px]">
+                <span className="font-black text-[11px]">
                   Accès à l'application (Consomme une licence / Connexion active)
                 </span>
               </label>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl space-y-1.5 shadow-2xs">
-              <span className="font-black text-slate-900 text-[10px] uppercase block">
+            {/* ZONE MODULES ET ACCÈS AUTORISÉS AVEC CONTRASTE ET BORDURE RENFORCÉE */}
+            <div className={`p-3 rounded-xl space-y-2 border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
+              <span className={`font-black text-[10.5px] uppercase block tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
                 💳 Modules et accès autorisés pour cet employé :
               </span>
-              <div className="grid grid-cols-2 gap-1.5 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 {MODULES_DISPONIBLES.map((mod) => {
                   const estSouscrit = modulesSouscrits.includes(mod.id);
                   const estCoche = nouveauUser.modules_cibles.includes(mod.id);
@@ -650,12 +823,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     <div 
                       key={mod.id} 
                       onClick={() => estSouscrit && basculerModuleCible(mod.id)}
-                      className={`flex items-center justify-between p-2 rounded-lg border transition select-none ${
+                      className={`flex items-center justify-between p-2.5 rounded-lg border-2 transition select-none ${
                         !estSouscrit 
-                          ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed' 
+                          ? (isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-60 cursor-not-allowed' : 'bg-slate-200 border-slate-300 text-slate-600 opacity-70 cursor-not-allowed font-semibold') 
                           : estCoche 
-                            ? 'bg-orange-50 border-orange-500 text-orange-950 font-bold cursor-pointer' 
-                            : 'bg-white border-slate-300 text-slate-700 cursor-pointer hover:bg-slate-50'
+                            ? (isDarkMode ? 'bg-slate-800 border-slate-500 text-white font-black cursor-pointer shadow-xs' : 'bg-blue-100 border-blue-600 text-[#0a1931] font-black cursor-pointer shadow-xs') 
+                            : (isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200 cursor-pointer hover:bg-slate-800 font-bold' : 'bg-white border-slate-400 text-slate-900 cursor-pointer hover:bg-slate-100 font-bold')
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -664,11 +837,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                           disabled={!estSouscrit}
                           checked={estCoche}
                           onChange={() => {}}
-                          className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer disabled:cursor-not-allowed"
+                          className="w-4 h-4 accent-amber-500 rounded cursor-pointer disabled:cursor-not-allowed"
                         />
-                        <span className="text-[10px] truncate">{mod.label}</span>
+                        <span className="text-[11px] truncate">{mod.label}</span>
                       </div>
-                      {!estSouscrit && <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold shrink-0">Non souscrit</span>}
+                      {!estSouscrit && <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-black shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-300 text-slate-700'}`}>Non souscrit</span>}
                     </div>
                   );
                 })}
@@ -677,55 +850,69 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
 
             <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
 
-            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div className={`flex items-center gap-3 p-3 rounded-xl border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
               <div 
                 onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
-                className="w-14 h-14 rounded-full bg-slate-200 border-2 border-orange-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
+                className="w-14 h-14 rounded-full bg-slate-800 border-2 border-slate-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
               >
                 {nouveauUser.photo ? (
                   <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-slate-600 text-lg font-black">📷</span>
+                  <span className="text-slate-300 text-lg font-black">📷</span>
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-black text-[10px] text-slate-800 uppercase">Photo de profil du collaborateur</p>
-                <p className="text-[9px] text-slate-500 font-semibold mt-0.5">Cliquez sur l'icône pour ajouter une photo.</p>
+                <p className={`font-black text-[10px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>Photo de profil du collaborateur</p>
+                <p className={`text-[9.5px] font-semibold mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Cliquez sur l'icône pour ajouter une photo.</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom *</label>
-                <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Nom *</label>
+                <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
               </div>
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Prénom</label>
-                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold uppercase text-slate-900 text-xs shadow-xs" />
+                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Prénom</label>
+                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end pt-1">
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Rôle / Fonction *</label>
-                <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={(e) => setNouveauUser({ ...nouveauUser, id_role: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-orange-700 text-xs shadow-xs">
+                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Rôle / Fonction *</label>
+                <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={changerRoleUtilisateur} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
                   <option value="">-- Rôle --</option>
                   {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
                 </select>
               </div>
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Type Collaborateur</label>
-                <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-xs shadow-xs">
-                  <option value="EMPLOYE">Employé standard</option>
-                  <option value="LIVREUR">Livreur</option>
-                  <option value="CHAUFFEUR">Chauffeur</option>
-                </select>
+                <button
+                  type="button"
+                  onClick={() => setAfficherModalePermissions(true)}
+                  className={`w-full font-black py-2.5 px-3 rounded-lg text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer border-2 ${
+                    isDarkMode 
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-500' 
+                      : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'
+                  }`}
+                >
+                  <span>🔑</span> Configurer Permissions
+                </button>
               </div>
+            </div>
+
+            <div>
+              <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Type Collaborateur</label>
+              <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
+                <option value="EMPLOYE">Employé standard</option>
+                <option value="LIVREUR">Livreur</option>
+                <option value="CHAUFFEUR">Chauffeur</option>
+              </select>
             </div>
 
             {nouveauUser.acces_application && (
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Mot de Passe de Connexion *</label>
+                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Mot de Passe de Connexion *</label>
                 <div className="relative flex items-center">
                   <input 
                     type={afficherMotDePasse ? "text" : "password"} 
@@ -734,47 +921,47 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
                     value={nouveauUser.mot_de_passe} 
                     onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
                     placeholder="••••••••" 
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 pr-8 font-mono font-extrabold text-slate-900 text-xs shadow-xs" 
+                    className={`w-full rounded p-2 pr-8 font-mono font-extrabold text-xs shadow-xs ${inputBg}`} 
                   />
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-500 hover:text-slate-800 text-xs">
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2.5 text-slate-400 hover:text-white text-xs cursor-pointer">
                     {afficherMotDePasse ? '🙈' : '👁️'}
                   </button>
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200">
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t-2 border-slate-400/40">
               <div>
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Pays</label>
-                <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-slate-900 text-[11px] shadow-xs">
+                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Pays</label>
+                <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className={`w-full rounded p-2 font-extrabold text-[11px] shadow-xs ${inputBg}`}>
                   {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
                 </select>
               </div>
               <div className="col-span-2">
-                <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-xs">
-                  <span className="bg-slate-100 px-2 py-1.5 text-[11px] font-black text-slate-800 border-r border-slate-300 shrink-0">{paysActuelObj.indicatif}</span>
-                  <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[11px] font-extrabold text-slate-900 focus:outline-none" />
+                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Téléphone ({paysActuelObj.longueur} chiffres)</label>
+                <div className={`flex items-center rounded overflow-hidden shadow-xs border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-400'}`}>
+                  <span className={`px-2.5 py-2 text-[11px] font-black border-r-2 shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600' : 'bg-slate-200 text-[#0a1931] border-slate-400'}`}>{paysActuelObj.indicatif}</span>
+                  <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className={`w-full p-2 font-mono text-[11px] font-extrabold focus:outline-none ${inputBg} border-0`} />
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Email (minuscules)</label>
-              <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className="w-full bg-white border border-slate-300 rounded p-1.5 font-bold lowercase text-slate-900 text-[11px] shadow-xs" />
+              <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Email (minuscules)</label>
+              <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className={`w-full rounded p-2 font-bold lowercase text-[11px] shadow-xs ${inputBg}`} />
             </div>
 
-            <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
+            <div className="pt-3 border-t-2 border-slate-400/40 flex justify-between items-center">
               {userEnEdition && (
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-2 rounded-lg text-xs shadow-xs transition">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 rounded-lg text-xs shadow-md transition cursor-pointer">
                   🗑️ Supprimer
                 </button>
               )}
               <div className="flex items-center gap-2 ml-auto">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-lg text-xs transition">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className={`font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}>
                   Annuler
                 </button>
-                <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-5 py-2 rounded-lg text-xs shadow-xs transition">
+                <button type="submit" disabled={enTrainDeSauvegarder} className={`font-black px-5 py-2 rounded-lg text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}>
                   {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : 'Valider & Enregistrer')}
                 </button>
               </div>
@@ -783,56 +970,187 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
+      {/* 🪟 MODALE DE CONFIGURATION DES PERMISSIONS */}
+      {afficherModalePermissions && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`border-3 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
+            
+            <div className="flex justify-between items-center border-b-2 pb-3 border-slate-400/40">
+              <h4 className={`font-black text-sm uppercase tracking-wider flex items-center gap-2 ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
+                <span>🔑</span> Matrice des Autorisations & Permissions
+              </h4>
+              <button
+                type="button"
+                onClick={() => setAfficherModalePermissions(false)}
+                className="text-slate-400 hover:text-white font-bold text-sm p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+              Cochez ou décochez les actions autorisées pour ce collaborateur sur chaque module du système.
+            </p>
+
+            <div className={`overflow-x-auto border-2 rounded-xl shadow-inner max-h-[50vh] ${isDarkMode ? 'bg-slate-950 border-slate-700' : 'bg-slate-50 border-slate-400'}`}>
+              <table className="w-full text-left text-xs">
+                <thead className={`border-b-2 text-[10px] uppercase font-black sticky top-0 ${isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-700' : 'bg-[#0a1931] text-white border-blue-900'}`}>
+                  <tr>
+                    <th className="p-2.5">Module</th>
+                    <th className="p-2.5 text-center">👁️ Lecture</th>
+                    <th className="p-2.5 text-center">➕ Création</th>
+                    <th className="p-2.5 text-center">✏️ Modif.</th>
+                    <th className="p-2.5 text-center">🗑️ Suppr.</th>
+                    <th className="p-2.5 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className={`divide-y-2 text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
+                  {modulesApp.map((m) => {
+                    const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
+                    const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
+                    return (
+                      <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/50' : 'hover:bg-blue-50/80 font-bold'}>
+                        <td className={`p-2.5 font-bold ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>{m.nom}</td>
+                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" /></td>
+                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" /></td>
+                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-4 h-4 accent-blue-500 rounded cursor-pointer" /></td>
+                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-4 h-4 accent-red-500 rounded cursor-pointer" /></td>
+                        <td className="p-2.5 text-center">
+                          <button type="button" onClick={() => accorderToutModuleUser(m.id, !estToutAccorde)} className={`px-2 py-1 rounded text-[9.5px] font-black cursor-pointer ${estToutAccorde ? 'bg-red-950 text-red-300 border border-red-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}`}>
+                            {estToutAccorde ? 'Aucun' : 'Tous'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAfficherModalePermissions(false)}
+                className={`font-black px-6 py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+              >
+                Valider & Fermer 👍
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 🔔 MODALE UNIFIÉE DE CONFIRMATION / SUCCÈS / ERREUR */}
+      {etatModale.ouverte && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`border-3 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
+            
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
+              etatModale.type === 'confirmation' ? 'bg-amber-500/20 text-amber-400 border-2 border-amber-500/40' :
+              etatModale.type === 'succes' ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border-2 border-rose-500/40'
+            }`}>
+              {etatModale.type === 'confirmation' ? '❓' :
+               etatModale.type === 'succes' ? '✓' : '⚠️'}
+            </div>
+
+            <div className="space-y-1">
+              <h4 className={`font-black text-sm uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
+                {etatModale.titre}
+              </h4>
+              <p className={`text-xs font-semibold leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                {etatModale.message}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              {etatModale.type === 'confirmation' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
+                    className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const action = etatModale.onConfirmer;
+                      setEtatModale({ ...etatModale, ouverte: false });
+                      if (action) action();
+                    }}
+                    className={`flex-1 font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                  >
+                    Confirmer
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
+                  className={`w-full font-black py-2.5 rounded-xl text-xs transition shadow-md cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                >
+                  Compris 👍
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* LISTE DES UTILISATEURS */}
       {!afficherForm && (
         <>
-          <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <input type="text" disabled={enTrainDeSauvegarder} value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400" />
+          <div className={`p-2.5 rounded-xl border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-400'}`}>
+            <input type="text" disabled={enTrainDeSauvegarder} value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className={`w-full rounded-lg px-3 py-2 font-extrabold uppercase text-xs focus:outline-none shadow-xs ${inputBg}`} />
           </div>
 
-          <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
+          <div className={`flex justify-between items-center text-[10.5px] px-1 font-black ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>
             <span>Total répertorié : <strong>{usersFiltres.length}</strong> personne(s)</span>
           </div>
 
           {chargement ? (
-            <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
+            <div className="p-4 text-center text-slate-400 font-bold">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">Aucun enregistrement trouvé.</div>
+            <div className={`p-4 text-center border-2 rounded-xl font-bold ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-white border-slate-400 text-slate-600'}`}>Aucun enregistrement trouvé.</div>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+            <div className={`overflow-x-auto border-2 rounded-xl shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-400'}`}>
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
+                <thead className={`border-b-2 uppercase text-[9.5px] font-black select-none ${tableHeaderBg}`}>
                   <tr>
                     <th className="p-2.5 w-10 text-center">Avatar</th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:bg-slate-200">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2.5 cursor-pointer hover:bg-slate-200">Rôle {rendreFlecheTri('role')}</th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:opacity-80">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2.5 cursor-pointer hover:opacity-80">Rôle {rendreFlecheTri('role')}</th>
                     <th className="p-2.5 text-center">Type d'accès</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                <tbody className={`divide-y-2 text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
                   {usersFiltres.map((u) => {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
                     const aAcces = u.acces_application ?? true;
                     return (
-                      <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
+                      <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className={`cursor-pointer transition select-none ${rowHoverBg}`}>
                         <td className="p-2.5 text-center">
-                          <div className="w-7 h-7 rounded-full bg-slate-200 border border-slate-300 mx-auto overflow-hidden flex items-center justify-center">
+                          <div className="w-7 h-7 rounded-full bg-slate-800 border-2 border-slate-500 mx-auto overflow-hidden flex items-center justify-center">
                             {u.photo ? (
                               <img src={u.photo} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
                             ) : (
-                              <span className="text-[9px] font-bold text-slate-500">👤</span>
+                              <span className="text-[9px] font-bold text-slate-300">👤</span>
                             )}
                           </div>
                         </td>
-                        <td className="p-2.5 font-black uppercase text-slate-900">
+                        <td className={`p-2.5 font-black uppercase ${isDarkMode ? 'text-slate-100' : 'text-[#0a1931]'}`}>
                           {u.nom_complet} {u.prenom ? u.prenom : ''}
                         </td>
                         <td className="p-2.5">
-                          <span className="inline-block bg-orange-100 text-orange-900 border border-orange-200 px-2 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap">
+                          <span className={`inline-block border-2 px-2.5 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600' : 'bg-blue-100 text-[#0a1931] border-blue-400'}`}>
                             🛡️ {roleTrouve ? roleTrouve.nom_role : (u.nom_role || 'Administrateur')}
                           </span>
                         </td>
                         <td className="p-2.5 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded font-black text-[9.5px] border whitespace-nowrap ${aAcces ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                          <span className={`inline-block px-2.5 py-0.5 rounded font-black text-[9.5px] border-2 whitespace-nowrap ${aAcces ? 'bg-emerald-950 text-emerald-300 border-emerald-700' : 'bg-slate-800 text-slate-300 border-slate-600'}`}>
                             {aAcces ? '🟢 Utilisateur' : '👤 Terrain'}
                           </span>
                         </td>

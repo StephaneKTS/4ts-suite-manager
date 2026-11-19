@@ -75,6 +75,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [livreurAssigne, setLivreurAssigne] = useState('');
   const [statutCommandeSaisi, setStatutCommandeSaisi] = useState('LIVRÉ');
 
+  // NOUVELLES MODALES DEMANDÉES
+  const [modalPanierOuverte, setModalPanierOuverte] = useState(false);
+  const [modalConfirmationOuverte, setModalConfirmationOuverte] = useState(false);
+
   const [modalPartenaireOuverte, setModalPartenaireOuverte] = useState(false);
   const [recherchePartenaireInput, setRecherchePartenaireInput] = useState('');
 
@@ -825,12 +829,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
   const clotureLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheClotureLivreurInput.toLowerCase()));
 
-  // CORRECTION : Filtrage des articles par recherche textuelle ET appartenance au partenaire (Directe, Dépôt ou Historique de mouvements/commandes)
   const articlesFiltres = articles.filter((a) => {
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
     const matchNom = designation.includes(rechercheArticleInput.toUpperCase());
 
-    if (!idPartenaire) return false; // Aucun partenaire sélectionné = aucun article affiché pour la saisie
+    if (!idPartenaire) return false;
 
     const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
     if (!partObj) return false;
@@ -854,7 +857,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     } else if (artDepotId && (artDepotId === partDepotId || (depotAssocieId && artDepotId === depotAssocieId))) {
       matchPartenaire = true;
     } else {
-      // Vérifier si le partenaire a déjà mouvementé / commandé cet article au moins une fois
       const dejaMouvementeParPartenaire = commandes.some(c => {
         if (String(c.id_partenaire) !== String(idPartenaire)) return false;
         const lignesCmd = lignesCommandesMap[c.id] || [];
@@ -886,6 +888,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const enteteValide = partenaireSansStockage 
     ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '')
     : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && Boolean(depotValideEffectif));
+
+  // Condition mise à jour : pour les partenaires gérés avec stockage, un article au moins doit être ajouté dans le panier
+  const panierValidePourValidation = partenaireSansStockage || lignesSaisies.length > 0;
 
   const aEteModifie = (() => {
     if (!commandeEnEdition || !snapshotCommandeInitiale) return true;
@@ -1465,6 +1470,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setSnapshotCommandeInitiale(null);
       setDocumentEnLectureSeule(false);
       setStocksArticlesCache({});
+      setModalConfirmationOuverte(false);
       setVueActive('LISTE');
       await chargerDonnees();
     } catch (err) {
@@ -2673,158 +2679,37 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             </div>
           </div>
 
-          {!partenaireSansStockage ? (
-            <div className="grid grid-cols-2 gap-1.5 items-stretch">
-              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col justify-between space-y-1.5 h-full">
-                <div className="space-y-1.5 flex-1 flex flex-col">
-                  <div className="flex justify-between items-center gap-1">
-                    <span className="font-black text-slate-900 uppercase text-[9.5px] truncate">
-                      ARTICLE
-                    </span>
-                    {!documentEnLectureSeule && (
-                      <button
-                        type="button"
-                        onClick={() => setModalArticleOuverte(true)}
-                        disabled={!enteteValide}
-                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-1.5 py-1 rounded-md text-[9px] flex items-center justify-center gap-0.5 shadow-2xs transition disabled:opacity-50 truncate"
-                      >
-                        <span>🔍</span> Rechercher
-                      </button>
-                    )}
-                  </div>
-
-                  {!enteteValide ? (
-                    <div className="p-1.5 text-center text-amber-700 font-bold text-[9px] bg-amber-50 rounded-lg border border-amber-200">
-                      ⚠️ Remplir l'en-tête et client 9 chiffres.
-                    </div>
-                  ) : articlesFiltres.length === 0 ? (
-                    <div className="p-1.5 text-center text-slate-500 font-bold text-[9px] bg-slate-50 rounded-lg border border-slate-200">
-                      Aucun article pour ce partenaire.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-1 overflow-y-auto max-h-[460px] min-h-[320px] pr-0.5 flex-1">
-                      {articlesFiltres.map((art) => {
-                        const idArt = art.id_article;
-
-                        return (
-                          <ArticleItemStockCard 
-                            key={`${idArt}_${livreurAssigne}_${depotId}`} 
-                            art={art} 
-                            onSelect={() => { if (!documentEnLectureSeule) ajouterArticleAuPanier(art); }} 
-                            chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+          {/* BOUTON AJOUTER LES ARTICLES ET APERÇU PANIER */}
+          {!partenaireSansStockage && (
+            <div className="bg-white p-2.5 rounded-xl shadow-md border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-slate-900 uppercase text-[9.5px]">Articles & Panier ({lignesSaisies.length})</span>
+                <button
+                  type="button"
+                  disabled={!enteteValide || documentEnLectureSeule}
+                  onClick={() => setModalPanierOuverte(true)}
+                  className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1.5 rounded-lg text-[9px] shadow-xs transition disabled:opacity-50"
+                >
+                  ➕ Ajouter les articles
+                </button>
               </div>
 
-              <div className="bg-white p-2 rounded-xl shadow-md flex flex-col justify-between space-y-1.5 h-full">
-                <div className="space-y-1 flex-1 flex flex-col">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
-                    <span className="font-black text-slate-900 uppercase text-[9.5px]">Panier</span>
-                  </div>
-
-                  {lignesSaisies.length === 0 ? (
-                    <div className="py-4 text-center text-slate-400 font-bold text-[9px] italic flex-1 flex items-center justify-center">
-                      Panier vide.
+              {lignesSaisies.length > 0 && (
+                <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                  {lignesSaisies.map((l, index) => (
+                    <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1.5 rounded-md text-[9px]">
+                      <span className="font-black text-slate-900 uppercase truncate max-w-[180px]">{l.designation}</span>
+                      <span className="font-black text-orange-600">x{l.quantite}</span>
+                      <span className="font-mono font-bold text-slate-700">{(l.prix_unitaire * l.quantite).toLocaleString('fr-FR')} F</span>
                     </div>
-                  ) : (
-                    <div className="space-y-1 overflow-y-auto max-h-[350px] min-h-[220px] pr-0.5 flex-1">
-                      {lignesSaisies.map((l, index) => (
-                        <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1 rounded-md text-[9px]">
-                          <div className="flex-1 truncate pr-1">
-                            <p className="font-black uppercase text-slate-900 truncate text-[8.5px]">{l.designation}</p>
-                          </div>
-                          
-                          <div className="flex items-center gap-0.5 shrink-0">
-                            {!documentEnLectureSeule && (
-                              <button
-                                type="button"
-                                onClick={() => modifierQuantiteLigne(index, -1)}
-                                className="bg-slate-200 text-slate-800 font-black w-3 h-3 rounded flex items-center justify-center text-[8px]"
-                              >
-                                -
-                              </button>
-                            )}
-                            <span className="font-black text-orange-600 w-3.5 text-center text-[8.5px]">{l.quantite}</span>
-                            {!documentEnLectureSeule && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => modifierQuantiteLigne(index, 1)}
-                                  className="bg-slate-200 text-slate-800 font-black w-3 h-3 rounded flex items-center justify-center text-[8px]"
-                                >
-                                  +
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => supprimerLignePanier(index)}
-                                  className="text-red-600 font-bold ml-0.5 text-[8px] px-0.5"
-                                >
-                                  ✕
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  ))}
                 </div>
-
-                <div className="space-y-1 pt-1 border-t border-slate-200 mt-auto">
-                  <div className="w-full bg-slate-100 px-1.5 py-1 rounded-md border border-slate-200 flex flex-col items-center justify-center text-center">
-                    <span className="font-black text-slate-900 text-[8px] uppercase">Net à payer</span>
-                    <span className="font-black text-emerald-700 text-[9.5px] font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
-                  </div>
-
-                  <div className="flex items-center gap-1 w-full">
-                    <button
-                      type="button"
-                      disabled={sauvegardeEnCours}
-                      onClick={() => {
-                        setLignesSaisies([]);
-                        setStocksArticlesCache({});
-                        setVueActive('LISTE');
-                        setCommandeEnEdition(null);
-                        setSnapshotCommandeInitiale(null);
-                        setDocumentEnLectureSeule(false);
-                      }}
-                      className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-1 px-0.5 rounded text-[8.5px] transition text-center disabled:opacity-50 truncate"
-                    >
-                      Fermer
-                    </button>
-
-                    {commandeEnEdition && !documentEnLectureSeule && permissions.peut_supprimer && (
-                      <button
-                        type="button"
-                        disabled={sauvegardeEnCours}
-                        onClick={supprimerCommandeActuelle}
-                        className="bg-red-600 hover:bg-red-700 text-white font-black p-1 rounded text-[8.5px] transition shrink-0 disabled:opacity-50"
-                        title="Supprimer"
-                      >
-                        🗑️
-                      </button>
-                    )}
-
-                    {!documentEnLectureSeule && ((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
-                      <button
-                        type="button"
-                        disabled={sauvegardeEnCours || !enteteValide || (commandeEnEdition && !aEteModifie)}
-                        onClick={sauvegarderCommande}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1 px-0.5 rounded text-[8.5px] transition text-center shadow-xs truncate"
-                      >
-                        {sauvegardeEnCours ? '...' : (commandeEnEdition ? 'Mettre à jour' : 'Valider')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
-          ) : (
-            <div className="bg-white p-2.5 rounded-xl shadow-md space-y-2">
+          )}
+
+          <div className="bg-white p-2.5 rounded-xl shadow-md space-y-2">
+            {partenaireSansStockage && (
               <div className="bg-orange-50 border border-orange-200 p-2 rounded-lg text-[9.5px] space-y-0.5">
                 <span className="block font-black text-orange-900 uppercase">Résumé du Trajet :</span>
                 <p className="font-bold text-slate-800 truncate">
@@ -2847,51 +2732,208 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   🛵 Livreur : <strong className="text-blue-600 uppercase">{livreurAssigne || 'Non assigné'}</strong>
                 </p>
               </div>
+            )}
 
-              <div className="w-full bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200 flex items-center justify-between text-[10px]">
-                <span className="font-black text-slate-900 uppercase">Net à payer :</span>
-                <span className="font-black text-emerald-700 font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
-              </div>
+            <div className="w-full bg-slate-100 px-2 py-1.5 rounded-lg border border-slate-200 flex items-center justify-between text-[10px]">
+              <span className="font-black text-slate-900 uppercase">Net à payer :</span>
+              <span className="font-black text-emerald-700 font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+            </div>
 
-              <div className="flex gap-1 w-full pt-0.5">
+            <div className="flex gap-1 w-full pt-0.5">
+              <button
+                type="button"
+                disabled={sauvegardeEnCours}
+                onClick={() => {
+                  setLignesSaisies([]);
+                  setStocksArticlesCache({});
+                  setVueActive('LISTE');
+                  setCommandeEnEdition(null);
+                  setSnapshotCommandeInitiale(null);
+                  setDocumentEnLectureSeule(false);
+                }}
+                className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-1.5 px-1 rounded-lg text-[9px] transition text-center disabled:opacity-50"
+              >
+                Fermer
+              </button>
+
+              {commandeEnEdition && !documentEnLectureSeule && permissions.peut_supprimer && (
                 <button
                   type="button"
                   disabled={sauvegardeEnCours}
-                  onClick={() => {
-                    setLignesSaisies([]);
-                    setStocksArticlesCache({});
-                    setVueActive('LISTE');
-                    setCommandeEnEdition(null);
-                    setSnapshotCommandeInitiale(null);
-                    setDocumentEnLectureSeule(false);
-                  }}
-                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-1.5 px-1 rounded-lg text-[9px] transition text-center disabled:opacity-50"
+                  onClick={supprimerCommandeActuelle}
+                  className="bg-red-600 hover:bg-red-700 text-white font-black px-2 py-1.5 rounded-lg text-[9px] transition shadow-xs disabled:opacity-50"
+                  title="Supprimer"
                 >
-                  Fermer
+                  🗑️
                 </button>
+              )}
 
-                {commandeEnEdition && !documentEnLectureSeule && permissions.peut_supprimer && (
+              {!documentEnLectureSeule && ((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
+                <button
+                  type="button"
+                  disabled={sauvegardeEnCours || !enteteValide || !panierValidePourValidation || (commandeEnEdition && !aEteModifie)}
+                  onClick={() => setModalConfirmationOuverte(true)}
+                  className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-3 rounded-lg text-[9px] transition shadow-xs text-center truncate"
+                >
+                  {commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* MODALE 1 : SELECTION DES ARTICLES & PANIER */}
+          {modalPanierOuverte && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-3">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                <div className="flex justify-between items-center bg-slate-900 text-white p-3">
+                  <h4 className="font-black uppercase text-xs flex items-center gap-1.5">
+                    <span>🛒</span> SÉLECTION DES ARTICLES & PANIER
+                  </h4>
+                  <button type="button" onClick={() => setModalPanierOuverte(false)} className="text-slate-300 hover:text-white font-black text-sm px-1.5 py-0.5 rounded-md">✕</button>
+                </div>
+
+                <div className="p-3 grid grid-cols-2 gap-3 flex-1 overflow-hidden">
+                  {/* Colonne Liste Articles */}
+                  <div className="flex flex-col space-y-2 overflow-hidden border-r border-slate-200 pr-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-black text-slate-800 text-[9px] uppercase">Articles disponibles</span>
+                      <button
+                        type="button"
+                        onClick={() => setModalArticleOuverte(true)}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-2 py-0.5 rounded text-[8px]"
+                      >
+                        🔍 Rechercher
+                      </button>
+                    </div>
+
+                    <div className="overflow-y-auto flex-1 space-y-1">
+                      {articlesFiltres.length === 0 ? (
+                        <div className="p-4 text-center text-slate-400 font-bold italic text-[9px]">Aucun article disponible.</div>
+                      ) : (
+                        articlesFiltres.map((art) => {
+                          const idArt = art.id_article;
+                          return (
+                            <ArticleItemStockCard 
+                              key={`${idArt}_${livreurAssigne}_${depotId}`} 
+                              art={art} 
+                              onSelect={() => ajouterArticleAuPanier(art)} 
+                              chargerStock={async () => await recupererStockReelRPC(idArt, livreurAssigne)}
+                            />
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Colonne Panier Actuel */}
+                  <div className="flex flex-col space-y-2 overflow-hidden">
+                    <span className="font-black text-slate-800 text-[9px] uppercase">Panier en cours</span>
+                    
+                    <div className="overflow-y-auto flex-1 space-y-1.5">
+                      {lignesSaisies.length === 0 ? (
+                        <div className="p-6 text-center text-slate-400 font-bold italic text-[9px] flex items-center justify-center h-full">Panier vide.</div>
+                      ) : (
+                        lignesSaisies.map((l, index) => (
+                          <div key={index} className="flex justify-between items-center bg-slate-50 border border-slate-200 p-1.5 rounded-lg text-[9px]">
+                            <div className="truncate pr-1">
+                              <p className="font-black uppercase text-slate-900 text-[9px] truncate">{l.designation}</p>
+                              <span className="font-mono font-bold text-slate-500">{l.prix_unitaire} F</span>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button type="button" onClick={() => modifierQuantiteLigne(index, -1)} className="bg-slate-200 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[9px]">-</button>
+                              <span className="font-black text-orange-600 w-4 text-center">{l.quantite}</span>
+                              <button type="button" onClick={() => modifierQuantiteLigne(index, 1)} className="bg-slate-200 text-slate-800 font-black w-4 h-4 rounded flex items-center justify-center text-[9px]">+</button>
+                              <button type="button" onClick={() => supprimerLignePanier(index)} className="text-red-600 font-bold ml-1 text-xs">✕</button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-100 p-3 border-t border-slate-200 flex justify-between items-center">
+                  <span className="font-black text-slate-900 text-[9px]">Total articles : <strong className="text-orange-600">{lignesSaisies.reduce((acc, l) => acc + l.quantite, 0)}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => setModalPanierOuverte(false)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-4 py-2 rounded-xl text-[9.5px] uppercase shadow-md transition"
+                  >
+                    Valider le panier ✓
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE 2 : CONFIRMATION DE VALIDATION DE COMMANDE */}
+          {modalConfirmationOuverte && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                    <span>⚠️</span> CONFIRMATION DE VALIDATION
+                  </h4>
+                  <button type="button" onClick={() => setModalConfirmationOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md">✕</button>
+                </div>
+
+                <div className="space-y-2 text-[9.5px] bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="flex justify-between border-b border-slate-200 pb-1">
+                    <span className="font-bold text-slate-500 uppercase">N° Commande :</span>
+                    <span className="font-black text-orange-600 font-mono">CMD-{numeroCommande}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200 pb-1">
+                    <span className="font-bold text-slate-500 uppercase">Livreur :</span>
+                    <span className="font-black text-blue-700 uppercase">{livreurAssigne || 'Non assigné'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200 pb-1">
+                    <span className="font-bold text-slate-500 uppercase">Client (Tel) :</span>
+                    <span className="font-black text-slate-900 font-mono">{numeroClient}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200 pb-1">
+                    <span className="font-bold text-slate-500 uppercase">Adresse / Zone :</span>
+                    <span className="font-black text-slate-900 uppercase">{adresseLivraison}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200 pb-1">
+                    <span className="font-bold text-slate-500 uppercase">Montant Total :</span>
+                    <span className="font-black text-emerald-700 font-mono">{napGlobal.toLocaleString('fr-FR')} CFA</span>
+                  </div>
+
+                  <div>
+                    <span className="block font-bold text-slate-500 uppercase mb-1">Articles commandés :</span>
+                    {lignesSaisies.length === 0 ? (
+                      <span className="italic text-slate-400">Aucun article (Sans stockage / Trajet direct)</span>
+                    ) : (
+                      <div className="space-y-0.5 max-h-28 overflow-y-auto">
+                        {lignesSaisies.map((l, idx) => (
+                          <div key={idx} className="flex justify-between text-[9px] bg-white p-1 rounded border border-slate-200">
+                            <span className="font-black uppercase text-slate-800">{l.designation}</span>
+                            <span className="font-black text-orange-600">x{l.quantite}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setModalConfirmationOuverte(false)}
+                    className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2 rounded-xl text-[9px] uppercase transition"
+                  >
+                    Annuler
+                  </button>
                   <button
                     type="button"
                     disabled={sauvegardeEnCours}
-                    onClick={supprimerCommandeActuelle}
-                    className="bg-red-600 hover:bg-red-700 text-white font-black px-2 py-1.5 rounded-lg text-[9px] transition shadow-xs disabled:opacity-50"
-                    title="Supprimer"
-                  >
-                    🗑️
-                  </button>
-                )}
-
-                {!documentEnLectureSeule && ((commandeEnEdition && permissions.peut_modifier) || (!commandeEnEdition && permissions.peut_creer)) && (
-                  <button
-                    type="button"
-                    disabled={sauvegardeEnCours || !enteteValide || (commandeEnEdition && !aEteModifie)}
                     onClick={sauvegarderCommande}
-                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black py-1.5 px-3 rounded-lg text-[9px] transition shadow-xs text-center truncate"
+                    className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 rounded-xl text-[9px] uppercase transition shadow-md"
                   >
-                    {sauvegardeEnCours ? 'Enregistrement...' : (commandeEnEdition ? 'Mettre à jour ➔' : 'Valider la commande ➔')}
+                    {sauvegardeEnCours ? 'Enregistrement...' : 'Confirmer et Enregistrer ✓'}
                   </button>
-                )}
+                </div>
               </div>
             </div>
           )}

@@ -8,13 +8,6 @@ const generateUniqueId = () => {
   return '4TS-' + randomNum;
 };
 
-const TARIFS_MODULES = {
-  Boutique: { installation: 25000, mensuelPerUser: 5000 },
-  Logistique: { installation: 20000, mensuelPerUser: 4000 },
-  Livraison: { installation: 25000, mensuelPerUser: 5000 },
-  Tontine: { installation: 25000, mensuelPerUser: 2500 },
-};
-
 export default function SouscriptionWizard() {
   const [estMonte, setEstMonte] = useState(false);
   const [step, setStep] = useState(1);
@@ -42,6 +35,24 @@ export default function SouscriptionWizard() {
     Tontine: false,
   });
 
+  // 🏷️ État dynamique complet des tarifs, frais et grilles de réductions du Super Admin
+  const [tarifsConfig, setTarifsConfig] = useState({
+    Boutique: { installation: 25000, mensuelPerUser: 5000 },
+    Logistique: { installation: 20000, mensuelPerUser: 4000 },
+    Livraison: { installation: 25000, mensuelPerUser: 5000 },
+    Tontine: { installation: 25000, mensuelPerUser: 2500 },
+    remisesDuree: [
+      { seuil: 3, taux: 5 },
+      { seuil: 6, taux: 10 },
+      { seuil: 12, taux: 15 }
+    ],
+    remisesUsers: [
+      { seuil: 10, taux: 5 },
+      { seuil: 20, taux: 10 },
+      { seuil: 50, taux: 15 }
+    ]
+  });
+
   const [otpInput, setOtpInput] = useState('');
   const [serverOtp, setServerOtp] = useState('');
 
@@ -56,6 +67,39 @@ export default function SouscriptionWizard() {
   useEffect(() => {
     setEstMonte(true);
     setFormData((prev) => ({ ...prev, entrepriseId: generateUniqueId() }));
+
+    // 🔄 Chargement dynamique et centralisé des tarifs et grilles depuis Supabase (Panneau Super Admin)
+    const chargerConfigTarifsDistant = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        const { data: tarifsData } = await supabase
+          .from('configuration_globale')
+          .select('valeur')
+          .eq('cle', '4ts_tarifs_plateforme')
+          .maybeSingle();
+
+        if (tarifsData && tarifsData.valeur) {
+          const parsedTarifs = typeof tarifsData.valeur === 'string' ? JSON.parse(tarifsData.valeur) : tarifsData.valeur;
+          
+          setTarifsConfig({
+            Boutique: parsedTarifs.Boutique || { installation: 25000, mensuelPerUser: 5000 },
+            Logistique: parsedTarifs.Logistique || { installation: 20000, mensuelPerUser: 4000 },
+            Livraison: parsedTarifs.Livraison || { installation: 25000, mensuelPerUser: 5000 },
+            Tontine: parsedTarifs.Tontine || { installation: 25000, mensuelPerUser: 2500 },
+            remisesDuree: Array.isArray(parsedTarifs.remisesDuree) ? parsedTarifs.remisesDuree : [
+              { seuil: 3, taux: 5 }, { seuil: 6, taux: 10 }, { seuil: 12, taux: 15 }
+            ],
+            remisesUsers: Array.isArray(parsedTarifs.remisesUsers) ? parsedTarifs.remisesUsers : [
+              { seuil: 10, taux: 5 }, { seuil: 20, taux: 10 }, { seuil: 50, taux: 15 }
+            ]
+          });
+        }
+      } catch (err) {
+        console.warn("Erreur lors du chargement des configurations tarifaires distantes :", err);
+      }
+    };
+
+    chargerConfigTarifsDistant();
 
     // Interception sécurisée du retour de paiement CinetPay
     const queryParams = new URLSearchParams(window.location.search);
@@ -113,6 +157,7 @@ export default function SouscriptionWizard() {
     setModules({ ...modules, [modName]: !modules[modName] });
   };
 
+  // 🧮 Calcul intelligent et dynamique basé sur les paliers et tarifs configurés par le Super Admin
   const calculerFacturation = () => {
     let sousTotalInstallation = 0;
     let sousTotalMensuelPerUser = 0;
@@ -123,8 +168,9 @@ export default function SouscriptionWizard() {
     } else {
       Object.keys(modules).forEach((mod) => {
         if (modules[mod]) {
-          sousTotalInstallation += TARIFS_MODULES[mod].installation;
-          sousTotalMensuelPerUser += TARIFS_MODULES[mod].mensuelPerUser;
+          const configMod = tarifsConfig[mod] || { installation: 25000, mensuelPerUser: 5000 };
+          sousTotalInstallation += Number(configMod.installation) || 0;
+          sousTotalMensuelPerUser += Number(configMod.mensuelPerUser) || 0;
         }
       });
     }
@@ -134,20 +180,28 @@ export default function SouscriptionWizard() {
 
     const totalAbonnementBrut = sousTotalMensuelPerUser * nbUsers * nbMois;
 
+    // 📈 Application dynamique des réductions par durée (%) configurées dans le Super Admin
     let remiseDureePct = 0;
-    if (nbMois >= 12) remiseDureePct = 0.15;
-    else if (nbMois >= 6) remiseDureePct = 0.10;
-    else if (nbMois >= 3) remiseDureePct = 0.05;
+    const remisesDureeTriees = [...(tarifsConfig.remisesDuree || [])].sort((a, b) => a.seuil - b.seuil);
+    remisesDureeTriees.forEach((palier) => {
+      if (nbMois >= Number(palier.seuil)) {
+        remiseDureePct = Number(palier.taux) || 0;
+      }
+    });
 
+    // 👥 Application dynamique des réductions par utilisateurs (%) configurées dans le Super Admin
     let remiseUsersPct = 0;
     if (typeOffre === 'entreprise') {
-      if (nbUsers >= 50) remiseUsersPct = 0.15;
-      else if (nbUsers >= 20) remiseUsersPct = 0.10;
-      else if (nbUsers >= 10) remiseUsersPct = 0.05;
+      const remisesUsersTriees = [...(tarifsConfig.remisesUsers || [])].sort((a, b) => a.seuil - b.seuil);
+      remisesUsersTriees.forEach((palier) => {
+        if (nbUsers >= Number(palier.seuil)) {
+          remiseUsersPct = Number(palier.taux) || 0;
+        }
+      });
     }
 
     const remiseTotalPct = remiseDureePct + remiseUsersPct;
-    const montantRemise = totalAbonnementBrut * remiseTotalPct;
+    const montantRemise = totalAbonnementBrut * (remiseTotalPct / 100);
     const totalAbonnementNette = totalAbonnementBrut - montantRemise;
 
     const totalGeneral = sousTotalInstallation + totalAbonnementNette;
@@ -155,7 +209,7 @@ export default function SouscriptionWizard() {
     return {
       fraisInstallation: sousTotalInstallation,
       abonnementBrut: totalAbonnementBrut,
-      remisePct: Math.round(remiseTotalPct * 100),
+      remisePct: remiseTotalPct,
       montantRemise,
       totalGeneral,
       nbUsers,
@@ -275,8 +329,7 @@ export default function SouscriptionWizard() {
     try {
       const supabase = getSupabaseClient();
 
-      // 🛡️ VÉRIFICATION DYNAMIQUE EN TEMPS RÉEL DANS LA BASE SUPABASE
-      // On interroge la table de configuration globale pour savoir si le contournement est actif partout
+      // 🛡️ VÉRIFICATION DYNAMIQUE EN TEMPS RÉEL DU MODE CONTOURNEMENT DANS LA BASE SUPABASE
       let modeContournementActif = false;
       try {
         const { data: configData } = await supabase
@@ -644,9 +697,9 @@ export default function SouscriptionWizard() {
                             />
                             <span className="text-sm">{mod}</span>
                           </div>
-                          {typeOffre === 'entreprise' && (
+                          {typeOffre === 'entreprise' && tarifsConfig[mod] && (
                             <span className="text-[10px] text-slate-400 font-normal">
-                              +{TARIFS_MODULES[mod].installation.toLocaleString()} F
+                              +{Number(tarifsConfig[mod].installation).toLocaleString()} F
                             </span>
                           )}
                         </div>
@@ -698,7 +751,7 @@ export default function SouscriptionWizard() {
                     </div>
                     {facturation.remisePct > 0 && (
                       <div className="flex justify-between text-emerald-600 font-bold">
-                        <span>Remise ({facturation.remisePct}%) :</span>
+                        <span>Remise dynamique ({facturation.remisePct}%) :</span>
                         <span>-{facturation.montantRemise.toLocaleString()} XAF</span>
                       </div>
                     )}

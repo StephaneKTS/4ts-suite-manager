@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' }) {
+export default function GestionApprovisionnements({ entrepriseId = '4TS-234321', isDarkMode = false }) {
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -72,6 +72,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const [entrepriseInfo, setInfosEntreprise] = useState(null);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
+
+  // 🔔 État pour la modale unifiée de confirmation et de succès
+  const [etatModale, setEtatModale] = useState({
+    ouverte: false,
+    titre: '',
+    message: '',
+    type: 'info', // 'confirmation', 'succes', 'erreur'
+    onConfirmer: null
+  });
 
   const [utilisateurConnecte, setUtilisateurConnecte] = useState(null);
   const [roleUtilisateur, setRoleUtilisateur] = useState(null);
@@ -369,7 +378,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const montantTotalGlobal = lignesValidees.reduce((sum, item) => sum + (Number(item.quantite || 0) * Number(item.prix_achat || 0)), 0);
   const soldeRestant = statutPaiement === 'SOLDE' ? 0 : statutPaiement === 'CREDIT' ? montantTotalGlobal : Math.max(0, montantTotalGlobal - (parseFloat(montantPaye) || 0));
 
-  // 🛡️ COMPARAISON RIGOUREUSE : Vérifie si une information primaire a réellement changé en mode édition
   const documentModifie = useMemo(() => {
     if (!approEnEditionId || !etatInitialEdition) return false;
 
@@ -407,25 +415,25 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
   const verifierEnTeteAvantSaisie = () => {
     if (documentEnLectureSeule) {
-      alert('🔒 Ce document est en lecture seule (journée clôturée).');
+      setEtatModale({ ouverte: true, titre: 'Document verrouillé', message: 'Ce document est en lecture seule (journée clôturée).', type: 'erreur', onConfirmer: null });
       return false;
     }
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (dateDoc < dateDuJour) {
-      alert(`❌ Modification interdite : le document est daté du ${dateDoc} (journée clôturée et verrouillée).`);
+      setEtatModale({ ouverte: true, titre: 'Modification interdite', message: `Le document est daté du ${dateDoc} (journée clôturée et verrouillée).`, type: 'erreur', onConfirmer: null });
       return false;
     }
-    if (!dateDoc) { alert('⚠️ Veuillez renseigner la date.'); return false; }
-    if (!idFournisseur) { alert(`⚠️ Veuillez sélectionner un ${libelleTiers.toLowerCase()}.`); return false; }
-    if (!estModeLivraison && (!referenceFournisseur || !referenceFournisseur.trim())) { alert('⚠️ Veuillez renseigner la référence.'); return false; }
-    if (!estPartenaireSansStockage && !idDepotDestination) { alert('⚠️ Veuillez sélectionner un dépôt.'); return false; }
+    if (!dateDoc) { setEtatModale({ ouverte: true, titre: 'Champ requis', message: 'Veuillez renseigner la date.', type: 'erreur', onConfirmer: null }); return false; }
+    if (!idFournisseur) { setEtatModale({ ouverte: true, titre: 'Champ requis', message: `Veuillez sélectionner un ${libelleTiers.toLowerCase()}.`, type: 'erreur', onConfirmer: null }); return false; }
+    if (!estModeLivraison && (!referenceFournisseur || !referenceFournisseur.trim())) { setEtatModale({ ouverte: true, titre: 'Champ requis', message: 'Veuillez renseigner la référence.', type: 'erreur', onConfirmer: null }); return false; }
+    if (!estPartenaireSansStockage && !idDepotDestination) { setEtatModale({ ouverte: true, titre: 'Champ requis', message: 'Veuillez sélectionner un dépôt.', type: 'erreur', onConfirmer: null }); return false; }
     return true;
   };
 
   const preparerNouveauDoc = (type) => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.peut_creer) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      setEtatModale({ ouverte: true, titre: 'Accès refusé', message: 'Votre profil ne dispose pas des droits de création.', type: 'erreur', onConfirmer: null });
       return;
     }
     if (type === 'APPRO') {
@@ -451,11 +459,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const ajouterArticleCourant = () => {
     if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     if (!verifierEnTeteAvantSaisie()) return;
-    if (!articleCourant.id_article) { alert('Veuillez sélectionner un article.'); return; }
+    if (!articleCourant.id_article) { setEtatModale({ ouverte: true, titre: 'Article requis', message: 'Veuillez sélectionner un article.', type: 'erreur', onConfirmer: null }); return; }
     const qte = parseInt(articleCourant.quantite);
     const pxAchat = estModeLivraison ? 0 : parseFloat(articleCourant.prix_achat);
-    if (isNaN(qte) || qte <= 0) { alert('Quantité invalide.'); return; }
-    if (!estModeLivraison && (isNaN(pxAchat) || pxAchat < 0)) { alert('Prix invalide.'); return; }
+    if (isNaN(qte) || qte <= 0) { setEtatModale({ ouverte: true, titre: 'Quantité invalide', message: 'Veuillez entrer une quantité valide.', type: 'erreur', onConfirmer: null }); return; }
+    if (!estModeLivraison && (isNaN(pxAchat) || pxAchat < 0)) { setEtatModale({ ouverte: true, titre: 'Prix invalide', message: 'Veuillez entrer un prix valide.', type: 'erreur', onConfirmer: null }); return; }
 
     const designationMaj = (articleCourant.designation || '').toUpperCase();
     const articleModifie = { ...articleCourant, designation: designationMaj, prix_achat: estModeLivraison ? 0 : pxAchat };
@@ -483,7 +491,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (dateDoc < dateDuJour) {
-      alert(`❌ Modification interdite : ce document appartient à une journée clôturée (${dateDoc}).`);
+      setEtatModale({ ouverte: true, titre: 'Modification interdite', message: `Ce document appartient à une journée clôturée (${dateDoc}).`, type: 'erreur', onConfirmer: null });
       return;
     }
     const ligne = lignesValidees[index];
@@ -491,29 +499,41 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     setIndexEnCoursModif(index);
   };
 
-  const enregistrerFacture = async (e) => {
+  const preparerEnregistrementFacture = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder || documentEnLectureSeule) return;
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (dateDoc < dateDuJour) {
-      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${dateDoc} car cette journée est clôturée.`);
+      setEtatModale({ ouverte: true, titre: 'Modification interdite', message: `Impossible d'enregistrer sur la date du ${dateDoc} car cette journée est clôturée.`, type: 'erreur', onConfirmer: null });
       return;
     }
 
     if (approEnEditionId && !permissions.peut_modifier) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      setEtatModale({ ouverte: true, titre: 'Accès refusé', message: 'Votre profil ne dispose pas des droits de modification.', type: 'erreur', onConfirmer: null });
       return;
     }
     if (!approEnEditionId && !permissions.peut_creer) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      setEtatModale({ ouverte: true, titre: 'Accès refusé', message: 'Votre profil ne dispose pas des droits de création.', type: 'erreur', onConfirmer: null });
       return;
     }
     if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
-      if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
+      if (lignesValidees.length === 0) {
+        setEtatModale({ ouverte: true, titre: 'Articles requis', message: 'Ajoutez au moins un article.', type: 'erreur', onConfirmer: null });
+      }
       return; 
     }
 
+    setEtatModale({
+      ouverte: true,
+      titre: 'Confirmation requise',
+      message: `Voulez-vous véritablement valider cet approvisionnement (${numeroDoc}) ?`,
+      type: 'confirmation',
+      onConfirmer: executerEnregistrementFacture
+    });
+  };
+
+  const executerEnregistrementFacture = async () => {
     setEnTrainDeSauvegarder(true);
     try {
       const timestampUnique = Date.now().toString().slice(-6);
@@ -565,39 +585,59 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
       localStorage.removeItem(cleCacheAppro);
       setEtatInitialEdition(null);
-      alert(`Approvisionnement ${numeroAffichageFinal} enregistré avec succès !`);
+      
+      setEtatModale({
+        ouverte: true,
+        titre: 'Opération réussie',
+        message: `Approvisionnement ${numeroAffichageFinal} enregistré avec succès !`,
+        type: 'succes',
+        onConfirmer: null
+      });
+
       setVueActive('liste');
       await chargerDonnees(true);
     } catch (err) { 
-      alert('Erreur : ' + err.message); 
+      setEtatModale({ ouverte: true, titre: 'Erreur', message: 'Erreur : ' + err.message, type: 'erreur', onConfirmer: null });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
   };
 
-  const enregistrerCommande = async (e) => {
+  const preparerEnregistrementCommande = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder || documentEnLectureSeule) return;
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (dateDoc < dateDuJour) {
-      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${dateDoc} car cette journée est clôturée.`);
+      setEtatModale({ ouverte: true, titre: 'Modification interdite', message: `Impossible d'enregistrer sur la date du ${dateDoc} car cette journée est clôturée.`, type: 'erreur', onConfirmer: null });
       return;
     }
 
     if (approEnEditionId && !permissions.peut_modifier) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      setEtatModale({ ouverte: true, titre: 'Accès refusé', message: 'Votre profil ne dispose pas des droits de modification.', type: 'erreur', onConfirmer: null });
       return;
     }
     if (!approEnEditionId && !permissions.peut_creer) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      setEtatModale({ ouverte: true, titre: 'Accès refusé', message: 'Votre profil ne dispose pas des droits de création.', type: 'erreur', onConfirmer: null });
       return;
     }
     if (!verifierEnTeteAvantSaisie() || lignesValidees.length === 0) { 
-      if (lignesValidees.length === 0) alert('Ajoutez au moins un article.'); 
+      if (lignesValidees.length === 0) {
+        setEtatModale({ ouverte: true, titre: 'Articles requis', message: 'Ajoutez au moins un article.', type: 'erreur', onConfirmer: null });
+      }
       return; 
     }
 
+    setEtatModale({
+      ouverte: true,
+      titre: 'Confirmation requise',
+      message: `Voulez-vous véritablement valider ce bon de commande (${numeroDoc}) ?`,
+      type: 'confirmation',
+      onConfirmer: executerEnregistrementCommande
+    });
+  };
+
+  const executerEnregistrementCommande = async () => {
     setEnTrainDeSauvegarder(true);
     try {
       const timestampUnique = Date.now().toString().slice(-6);
@@ -648,11 +688,19 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
       localStorage.removeItem(cleCacheCommandes);
       setEtatInitialEdition(null);
-      alert(`Bon de commande ${numeroAffichageFinal} enregistré avec succès !`);
+
+      setEtatModale({
+        ouverte: true,
+        titre: 'Opération réussie',
+        message: `Bon de commande ${numeroAffichageFinal} enregistré avec succès !`,
+        type: 'succes',
+        onConfirmer: null
+      });
+
       setVueActive('liste');
       await chargerDonnees(true);
     } catch (err) { 
-      alert('Erreur : ' + err.message); 
+      setEtatModale({ ouverte: true, titre: 'Erreur', message: 'Erreur : ' + err.message, type: 'erreur', onConfirmer: null });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -664,17 +712,26 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     const dateDuJour = new Date().toISOString().split('T')[0];
     const docDateStr = doc?.created_at ? doc.created_at.split('T')[0] : dateDuJour;
     if (docDateStr < dateDuJour) {
-      alert(`❌ Action interdite : ce bon appartient à une journée clôturée (${docDateStr}).`);
+      setEtatModale({ ouverte: true, titre: 'Action interdite', message: `Ce bon appartient à une journée clôturée (${docDateStr}).`, type: 'erreur', onConfirmer: null });
       return;
     }
 
     if (!permissions.peut_valider) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de validation/transformation.');
+      setEtatModale({ ouverte: true, titre: 'Accès refusé', message: 'Votre profil ne dispose pas des droits de validation/transformation.', type: 'erreur', onConfirmer: null });
       return;
     }
     if (!doc) return;
-    if (!confirm('Voulez-vous transformer ce bon de commande en approvisionnement (ce qui va incrémenter le stock) ?')) return;
 
+    setEtatModale({
+      ouverte: true,
+      titre: 'Confirmation de transformation',
+      message: 'Voulez-vous transformer ce bon de commande en approvisionnement (ce qui va incrémenter le stock) ?',
+      type: 'confirmation',
+      onConfirmer: () => executerTransformationEnFacture(doc)
+    });
+  };
+
+  const executerTransformationEnFacture = async (doc) => {
     setEnTrainDeSauvegarder(true);
     try {
       const timestampUnique = Date.now().toString().slice(-6);
@@ -726,12 +783,20 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       localStorage.removeItem(cleCacheAppro);
       localStorage.removeItem(cleCacheCommandes);
       setEtatInitialEdition(null);
-      alert(`Succès ! Le bon a été transformé en approvisionnement : ${nouveauNumAffichage}`);
+
+      setEtatModale({
+        ouverte: true,
+        titre: 'Transformation réussie',
+        message: `Le bon a été transformé en approvisionnement : ${nouveauNumAffichage}`,
+        type: 'succes',
+        onConfirmer: null
+      });
+
       setVueActive('liste');
       setOngletActif('APPRO');
       await chargerDonnees(true);
     } catch (err) {
-      alert('Erreur lors de la transformation : ' + err.message);
+      setEtatModale({ ouverte: true, titre: 'Erreur', message: 'Erreur lors de la transformation : ' + err.message, type: 'erreur', onConfirmer: null });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -740,7 +805,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const ouvrirDocModification = (doc, type, indexReel) => {
     if (enTrainDeSauvegarder) return;
 
-    // 🛡️ MODE CONSULTATION SEULE POUR LES JOURNÉES PASSÉES
     const dateDocStr = doc.created_at ? doc.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
     const dateDuJour = new Date().toISOString().split('T')[0];
     const estVerrouille = dateDocStr < dateDuJour;
@@ -772,7 +836,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
     setIndexEnCoursModif(null);
     setVueActive(type === 'APPRO' ? 'formulaire_facture' : 'formulaire_commande');
 
-    // 🛡️ ENREGISTREMENT DE L'ÉTAT INITIAL POUR LA COMPARAISON
     setEtatInitialEdition({
       dateDoc: dateDocStr,
       idFournisseur: String(doc.id_fournisseur || ''),
@@ -791,16 +854,25 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (dateDoc < dateDuJour) {
-      alert(`❌ Suppression interdite : ce document appartient à une journée clôturée (${dateDoc}).`);
+      setEtatModale({ ouverte: true, titre: 'Suppression interdite', message: `Ce document appartient à une journée clôturée (${dateDoc}).`, type: 'erreur', onConfirmer: null });
       return;
     }
 
     if (!permissions.peut_supprimer) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
+      setEtatModale({ ouverte: true, titre: 'Accès refusé', message: 'Votre profil ne dispose pas des droits de suppression.', type: 'erreur', onConfirmer: null });
       return;
     }
-    if (!confirm('Supprimer ce document ?')) return;
-    
+
+    setEtatModale({
+      ouverte: true,
+      titre: 'Confirmation de suppression',
+      message: 'Voulez-vous véritablement supprimer ce document ?',
+      type: 'confirmation',
+      onConfirmer: () => executerSuppressionDoc(id, type)
+    });
+  };
+
+  const executerSuppressionDoc = async (id, type) => {
     setEnTrainDeSauvegarder(true);
     try {
       const table = type === 'APPRO' ? 'approvisionnements' : 'bons_commande_fournisseurs';
@@ -822,11 +894,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       }
 
       setEtatInitialEdition(null);
-      alert('Supprimé.');
+      setEtatModale({ ouverte: true, titre: 'Supprimé', message: 'Le document a été supprimé avec succès.', type: 'succes', onConfirmer: null });
       setDocumentEnLectureSeule(false);
       await chargerDonnees(true);
     } catch (err) { 
-      alert('Erreur : ' + err.message); 
+      setEtatModale({ ouverte: true, titre: 'Erreur', message: 'Erreur : ' + err.message, type: 'erreur', onConfirmer: null });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -862,7 +934,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const commandesHistoriqueAffiches = commandesHistorique.slice(0, limiteCommandes);
   
   const enTeteVerrouille = lignesValidees.length > 0 || enTrainDeSauvegarder || documentEnLectureSeule;
-  const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-300 ml-0.5">↕</span> : <span className="text-orange-600 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
+  const rendreFlecheTri = (colonne) => triCol !== colonne ? <span className="text-slate-400 ml-0.5">↕</span> : <span className="text-orange-500 ml-0.5">{triOrdre === 'asc' ? '↑' : '↓'}</span>;
 
   const fournisseurIdEffectif = idFournisseur || docEnEditionObjet?.id_fournisseur || '';
   const nomFournisseurImpression = obtenirNomFournisseur(fournisseurIdEffectif) || '-';
@@ -895,8 +967,14 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
   const nomPartenaireCourant = obtenirNomFournisseur(idFournisseur);
   const nomDepotCourant = estPartenaireSansStockage ? '-- SANS STOCK / AUCUN DÉPÔT --' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '');
 
+  // 🌟 CHARTE VISUELLE DYNAMIQUE (Mode Nuit vs Mode Jour)
+  const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-[#0a1931]';
+  const cardBg = isDarkMode ? 'bg-[#0b1329] border-2 border-slate-700 text-slate-100 shadow-md' : 'bg-white border-2 border-[#0a1931]/60 text-[#0a1931] shadow-md';
+  const inputBg = isDarkMode ? 'bg-slate-900 border-2 border-slate-600 text-slate-100 placeholder:text-slate-500' : 'bg-white border-2 border-slate-400 text-black font-semibold placeholder:text-slate-400';
+  const tableHeaderBg = isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-700' : 'bg-[#0a1931] text-white border-blue-900';
+
   return (
-    <div className="space-y-2.5 font-sans text-xs">
+    <div className={`space-y-2.5 font-sans text-xs ${containerBg} p-2 rounded-xl transition-colors`}>
       
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
@@ -998,13 +1076,13 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
       </div>
 
       <div className="print:hidden space-y-2.5">
-        <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+        <div className={`flex justify-between items-center p-3 rounded-xl ${cardBg}`}>
           <div className="flex items-center gap-2">
-            <h3 className="font-extrabold text-slate-900 uppercase text-xs flex items-center gap-1.5">
+            <h3 className={`font-black uppercase text-xs flex items-center gap-1.5 ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
               <span>📦</span> APPROVISIONNEMENTS
             </h3>
             {roleUtilisateur && (
-              <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
+              <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                 Rôle : {roleUtilisateur.nom_role || roleUtilisateur.nom || 'Employé'}
               </span>
             )}
@@ -1015,9 +1093,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={() => setVueActive('choix_creation')}
-                className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+                className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded-lg transition shadow-xs text-xs cursor-pointer border border-orange-500"
               >
-                Nouveau
+                + Nouveau
               </button>
             )
           ) : (
@@ -1029,7 +1107,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 setDocumentEnLectureSeule(false);
                 setEtatInitialEdition(null);
               }}
-              className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs"
+              className={`font-black px-3 py-1.5 rounded-lg transition shadow-xs text-xs cursor-pointer border ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'}`}
             >
               ✕ Fermer
             </button>
@@ -1038,8 +1116,8 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
         {vueActive === 'liste' && (
           <div className="space-y-2">
-            <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-1.5">
-              <div className="flex justify-between items-center text-[9px] font-black uppercase text-slate-600">
+            <div className={`p-3 rounded-xl border-2 shadow-md space-y-2 ${cardBg}`}>
+              <div className={`flex justify-between items-center text-[9px] font-black uppercase ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                 <span>📅 Période (Mois en cours)</span>
                 {(dateDebutFiltre !== obtenirPremierJourDuMois() || dateFinFiltre !== obtenirDernierJourDuMois()) && (
                   <button
@@ -1048,40 +1126,44 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                       setDateDebutFiltre(obtenirPremierJourDuMois());
                       setDateFinFiltre(obtenirDernierJourDuMois());
                     }}
-                    className="text-orange-600 hover:underline font-bold"
+                    className="text-orange-500 hover:underline font-black"
                   >
                     Réinitialiser
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Du</label>
+                  <label className={`block text-[8px] font-black uppercase mb-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Du</label>
                   <input
                     type="date"
                     value={dateDebutFiltre}
                     onChange={(e) => setDateDebutFiltre(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
+                    className={`w-full rounded-lg p-1.5 text-xs font-mono font-bold shadow-xs ${inputBg}`}
                   />
                 </div>
                 <div>
-                  <label className="block text-[8px] font-bold text-slate-500 uppercase mb-0.5">Au</label>
+                  <label className={`block text-[8px] font-black uppercase mb-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Au</label>
                   <input
                     type="date"
                     value={dateFinFiltre}
                     onChange={(e) => setDateFinFiltre(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded p-1 text-[10px] font-bold text-slate-900"
+                    className={`w-full rounded-lg p-1.5 text-xs font-mono font-bold shadow-xs ${inputBg}`}
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-between items-center gap-1.5">
+            <div className="grid grid-cols-2 gap-2">
               <button 
                 type="button" 
                 disabled={enTrainDeSauvegarder}
                 onClick={() => { setOngletActif('APPRO'); setVueActive('liste'); }} 
-                className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'APPRO' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
+                className={`px-3 py-2 rounded-xl font-black text-xs transition text-center border-2 shadow-xs cursor-pointer ${
+                  ongletActif === 'APPRO' 
+                    ? (isDarkMode ? 'bg-slate-800 text-white border-slate-500' : 'bg-[#0a1931] text-white border-[#0a1931]')
+                    : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700' : 'bg-white text-slate-800 border-slate-300')
+                }`}
               >
                 📥 Appro ({documentsHistoriqueAffiches.length} / {documentsHistorique.length})
               </button>
@@ -1089,7 +1171,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 type="button" 
                 disabled={enTrainDeSauvegarder}
                 onClick={() => { setOngletActif('COMMANDE'); setVueActive('liste'); }} 
-                className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs ${ongletActif === 'COMMANDE' ? 'bg-orange-600 text-white border-orange-600 shadow-xs' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'}`}
+                className={`px-3 py-2 rounded-xl font-black text-xs transition text-center border-2 shadow-xs cursor-pointer ${
+                  ongletActif === 'COMMANDE' 
+                    ? (isDarkMode ? 'bg-slate-800 text-white border-slate-500' : 'bg-[#0a1931] text-white border-[#0a1931]')
+                    : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700' : 'bg-white text-slate-800 border-slate-300')
+                }`}
               >
                 📋 Commandes ({commandesHistoriqueAffiches.length} / {commandesHistorique.length})
               </button>
@@ -1101,26 +1187,28 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
           <div className="space-y-2.5">
             {ongletActif === 'APPRO' && (
               <div className="space-y-2">
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                <div className={`rounded-xl border-2 overflow-hidden shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-400'}`}>
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
-                        <th onClick={() => gererTri('date')} className="p-2 w-[18%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
-                        <th onClick={() => gererTri('numero')} className="p-2 w-[22%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° APPRO {rendreFlecheTri('numero')}</th>
-                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[42%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">{libelleTiers} {rendreFlecheTri('fournisseur')}</th>
-                        {!estModeLivraison && <th onClick={() => gererTri('statut')} className="p-2 w-[18%] text-right cursor-pointer hover:bg-slate-200 whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>}
+                      <tr className={`border-b-2 uppercase text-[9.5px] font-black ${tableHeaderBg}`}>
+                        <th onClick={() => gererTri('date')} className="p-2.5 w-[18%] cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                        <th onClick={() => gererTri('numero')} className="p-2.5 w-[22%] font-mono cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap">N° APPRO {rendreFlecheTri('numero')}</th>
+                        <th onClick={() => gererTri('fournisseur')} className="p-2.5 w-[42%] cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap">{libelleTiers} {rendreFlecheTri('fournisseur')}</th>
+                        {!estModeLivraison && <th onClick={() => gererTri('statut')} className="p-2.5 w-[18%] text-right cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap">STATUT {rendreFlecheTri('statut')}</th>}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-[10px]">
-                      {documentsHistoriqueAffiches.length === 0 ? (<tr><td colSpan={estModeLivraison ? 3 : 4} className="p-4 text-center text-slate-500 font-bold">Aucun approvisionnement enregistré.</td></tr>) : (
+                    <tbody className={`divide-y-2 text-xs ${isDarkMode ? 'divide-slate-800 text-slate-200' : 'divide-slate-200 text-slate-900'}`}>
+                      {documentsHistoriqueAffiches.length === 0 ? (
+                        <tr><td colSpan={estModeLivraison ? 3 : 4} className={`p-6 text-center font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Aucun approvisionnement enregistré.</td></tr>
+                      ) : (
                         documentsHistoriqueAffiches.map((doc, idx) => (
-                          <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO', idx)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                            <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-mono font-black text-orange-600 whitespace-nowrap">{formaterNumeroAffichageIndex(idx, 'APPRO')}</td>
-                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(doc.id_fournisseur) || libelleTiers}</td>
+                          <tr key={doc.id} onClick={() => ouvrirDocModification(doc, 'APPRO', idx)} className={`cursor-pointer transition select-none ${isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-orange-50/70'}`}>
+                            <td className={`p-2.5 font-bold whitespace-nowrap ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{new Date(doc.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-2.5 font-mono font-black text-orange-500 whitespace-nowrap">{formaterNumeroAffichageIndex(idx, 'APPRO')}</td>
+                            <td className={`p-2.5 font-extrabold uppercase truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{obtenirNomFournisseur(doc.id_fournisseur) || libelleTiers}</td>
                             {!estModeLivraison && (
-                              <td className="p-2 text-right whitespace-nowrap">
-                                <span className={`inline-block px-1.5 py-0.5 rounded font-black text-[9px] ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}>
+                              <td className="p-2.5 text-right whitespace-nowrap">
+                                <span className={`inline-block px-2 py-0.5 rounded font-black text-[9px] border ${doc.statut_paiement === 'SOLDE' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : 'bg-orange-500/20 text-orange-400 border-orange-500/40'}`}>
                                   {doc.statut_paiement === 'PARTIEL' ? 'AVANCE' : (doc.statut_paiement || 'SOLDE')}
                                 </span>
                               </td>
@@ -1137,7 +1225,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                     <button
                       type="button"
                       onClick={() => setLimiteAppro(prev => prev + 20)}
-                      className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                      className={`font-black px-4 py-2 rounded-xl text-xs transition shadow-xs border-2 cursor-pointer ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
                     >
                       📥 Charger 20 appros de plus ({documentsHistorique.length - limiteAppro} restants)
                     </button>
@@ -1148,22 +1236,24 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
             {ongletActif === 'COMMANDE' && (
               <div className="space-y-2">
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                <div className={`rounded-xl border-2 overflow-hidden shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-400'}`}>
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-800 uppercase text-[9px] font-black tracking-tight select-none">
-                        <th onClick={() => gererTri('date')} className="p-2 w-[20%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
-                        <th onClick={() => gererTri('numero')} className="p-2 w-[35%] font-mono cursor-pointer hover:bg-slate-200 whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
-                        <th onClick={() => gererTri('fournisseur')} className="p-2 w-[45%] cursor-pointer hover:bg-slate-200 whitespace-nowrap">{libelleTiers} {rendreFlecheTri('fournisseur')}</th>
+                      <tr className={`border-b-2 uppercase text-[9.5px] font-black ${tableHeaderBg}`}>
+                        <th onClick={() => gererTri('date')} className="p-2.5 w-[20%] cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap">DATE {rendreFlecheTri('date')}</th>
+                        <th onClick={() => gererTri('numero')} className="p-2.5 w-[35%] font-mono cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap">N° CMD {rendreFlecheTri('numero')}</th>
+                        <th onClick={() => gererTri('fournisseur')} className="p-2.5 w-[45%] cursor-pointer hover:bg-slate-800 select-none whitespace-nowrap">{libelleTiers} {rendreFlecheTri('fournisseur')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-[10px]">
-                      {commandesHistoriqueAffiches.length === 0 ? (<tr><td colSpan="3" className="p-4 text-center text-slate-500 font-bold">Aucun bon de commande enregistré.</td></tr>) : (
+                    <tbody className={`divide-y-2 text-xs ${isDarkMode ? 'divide-slate-800 text-slate-200' : 'divide-slate-200 text-slate-900'}`}>
+                      {commandesHistoriqueAffiches.length === 0 ? (
+                        <tr><td colSpan="3" className={`p-6 text-center font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Aucun bon de commande enregistré.</td></tr>
+                      ) : (
                         commandesHistoriqueAffiches.map((cmd, idx) => (
-                          <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE', idx)} className="hover:bg-orange-50/70 cursor-pointer transition select-none">
-                            <td className="p-2 text-slate-700 font-bold whitespace-nowrap">{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
-                            <td className="p-2 font-mono font-black text-blue-600 whitespace-nowrap">{formaterNumeroAffichageIndex(idx, 'COMMANDE')}</td>
-                            <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{obtenirNomFournisseur(cmd.id_fournisseur) || libelleTiers}</td>
+                          <tr key={cmd.id} onClick={() => ouvrirDocModification(cmd, 'COMMANDE', idx)} className={`cursor-pointer transition select-none ${isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-orange-50/70'}`}>
+                            <td className={`p-2.5 font-bold whitespace-nowrap ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{new Date(cmd.created_at).toLocaleDateString('fr-FR')}</td>
+                            <td className="p-2.5 font-mono font-black text-blue-500 whitespace-nowrap">{formaterNumeroAffichageIndex(idx, 'COMMANDE')}</td>
+                            <td className={`p-2.5 font-extrabold uppercase truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{obtenirNomFournisseur(cmd.id_fournisseur) || libelleTiers}</td>
                           </tr>
                         ))
                       )}
@@ -1176,7 +1266,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                     <button
                       type="button"
                       onClick={() => setLimiteCommandes(prev => prev + 20)}
-                      className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                      className={`font-black px-4 py-2 rounded-xl text-xs transition shadow-xs border-2 cursor-pointer ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
                     >
                       📥 Charger 20 commandes de plus ({commandesHistorique.length - limiteCommandes} restantes)
                     </button>
@@ -1188,127 +1278,128 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         )}
 
         {vueActive === 'choix_creation' && (
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-md space-y-3 max-w-sm mx-auto text-center">
-            <div className="border-b border-slate-200 pb-2 flex justify-between items-center">
-              <span className="font-black text-slate-900 text-xs uppercase">CHOISIR LE TYPE DE DOCUMENT</span>
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-700 font-black text-xs">✕</button>
+          <div className={`p-4 rounded-2xl border-2 shadow-xl space-y-3 max-w-sm mx-auto text-center ${cardBg}`}>
+            <div className={`border-b-2 pb-2 flex justify-between items-center ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}>
+              <span className={`font-black text-xs uppercase ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>CHOISIR LE TYPE DE DOCUMENT</span>
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setVueActive('liste')} className="text-slate-400 hover:text-slate-200 font-black text-xs cursor-pointer">✕</button>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-1">
-              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('COMMANDE')} className="bg-white hover:bg-blue-50 border border-slate-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('COMMANDE')} className={`p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-md border-2 cursor-pointer ${isDarkMode ? 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-white' : 'bg-white hover:bg-blue-50 border-slate-300 text-slate-900'}`}>
                 <span className="text-2xl">📋</span>
-                <span className="font-black text-[11px] text-slate-900">Bon de Commande</span>
+                <span className="font-black text-[11px]">Bon de Commande</span>
               </button>
-              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('APPRO')} className="bg-white hover:bg-emerald-50 border border-emerald-300 p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-xs">
+              <button type="button" disabled={enTrainDeSauvegarder || !permissions.peut_creer} onClick={() => preparerNouveauDoc('APPRO')} className={`p-3 rounded-xl flex flex-col items-center gap-1.5 transition shadow-md border-2 cursor-pointer ${isDarkMode ? 'bg-slate-900 hover:bg-slate-800 border-emerald-500/40 text-white' : 'bg-white hover:bg-emerald-50 border-emerald-500/40 text-emerald-900'}`}>
                 <span className="text-2xl">📥</span>
-                <span className="font-black text-[11px] text-emerald-900">Approvisionnement</span>
+                <span className="font-black text-[11px]">Approvisionnement</span>
               </button>
             </div>
           </div>
         )}
 
         {vueActive === 'formulaire_facture' && (
-          <form onSubmit={enregistrerFacture} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
+          <form onSubmit={preparerEnregistrementFacture} onKeyDown={gererKeyDown} className={`p-4 rounded-2xl border-2 shadow-md space-y-3 ${cardBg}`}>
             {documentEnLectureSeule && (
-              <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
+              <div className="bg-amber-500/20 border-2 border-amber-500/50 text-amber-300 p-2.5 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
                 🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)
               </div>
             )}
-            <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+            <div className={`flex justify-between items-center border-b-2 pb-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}>
               <div className="flex items-center gap-2">
-                <span className="font-black text-slate-900 text-xs uppercase">📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); setEtatInitialEdition(null); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+                <span className={`font-black text-xs uppercase ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>📥 APPROVISIONNEMENT {enTeteVerrouille && '🔒'}</span>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); setEtatInitialEdition(null); }} className={`font-black px-2.5 py-1 rounded-lg text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-400'}`}>⬅️ Retour</button>
               </div>
-              <span className="bg-emerald-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
+              <span className="bg-emerald-600 text-white font-mono px-3 py-1 rounded-lg text-xs font-black shadow-xs border border-emerald-500">{numeroDoc}</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2 rounded-xl border border-slate-200">
+            
+            <div className={`grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-xl border-2 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'}`}>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label>
-                <input type="date" disabled={documentEnLectureSeule} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70" />
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Date *</label>
+                <input type="date" disabled={documentEnLectureSeule} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg} disabled:opacity-70`} />
               </div>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">{libelleTiers} *</label>
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{libelleTiers} *</label>
                 <div 
                   onClick={() => { if (enTeteVerrouille) return; setModalFournisseurOuverte(true); }}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]"
+                  className={`w-full rounded-lg p-2 font-extrabold text-xs cursor-pointer truncate shadow-xs min-h-[32px] flex items-center ${inputBg}`}
                 >
-                  {nomPartenaireCourant}
+                  {nomPartenaireCourant || 'Sélectionner...'}
                 </div>
               </div>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-                <input type="text" disabled={documentEnLectureSeule} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 shadow-xs disabled:opacity-70" />
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Réf. Doc {!estModeLivraison && '*'}</label>
+                <input type="text" disabled={documentEnLectureSeule} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className={`w-full rounded-lg p-2 text-xs font-extrabold uppercase shadow-xs ${inputBg} disabled:opacity-70`} />
               </div>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                   {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
                 </label>
                 {estPartenaireSansStockage ? (
-                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed" />
+                  <input type="text" disabled value="-- SANS STOCK --" className={`w-full rounded-lg p-2 font-extrabold text-xs shadow-xs cursor-not-allowed ${inputBg}`} />
                 ) : estModeLivraison ? (
-                  <input type="text" disabled value={nomDepotCourant} className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 shadow-xs cursor-not-allowed" />
+                  <input type="text" disabled value={nomDepotCourant} className={`w-full rounded-lg p-2 font-extrabold text-xs shadow-xs cursor-not-allowed ${inputBg}`} />
                 ) : (
                   <div 
                     onClick={() => { if (enTeteVerrouille) return; setModalDepotOuverte(true); }}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 font-extrabold text-xs text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]"
+                    className={`w-full rounded-lg p-2 font-extrabold text-xs cursor-pointer truncate shadow-xs min-h-[32px] flex items-center ${inputBg}`}
                   >
-                    {nomDepotCourant}
+                    {nomDepotCourant || 'Sélectionner...'}
                   </div>
                 )}
               </div>
             </div>
 
             {!documentEnLectureSeule && (
-              <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
-                <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
+              <div className={`p-3 rounded-xl border-2 space-y-2 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'}`}>
+                <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-2 items-end`}>
                   <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
-                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label>
-                    <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">
-                      {articleCourant.designation}
+                    <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Article *</label>
+                    <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className={`w-full rounded-lg p-2 text-xs font-extrabold uppercase cursor-pointer truncate shadow-xs min-h-[32px] flex items-center ${inputBg}`}>
+                      {articleCourant.designation || 'Sélectionner un article...'}
                     </div>
                   </div>
                   <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
-                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label>
-                    <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                    <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Qté *</label>
+                    <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg}`} />
                   </div>
                   {!estModeLivraison && (
                     <div className="col-span-3">
-                      <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P.A (F) *</label>
-                      <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" />
+                      <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>P.A (F) *</label>
+                      <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg}`} />
                     </div>
                   )}
                   <div className="col-span-1 text-center">
-                    <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button>
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black px-3 py-2 rounded-lg text-xs shadow-md cursor-pointer border border-orange-500">OK</button>
                   </div>
                 </div>
               </div>
             )}
 
             {lignesValidees.length > 0 && (
-              <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
+              <div className={`rounded-xl border-2 overflow-hidden shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-400'}`}>
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
-                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
-                      <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
-                      {!estModeLivraison && <th className="p-2 w-[20%] text-right">P.A</th>}
-                      {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
-                      {!documentEnLectureSeule && <th className="p-2 w-[5%] text-center">⚙️</th>}
+                    <tr className={`border-b-2 uppercase text-[9.5px] font-black ${tableHeaderBg}`}>
+                      <th className={estModeLivraison ? 'p-2.5 w-[75%]' : 'p-2.5 w-[45%]'}>Article</th>
+                      <th className={estModeLivraison ? 'p-2.5 w-[20%] text-center' : 'p-2.5 w-[15%] text-center'}>Qté</th>
+                      {!estModeLivraison && <th className="p-2.5 w-[20%] text-right">P.A</th>}
+                      {!estModeLivraison && <th className="p-2.5 w-[15%] text-right">Total</th>}
+                      {!documentEnLectureSeule && <th className="p-2.5 w-[5%] text-center">⚙️</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                  <tbody className={`divide-y-2 text-xs ${isDarkMode ? 'divide-slate-800 text-slate-200' : 'divide-slate-200 text-slate-900'}`}>
                     {lignesValidees.map((l, index) => (
-                      <tr key={index} onClick={() => chargerLignePourModification(index)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition select-none" : "select-none"}>
-                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
-                        <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
+                      <tr key={index} onClick={() => chargerLignePourModification(index)} className={!documentEnLectureSeule ? (isDarkMode ? "hover:bg-slate-800/60 cursor-pointer transition select-none" : "hover:bg-orange-50/70 cursor-pointer transition select-none") : "select-none"}>
+                        <td className={`p-2.5 font-extrabold uppercase truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{l.designation}</td>
+                        <td className="p-2.5 text-center font-black text-orange-500">{l.quantite}</td>
                         {!estModeLivraison && (
                           <>
-                            <td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
-                            <td className="p-2 text-right font-black text-emerald-700">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
+                            <td className={`p-2.5 text-right font-extrabold ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
+                            <td className="p-2.5 text-right font-black text-emerald-500">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
                           </>
                         )}
                         {!documentEnLectureSeule && (
-                          <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
-                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
+                          <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className={`p-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${isDarkMode ? 'bg-slate-800 hover:bg-rose-950 text-rose-400 border-slate-700' : 'bg-slate-200 hover:bg-red-100 text-red-600 border-slate-300'}`}>🗑️</button>
                           </td>
                         )}
                       </tr>
@@ -1317,14 +1408,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 </table>
               </div>
             )}
+
             {!estModeLivraison && (
-              <div className="bg-white p-2 rounded-xl border border-slate-200 space-y-1.5">
-                <div className="grid grid-cols-3 gap-2 text-[9px] uppercase text-slate-700 font-black">
+              <div className={`p-3 rounded-xl border-2 space-y-2 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'}`}>
+                <div className={`grid grid-cols-3 gap-2 text-[9px] uppercase font-black ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                   <div>STATUT PAIEMENT</div><div>MONTANT RÉGLÉ</div><div>RESTE À PAYER</div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 items-center">
                   <div>
-                    <select value={statutPaiement} disabled={documentEnLectureSeule || enTrainDeSauvegarder} onChange={(e) => setStatutPaiement(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70">
+                    <select value={statutPaiement} disabled={documentEnLectureSeule || enTrainDeSauvegarder} onChange={(e) => setStatutPaiement(e.target.value)} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg} disabled:opacity-70`}>
                       <option value="SOLDE">Soldé</option>
                       <option value="PARTIEL">Avance</option>
                       <option value="CREDIT">Crédit</option>
@@ -1337,30 +1429,38 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                       value={montantPaye} 
                       onFocus={(e) => e.target.select()} 
                       onChange={(e) => setMontantPaye(e.target.value)} 
-                      className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70" 
+                      className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg} disabled:opacity-70`} 
                     />
                   </div>
-                  <div className="bg-white px-3 py-1.5 rounded border border-slate-300 text-right shadow-xs"><span className="text-xs font-black text-orange-600">{soldeRestant.toLocaleString('fr-FR')} F</span></div>
+                  <div className={`p-2 rounded-lg border-2 text-right shadow-xs ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`}>
+                    <span className="text-xs font-black text-orange-500">{soldeRestant.toLocaleString('fr-FR')} F</span>
+                  </div>
                 </div>
               </div>
             )}
-            <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+
+            <div className={`flex justify-between items-center pt-3 border-t-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}>
               {approEnEditionId && !documentEnLectureSeule ? (
                 permissions.peut_supprimer ? (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'APPRO'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => supprimerDoc(approEnEditionId, 'APPRO')} className="bg-rose-600 hover:bg-rose-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow-md cursor-pointer border border-rose-500">🗑️ Supprimer</button>
                 ) : <div/>
-              ) : (!estModeLivraison ? (<div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>) : <div/>)}
+              ) : (!estModeLivraison ? (
+                <div className="bg-emerald-600 text-white px-3.5 py-1.5 rounded-xl shadow-md border border-emerald-500">
+                  <span className="text-[8px] block font-black uppercase text-emerald-200">TOTAL</span>
+                  <span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span>
+                </div>
+              ) : <div/>)}
               
-              <div className="flex items-center gap-1.5">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className={`font-black px-3.5 py-2 rounded-xl text-xs shadow-md cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600' : 'bg-slate-800 hover:bg-slate-900 text-white border-slate-700'}`}>🖨️ Imprimer</button>
                 {!documentEnLectureSeule && ((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
                   <button 
                     type="submit" 
                     disabled={enTrainDeSauvegarder || (approEnEditionId && !documentModifie)} 
-                    className={`font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1 ${
+                    className={`font-black px-4 py-2 rounded-xl text-xs shadow-md cursor-pointer border-2 flex items-center gap-1 ${
                       !enTrainDeSauvegarder && (!approEnEditionId || documentModifie)
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
+                        : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
                     }`}
                   >
                     {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? (documentModifie ? 'Mettre à jour' : '🔒 Aucun changement') : 'Valider')}
@@ -1372,91 +1472,113 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
         )}
 
         {vueActive === 'formulaire_commande' && (
-          <form onSubmit={enregistrerCommande} onKeyDown={gererKeyDown} className="bg-white p-3 rounded-xl border border-slate-200 shadow-md space-y-2.5">
+          <form onSubmit={preparerEnregistrementCommande} onKeyDown={gererKeyDown} className={`p-4 rounded-2xl border-2 shadow-md space-y-3 ${cardBg}`}>
             {documentEnLectureSeule && (
-              <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
+              <div className="bg-amber-500/20 border-2 border-amber-500/50 text-amber-300 p-2.5 rounded-xl text-center font-black text-[10px] uppercase shadow-xs">
                 🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)
               </div>
             )}
-            <div className="flex justify-between items-center border-b border-slate-200 pb-1.5">
+            <div className={`flex justify-between items-center border-b-2 pb-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}>
               <div className="flex items-center gap-2">
-                <span className="font-black text-slate-900 text-xs uppercase">📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); setEtatInitialEdition(null); }} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-1 rounded text-[10px]">⬅️ Retour</button>
+                <span className={`font-black text-xs uppercase ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>📋 BON DE COMMANDE {enTeteVerrouille && '🔒'}</span>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { setVueActive('liste'); setDocumentEnLectureSeule(false); setEtatInitialEdition(null); }} className={`font-black px-2.5 py-1 rounded-lg text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600' : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-400'}`}>⬅️ Retour</button>
               </div>
-              <span className="bg-blue-600 text-white font-mono px-2.5 py-1 rounded text-xs font-black shadow-xs">{numeroDoc}</span>
+              <span className="bg-blue-600 text-white font-mono px-3 py-1 rounded-lg text-xs font-black shadow-xs border border-blue-500">{numeroDoc}</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-white p-2 rounded-xl border border-slate-200">
-              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Date *</label><input type="date" disabled={documentEnLectureSeule} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs disabled:opacity-70" /></div>
+
+            <div className={`grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-3 rounded-xl border-2 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'}`}>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">{libelleTiers} *</label>
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Date *</label>
+                <input type="date" disabled={documentEnLectureSeule} required value={dateDoc} onChange={(e) => setDateDoc(e.target.value)} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg} disabled:opacity-70`} />
+              </div>
+              <div>
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{libelleTiers} *</label>
                 <div 
                   onClick={() => { if (enTeteVerrouille) return; setModalFournisseurOuverte(true); }}
-                  className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold cursor-pointer truncate shadow-xs min-h-[26px]"
+                  className={`w-full rounded-lg p-2 text-xs font-extrabold cursor-pointer truncate shadow-xs min-h-[32px] flex items-center ${inputBg}`}
                 >
-                  {nomPartenaireCourant}
+                  {nomPartenaireCourant || 'Sélectionner...'}
                 </div>
               </div>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Réf. Doc {!estModeLivraison && '*'}</label>
-                <input type="text" disabled={documentEnLectureSeule} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase shadow-xs disabled:opacity-70" />
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Réf. Doc {!estModeLivraison && '*'}</label>
+                <input type="text" disabled={documentEnLectureSeule} required={!estModeLivraison} value={referenceFournisseur} onChange={(e) => setReferenceFournisseur(e.target.value.toUpperCase())} className={`w-full rounded-lg p-2 text-xs font-extrabold uppercase shadow-xs ${inputBg} disabled:opacity-70`} />
               </div>
               <div>
-                <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                   {estPartenaireSansStockage ? 'DÉPÔT (SANS STOCK)' : (estModeLivraison ? 'DÉPÔT * (AUTO)' : 'DÉPÔT * (CHOIX)')}
                 </label>
                 {estPartenaireSansStockage ? (
-                  <input type="text" disabled value="-- SANS STOCK / AUCUN DÉPÔT --" className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed" />
+                  <input type="text" disabled value="-- SANS STOCK --" className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs cursor-not-allowed ${inputBg}`} />
                 ) : estModeLivraison ? (
-                  <input type="text" disabled value={nomDepotCourant} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs cursor-not-allowed" />
+                  <input type="text" disabled value={nomDepotCourant} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs cursor-not-allowed ${inputBg}`} />
                 ) : (
                   <div 
                     onClick={() => { if (enTeteVerrouille) return; setModalDepotOuverte(true); }}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold cursor-pointer truncate shadow-xs min-h-[26px]"
+                    className={`w-full rounded-lg p-2 text-xs font-extrabold cursor-pointer truncate shadow-xs min-h-[32px] flex items-center ${inputBg}`}
                   >
-                    {nomDepotCourant}
+                    {nomDepotCourant || 'Sélectionner...'}
                   </div>
                 )}
               </div>
-              <div><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Délai</label><input type="text" disabled={documentEnLectureSeule || enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold uppercase shadow-xs disabled:opacity-70" /></div>
+              <div>
+                <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Délai</label>
+                <input type="text" disabled={documentEnLectureSeule || enTrainDeSauvegarder} value={delaiLivraison} onChange={(e) => setDelaiLivraison(e.target.value.toUpperCase())} className={`w-full rounded-lg p-2 text-xs font-extrabold uppercase shadow-xs ${inputBg} disabled:opacity-70`} />
+              </div>
             </div>
 
             {!documentEnLectureSeule && (
-              <div className="space-y-1.5 bg-white p-2 rounded-xl border border-slate-200">
-                <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-1.5 items-end`}>
-                  <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Article *</label><div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs font-extrabold uppercase text-slate-900 cursor-pointer truncate shadow-xs min-h-[26px]">{articleCourant.designation}</div></div>
-                  <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">Qté *</label><input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>
-                  {!estModeLivraison && <div className="col-span-3"><label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5">P. Estimé *</label><input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className="w-full bg-white border border-slate-300 rounded p-1.5 text-xs text-slate-900 font-extrabold shadow-xs" /></div>}
-                  <div className="col-span-1 text-center"><button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">OK</button></div>
+              <div className={`p-3 rounded-xl border-2 space-y-2 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'}`}>
+                <div className={`grid ${estModeLivraison ? 'grid-cols-9' : 'grid-cols-12'} gap-2 items-end`}>
+                  <div className={estModeLivraison ? 'col-span-6' : 'col-span-5'}>
+                    <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Article *</label>
+                    <div ref={selectArticleRef} tabIndex={0} onClick={() => { if (enTrainDeSauvegarder || !verifierEnTeteAvantSaisie()) return; setModalArticleOuverte(true); }} className={`w-full rounded-lg p-2 text-xs font-extrabold uppercase cursor-pointer truncate shadow-xs min-h-[32px] flex items-center ${inputBg}`}>
+                      {articleCourant.designation || 'Sélectionner un article...'}
+                    </div>
+                  </div>
+                  <div className={estModeLivraison ? 'col-span-2' : 'col-span-3'}>
+                    <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Qté *</label>
+                    <input ref={inputQuantiteRef} type="number" min="1" disabled={enTrainDeSauvegarder} value={articleCourant.quantite} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, quantite: e.target.value })} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg}`} />
+                  </div>
+                  {!estModeLivraison && (
+                    <div className="col-span-3">
+                      <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>P. Estimé *</label>
+                      <input type="number" min="0" disabled={enTrainDeSauvegarder} value={articleCourant.prix_achat} onFocus={(e) => e.target.select()} onChange={(e) => setArticleCourant({ ...articleCourant, prix_achat: e.target.value })} className={`w-full rounded-lg p-2 text-xs font-extrabold shadow-xs ${inputBg}`} />
+                    </div>
+                  )}
+                  <div className="col-span-1 text-center">
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={ajouterArticleCourant} className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-black px-3 py-2 rounded-lg text-xs shadow-md cursor-pointer border border-orange-500">OK</button>
+                  </div>
                 </div>
               </div>
             )}
 
             {lignesValidees.length > 0 && (
-              <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
+              <div className={`rounded-xl border-2 overflow-hidden shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-400'}`}>
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="bg-slate-100 border-b border-slate-200 uppercase text-[9px] font-black text-slate-800">
-                      <th className={estModeLivraison ? 'p-2 w-[75%]' : 'p-2 w-[45%]'}>Article</th>
-                      <th className={estModeLivraison ? 'p-2 w-[20%] text-center' : 'p-2 w-[15%] text-center'}>Qté</th>
-                      {!estModeLivraison && <th className="p-2 w-[20%] text-right">P. Estimé</th>}
-                      {!estModeLivraison && <th className="p-2 w-[15%] text-right">Total</th>}
-                      {!documentEnLectureSeule && <th className="p-2 w-[5%] text-center">⚙️</th>}
+                    <tr className={`border-b-2 uppercase text-[9.5px] font-black ${tableHeaderBg}`}>
+                      <th className={estModeLivraison ? 'p-2.5 w-[75%]' : 'p-2.5 w-[45%]'}>Article</th>
+                      <th className={estModeLivraison ? 'p-2.5 w-[20%] text-center' : 'p-2.5 w-[15%] text-center'}>Qté</th>
+                      {!estModeLivraison && <th className="p-2.5 w-[20%] text-right">P. Estimé</th>}
+                      {!estModeLivraison && <th className="p-2.5 w-[15%] text-right">Total</th>}
+                      {!documentEnLectureSeule && <th className="p-2.5 w-[5%] text-center">⚙️</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                  <tbody className={`divide-y-2 text-xs ${isDarkMode ? 'divide-slate-800 text-slate-200' : 'divide-slate-200 text-slate-900'}`}>
                     {lignesValidees.map((l, index) => (
-                      <tr key={index} onClick={() => chargerLignePourModification(index)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition select-none" : "select-none"}>
-                        <td className="p-2 font-extrabold uppercase text-slate-900 truncate">{l.designation}</td>
-                        <td className="p-2 text-center font-black text-orange-600">{l.quantite}</td>
+                      <tr key={index} onClick={() => chargerLignePourModification(index)} className={!documentEnLectureSeule ? (isDarkMode ? "hover:bg-slate-800/60 cursor-pointer transition select-none" : "hover:bg-orange-50/70 cursor-pointer transition select-none") : "select-none"}>
+                        <td className={`p-2.5 font-extrabold uppercase truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{l.designation}</td>
+                        <td className="p-2.5 text-center font-black text-orange-500">{l.quantite}</td>
                         {!estModeLivraison && (
                           <>
-                            <td className="p-2 text-right text-slate-800 font-extrabold">{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
-                            <td className="p-2 text-right font-black text-slate-900">{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
+                            <td className={`p-2.5 text-right font-extrabold ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>{Number(l.prix_achat).toLocaleString('fr-FR')}</td>
+                            <td className={`p-2.5 text-right font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{(Number(l.quantite) * Number(l.prix_achat)).toLocaleString('fr-FR')}</td>
                           </>
                         )}
                         {!documentEnLectureSeule && (
-                          <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
-                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className="p-1 bg-slate-200 hover:bg-red-100 text-red-600 rounded text-xs font-bold">🗑️</button>
+                          <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesValidees(lignesValidees.filter((_, i) => i !== index))} className={`p-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${isDarkMode ? 'bg-slate-800 hover:bg-rose-950 text-rose-400 border-slate-700' : 'bg-slate-200 hover:bg-red-100 text-red-600 border-slate-300'}`}>🗑️</button>
                           </td>
                         )}
                       </tr>
@@ -1465,30 +1587,34 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                 </table>
               </div>
             )}
-            <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+
+            <div className={`flex justify-between items-center pt-3 border-t-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}>
               {approEnEditionId && !documentEnLectureSeule ? (
-                <div className="flex gap-1.5">
+                <div className="flex gap-2">
                   {permissions.peut_supprimer && (
-                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => { supprimerDoc(approEnEditionId, 'COMMANDE'); setVueActive('liste'); }} className="bg-red-600 hover:bg-red-700 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🗑️ Supprimer</button>
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => supprimerDoc(approEnEditionId, 'COMMANDE')} className="bg-rose-600 hover:bg-rose-500 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow-md cursor-pointer border border-rose-500">🗑️ Supprimer</button>
                   )}
                   {permissions.peut_valider && (
-                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs flex items-center gap-1">🔄 Transformer en Appro</button>
+                    <button type="button" disabled={enTrainDeSauvegarder} onClick={() => transformerEnFacture(docEnEditionObjet)} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-black px-3.5 py-2 rounded-xl text-xs shadow-md cursor-pointer border border-emerald-500 flex items-center gap-1">🔄 Transformer en Appro</button>
                   )}
                 </div>
               ) : (!estModeLivraison ? (
-                <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg shadow-xs"><span className="text-[8px] block font-black uppercase">TOTAL</span><span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span></div>
+                <div className="bg-emerald-600 text-white px-3.5 py-1.5 rounded-xl shadow-md border border-emerald-500">
+                  <span className="text-[8px] block font-black uppercase text-emerald-200">TOTAL</span>
+                  <span className="text-xs font-black">{montantTotalGlobal.toLocaleString('fr-FR')} F</span>
+                </div>
               ) : <div/>)}
               
-              <div className="flex items-center gap-1.5">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white font-black px-3 py-1.5 rounded text-xs shadow-xs">🖨️ Imprimer</button>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className={`font-black px-3.5 py-2 rounded-xl text-xs shadow-md cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600' : 'bg-slate-800 hover:bg-slate-900 text-white border-slate-700'}`}>🖨️ Imprimer</button>
                 {!documentEnLectureSeule && ((approEnEditionId && permissions.peut_modifier) || (!approEnEditionId && permissions.peut_creer)) && (
                   <button 
                     type="submit" 
                     disabled={enTrainDeSauvegarder || (approEnEditionId && !documentModifie)} 
-                    className={`font-black px-4 py-1.5 rounded text-xs shadow-xs flex items-center gap-1 ${
+                    className={`font-black px-4 py-2 rounded-xl text-xs shadow-md cursor-pointer border-2 flex items-center gap-1 ${
                       !enTrainDeSauvegarder && (!approEnEditionId || documentModifie)
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
+                        : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
                     }`}
                   >
                     {enTrainDeSauvegarder ? 'Enregistrement...' : (approEnEditionId ? (documentModifie ? 'Mettre à jour' : '🔒 Aucun changement') : 'Enregistrer')}
@@ -1501,22 +1627,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
         {/* MODAL ARTICLE */}
         {modalArticleOuverte && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+            <div className={`rounded-2xl shadow-2xl border-2 w-full max-w-lg overflow-hidden space-y-3 p-4 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
+              <div className={`flex justify-between items-center border-b-2 pb-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <h4 className="font-black uppercase text-xs flex items-center gap-1.5">
                   <span>🔍</span> SÉLECTIONNER UN ARTICLE ({articlesFiltresModalAffiches.length} / {articlesFiltresModal.length})
                 </h4>
-                <button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                <button type="button" onClick={() => setModalArticleOuverte(false)} className="text-slate-400 hover:text-white font-black text-sm px-2 py-0.5 rounded-lg hover:bg-slate-800 transition cursor-pointer">✕</button>
               </div>
               <div>
                 <input
                   type="text"
                   value={rechercheArticle}
                   onChange={(e) => setRechercheArticle(e.target.value.toUpperCase())}
-                  placeholder="RECHERCHER..."
+                  placeholder="RECHERCHER UN ARTICLE..."
                   autoFocus
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className={`w-full rounded-xl p-2.5 font-black uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500 ${inputBg}`}
                 />
               </div>
               <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
@@ -1535,22 +1661,24 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                           setRechercheArticle(''); 
                           setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50); 
                         }} 
-                        className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
-                          estGrise ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'
+                        className={`p-3 rounded-xl border-2 transition flex flex-col justify-between shadow-xs ${
+                          estGrise 
+                            ? (isDarkMode ? 'bg-slate-950/50 border-slate-800 opacity-40 cursor-not-allowed' : 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed')
+                            : (isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:border-orange-500 hover:bg-slate-800 cursor-pointer' : 'bg-white border-slate-300 hover:border-orange-500 hover:bg-orange-50/50 cursor-pointer')
                         }`}
                       >
                         <div className="flex justify-between items-start gap-1">
-                          <span className={`font-black text-xs uppercase truncate ${estGrise ? 'text-slate-500' : 'text-slate-900'}`}>{art.Designation}</span>
+                          <span className={`font-black text-xs uppercase truncate ${estGrise ? 'text-slate-500' : (isDarkMode ? 'text-white' : 'text-slate-900')}`}>{art.Designation}</span>
                           {!estModeLivraison && (
-                            <span className="font-black text-[10px] text-orange-600 shrink-0">{art.prixAchatDefaut ? `${Number(art.prixAchatDefaut).toLocaleString('fr-FR')} F` : ''}</span>
+                            <span className="font-black text-[10px] text-orange-500 shrink-0">{art.prixAchatDefaut ? `${Number(art.prixAchatDefaut).toLocaleString('fr-FR')} F` : ''}</span>
                           )}
                         </div>
                         <div className="flex items-center justify-between mt-2">
                           {estGrise ? (
-                            <span className="bg-slate-200 text-slate-700 text-[8.5px] px-1.5 py-0.5 rounded font-black">Déjà ajouté</span>
+                            <span className="bg-slate-700 text-slate-300 text-[8.5px] px-1.5 py-0.5 rounded font-black">Déjà ajouté</span>
                           ) : <span/>}
-                          <span className="font-black text-[10px] text-slate-700">
-                            Stock : <strong className="text-emerald-700">{art.stockDepot}</strong>
+                          <span className={`font-black text-[10px] ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                            Stock : <strong className="text-emerald-500">{art.stockDepot}</strong>
                           </span>
                         </div>
                       </div>
@@ -1564,7 +1692,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                   <button
                     type="button"
                     onClick={() => setLimiteArticlesModal(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                    className={`font-extrabold px-3 py-2.5 rounded-xl text-[10px] transition shadow-xs border-2 w-full cursor-pointer ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
                   >
                     📥 Charger 20 articles de plus ({articlesFiltresModal.length - limiteArticlesModal} restants)
                   </button>
@@ -1576,22 +1704,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
         {/* MODAL FOURNISSEUR / PARTENAIRE */}
         {modalFournisseurOuverte && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+            <div className={`rounded-2xl shadow-2xl border-2 w-full max-w-lg overflow-hidden space-y-3 p-4 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
+              <div className={`flex justify-between items-center border-b-2 pb-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <h4 className="font-black uppercase text-xs flex items-center gap-1.5">
                   <span>🏢</span> SÉLECTIONNER UN {libelleTiers} ({fournisseursFiltresModalAffiches.length} / {fournisseursFiltresModal.length})
                 </h4>
-                <button type="button" onClick={() => setModalFournisseurOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                <button type="button" onClick={() => setModalFournisseurOuverte(false)} className="text-slate-400 hover:text-white font-black text-sm px-2 py-0.5 rounded-lg hover:bg-slate-800 transition cursor-pointer">✕</button>
               </div>
               <div>
                 <input
                   type="text"
                   value={rechercheFournisseur}
                   onChange={(e) => setRechercheFournisseur(e.target.value.toUpperCase())}
-                  placeholder="RECHERCHER..."
+                  placeholder={`RECHERCHER UN ${libelleTiers}...`}
                   autoFocus
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className={`w-full rounded-xl p-2.5 font-black uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500 ${inputBg}`}
                 />
               </div>
               <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1">
@@ -1604,11 +1732,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                       <div 
                         key={frs.id} 
                         onClick={() => selectionnerPartenaire(frs)} 
-                        className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex justify-between items-center shadow-2xs bg-white"
+                        className={`p-3 rounded-xl border-2 transition cursor-pointer flex justify-between items-center shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:border-orange-500 hover:bg-slate-800 text-white' : 'bg-white border-slate-300 hover:border-orange-500 hover:bg-orange-50/50 text-slate-900'}`}
                       >
-                        <span className="font-black text-xs text-slate-900 uppercase">{nomFrs}</span>
+                        <span className="font-black text-xs uppercase">{nomFrs}</span>
                         {frs.statut_stockage && (
-                          <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold">
+                          <span className={`text-[9px] px-2 py-0.5 rounded font-bold border ${isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                             {frs.statut_stockage}
                           </span>
                         )}
@@ -1623,7 +1751,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                   <button
                     type="button"
                     onClick={() => setLimiteFournisseursModal(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                    className={`font-extrabold px-3 py-2.5 rounded-xl text-[10px] transition shadow-xs border-2 w-full cursor-pointer ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
                   >
                     📥 Charger 20 {libelleTiers.toLowerCase()}s de plus ({fournisseursFiltresModal.length - limiteFournisseursModal} restants)
                   </button>
@@ -1635,22 +1763,22 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
 
         {/* MODAL DÉPÔT */}
         {modalDepotOuverte && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+            <div className={`rounded-2xl shadow-2xl border-2 w-full max-w-lg overflow-hidden space-y-3 p-4 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
+              <div className={`flex justify-between items-center border-b-2 pb-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <h4 className="font-black uppercase text-xs flex items-center gap-1.5">
                   <span>🏭</span> SÉLECTIONNER UN DÉPÔT ({depotsFiltresModalAffiches.length} / {depotsFiltresModal.length})
                 </h4>
-                <button type="button" onClick={() => setModalDepotOuverte(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                <button type="button" onClick={() => setModalDepotOuverte(false)} className="text-slate-400 hover:text-white font-black text-sm px-2 py-0.5 rounded-lg hover:bg-slate-800 transition cursor-pointer">✕</button>
               </div>
               <div>
                 <input
                   type="text"
                   value={rechercheDepot}
                   onChange={(e) => setRechercheDepot(e.target.value.toUpperCase())}
-                  placeholder="RECHERCHER..."
+                  placeholder="RECHERCHER UN DÉPÔT..."
                   autoFocus
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className={`w-full rounded-xl p-2.5 font-black uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500 ${inputBg}`}
                 />
               </div>
               <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 gap-2 pr-1">
@@ -1667,9 +1795,9 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                           setModalDepotOuverte(false);
                           setRechercheDepot('');
                         }} 
-                        className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex justify-between items-center shadow-2xs bg-white"
+                        className={`p-3 rounded-xl border-2 transition cursor-pointer flex justify-between items-center shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:border-orange-500 hover:bg-slate-800 text-white' : 'bg-white border-slate-300 hover:border-orange-500 hover:bg-orange-50/50 text-slate-900'}`}
                       >
-                        <span className="font-black text-xs text-slate-900 uppercase">{nomDep}</span>
+                        <span className="font-black text-xs uppercase">{nomDep}</span>
                       </div>
                     );
                   })
@@ -1681,12 +1809,71 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321' 
                   <button
                     type="button"
                     onClick={() => setLimiteDepotsModal(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                    className={`font-extrabold px-3 py-2.5 rounded-xl text-[10px] transition shadow-xs border-2 w-full cursor-pointer ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
                   >
                     📥 Charger 20 dépôts de plus ({depotsFiltresModal.length - limiteDepotsModal} restants)
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* 🔔 MODALE UNIFIÉE DE CONFIRMATION / SUCCÈS / ERREUR */}
+        {etatModale.ouverte && (
+          <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+            <div className={`border-2 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-[#0a1931] text-[#0a1931]'}`}>
+              
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
+                etatModale.type === 'confirmation' ? 'bg-amber-500/20 text-amber-400 border-2 border-amber-500/40' :
+                etatModale.type === 'succes' ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border-2 border-rose-500/40'
+              }`}>
+                {etatModale.type === 'confirmation' ? '❓' :
+                 etatModale.type === 'succes' ? '✓' : '⚠️'}
+              </div>
+
+              <div className="space-y-1">
+                <h4 className={`font-black text-sm uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
+                  {etatModale.titre}
+                </h4>
+                <p className={`text-xs font-semibold leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  {etatModale.message}
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                {etatModale.type === 'confirmation' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
+                      className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const action = etatModale.onConfirmer;
+                        setEtatModale({ ...etatModale, ouverte: false });
+                        if (action) action();
+                      }}
+                      className={`flex-1 font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                    >
+                      Confirmer
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
+                    className={`w-full font-black py-2.5 rounded-xl text-xs transition shadow-md cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                  >
+                    Compris 👍
+                  </button>
+                )}
+              </div>
+
             </div>
           </div>
         )}

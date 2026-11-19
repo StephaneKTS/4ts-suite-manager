@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
+export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = false }) {
   const [roles, setRoles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [afficherForm, setAfficherForm] = useState(false);
@@ -22,6 +22,15 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
   const [triOrdre, setTriOrdre] = useState('asc');
 
   const [roleNomConnecte, setRoleNomConnecte] = useState('');
+
+  // 🔔 ÉTAT UNIFIÉ POUR LES MODALES DE CONFIRMATION ET NOTIFICATION
+  const [etatModale, setEtatModale] = useState({
+    ouverte: false,
+    titre: '',
+    message: '',
+    type: 'info', // 'confirmation', 'succes', 'erreur', 'info'
+    onConfirmer: null
+  });
   
   const modulesBoutique = [
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
@@ -243,16 +252,34 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     }));
   };
 
-  const enregistrerRole = async (e) => {
+  // 🚀 FONCTION DE VALIDATION DÉCLENCHÉE PAR LE FORMULAIRE
+  const enregistrerRole = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
     const nomSaisi = nouveauRole.nom_role.trim().toUpperCase();
     if (!nomSaisi) {
-      alert('⚠️ Veuillez renseigner le nom du rôle.');
+      setEtatModale({
+        ouverte: true,
+        titre: '⚠️ Champ requis',
+        message: 'Veuillez renseigner le nom du rôle.',
+        type: 'erreur',
+        onConfirmer: null
+      });
       return;
     }
 
+    // Demande de confirmation via la modale unifiée
+    setEtatModale({
+      ouverte: true,
+      titre: 'Confirmation requise',
+      message: `Voulez-vous vraiment ${roleEnEdition ? 'mettre à jour' : 'créer'} le rôle "${nomSaisi}" ?`,
+      type: 'confirmation',
+      onConfirmer: () => executerEnregistrementRole(nomSaisi)
+    });
+  };
+
+  const executerEnregistrementRole = async (nomSaisi) => {
     setEnTrainDeSauvegarder(true);
     try {
       const payload = {
@@ -268,7 +295,13 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       if (roleEnEdition) {
         const nomRoleAncien = (roleEnEdition.nom_role || '').trim().toUpperCase();
         if (rolesSystemeInterditsModification.includes(nomRoleAncien) && nomSaisi !== nomRoleAncien) {
-          alert(`❌ Impossible de renommer le rôle système ${nomRoleAncien}.`);
+          setEtatModale({
+            ouverte: true,
+            titre: '❌ Action interdite',
+            message: `Impossible de renommer le rôle système ${nomRoleAncien}.`,
+            type: 'erreur',
+            onConfirmer: null
+          });
           setEnTrainDeSauvegarder(false);
           return;
         }
@@ -278,7 +311,13 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           const majRoles = roles.map(r => r.id === roleEnEdition.id ? { ...r, ...payload } : r);
           setRoles(majRoles);
           localSync.sauvegarderDonneesLocales(cleCacheRoles, majRoles);
-          alert('📴 Mode Hors Ligne : Rôle mis à jour localement.');
+          setEtatModale({
+            ouverte: true,
+            titre: '📴 Mode Hors Ligne',
+            message: 'Rôle mis à jour localement avec succès.',
+            type: 'succes',
+            onConfirmer: null
+          });
           annulerForm();
           setEnTrainDeSauvegarder(false);
           return;
@@ -292,11 +331,23 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         if (error) throw error;
 
         setRoles(prev => prev.map(r => r.id === roleEnEdition.id ? { ...r, ...payload } : r));
-        alert('✅ Rôle et permissions mis à jour avec succès !');
+        setEtatModale({
+          ouverte: true,
+          titre: '✅ Succès',
+          message: 'Rôle et permissions mis à jour avec succès !',
+          type: 'succes',
+          onConfirmer: null
+        });
       } else {
         const existeDeja = roles.some(r => (r.nom_role || '').trim().toUpperCase() === nomSaisi);
         if (existeDeja) {
-          alert('⚠️ Ce rôle existe déjà.');
+          setEtatModale({
+            ouverte: true,
+            titre: '⚠️ Doublon',
+            message: 'Ce rôle existe déjà.',
+            type: 'erreur',
+            onConfirmer: null
+          });
           setEnTrainDeSauvegarder(false);
           return;
         }
@@ -308,7 +359,13 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           const majRoles = [roleLocal, ...roles];
           setRoles(majRoles);
           localSync.sauvegarderDonneesLocales(cleCacheRoles, majRoles);
-          alert('📴 Mode Hors Ligne : Rôle créé localement.');
+          setEtatModale({
+            ouverte: true,
+            titre: '📴 Mode Hors Ligne',
+            message: 'Rôle créé localement avec succès.',
+            type: 'succes',
+            onConfirmer: null
+          });
           annulerForm();
           setEnTrainDeSauvegarder(false);
           return;
@@ -320,14 +377,26 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
         if (data) {
           setRoles(prev => [data, ...prev.filter(r => r.id !== data.id)]);
         }
-        alert('✅ Rôle créé avec succès !');
+        setEtatModale({
+          ouverte: true,
+          titre: '✅ Succès',
+          message: 'Rôle créé avec succès !',
+          type: 'succes',
+          onConfirmer: null
+        });
       }
 
       localStorage.removeItem(cleCacheRoles);
       annulerForm();
       await chargerRolesEtPermissions();
     } catch (err) {
-      alert('❌ Erreur : ' + err.message);
+      setEtatModale({
+        ouverte: true,
+        titre: '❌ Erreur',
+        message: err.message,
+        type: 'erreur',
+        onConfirmer: null
+      });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -355,22 +424,45 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
     setAfficherForm(false);
   };
 
-  const supprimerRole = async () => {
+  // 🚀 DEMANDE DE SUPPRESSION VIA MODALE DE CONFIRMATION
+  const demanderSuppressionRole = () => {
     if (enTrainDeSauvegarder || !roleEnEdition) return;
 
     const nomRoleCible = (roleEnEdition.nom_role || '').trim().toUpperCase();
     const rolesSystemeInterditsSuppression = ['ADMINISTRATEUR'];
 
     if (rolesSystemeInterditsSuppression.includes(nomRoleCible)) {
-      alert(`❌ SUPPRESSION INTERDITE : Le rôle système ${nomRoleCible} ne peut pas être supprimé.`);
+      setEtatModale({
+        ouverte: true,
+        titre: '❌ Suppression interdite',
+        message: `Le rôle système ${nomRoleCible} ne peut pas être supprimé.`,
+        type: 'erreur',
+        onConfirmer: null
+      });
       return;
     }
 
     if (!navigator.onLine) {
-      alert('⚠️ Impossible de supprimer un rôle en mode hors ligne.');
+      setEtatModale({
+        ouverte: true,
+        titre: '⚠️ Action impossible',
+        message: 'Impossible de supprimer un rôle en mode hors ligne.',
+        type: 'erreur',
+        onConfirmer: null
+      });
       return;
     }
 
+    setEtatModale({
+      ouverte: true,
+      titre: '🗑️ Confirmer la suppression',
+      message: `Voulez-vous vraiment supprimer définitivement le rôle "${roleEnEdition.nom_role}" ?`,
+      type: 'confirmation',
+      onConfirmer: executerSuppressionRole
+    });
+  };
+
+  const executerSuppressionRole = async () => {
     setEnTrainDeSauvegarder(true);
     try {
       const { data: tousLesUsers, error: errUsers } = await supabase
@@ -391,12 +483,13 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       });
 
       if (usersRattaches.length > 0) {
-        alert(`❌ SUPPRESSION BLOQUÉE : Ce rôle ("${roleEnEdition.nom_role}") est affecté à ${usersRattaches.length} utilisateur(s).`);
-        setEnTrainDeSauvegarder(false);
-        return;
-      }
-
-      if (!confirm(`Voulez-vous vraiment supprimer le rôle "${roleEnEdition.nom_role}" ?`)) {
+        setEtatModale({
+          ouverte: true,
+          titre: '❌ Suppression bloquée',
+          message: `Ce rôle ("${roleEnEdition.nom_role}") est actuellement affecté à ${usersRattaches.length} utilisateur(s).`,
+          type: 'erreur',
+          onConfirmer: null
+        });
         setEnTrainDeSauvegarder(false);
         return;
       }
@@ -407,11 +500,23 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
       setRoles(prev => prev.filter(r => r.id !== roleEnEdition.id));
       localStorage.removeItem(cleCacheRoles);
 
-      alert('✅ Rôle supprimé avec succès.');
+      setEtatModale({
+        ouverte: true,
+        titre: '✅ Succès',
+        message: 'Rôle supprimé avec succès.',
+        type: 'succes',
+        onConfirmer: null
+      });
       annulerForm();
       await chargerRolesEtPermissions();
     } catch (err) {
-      alert('❌ Erreur : ' + err.message);
+      setEtatModale({
+        ouverte: true,
+        titre: '❌ Erreur',
+        message: err.message,
+        type: 'erreur',
+        onConfirmer: null
+      });
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -450,8 +555,13 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
 
   const rolesSystemeInterditsModification = ['ADMINISTRATEUR'];
 
+  // 🎨 CONFIGURATION DES COULEURS DYNAMIQUE (MODE JOUR vs MODE NUIT)
+  const modalBg = isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-100 shadow-2xl' : 'bg-white border-[#0d2347]/30 text-[#0d2347] shadow-2xl';
+  const modalTitleColor = isDarkMode ? 'text-slate-100' : 'text-[#0d2347]';
+  const modalMessageColor = isDarkMode ? 'text-slate-300' : 'text-slate-700';
+
   return (
-    <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden">
+    <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden relative">
       
       {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
@@ -600,7 +710,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
-                onClick={supprimerRole}
+                onClick={demanderSuppressionRole}
                 className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs shrink-0 cursor-pointer"
               >
                 {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
@@ -707,6 +817,76 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST' }) {
           )}
         </>
       )}
+
+      {/* 🚀 MODALE UNIFIÉE ADAPTÉE MODE JOUR / MODE NUIT */}
+      {etatModale.ouverte && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`${modalBg} rounded-2xl border max-w-sm w-full p-5 space-y-4 text-center transition-colors`}>
+            
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
+              etatModale.type === 'confirmation' ? 'bg-amber-100 text-amber-600' :
+              etatModale.type === 'succes' ? 'bg-emerald-100 text-emerald-600' :
+              etatModale.type === 'erreur' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'
+            }`}>
+              {etatModale.type === 'confirmation' ? '❓' :
+               etatModale.type === 'succes' ? '✓' :
+               etatModale.type === 'erreur' ? '⚠️' : 'ℹ️'}
+            </div>
+
+            <div className="space-y-1">
+              <h4 className={`font-black text-sm uppercase tracking-wider ${modalTitleColor}`}>
+                {etatModale.titre}
+              </h4>
+              <p className={`text-xs font-medium leading-relaxed ${modalMessageColor}`}>
+                {etatModale.message}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              {etatModale.type === 'confirmation' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
+                    className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer ${
+                      isDarkMode 
+                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700' 
+                        : 'bg-slate-200 hover:bg-slate-300 text-[#0d2347]'
+                    }`}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const action = etatModale.onConfirmer;
+                      setEtatModale({ ...etatModale, ouverte: false });
+                      if (action) action();
+                    }}
+                    className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer"
+                  >
+                    Confirmer
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
+                  className={`w-full font-black py-2.5 rounded-xl text-xs transition shadow-md cursor-pointer ${
+                    isDarkMode 
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700' 
+                      : 'bg-[#0d2347] hover:bg-[#133265] text-white'
+                  }`}
+                >
+                  Compris 👍
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

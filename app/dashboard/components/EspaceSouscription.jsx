@@ -3,17 +3,28 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-const TARIFS_MODULES = {
-  Boutique: { installation: 25000, mensuelPerUser: 5000 },
-  Logistique: { installation: 20000, mensuelPerUser: 4000 },
-  Livraison: { installation: 25000, mensuelPerUser: 5000 },
-  Tontine: { installation: 25000, mensuelPerUser: 2500 },
-};
-
 export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   const [entreprise, setEntreprise] = useState(null);
   const [chargement, setChargement] = useState(true);
   const [changementModuleEnCours, setChangementModuleEnCours] = useState(false);
+
+  // 🏷️ Tarifs et grilles dynamiques par défaut (synchronisés avec le Super Admin)
+  const [tarifsPlateforme, setTarifsPlateforme] = useState({
+    Boutique: { installation: 25000, mensuelPerUser: 5000 },
+    Logistique: { installation: 20000, mensuelPerUser: 4000 },
+    Livraison: { installation: 25000, mensuelPerUser: 5000 },
+    Tontine: { installation: 25000, mensuelPerUser: 2500 },
+    remisesDuree: [
+      { seuil: 3, taux: 5 },
+      { seuil: 6, taux: 10 },
+      { seuil: 12, taux: 15 }
+    ],
+    remisesUsers: [
+      { seuil: 10, taux: 5 },
+      { seuil: 20, taux: 10 },
+      { seuil: 50, taux: 15 }
+    ]
+  });
 
   // Paramètres de personnalisation par module actif
   const [nombreUtilisateursChoisi, setNombreUtilisateursChoisi] = useState(1);
@@ -29,7 +40,6 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   });
   const [activationEnCours, setActivationEnCours] = useState(false);
 
-  const PRIX_UNITAIRE_MOIS = 5000;
   const LISTE_MODULES_PRINCIPAUX = ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'];
 
   // Récupération blindée de l'ID d'entreprise (Prop -> URL -> LocalStorage -> Fallback)
@@ -39,7 +49,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
       const params = new URLSearchParams(window.location.search);
       const entUrl = params.get('entreprise');
       if (entUrl) return entUrl;
-      const entLocal = localStorage.getItem('entrepriseId');
+      const entLocal = localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id');
       if (entLocal) return entLocal;
     }
     return propEntrepriseId || '4TS-TEST';
@@ -47,10 +57,10 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
 
   const entrepriseIdEffectif = getEntrepriseIdEffectif();
 
-  const chargerInfosEntreprise = async () => {
+  const chargerInfosEntrepriseEtTarifs = async () => {
     setChargement(true);
     try {
-      // Recherche élargie pour s'assurer de trouver l'entreprise sur mobile
+      // 1. Recherche élargie pour s'assurer de trouver l'entreprise
       const { data, error } = await supabase
         .from('entreprises')
         .select('*')
@@ -63,21 +73,50 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
         setNombreUtilisateursChoisi(1);
         if (data.duree_abonnement_mois) setNombreMoisChoisi(data.duree_abonnement_mois);
       }
+
+      // 2. Chargement dynamique de la configuration tarifaire du Super Admin
+      const { data: configTarifs } = await supabase
+        .from('configuration_globale')
+        .select('valeur')
+        .eq('cle', '4ts_tarifs_plateforme')
+        .maybeSingle();
+
+      if (configTarifs && configTarifs.valeur) {
+        const parsedTarifs = typeof configTarifs.valeur === 'string' 
+          ? JSON.parse(configTarifs.valeur) 
+          : configTarifs.valeur;
+
+        setTarifsPlateforme({
+          Boutique: parsedTarifs.Boutique || { installation: 25000, mensuelPerUser: 5000 },
+          Logistique: parsedTarifs.Logistique || { installation: 20000, mensuelPerUser: 4000 },
+          Livraison: parsedTarifs.Livraison || { installation: 25000, mensuelPerUser: 5000 },
+          Tontine: parsedTarifs.Tontine || { installation: 25000, mensuelPerUser: 2500 },
+          remisesDuree: Array.isArray(parsedTarifs.remisesDuree) ? parsedTarifs.remisesDuree : [
+            { seuil: 3, taux: 5 }, { seuil: 6, taux: 10 }, { seuil: 12, taux: 15 }
+          ],
+          remisesUsers: Array.isArray(parsedTarifs.remisesUsers) ? parsedTarifs.remisesUsers : [
+            { seuil: 10, taux: 5 }, { seuil: 20, taux: 10 }, { seuil: 50, taux: 15 }
+          ]
+        });
+      }
     } catch (err) {
-      console.error('Erreur chargement entreprise :', err.message);
+      console.error('Erreur chargement entreprise ou tarifs :', err.message);
     } finally {
       setChargement(false);
     }
   };
 
   useEffect(() => {
-    chargerInfosEntreprise();
+    chargerInfosEntrepriseEtTarifs();
   }, [entrepriseIdEffectif]);
 
   // Récupération sécurisée du module actif
   const moduleActifCourant = (
     typeof window !== 'undefined' ? localStorage.getItem('module_actif') : null
   ) || (entreprise?.module_actif || entreprise?.module_courant || 'BOUTIQUE').toUpperCase();
+
+  const configModuleCourant = tarifsPlateforme[moduleActifCourant.charAt(0) + moduleActifCourant.slice(1).toLowerCase()] || tarifsPlateforme['Boutique'] || { installation: 25000, mensuelPerUser: 5000 };
+  const prixUnitaireMoisCourant = Number(configModuleCourant.mensuelPerUser) || 5000;
 
   const basculerModuleActif = async (nouveauModule) => {
     if (!entreprise) return;
@@ -104,19 +143,34 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
     }
   };
 
-  const obtenirTauxReduction = (mois) => {
-    if (mois >= 12) return 0.20;
-    if (mois >= 9) return 0.15;
-    if (mois >= 6) return 0.10;
-    if (mois >= 3) return 0.05;
-    return 0;
+  // Calcul dynamique des réductions combinées (Durée + Utilisateurs) selon les grilles du Super Admin
+  const calculerTauxReductionGlobal = (mois, users) => {
+    let tauxDuree = 0;
+    const paliersDuree = [...(tarifsPlateforme.remisesDuree || [])].sort((a, b) => b.seuil - a.seuil);
+    for (const palier of paliersDuree) {
+      if (mois >= Number(palier.seuil)) {
+        tauxDuree = Number(palier.taux) / 100;
+        break;
+      }
+    }
+
+    let tauxUsers = 0;
+    const paliersUsers = [...(tarifsPlateforme.remisesUsers || [])].sort((a, b) => b.seuil - a.seuil);
+    for (const palier of paliersUsers) {
+      if (users >= Number(palier.seuil)) {
+        tauxUsers = Number(palier.taux) / 100;
+        break;
+      }
+    }
+
+    return tauxDuree + tauxUsers;
   };
 
-  const tauxReduction = obtenirTauxReduction(nombreMoisChoisi);
+  const tauxReductionGlobal = calculerTauxReductionGlobal(nombreMoisChoisi, nombreUtilisateursChoisi);
 
   const calculerMontantTotal = () => {
-    const brut = nombreUtilisateursChoisi * nombreMoisChoisi * PRIX_UNITAIRE_MOIS;
-    return Math.round(brut * (1 - tauxReduction));
+    const brut = nombreUtilisateursChoisi * nombreMoisChoisi * prixUnitaireMoisCourant;
+    return Math.round(brut * (1 - tauxReductionGlobal));
   };
 
   const montantTotalCalculé = calculerMontantTotal();
@@ -127,11 +181,11 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
 
     Object.keys(nouveauxModulesChoisis).forEach((mod) => {
       if (nouveauxModulesChoisis[mod]) {
-        const tarifKey = Object.keys(TARIFS_MODULES).find(k => k.toUpperCase() === mod.toUpperCase()) || 'Boutique';
-        const tarif = TARIFS_MODULES[tarifKey] || { installation: 25000, mensuelPerUser: 5000 };
+        const tarifKey = Object.keys(tarifsPlateforme).find(k => k.toUpperCase() === mod.toUpperCase()) || 'Boutique';
+        const tarif = tarifsPlateforme[tarifKey] || { installation: 25000, mensuelPerUser: 5000 };
         
-        fraisInstallationTotal += tarif.installation;
-        abonnementUtilisateurTotal += tarif.mensuelPerUser * nombreUtilisateursChoisi * nombreMoisChoisi;
+        fraisInstallationTotal += Number(tarif.installation) || 0;
+        abonnementUtilisateurTotal += (Number(tarif.mensuelPerUser) || 5000) * nombreUtilisateursChoisi * nombreMoisChoisi;
       }
     });
 
@@ -185,7 +239,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
       alert(`Succès ! Modules activés : ${fusionEspaces.join(', ')} 🚀`);
       
       setModeAjoutModule(false);
-      await chargerInfosEntreprise();
+      await chargerInfosEntrepriseEtTarifs();
       window.location.reload();
     } catch (err) {
       alert("Erreur critique lors de l'activation : " + err.message);
@@ -205,23 +259,42 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
     const ancienTotalUtilisateurs = parseInt(entreprise?.limite_utilisateurs || 1);
     const nouveauTotalCumule = ancienTotalUtilisateurs + parseInt(nombreUtilisateursChoisi);
 
-    if (!confirm(`Valider l'abonnement pour ${nombreUtilisateursChoisi} utilisateur(s) supplémentaire(s) ?`)) return;
+    if (!confirm(`Valider l'abonnement pour ${nombreUtilisateursChoisi} utilisateur(s) supplémentaire(s) pour un montant de ${montantTotalCalculé.toLocaleString()} F ?`)) return;
 
     try {
       const identifiantCible = entreprise?.id_entreprise || entreprise?.code_entreprise || entrepriseIdEffectif;
-      const { error } = await supabase
-        .from('entreprises')
-        .update({
-          statut_licence: 'ACTIF',
-          duree_abonnement_mois: nombreMoisChoisi,
-          limite_utilisateurs: nouveauTotalCumule,
-        })
-        .eq('id_entreprise', identifiantCible);
+      
+      // Vérification du mode contournement CinetPay configuré par le Super Admin
+      let modeContournementActif = false;
+      const { data: configCinet } = await supabase
+        .from('configuration_globale')
+        .select('valeur')
+        .eq('cle', '4ts_contournement_cinetpay')
+        .maybeSingle();
 
-      if (error) throw error;
+      if (configCinet) {
+        modeContournementActif = String(configCinet.valeur) === 'true' || configCinet.valeur === true;
+      }
 
-      alert(`Abonnement mis à jour avec succès. Nouvelle limite : ${nouveauTotalCumule} utilisateurs.`);
-      chargerInfosEntreprise();
+      if (modeContournementActif) {
+        const nouvelleDureeMois = (Number(entreprise?.duree_abonnement_mois) || 1) + nombreMoisChoisi;
+        const { error } = await supabase
+          .from('entreprises')
+          .update({
+            statut_licence: 'ACTIF',
+            duree_abonnement_mois: nouvelleDureeMois,
+            limite_utilisateurs: nouveauTotalCumule,
+          })
+          .eq('id_entreprise', identifiantCible);
+
+        if (error) throw error;
+
+        alert(`🎉 Abonnement validé et mis à jour avec succès ! Nouvelle limite : ${nouveauTotalCumule} utilisateurs.`);
+        chargerInfosEntrepriseEtTarifs();
+        window.location.reload();
+      } else {
+        alert(`Redirection vers la passerelle de paiement CinetPay pour un montant de ${montantTotalCalculé.toLocaleString()} XAF...`);
+      }
     } catch (err) {
       alert('Erreur lors de la mise à jour : ' + err.message);
     }
@@ -239,7 +312,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   };
 
-  // Extraction ultra-sécurisée des espaces souscrits (gère tableaux et chaînes séparées par des virgules)
+  // Extraction ultra-sécurisée des espaces souscrits
   const donneesBrutesEspaces = entreprise?.espaces_souscrits;
   let espacesSouscrits = ['BOUTIQUE'];
 
@@ -256,7 +329,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   const limiteUsersActif = entreprise?.limite_utilisateurs || 1;
 
   if (chargement) {
-    return <div className="p-6 text-center text-slate-500 font-bold text-xs">Chargement de l'espace de souscription...</div>;
+    return <div className="p-6 text-center text-slate-500 font-bold text-xs">Chargement de l'espace de souscription et des tarifs...</div>;
   }
 
   return (
@@ -289,7 +362,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
         {/* FORMULAIRE D'EXTENSION DE NOUVEAUX MODULES */}
         {modeAjoutModule && (
           <div className="bg-orange-50/80 border-2 border-orange-400 p-3 rounded-xl space-y-2.5 animate-fadeIn">
-            <h5 className="font-black text-orange-900 uppercase text-[10px]">🛒 Extension de modules (Base de Données)</h5>
+            <h5 className="font-black text-orange-900 uppercase text-[10px]">🛒 Extension de modules (Tarifs Super Admin)</h5>
             <p className="text-[9.5px] text-slate-700 leading-tight">
               Cochez les modules à activer pour votre entreprise :
             </p>
@@ -299,7 +372,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
                 const estDejaSouscrit = espacesSouscrits.includes(mod);
                 if (estDejaSouscrit) return null;
 
-                const tarifMod = TARIFS_MODULES[mod.charAt(0) + mod.slice(1).toLowerCase()] || { installation: 25000, mensuelPerUser: 5000 };
+                const tarifMod = tarifsPlateforme[mod.charAt(0) + mod.slice(1).toLowerCase()] || { installation: 25000, mensuelPerUser: 5000 };
 
                 return (
                   <label
@@ -318,8 +391,8 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
                       />
                     </div>
                     <div className={`text-[8.5px] ${nouveauxModulesChoisis[mod] ? 'text-orange-100' : 'text-slate-500'}`}>
-                      Installation : {tarifMod.installation.toLocaleString()} F<br />
-                      User/Mois : {tarifMod.mensuelPerUser.toLocaleString()} F
+                      Installation : {Number(tarifMod.installation).toLocaleString()} F<br />
+                      User/Mois : {Number(tarifMod.mensuelPerUser).toLocaleString()} F
                     </div>
                   </label>
                 );
@@ -381,7 +454,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
             <div className="flex justify-between items-center">
               <span className="block font-black text-[9px] text-slate-500 uppercase">Module Actif :</span>
               <span className="bg-orange-100 text-orange-900 border border-orange-300 px-2 py-0.5 rounded-md font-black text-[10px] shadow-2xs">
-                ⚡ {moduleActifCourant}
+                ⚡ {moduleActifCourant} ({prixUnitaireMoisCourant} F/mois/user)
               </span>
             </div>
 
@@ -448,9 +521,12 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
       {/* SECTION 2 : PERSONNALISATION DE LA SOUSCRIPTION SUR-MESURE */}
       <div className="bg-white p-3 rounded-xl border-2 border-orange-500/50 shadow-md space-y-2.5">
         <h4 className="font-black text-[10px] text-orange-700 uppercase border-b pb-1">⚙️ PERSONNALISER ABONNEMENT — [{moduleActifCourant}]</h4>
-        <p className="text-[9.5px] text-slate-600 leading-tight">
-          Ajustez les paramètres spécifiques au module actif <span className="text-emerald-700 font-black">Réductions : 3 Mois (-5%), 6 Mois (-10%), 12 Mois (-20%) !</span>
-        </p>
+        <div className="text-[9.5px] text-slate-600 leading-tight space-y-1">
+          <p>Ajustez les paramètres pour le module actif. Tarifs et paliers gérés par le Super Admin.</p>
+          <div className="bg-orange-50 border border-orange-200 p-1.5 rounded text-[9px] text-orange-900 font-bold">
+            Grille de réductions active : {tarifsPlateforme.remisesDuree?.map(p => `${p.seuil}M (-${p.taux}%)`).join(', ')}
+          </div>
+        </div>
 
         <div className="grid grid-cols-[1.3fr_0.7fr] gap-2">
           <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
@@ -479,9 +555,9 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
           <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1">
             <label className="block font-black text-[9px] text-slate-700 uppercase flex justify-between items-center truncate">
               <span>📅 DURÉE : <span className="text-orange-600">{nombreMoisChoisi}</span></span>
-              {tauxReduction > 0 && (
+              {tauxReductionGlobal > 0 && (
                 <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-black">
-                  -{tauxReduction * 100}%
+                  -{Math.round(tauxReductionGlobal * 100)}%
                 </span>
               )}
             </label>
@@ -507,7 +583,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
 
         <div className="grid grid-cols-[1fr_1.4fr] gap-2 items-center pt-1">
           <div className="bg-orange-50 border border-orange-200 p-2 rounded-xl text-center flex flex-col justify-center">
-            <span className="text-[8.5px] font-black text-orange-900 uppercase">Montant Total</span>
+            <span className="text-[8.5px] font-black text-orange-900 uppercase">Montant Total Calculé</span>
             <span className="text-xs font-black text-orange-700 font-mono">{montantTotalCalculé.toLocaleString()} F</span>
           </div>
 
@@ -536,7 +612,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
             </thead>
             <tbody className="divide-y divide-slate-100 text-[10px]">
               <tr>
-                <td className="p-2.5 font-mono text-slate-600">10/01/2026</td>
+                <td className="p-2.5 font-mono text-slate-600">{new Date().toLocaleDateString('fr-FR')}</td>
                 <td className="p-2.5 font-black text-orange-600">{moduleActifCourant}</td>
                 <td className="p-2.5 font-black text-emerald-700 font-mono">{obtenirDateExpiration()}</td>
               </tr>

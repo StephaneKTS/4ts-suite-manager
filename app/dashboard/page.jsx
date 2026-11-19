@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/usePermissions'; 
 import SimulateurCadre from './components/SimulateurCadre';
-import PanneauSuperAdmin from '../components/PanneauSuperAdmin'; // 🛡️ Chemin corrigé vers le dossier components à la racine
+import PanneauSuperAdmin from '../components/PanneauSuperAdmin'; 
 
 import GestionCaisses from './components/GestionCaisses';
 import GestionEmplacements from './components/GestionEmplacements';
@@ -37,6 +37,9 @@ import GestionTontineCycles from './components/GestionTontineCycles';
 import GestionTontineCotisations from './components/GestionTontineCotisations';
 import GestionTontineEmprunts from './components/GestionTontineEmprunts';
 import GestionElections from './components/GestionElections';
+
+// 🔔 IMPORTATION DU WIDGET DE NOTIFICATION UTILISATEUR
+import WidgetNotificationsUtilisateur from './components/WidgetNotificationsUtilisateur';
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -165,27 +168,38 @@ function DashboardContent() {
   
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  const verifierPermission = (moduleId) => {
-    return true; 
-  };
+  // 🔐 RÉCUPÉRATION DES DROITS GLOBAUX DEPUIS LE HOOK DE PERMISSIONS
+  const { 
+    verifierPermission, 
+    verifierCreation, 
+    verifierModification, 
+    verifierSuppression 
+  } = usePermissions(
+    entrepriseId, 
+    utilisateurConnecte, 
+    emailConnecte, 
+    moduleCourant
+  );
 
   const tenterAccesModule = (moduleId, nomModuleAffichage) => {
-    if (verifierPermission(moduleId)) {
+    if (verifierPermission(moduleId, estSuperAdmin)) {
       setModuleActif(moduleId);
     } else {
       alert(`⛔ Accès refusé : Vous n'avez pas les droits de lecture sur le module "${nomModuleAffichage}".`);
     }
   };
 
+  // 🚀 FONCTION DE RENDU DES MODULES AVEC TRANSMISSION GLOBALE DES DROITS ET DU THÈME
   const rendreModuleActif = () => {
     if (moduleActif === 'souscription') {
-      return <EspaceSouscription entrepriseId={entrepriseId} />;
+      return <EspaceSouscription entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
     if (moduleActif === 'commandes_clients_qr') {
-      return <GestionCommandesClientsQR entrepriseId={entrepriseId} />;
+      return <GestionCommandesClientsQR entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
+    // Modules Tontine
     if (moduleActif === 'tontine_participants') {
       return <GestionTontineParticipants entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
@@ -202,38 +216,226 @@ function DashboardContent() {
       return <GestionElections entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
-    // 🛡️ APPEL PROPRE DE VOTRE COMPOSANT INDÉPENDANT SUPER ADMIN
     if (moduleActif === 'super_admin_panel' && estSuperAdmin) {
       return <PanneauSuperAdmin isDarkMode={isDarkMode} />;
     }
 
     if (estModeLivraison && moduleActif === 'module_livraison_specifique') {
-      return <ModuleLivraison entrepriseId={entrepriseId} />;
+      return <ModuleLivraison entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
+    // Modules Boutique & Livraison standard avec injection centralisée des droits
     switch (moduleActif) {
-      case 'taxes_ristournes': return <GestionTaxesRistournes entrepriseId={entrepriseId} />;
-      case 'commandes_livraison': return <GestionCommandesLivraison entrepriseId={entrepriseId} />;
-      case 'grille_tarifaire': return <GrilleTarifaireLivraison entrepriseId={entrepriseId} />;
-      case 'challenges_commerciaux': return <GestionChallengesCommerciaux entrepriseId={entrepriseId} />;
-      case 'caisses': return <GestionCaisses entrepriseId={entrepriseId} />;
-      case 'emplacements': return <GestionEmplacements entrepriseId={entrepriseId} />;
-      case 'ventes': return <GestionVentesHistoriques entrepriseId={entrepriseId} />;
-      case 'articles': return <GestionArticles entrepriseId={entrepriseId} />;
-      case 'depots': return <GestionDepots entrepriseId={entrepriseId} />;
-      case 'clients': return <GestionClients entrepriseId={entrepriseId} />;
-      case 'categories': return <GestionCategoriesClients entrepriseId={entrepriseId} />;
-      case 'fournisseurs': return <GestionFournisseurs entrepriseId={entrepriseId} />;
-      case 'approvisionnements': return <GestionApprovisionnements entrepriseId={entrepriseId} />;
-      case 'familles': return <GestionFamilles entrepriseId={entrepriseId} />;
-      case 'mouvements': return <GestionMouvements entrepriseId={entrepriseId} />;
-      case 'plan_comptable': return <GestionPlanComptable entrepriseId={entrepriseId} />;
-      case 'journal': return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="saisie_operations" />;
-      case 'grand_livre': return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="grand_livre" />;
-      case 'controle': return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="controle_cloture" />;
-      case 'roles': return <GestionRoles entrepriseId={entrepriseId} />;
-      case 'utilisateurs': return <GestionUtilisateurs entrepriseId={entrepriseId} />;
-      default: return null;
+      case 'taxes_ristournes': 
+        return <GestionTaxesRistournes entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+      
+      case 'commandes_livraison': 
+        return (
+          <GestionCommandesLivraison 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('commandes_livraison', estSuperAdmin)}
+            autoriserModification={verifierModification('commandes_livraison', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('commandes_livraison', estSuperAdmin)}
+          />
+        );
+
+      case 'grille_tarifaire': 
+        return (
+          <GrilleTarifaireLivraison 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('grille_tarifaire', estSuperAdmin)}
+            autoriserModification={verifierModification('grille_tarifaire', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('grille_tarifaire', estSuperAdmin)}
+          />
+        );
+
+      case 'challenges_commerciaux': 
+        return (
+          <GestionChallengesCommerciaux 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('challenges_commerciaux', estSuperAdmin)}
+            autoriserModification={verifierModification('challenges_commerciaux', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('challenges_commerciaux', estSuperAdmin)}
+          />
+        );
+
+      case 'caisses': 
+        return (
+          <GestionCaisses 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('caisses', estSuperAdmin)}
+            autoriserModification={verifierModification('caisses', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('caisses', estSuperAdmin)}
+          />
+        );
+
+      case 'emplacements': 
+        return (
+          <GestionEmplacements 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('emplacements_stock', estSuperAdmin)}
+            autoriserModification={verifierModification('emplacements_stock', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('emplacements_stock', estSuperAdmin)}
+          />
+        );
+
+      case 'ventes': 
+        return (
+          <GestionVentesHistoriques 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('caisse', estSuperAdmin)}
+            autoriserModification={verifierModification('caisse', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('caisse', estSuperAdmin)}
+          />
+        );
+
+      case 'articles': 
+        return (
+          <GestionArticles 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('articles_stock', estSuperAdmin)}
+            autoriserModification={verifierModification('articles_stock', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('articles_stock', estSuperAdmin)}
+          />
+        );
+
+      case 'depots': 
+        return (
+          <GestionDepots 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('depots_stock', estSuperAdmin)}
+            autoriserModification={verifierModification('depots_stock', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('depots_stock', estSuperAdmin)}
+          />
+        );
+
+      case 'clients': 
+        return (
+          <GestionClients 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('clients', estSuperAdmin)}
+            autoriserModification={verifierModification('clients', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('clients', estSuperAdmin)}
+          />
+        );
+
+      case 'categories': 
+        return (
+          <GestionCategoriesClients 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('categories_clients', estSuperAdmin)}
+            autoriserModification={verifierModification('categories_clients', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('categories_clients', estSuperAdmin)}
+          />
+        );
+
+      case 'fournisseurs': 
+        return (
+          <GestionFournisseurs 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('fournisseurs', estSuperAdmin)}
+            autoriserModification={verifierModification('fournisseurs', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('fournisseurs', estSuperAdmin)}
+          />
+        );
+
+      case 'approvisionnements': 
+        return (
+          <GestionApprovisionnements 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('approvisionnements', estSuperAdmin)}
+            autoriserModification={verifierModification('approvisionnements', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('approvisionnements', estSuperAdmin)}
+          />
+        );
+
+      case 'familles': 
+        return (
+          <GestionFamilles 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('familles_articles', estSuperAdmin)}
+            autoriserModification={verifierModification('familles_articles', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('familles_articles', estSuperAdmin)}
+          />
+        );
+
+      case 'mouvements': 
+        return (
+          <GestionMouvements 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('mouvements_stock', estSuperAdmin)}
+            autoriserModification={verifierModification('mouvements_stock', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('mouvements_stock', estSuperAdmin)}
+          />
+        );
+
+      case 'plan_comptable': 
+        return (
+          <GestionPlanComptable 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('plan_comptable', estSuperAdmin)}
+            autoriserModification={verifierModification('plan_comptable', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('plan_comptable', estSuperAdmin)}
+          />
+        );
+
+      case 'journal': 
+        return (
+          <GestionJournalCaisse 
+            entrepriseId={entrepriseId} 
+            vueInitiale="saisie_operations" 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('plan_comptable', estSuperAdmin)}
+            autoriserModification={verifierModification('plan_comptable', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('plan_comptable', estSuperAdmin)}
+          />
+        );
+
+      case 'grand_livre': 
+        return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="grand_livre" isDarkMode={isDarkMode} />;
+      
+      case 'controle': 
+        return <GestionJournalCaisse entrepriseId={entrepriseId} vueInitiale="controle_cloture" isDarkMode={isDarkMode} />;
+      
+      case 'roles': 
+        return (
+          <GestionRoles 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('roles_utilisateurs', estSuperAdmin)}
+            autoriserModification={verifierModification('roles_utilisateurs', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('roles_utilisateurs', estSuperAdmin)}
+          />
+        );
+
+      case 'utilisateurs': 
+        return (
+          <GestionUtilisateurs 
+            entrepriseId={entrepriseId} 
+            isDarkMode={isDarkMode}
+            autoriserCreation={verifierCreation('roles_utilisateurs', estSuperAdmin)}
+            autoriserModification={verifierModification('roles_utilisateurs', estSuperAdmin)}
+            autoriserSuppression={verifierSuppression('roles_utilisateurs', estSuperAdmin)}
+          />
+        );
+
+      default: 
+        return null;
     }
   };
 
@@ -256,9 +458,9 @@ function DashboardContent() {
     : 'bg-white hover:bg-blue-50/50 border-blue-600/30 hover:border-blue-500 text-slate-900 shadow-2xs';
 
   const contenuApp = (
-    <div className={`h-full ${bgPrincipal} flex flex-col font-sans relative overflow-hidden w-full max-w-full text-xs`}>
+    <div className={`h-full ${bgPrincipal} flex flex-col font-sans relative overflow-x-hidden w-full max-w-full text-xs`}>
       
-      {/* 1. BARRE SUPÉRIEURE */}
+      {/* 1. BARRE SUPÉRIEURE (HEADER) */}
       <div className={`top-0 z-20 ${bgHeaderNav} border-b px-3 py-2.5 shrink-0 flex items-center justify-between w-full`}>
         <div className="flex items-center space-x-2.5">
           <div className={`w-8 h-8 flex items-center justify-center shrink-0 rounded-lg border p-1 ${logoBoxClass}`}>
@@ -280,6 +482,8 @@ function DashboardContent() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <WidgetNotificationsUtilisateur isDarkMode={isDarkMode} />
+
           <button
             onClick={basculerTheme}
             title={isDarkMode ? "Passer en mode Jour" : "Passer en mode Nuit"}
@@ -316,18 +520,18 @@ function DashboardContent() {
       </div>
 
       {/* 2. ZONE CENTRALE */}
-      <div className="p-2 sm:p-3 md:p-4 space-y-3 flex-1 overflow-y-auto w-full max-w-7xl mx-auto flex flex-col min-h-0">
+      <div className="p-1 sm:p-2 space-y-4 flex-1 overflow-y-auto w-full max-w-full mx-auto flex flex-col min-h-0">
         {ongletNavigation === 'explorer' && !moduleActif ? (
           <div className="w-full flex-1">
-            <MenuExplorer entrepriseId={entrepriseId} />
+            <MenuExplorer entrepriseId={entrepriseId} isDarkMode={isDarkMode} />
           </div>
         ) : ongletNavigation === 'rapports' && !moduleActif ? (
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               COMPTABILITÉ
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 w-full">
-              {verifierPermission('ventes_historiques') && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 w-full">
+              {verifierPermission('ventes_historiques', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('journal', 'Saisie des Opérations')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📝</span>
                   <div>
@@ -336,7 +540,7 @@ function DashboardContent() {
                   </div>
                 </div>
               )}
-              {verifierPermission('ventes_historiques') && (
+              {verifierPermission('ventes_historiques', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('plan_comptable', 'Plan Comptable')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📚</span>
                   <div>
@@ -345,7 +549,7 @@ function DashboardContent() {
                   </div>
                 </div>
               )}
-              {verifierPermission('caisses') && (
+              {verifierPermission('caisses', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('caisses', 'Gestion Caisses')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex items-center space-x-3 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏧</span>
                   <div>
@@ -359,7 +563,7 @@ function DashboardContent() {
         ) : ongletNavigation === 'profil' && !moduleActif ? (
           <div className="space-y-3 w-full">
             {estSuperAdmin && (
-              <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60' : 'bg-white border-blue-600/30'} p-3 rounded-xl border shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3`}>
+              <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60' : 'bg-white border-blue-600/30'} p-3 rounded-xl border shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 w-full`}>
                 <div>
                   <h3 className={`font-black uppercase text-xs ${isDarkMode ? 'text-cyan-400' : 'text-blue-700'}`}>🛡️ ESPACE SUPER-ADMIN GLOBAL</h3>
                   <p className={`text-[10px] ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Panneau d'administration centralisé de toutes les entreprises.</p>
@@ -372,12 +576,16 @@ function DashboardContent() {
                 </button>
               </div>
             )}
-            <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
+            <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-2 sm:p-4 border w-full flex-1`}>
               <MonProfil entrepriseId={entrepriseId} isDarkMode={isDarkMode} />
             </div>
           </div>
-        ) : moduleActif === 'souscription' || (moduleActif === 'super_admin_panel' && estSuperAdmin) ? (
-          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
+        ) : moduleActif === 'super_admin_panel' && estSuperAdmin ? (
+          <div className="w-full flex-1">
+            {rendreModuleActif()}
+          </div>
+        ) : moduleActif === 'souscription' ? (
+          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-6 border w-full flex-1`}>
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && moduleCourant === 'TONTINE' ? (
@@ -385,7 +593,7 @@ function DashboardContent() {
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE TONTINE
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 w-full">
               <div onClick={() => setModuleActif('tontine_cycles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🔄</span>
                 <span className="font-bold text-xs leading-tight">Cycles & Sessions</span>
@@ -406,7 +614,7 @@ function DashboardContent() {
                 <span className="text-3xl group-hover:scale-110 transition">🏛️</span>
                 <span className="font-bold text-xs leading-tight">Élections du Bureau</span>
               </div>
-              <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+              <div onClick={() => tenterAccesModule('roles_utilisateurs', 'Gestion des Rôles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
                 <span className="text-3xl group-hover:scale-110 transition">🛡️</span>
                 <span className="font-bold text-xs leading-tight">Gestion des Rôles</span>
               </div>
@@ -417,83 +625,85 @@ function DashboardContent() {
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE LIVRAISON
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
-              {verifierPermission('commandes_livraison') && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
+              {verifierPermission('commandes_livraison', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('commandes_livraison', 'Commandes & Livraisons')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📦</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Commandes & Livraisons</span>
                 </div>
               )}
-              {verifierPermission('articles_stock') && (
+              {verifierPermission('articles_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('articles', 'Stock Articles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📦</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Stock Articles</span>
                 </div>
               )}
-              {verifierPermission('grille_tarifaire') && (
+              {verifierPermission('grille_tarifaire', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('grille_tarifaire', 'Grille Tarifaire')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🗺️</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Grille Tarifaire</span>
                 </div>
               )}
-              {verifierPermission('emplacements_stock') && (
+              {verifierPermission('emplacements_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Livreurs')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📍</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Emplacements Livreurs</span>
                 </div>
               )}
-              {verifierPermission('depots_stock') && (
+              {verifierPermission('depots_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('depots', 'Dépôts de stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏢</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
                 </div>
               )}
-              {verifierPermission('familles_articles') && (
+              {verifierPermission('familles_articles', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('familles', "Familles d'Articles")} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
                 </div>
               )}
-              {verifierPermission('challenges_commerciaux') && (
+              {verifierPermission('challenges_commerciaux', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('challenges_commerciaux', 'Challenges Commerciaux')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏆</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Challenges Commerciaux</span>
                 </div>
               )}
-              {verifierPermission('mouvements_stock') && (
+              {verifierPermission('mouvements_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('mouvements', 'Mouvement Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🔄</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
                 </div>
               )}
-              {verifierPermission('approvisionnements') && (
+              {verifierPermission('approvisionnements', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('approvisionnements', 'Achats & Approvisionnement')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📥</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
                 </div>
               )}
-              {verifierPermission('roles_utilisateurs') && (
+              {verifierPermission('roles_utilisateurs', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion des Rôles</span>
                 </div>
               )}
-              {verifierPermission('fournisseurs') && (
+              {verifierPermission('fournisseurs', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('fournisseurs', 'Gestion Partenaire')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🤝</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion Partenaire</span>
                 </div>
               )}
-              {verifierPermission('roles_utilisateurs') && (
+              {verifierPermission('roles_utilisateurs', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🔑</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
                 </div>
               )}
-              <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
-                <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
-              </div>
+              {verifierPermission('taxes_ristournes', estSuperAdmin) && (
+                <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
+                </div>
+              )}
             </div>
           </div>
         ) : !moduleActif ? (
@@ -501,7 +711,7 @@ function DashboardContent() {
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - BOUTIQUE
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
               
               <div 
                 onClick={() => setModuleActif('commandes_clients_qr')} 
@@ -511,84 +721,89 @@ function DashboardContent() {
                 <span className="font-black text-[11px] sm:text-xs leading-tight text-orange-600">Commandes QR Code</span>
               </div>
 
-              {verifierPermission('caisse') && (
+              {verifierPermission('caisse', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('ventes', 'Caisse & Ventes')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🛒</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Caisse & Ventes</span>
                 </div>
               )}
-              {verifierPermission('articles_stock') && (
+              {verifierPermission('articles_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('articles', 'Articles & Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📦</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Stock Articles</span>
                 </div>
               )}
-              {verifierPermission('approvisionnements') && (
+              {verifierPermission('approvisionnements', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📥</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
                 </div>
               )}
-              {verifierPermission('mouvements_stock') && (
+              {verifierPermission('mouvements_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🔄</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
                 </div>
               )}
-              {verifierPermission('depots_stock') && (
+              {verifierPermission('emplacements_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📍</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Emplacements Stock</span>
                 </div>
               )}
-              {verifierPermission('depots_stock') && (
+              {verifierPermission('depots_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('depots', 'Dépôts & Magasins')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏢</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Dépôts de stock</span>
                 </div>
               )}
-              {verifierPermission('familles_articles') && (
+              {verifierPermission('familles_articles', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('familles', 'Familles & Catégories')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🗂️</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Familles d'Articles</span>
                 </div>
               )}
-              {verifierPermission('categories_clients') && (
+              {verifierPermission('categories_clients', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('categories', 'Catégories Clients')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Catégories Clients</span>
                 </div>
               )}
-              {verifierPermission('clients') && (
+              {verifierPermission('clients', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('clients', 'Fichier Clients')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">👥</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion des Clients</span>
                 </div>
               )}
-              {verifierPermission('roles_utilisateurs') && (
+              {verifierPermission('roles_utilisateurs', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion des Rôles</span>
                 </div>
               )}
-              {verifierPermission('fournisseurs') && (
+              {verifierPermission('fournisseurs', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('fournisseurs', 'Fournisseurs')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🤝</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion des Fournisseurs</span>
                 </div>
               )}
-              <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                <span className="text-2xl group-hover:scale-110 transition">🔑</span>
-                <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
-              </div>
-              <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
-                <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
-              </div>
+              {verifierPermission('roles_utilisateurs', estSuperAdmin) && (
+                <div onClick={() => tenterAccesModule('utilisateurs', 'Gestion du Personnel')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🔑</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
+                </div>
+              )}
+              {/* ✅ CORRECTION : Conditionné par verifierPermission pour le module taxes et promos */}
+              {verifierPermission('taxes_ristournes', estSuperAdmin) && (
+                <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                  <span className="text-2xl group-hover:scale-110 transition">🏷️</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Taxes & Promos</span>
+                </div>
+              )}
             </div>
           </div>
         ) : (
-          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-5 border w-full flex-1`}>
+          <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-blue-600/30 text-slate-900'} rounded-xl shadow-sm p-3 sm:p-6 border w-full flex-1`}>
             {rendreModuleActif()}
           </div>
         )}
@@ -652,7 +867,7 @@ function DashboardContent() {
 
   return (
     <div className={`w-full h-screen ${isDarkMode ? 'bg-[#02050b]' : 'bg-slate-200'} flex justify-center items-center overflow-hidden`}>
-      <div className="hidden md:block w-full h-full max-w-[1400px]">
+      <div className="hidden md:block w-full h-full max-w-full px-2 py-1">
         <SimulateurCadre>
           {contenuApp}
         </SimulateurCadre>
