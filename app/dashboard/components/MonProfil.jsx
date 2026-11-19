@@ -45,6 +45,9 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [moduleNonSouscritMessage, setModuleNonSouscritMessage] = useState(null);
   const [modalModuleNonSouscritOuverte, setModalModuleNonSouscritOuverte] = useState(false);
 
+  // 🌟 État pour la jolie modale de confirmation de déconnexion
+  const [modalDeconnexionOuverte, setModalDeconnexionOuverte] = useState(false);
+
   const fileInputLogoRef = useRef(null);
 
   const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('emailConnecte') || 'stephs7352@gmail.com') : 'stephs7352@gmail.com';
@@ -292,12 +295,10 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     }
   };
 
-  const seDeconnecter = () => {
-    if (confirm('Voulez-vous vraiment vous déconnecter de l’application ?')) {
-      if (typeof window !== 'undefined') {
-        localStorage.clear();
-        window.location.href = '/connexion';
-      }
+  const executerDeconnexion = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.clear();
+      window.location.href = '/connexion';
     }
   };
 
@@ -347,7 +348,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button 
                 type="button" 
                 onClick={() => setModeAction(null)}
-                className="text-xs font-bold px-2 py-0.5 rounded bg-slate-700 text-white hover:bg-slate-600"
+                className="text-xs font-bold px-2 py-0.5 rounded bg-slate-700 text-white hover:bg-slate-600 cursor-pointer"
               >
                 Fermer ✕
               </button>
@@ -401,7 +402,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'reabonnement' ? null : 'reabonnement')}
-                className={actionButtonClass}
+                className={`${actionButtonClass} cursor-pointer`}
               >
                 <span className="text-xs">🔄</span>
                 <span className="text-center w-full">{modeAction === 'reabonnement' ? 'Fermer' : 'Réabo'}</span>
@@ -410,7 +411,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-                className={actionButtonClass}
+                className={`${actionButtonClass} cursor-pointer`}
               >
                 <span className="text-xs">⚡</span>
                 <span className="text-center w-full">{modeAction === 'switcher_module' ? 'Fermer' : 'Modules'}</span>
@@ -419,7 +420,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'nouveau_module' ? null : 'nouveau_module')}
-                className={actionButtonClass}
+                className={`${actionButtonClass} cursor-pointer`}
               >
                 <span className="text-xs">➕</span>
                 <span className="text-center w-full">{modeAction === 'nouveau_module' ? 'Fermer' : 'Ajouter'}</span>
@@ -428,7 +429,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'generateur_qr' ? null : 'generateur_qr')}
-                className={actionButtonClass}
+                className={`${actionButtonClass} cursor-pointer`}
               >
                 <span className="text-xs">📱</span>
                 <span className="text-center w-full">{modeAction === 'generateur_qr' ? 'Fermer' : 'QR Code'}</span>
@@ -439,7 +440,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'switcher_module' ? null : 'switcher_module')}
-                className={actionButtonClass}
+                className={`${actionButtonClass} cursor-pointer`}
               >
                 <span className="text-xs">⚡</span>
                 <span>{modeAction === 'switcher_module' ? 'Fermer' : 'Changer module'}</span>
@@ -448,7 +449,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModeAction(modeAction === 'generateur_qr' ? null : 'generateur_qr')}
-                className={actionButtonClass}
+                className={`${actionButtonClass} cursor-pointer`}
               >
                 <span className="text-xs">📱</span>
                 <span>{modeAction === 'generateur_qr' ? 'Fermer' : 'Mon QR Code'}</span>
@@ -496,7 +497,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                             ? 'opacity-40 cursor-not-allowed ' + (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-500' : 'bg-slate-100 border-slate-200 text-slate-400')
                             : estLogistique 
                               ? (isDarkMode ? 'bg-slate-900/80 border-slate-800 text-slate-400 opacity-80 cursor-pointer' : 'bg-slate-100 border-slate-300 text-slate-500 cursor-pointer') 
-                              : (isDarkMode ? 'bg-[#1b263b] hover:bg-slate-800 border-slate-700 text-slate-200' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800')
+                              : (isDarkMode ? 'bg-[#1b263b] hover:bg-slate-800 border-slate-700 text-slate-200 cursor-pointer' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 cursor-pointer')
                       }`}
                     >
                       <span className="text-xs uppercase font-black">{mod}</span>
@@ -552,7 +553,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                             setNouveauxModulesChoisis({ ...nouveauxModulesChoisis, [mod]: e.target.checked });
                           }
                         }}
-                        className="accent-orange-500 w-3.5 h-3.5"
+                        className="accent-orange-500 w-3.5 h-3.5 cursor-pointer"
                       />
                     </label>
                   );
@@ -562,7 +563,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                 type="button"
                 disabled={activationEnCours}
                 onClick={validerActivationNouveauxModules}
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 rounded-lg text-[10px] uppercase shadow-md transition"
+                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 rounded-lg text-[10px] uppercase shadow-md transition cursor-pointer"
               >
                 {activationEnCours ? 'Souscription...' : 'Activer les nouveaux modules 🚀'}
               </button>
@@ -610,7 +611,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                       setConfirmerMotDePasse('');
                     }
                   }}
-                  className={`text-[9.5px] font-bold px-2 py-0.5 rounded ${modeModificationMdp ? 'bg-slate-700 text-slate-200' : 'bg-orange-600 text-white'}`}
+                  className={`text-[9.5px] font-bold px-2 py-0.5 rounded cursor-pointer ${modeModificationMdp ? 'bg-slate-700 text-slate-200' : 'bg-orange-600 text-white'}`}
                 >
                   {modeModificationMdp ? 'Annuler' : 'Modifier'}
                 </button>
@@ -629,7 +630,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                     <button
                       type="button"
                       onClick={() => setAfficherMdp(!afficherMdp)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-orange-500 text-xs focus:outline-none"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-orange-500 text-xs focus:outline-none cursor-pointer"
                       title={afficherMdp ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                     >
                       {afficherMdp ? '👁️‍🗨️' : '👁️'}
@@ -662,8 +663,8 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
 
             <button
               type="button"
-              onClick={seDeconnecter}
-              className={`w-full border font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase text-[10px] flex items-center justify-center gap-1 ${
+              onClick={() => setModalDeconnexionOuverte(true)}
+              className={`w-full border font-black py-2.5 px-2 rounded-xl shadow-md transition uppercase text-[10px] flex items-center justify-center gap-1 cursor-pointer ${
                 isDarkMode 
                   ? 'bg-slate-900 hover:bg-rose-950 text-rose-400 border-rose-900/50' 
                   : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
@@ -699,7 +700,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModalConfirmationBasculementOuverte(false)}
-                className={`py-2 px-3 rounded-xl font-black text-xs uppercase transition border ${
+                className={`py-2 px-3 rounded-xl font-black text-xs uppercase transition border cursor-pointer ${
                   isDarkMode 
                     ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' 
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
@@ -711,7 +712,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={confirmerBasculementModule}
-                className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-orange-600 hover:bg-orange-500 text-white transition shadow-md"
+                className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-orange-600 hover:bg-orange-500 text-white transition shadow-md cursor-pointer"
               >
                 Oui, basculer
               </button>
@@ -746,7 +747,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
                   setModalModuleNonSouscritOuverte(false);
                   setModeAction('nouveau_module'); // Ouvre directement le panneau d'ajout de module
                 }}
-                className="w-full py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-orange-600 hover:bg-orange-500 text-white transition shadow-lg flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-orange-600 hover:bg-orange-500 text-white transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <span>➕</span>
                 <span>Ajouter tout de suite ➔</span>
@@ -755,13 +756,57 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button
                 type="button"
                 onClick={() => setModalModuleNonSouscritOuverte(false)}
-                className={`w-full py-2 px-3 rounded-xl font-black text-xs uppercase transition border ${
+                className={`w-full py-2 px-3 rounded-xl font-black text-xs uppercase transition border cursor-pointer ${
                   isDarkMode 
                     ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' 
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                 }`}
               >
                 Fermer
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 JOLIE MODALE DE CONFIRMATION DE DÉCONNEXION */}
+      {modalDeconnexionOuverte && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`${isDarkMode ? 'bg-[#0f1c3f] border-rose-500/50 text-white' : 'bg-white border-rose-300 text-slate-900'} w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4 text-center`}>
+            
+            <div className="w-12 h-12 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto text-xl font-black">
+              🚪
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="font-black text-sm uppercase tracking-wider text-rose-500">
+                Déconnexion de l'application
+              </h4>
+              <p className={`text-[11px] font-medium leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                Voulez-vous vraiment vous déconnecter de votre session en cours ?
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalDeconnexionOuverte(false)}
+                className={`py-2 px-3 rounded-xl font-black text-xs uppercase transition border cursor-pointer ${
+                  isDarkMode 
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+              >
+                Annuler
+              </button>
+
+              <button
+                type="button"
+                onClick={executerDeconnexion}
+                className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-rose-600 hover:bg-rose-500 text-white transition shadow-md cursor-pointer"
+              >
+                Se déconnecter
               </button>
             </div>
 

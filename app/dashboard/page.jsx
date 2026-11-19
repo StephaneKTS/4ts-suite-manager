@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/usePermissions'; 
 import SimulateurCadre from './components/SimulateurCadre';
+import PanneauSuperAdmin from '../components/PanneauSuperAdmin'; // 🛡️ Chemin corrigé vers le dossier components à la racine
 
 import GestionCaisses from './components/GestionCaisses';
 import GestionEmplacements from './components/GestionEmplacements';
@@ -31,7 +32,6 @@ import GestionTaxesRistournes from './components/GestionTaxesRistournes';
 import MenuExplorer from './components/MenuExplorer'; 
 import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; 
 
-// ➕ Importation des composants du module Tontine (avec Emprunts)
 import GestionTontineParticipants from './components/GestionTontineParticipants';
 import GestionTontineCycles from './components/GestionTontineCycles';
 import GestionTontineCotisations from './components/GestionTontineCotisations';
@@ -67,7 +67,6 @@ function DashboardContent() {
   const [emailConnecte, setEmailConnecte] = useState('');
   const [logoEntreprise, setLogoEntreprise] = useState('');
 
-  // 🌙 CORRECTION : Mode Nuit activé par défaut (`true`) si aucune préférence n'existe dans le localStorage
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       const themeLocal = localStorage.getItem('4ts_theme_mode');
@@ -75,11 +74,8 @@ function DashboardContent() {
         return themeLocal === 'dark';
       }
     }
-    return true; // Mode Nuit par défaut à l'ouverture initiale
+    return true; 
   });
-
-  const [listeEntreprisesGlobales, setListeEntreprisesGlobales] = useState([]);
-  const [loadingAdmin, setLoadingAdmin] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -102,7 +98,6 @@ function DashboardContent() {
       if (themeLocal) {
         setIsDarkMode(themeLocal === 'dark');
       } else {
-        // Enregistre explicitement le mode nuit par défaut au premier lancement
         localStorage.setItem('4ts_theme_mode', 'dark');
       }
     }
@@ -168,17 +163,8 @@ function DashboardContent() {
   const estModeTontine = moduleCourant === 'TONTINE';
   const emailActuel = emailConnecte || infosEntreprise.email || '';
   
-  // 🌟 VÉRIFICATION STRICTE : Seul ton e-mail personnel active le mode Super-Admin Global de la plateforme SaaS
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  const { chargementPermissions, verifierPermission: verifierPermissionBrute } = usePermissions(
-    entrepriseId,
-    utilisateurConnecte,
-    emailConnecte,
-    moduleCourant
-  );
-
-  // 🌟 PLEIN ACCÈS ADMINISTRATEUR DE L'ENTREPRISE : Autorisation complète pour l'admin de l'entreprise
   const verifierPermission = (moduleId) => {
     return true; 
   };
@@ -191,26 +177,6 @@ function DashboardContent() {
     }
   };
 
-  const chargerToutesLesEntreprises = async () => {
-    setLoadingAdmin(true);
-    try {
-      const { data } = await supabase.from('entreprises').select('*');
-      if (data) {
-        setListeEntreprisesGlobales(data);
-      }
-    } catch (err) {
-      console.error("Erreur chargement entreprises globales :", err);
-    } finally {
-      setLoadingAdmin(false);
-    }
-  };
-
-  useEffect(() => {
-    if (moduleActif === 'super_admin_panel') {
-      chargerToutesLesEntreprises();
-    }
-  }, [moduleActif]);
-
   const rendreModuleActif = () => {
     if (moduleActif === 'souscription') {
       return <EspaceSouscription entrepriseId={entrepriseId} />;
@@ -220,7 +186,6 @@ function DashboardContent() {
       return <GestionCommandesClientsQR entrepriseId={entrepriseId} />;
     }
 
-    // ➕ Gestion des vues du module Tontine (avec Emprunts)
     if (moduleActif === 'tontine_participants') {
       return <GestionTontineParticipants entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
@@ -237,57 +202,9 @@ function DashboardContent() {
       return <GestionElections entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
+    // 🛡️ APPEL PROPRE DE VOTRE COMPOSANT INDÉPENDANT SUPER ADMIN
     if (moduleActif === 'super_admin_panel' && estSuperAdmin) {
-      return (
-        <div className={`space-y-4 p-3 text-xs ${isDarkMode ? 'text-slate-100' : 'text-slate-950'}`}>
-          <div className={`flex justify-between items-center border-b pb-2 ${isDarkMode ? 'border-cyan-900' : 'border-blue-200'}`}>
-            <div>
-              <h3 className={`font-black uppercase text-xs ${isDarkMode ? 'text-cyan-400' : 'text-blue-700'}`}>🛡️ Espace Super-Admin</h3>
-              <p className={`text-[10px] ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Gestion globale de toutes vos entreprises et plateformes 4TS.</p>
-            </div>
-            <button 
-              onClick={chargerToutesLesEntreprises}
-              className={`${isDarkMode ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-blue-600 hover:bg-blue-500'} text-white font-bold px-2.5 py-1 rounded-lg text-[10px] transition shadow`}
-            >
-              🔄 Actualiser
-            </button>
-          </div>
-
-          {loadingAdmin ? (
-            <div className={`text-center py-6 font-bold text-xs ${isDarkMode ? 'text-cyan-300' : 'text-slate-600'}`}>Chargement des entreprises...</div>
-          ) : (
-            <div className="space-y-2.5">
-              <p className={`font-bold text-xs ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>Total entreprises enregistrées : <span className={isDarkMode ? 'text-cyan-400' : 'text-blue-600'}>{listeEntreprisesGlobales.length}</span></p>
-              
-              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                {listeEntreprisesGlobales.map((ent) => (
-                  <div key={ent.id_entreprise} className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60 text-slate-100' : 'bg-white border-slate-200 text-slate-900 shadow-2xs'} border p-2.5 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2`}>
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-black uppercase text-xs">{ent.nom_entreprise}</span>
-                        <span className={`${isDarkMode ? 'bg-cyan-950 text-cyan-400 border-cyan-800' : 'bg-slate-100 text-blue-700 border-slate-200'} font-mono text-[9px] px-1.5 py-0.5 rounded border`}>{ent.id_entreprise}</span>
-                      </div>
-                      <p className={`text-[9px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>📧 {ent.email || 'Aucun email'} | 📞 {ent.telephone || 'Aucun téléphone'}</p>
-                      <p className={`text-[9px] ${isDarkMode ? 'text-cyan-300' : 'text-blue-600'}`}>Module actif : <span className="uppercase font-bold">{ent.module_actif || 'BOUTIQUE'}</span></p>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
-                      <button
-                        onClick={() => {
-                          window.location.href = `/dashboard?entreprise=${ent.id_entreprise}`;
-                        }}
-                        className="bg-sky-600 hover:bg-sky-500 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] transition shadow cursor-pointer"
-                      >
-                        Accéder →
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      );
+      return <PanneauSuperAdmin isDarkMode={isDarkMode} />;
     }
 
     if (estModeLivraison && moduleActif === 'module_livraison_specifique') {
@@ -341,7 +258,7 @@ function DashboardContent() {
   const contenuApp = (
     <div className={`h-full ${bgPrincipal} flex flex-col font-sans relative overflow-hidden w-full max-w-full text-xs`}>
       
-      {/* 1. BARRE SUPÉRIEURE (FIGÉE) */}
+      {/* 1. BARRE SUPÉRIEURE */}
       <div className={`top-0 z-20 ${bgHeaderNav} border-b px-3 py-2.5 shrink-0 flex items-center justify-between w-full`}>
         <div className="flex items-center space-x-2.5">
           <div className={`w-8 h-8 flex items-center justify-center shrink-0 rounded-lg border p-1 ${logoBoxClass}`}>
@@ -444,12 +361,12 @@ function DashboardContent() {
             {estSuperAdmin && (
               <div className={`${isDarkMode ? 'bg-[#0b1329] border-cyan-900/60' : 'bg-white border-blue-600/30'} p-3 rounded-xl border shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3`}>
                 <div>
-                  <h3 className={`font-black uppercase text-xs ${isDarkMode ? 'text-cyan-400' : 'text-blue-700'}`}>🛡️ Espace Super-Admin Global</h3>
+                  <h3 className={`font-black uppercase text-xs ${isDarkMode ? 'text-cyan-400' : 'text-blue-700'}`}>🛡️ ESPACE SUPER-ADMIN GLOBAL</h3>
                   <p className={`text-[10px] ${isDarkMode ? 'text-cyan-200/70' : 'text-slate-500'}`}>Panneau d'administration centralisé de toutes les entreprises.</p>
                 </div>
                 <button
                   onClick={() => setModuleActif(moduleActif === 'super_admin_panel' ? null : 'super_admin_panel')}
-                  className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[11px] transition shadow-md border border-amber-400/50 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black px-4 py-2 rounded-xl text-xs transition shadow-md border border-amber-400/50 flex items-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   <span>🛡️</span> {moduleActif === 'super_admin_panel' ? 'Fermer le Panneau' : 'Ouvrir Super-Admin'}
                 </button>
@@ -464,7 +381,6 @@ function DashboardContent() {
             {rendreModuleActif()}
           </div>
         ) : !moduleActif && moduleCourant === 'TONTINE' ? (
-          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE TONTINE (Cycles en 1er, Participants en 2e) */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE TONTINE
@@ -497,7 +413,6 @@ function DashboardContent() {
             </div>
           </div>
         ) : !moduleActif && moduleCourant === 'LIVRAISON' ? (
-          /* 📌 ACCUEIL SPÉCIFIQUE DU MODULE LIVRAISON */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - MODULE LIVRAISON
@@ -582,7 +497,6 @@ function DashboardContent() {
             </div>
           </div>
         ) : !moduleActif ? (
-          /* 📌 ACCUEIL MODULE BOUTIQUE */
           <div className="space-y-2.5 w-full">
             <h2 className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-0.5 ${isDarkMode ? 'text-cyan-400/80' : 'text-slate-600'}`}>
               ACCUEIL - BOUTIQUE
@@ -621,7 +535,6 @@ function DashboardContent() {
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
                 </div>
               )}
-
               {verifierPermission('depots_stock') && (
                 <div onClick={() => tenterAccesModule('emplacements', 'Emplacements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📍</span>

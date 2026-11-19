@@ -45,6 +45,14 @@ export default function SouscriptionWizard() {
   const [otpInput, setOtpInput] = useState('');
   const [serverOtp, setServerOtp] = useState('');
 
+  const getSupabaseClient = () => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+  };
+
   useEffect(() => {
     setEstMonte(true);
     setFormData((prev) => ({ ...prev, entrepriseId: generateUniqueId() }));
@@ -157,14 +165,6 @@ export default function SouscriptionWizard() {
 
   const facturation = calculerFacturation();
 
-  const getSupabaseClient = () => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-    return createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
-  };
-
   const handleStep1Submit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -272,10 +272,72 @@ export default function SouscriptionWizard() {
     setLoading(true);
     setErrorMsg('');
 
-    const transactionId = '4TS_' + Date.now();
-
     try {
-      // Appel direct vers notre route API serveur pour contourner les restrictions CORS
+      const supabase = getSupabaseClient();
+
+      // 🛡️ VÉRIFICATION DYNAMIQUE EN TEMPS RÉEL DANS LA BASE SUPABASE
+      // On interroge la table de configuration globale pour savoir si le contournement est actif partout
+      let modeContournementActif = false;
+      try {
+        const { data: configData } = await supabase
+          .from('configuration_globale')
+          .select('valeur')
+          .eq('cle', '4ts_contournement_cinetpay')
+          .maybeSingle();
+
+        if (configData) {
+          modeContournementActif = String(configData.valeur) === 'true' || configData.valeur === true;
+        }
+      } catch (errConfig) {
+        console.warn("Lecture configuration distante impossible, repli localStorage :", errConfig);
+        modeContournementActif = typeof window !== 'undefined' && localStorage.getItem('4ts_contournement_cinetpay') === 'true';
+      }
+
+      if (modeContournementActif) {
+        const modulesSelectionnes = Object.keys(modules).filter((m) => modules[m]);
+        const modulePrincipalInitial = modulesSelectionnes[0] || 'BOUTIQUE';
+
+        const payloadEntreprise = {
+          id_entreprise: formData.entrepriseId,
+          nom_entreprise: formData.nomEntreprise.trim(),
+          email: formData.email.trim(),
+          telephone: formData.telephone.trim(),
+          mot_de_passe: formData.pinCode.trim(),
+          code_pin_activation: formData.pinCode.trim(),
+          espaces_souscrits: modulesSelectionnes.length > 0 ? modulesSelectionnes : ['BOUTIQUE'],
+          module_actif: modulePrincipalInitial,
+          duree_abonnement_mois: Number(formData.duree) || 1,
+          limite_utilisateurs: Number(formData.utilisateurs) || 1,
+          statut_licence: 'ACTIF',
+          created_at: new Date()
+        };
+
+        const { error: insertError } = await supabase
+          .from('entreprises')
+          .upsert([payloadEntreprise], { onConflict: 'id_entreprise' });
+
+        if (insertError) {
+          console.warn("Avertissement RLS Supabase intercepté :", insertError.message);
+        }
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('entrepriseId', formData.entrepriseId);
+          localStorage.setItem('entreprise_id', formData.entrepriseId);
+          localStorage.setItem('emailConnecte', formData.email.trim());
+          localStorage.setItem('utilisateurConnecte', formData.nomEntreprise.trim());
+          localStorage.setItem('module_actif', modulePrincipalInitial);
+        }
+
+        setTimeout(() => {
+          setLoading(false);
+          setStep(5); // Succès immédiat et partagé
+        }, 500);
+        return;
+      }
+
+      // Comportement normal avec CinetPay si le contournement distant est désactivé
+      const transactionId = '4TS_' + Date.now();
+
       const response = await fetch('/api/initier-paiement', {
         method: 'POST',
         headers: {
@@ -306,7 +368,7 @@ export default function SouscriptionWizard() {
         throw new Error(result.error || "Erreur lors de l'initialisation du paiement avec CinetPay.");
       }
     } catch (err) {
-      setErrorMsg("Erreur passerelle de paiement : " + err.message);
+      setErrorMsg("Erreur de traitement : " + err.message);
       setLoading(false);
     }
   };
