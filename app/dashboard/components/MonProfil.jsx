@@ -7,11 +7,19 @@ import EspaceSouscription from './EspaceSouscription';
 export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const idEffectif = entrepriseId || (typeof window !== 'undefined' ? (localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id')) : null) || '4TS-234321';
   
-  // ⚡ 1. RÉCUPÉRATION INSTANTANÉE DU CACHE COMPLET
+  // ⚡ 1. RÉCUPÉRATION INSTANTANÉE ET SÉCURISÉE DU MODULE ACTIF RÉEL DEPUIS LE LOCALSTORAGE
+  const moduleActifLocal = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase() : 'BOUTIQUE';
+
   const profilCache = typeof window !== 'undefined' ? (() => {
     try {
       const brutCache = localStorage.getItem(`4ts_cache_profil_complet_${idEffectif}`);
-      if (brutCache) return JSON.parse(brutCache);
+      if (brutCache) {
+        const parsed = JSON.parse(brutCache);
+        if (parsed && (!parsed.modules || parsed.modules.length === 0)) {
+          parsed.modules = [moduleActifLocal];
+        }
+        return parsed;
+      }
     } catch (e) {}
 
     let sessionObj = null;
@@ -33,11 +41,11 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       role: (sessionObj?.nom_role || sessionObj?.role || localStorage.getItem('roleUtilisateur') || 'Employé').trim(),
       entrepriseNom: nomEnt,
       avatar: sessionObj?.photo || localStorage.getItem(`logo_entreprise_${idEffectif}`) || '',
-      modules: ['BOUTIQUE', 'LIVRAISON']
+      modules: [moduleActifLocal]
     };
-  })() : { id: null, email: '', nom: 'UTILISATEUR', telephone: '', role: 'Employé', entrepriseNom: 'ISMA LOGISTIQUE', avatar: '', modules: ['BOUTIQUE', 'LIVRAISON'] };
+  })() : { id: null, email: '', nom: 'UTILISATEUR', telephone: '', role: 'Employé', entrepriseNom: 'ISMA LOGISTIQUE', avatar: '', modules: [moduleActifLocal] };
 
-  const [entreprise, setEntreprise] = useState({ nom_entreprise: profilCache.entrepriseNom, id_entreprise: idEffectif });
+  const [entreprise, setEntreprise] = useState({ nom_entreprise: profilCache.entrepriseNom, id_entreprise: idEffectif, espaces_souscrits: [moduleActifLocal] });
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
@@ -49,7 +57,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [avatarUtilisateur, setAvatarUtilisateur] = useState(profilCache.avatar);
 
   const [modulesAutorisesUser, setModulesAutorisesUser] = useState(profilCache.modules);
-  const [espacesModulesConfig, setEspacesModulesConfig] = useState([]);
 
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
   const [confirmerMotDePasse, setConfirmerMotDePasse] = useState('');
@@ -59,14 +66,9 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [modeModificationMdp, setModeModificationMdp] = useState(false);
 
   const [modeAction, setModeAction] = useState(null);
-  const [nouveauxModulesChoisis, setNouveauxModulesChoisis] = useState({});
-  const [activationEnCours, setActivationEnCours] = useState(false);
-  const [changementModuleEnCours, setChangementModuleEnCours] = useState(false);
 
   const [moduleEnAttenteDeBasculement, setModuleEnAttenteDeBasculement] = useState(null);
   const [modalConfirmationBasculementOuverte, setModalConfirmationBasculementOuverte] = useState(false);
-  const [moduleNonSouscritMessage, setModuleNonSouscritMessage] = useState(null);
-  const [modalModuleNonSouscritOuverte, setModalModuleNonSouscritOuverte] = useState(false);
 
   const [modalDeconnexionOuverte, setModalDeconnexionOuverte] = useState(false);
   const [modalesMessage, setModalesMessage] = useState({ ouverte: false, titre: '', message: '', type: 'succes' });
@@ -78,19 +80,9 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
 
   useEffect(() => {
     chargerInfosUtilisateurEtEntrepriseSilencieux();
-    chargerConfigModulesSupabase();
   }, [entrepriseId]);
 
-  const chargerConfigModulesSupabase = async () => {
-    try {
-      const { data, error } = await supabase.from('espaces_modules').select('*');
-      if (!error && data) setEspacesModulesConfig(data);
-    } catch (err) {
-      console.warn("Erreur chargement configuration modules :", err);
-    }
-  };
-
-  // 🔄 SYNCHRONISATION SILENCIEUSE ET MISE À JOUR DU CACHE
+  // 🔄 SYNCHRONISATION SILENCIEUSE ET RESTRICTION STRICTE DES MODULES PAR UTILISATEUR
   const chargerInfosUtilisateurEtEntrepriseSilencieux = async () => {
     try {
       let entrepriseTrouvee = null;
@@ -134,13 +126,25 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
 
         if (correspondances.length > 0) {
           utilisateurTrouve = correspondances[0];
-          const identiteBase = (utilisateurTrouve.nom_complet || '').trim().toUpperCase();
-          const lignesMemeEmploye = usersList.filter(u => 
-            (utilisateurTrouve.email && u.email && u.email.toLowerCase() === utilisateurTrouve.email.toLowerCase()) ||
-            (identiteBase && (u.nom_complet || '').trim().toUpperCase() === identiteBase)
-          );
-          const mods = lignesMemeEmploye.map(u => (u.module || '').trim().toUpperCase()).filter(Boolean);
-          if (mods.length > 0) modulesUser = Array.from(new Set(mods));
+          
+          const roleTest = String(utilisateurTrouve.nom_role || utilisateurTrouve.role || profilCache.role).trim().toUpperCase();
+          const estAdmin = roleTest.includes('ADMIN') || (utilisateurTrouve.email === 'stephs7352@gmail.com');
+
+          if (estAdmin) {
+            const rawEspaces = entrepriseTrouvee?.espaces_souscrits || entrepriseTrouvee?.modules_souscrits || [moduleActifLocal];
+            if (Array.isArray(rawEspaces)) {
+              modulesUser = rawEspaces.map(m => String(m).trim().toUpperCase());
+            } else if (typeof rawEspaces === 'string') {
+              modulesUser = rawEspaces.split(',').map(m => String(m).trim().toUpperCase());
+            }
+          } else {
+            const modPropre = (utilisateurTrouve.module || '').trim().toUpperCase();
+            if (modPropre) {
+              modulesUser = [modPropre];
+            } else {
+              modulesUser = [moduleActifLocal];
+            }
+          }
         }
       }
 
@@ -188,21 +192,21 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   };
 
   const donneesBrutesEspaces = entreprise?.espaces_souscrits || entreprise?.modules_souscrits;
-  let espacesSouscrits = [];
+  let espacesEntreprise = [moduleActifLocal];
   if (donneesBrutesEspaces) {
     if (Array.isArray(donneesBrutesEspaces)) {
-      espacesSouscrits = donneesBrutesEspaces.map(m => String(m).trim().toUpperCase());
+      espacesEntreprise = donneesBrutesEspaces.map(m => String(m).trim().toUpperCase());
     } else if (typeof donneesBrutesEspaces === 'string') {
-      espacesSouscrits = donneesBrutesEspaces.split(',').map(m => m.trim().toUpperCase());
+      espacesEntreprise = donneesBrutesEspaces.split(',').map(m => m.trim().toUpperCase());
     }
   }
-  espacesSouscrits = Array.from(new Set(espacesSouscrits));
+  espacesEntreprise = Array.from(new Set(espacesEntreprise));
 
-  const modulesAccessiblesEffectifs = estAdminEntreprise 
-    ? (espacesSouscrits.length > 0 ? espacesSouscrits : modulesAutorisesUser) 
-    : modulesAutorisesUser;
+  const espacesVisiblesUtilisateur = estAdminEntreprise 
+    ? espacesEntreprise 
+    : (modulesAutorisesUser && modulesAutorisesUser.length > 0 ? modulesAutorisesUser : [moduleActifLocal]);
 
-  const premierModuleAutorise = modulesAccessiblesEffectifs[0] || espacesSouscrits[0] || 'LIVRAISON';
+  const premierModuleAutorise = espacesVisiblesUtilisateur[0] || moduleActifLocal;
   const moduleActif = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || premierModuleAutorise).toUpperCase() : premierModuleAutorise.toUpperCase();
 
   const afficherModaleNotification = (titre, message, type = 'succes') => {
@@ -270,7 +274,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     if (!moduleEnAttenteDeBasculement) return;
     const modUpper = moduleEnAttenteDeBasculement;
     setModalConfirmationBasculementOuverte(false);
-    setChangementModuleEnCours(true);
     if (typeof window !== 'undefined') {
       localStorage.setItem('module_actif', modUpper);
     }
@@ -489,6 +492,19 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
         </div>
       )}
 
+      {modeAction === 'nouveau_module' && estAdminEntreprise && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className={`w-full max-w-lg rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
+            <div className="flex justify-between items-center border-b pb-3 border-slate-300/40">
+              <h4 className={`font-black uppercase text-xs ${titleColor}`}>➕ SOUSCRIRE À UN NOUVEAU MODULE</h4>
+              <button type="button" onClick={() => setModeAction(null)} className={`text-xs font-bold px-3 py-1 rounded-lg ${secondaryBtnBg}`}>Fermer ✕</button>
+            </div>
+            <EspaceSouscription entrepriseId={idEffectif} isDarkMode={isDarkMode} />
+          </div>
+        </div>
+      )}
+
+      {/* ⚡ MODALE BASCULEMENT DE MODULE : FILTRÉE STRICTEMENT SUR LES DROITS DE L'UTILISATEUR */}
       {modeAction === 'switcher_module' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4 ${cardBg}`}>
@@ -498,11 +514,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               {['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE']
-                .filter(mod => {
-                  const estAutoriseUser = estAdminEntreprise || modulesAutorisesUser.includes(mod) || mod === moduleActif;
-                  const estSouscrit = espacesSouscrits.includes(mod) || mod === moduleActif || estAdminEntreprise;
-                  return estAutoriseUser && estSouscrit;
-                })
+                .filter(mod => espacesVisiblesUtilisateur.includes(mod))
                 .map((mod) => {
                   const estActif = moduleActif === mod;
                   return (
@@ -525,7 +537,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
         </div>
       )}
 
-      {/* MODALE QR CODE AVEC LE JOLI MESSAGE */}
+      {/* MODALE QR CODE */}
       {modeAction === 'generateur_qr' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4 text-center ${cardBg}`}>
@@ -539,7 +551,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <p className="mt-2 font-black text-slate-900 text-xs uppercase">{entreprise.nom_entreprise || 'BOUTIQUE'}</p>
             </div>
 
-            {/* Joli message incitatif à scanner pour commander */}
             <div className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-rose-600 text-white shadow-lg border border-amber-300/50 animate-pulse">
               <p className="text-xs sm:text-sm font-black tracking-wider uppercase drop-shadow-md">
                 📱 Flashez ce code pour commander en un clin d'œil !

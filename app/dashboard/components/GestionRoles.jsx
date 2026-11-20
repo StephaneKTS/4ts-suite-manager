@@ -23,6 +23,9 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
 
   const [roleNomConnecte, setRoleNomConnecte] = useState('');
 
+  // 🔒 État pour suivre le nombre d'utilisateurs rattachés au rôle en cours d'édition
+  const [nbUtilisateursRattaches, setNbUtilisateursRattaches] = useState(0);
+
   // 🔔 ÉTAT UNIFIÉ POUR LES MODALES DE CONFIRMATION ET NOTIFICATION
   const [etatModale, setEtatModale] = useState({
     ouverte: false,
@@ -32,7 +35,9 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
     onConfirmer: null
   });
   
+  // 🏪 Tables exclusives au module Boutique / Ventes
   const modulesBoutique = [
+    { id: 'commandes_clients_qr', nom: '📱 Commandes QR Code' },
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
     { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
@@ -45,10 +50,27 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
     { id: 'fournisseurs', nom: '🤝 Fournisseurs' },
     { id: 'caisses', nom: '💵 Gestion Caisses' },
     { id: 'ventes_historiques', nom: '📊 Historique Ventes & Rapports' },
+    { id: 'journal', nom: '📝 Journal de Caisse & Saisie' },
+    { id: 'grand_livre', nom: '📚 Grand Livre & Rapports' },
+    { id: 'controle', nom: '🔍 Contrôle & Clôture' },
+    { id: 'plan_comptable', nom: '📚 Plan Comptable' },
+    { id: 'taxes_ristournes', nom: '🏷️ Taxes & Promos' },
+    { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
+  ];
+
+  // 🚚 Tables exclusives au module Livraison / Transport
+  const modulesLivraison = [
     { id: 'commandes_livraison', nom: '📦 Commandes & Livraisons' },
     { id: 'grille_tarifaire', nom: '🗺️ Grille Tarifaire Livraison' },
+    { id: 'emplacements_stock', nom: '📍 Emplacements Livreurs' },
+    { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
+    { id: 'articles_stock', nom: '📦 Stock Articles' },
+    { id: 'familles_articles', nom: '🗂️ Familles d\'Articles' },
     { id: 'challenges_commerciaux', nom: '🏆 Challenges Commerciaux' },
-    { id: 'plan_comptable', nom: '📚 Plan Comptable & Journal' },
+    { id: 'mouvements_stock', nom: '🔄 Mouvement Stock' },
+    { id: 'approvisionnements', nom: '📥 Achats & Approvisionnement' },
+    { id: 'fournisseurs', nom: '🤝 Gestion Partenaire' },
+    { id: 'taxes_ristournes', nom: '🏷️ Taxes & Promos' },
     { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
   ];
 
@@ -68,7 +90,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
 
   const moduleActuel = obtenirModuleActuel();
   const estTontine = moduleActuel === 'TONTINE';
-  const modulesApp = estTontine ? modulesTontine : modulesBoutique;
+  const estLivraison = moduleActuel === 'LIVRAISON';
+  
+  // 🎯 Sélection rigoureuse de la liste des tables selon le module actif
+  const modulesApp = estTontine ? modulesTontine : (estLivraison ? modulesLivraison : modulesBoutique);
   const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
 
   const initialiserPermissionsDefaut = () => {
@@ -163,7 +188,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
   };
 
   const chargerRolesEtPermissions = async () => {
-    // ⚡ Chargement instantané depuis le cache local
     const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
     if (rolesLocaux && rolesLocaux.length > 0) {
       setRoles(rolesLocaux);
@@ -190,7 +214,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
       if (error) throw error;
       let listRoles = data || [];
 
-      // Vérification et auto-création unique du rôle système ADMINISTRATEUR
       const adminExiste = listRoles.some(r => (r.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR');
 
       if (!adminExiste) {
@@ -252,7 +275,32 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
     }));
   };
 
-  // 🚀 FONCTION DE VALIDATION DÉCLENCHÉE PAR LE FORMULAIRE
+  const aSubiDesModifications = () => {
+    if (!roleEnEdition) return true;
+    
+    const nomActuel = (nouveauRole.nom_role || '').trim();
+    const nomOrigine = (roleEnEdition.nom_role || '').trim();
+    const descActuelle = (nouveauRole.description || '').trim();
+    const descOrigine = (roleEnEdition.description || '').trim();
+
+    if (nomActuel !== nomOrigine || descActuelle !== descOrigine) return true;
+
+    const permOrigine = roleEnEdition.permissions || {};
+    const permActuelle = nouveauRole.permissions || {};
+
+    const tousModulesIds = modulesApp.map(m => m.id);
+    for (const modId of tousModulesIds) {
+      const po = permOrigine[modId] || { lecture: false, creation: false, modification: false, suppression: false };
+      const pa = permActuelle[modId] || { lecture: false, creation: false, modification: false, suppression: false };
+
+      if (po.lecture !== pa.lecture || po.creation !== pa.creation || po.modification !== pa.modification || po.suppression !== pa.suppression) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   const enregistrerRole = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
@@ -269,7 +317,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
       return;
     }
 
-    // Demande de confirmation via la modale unifiée
     setEtatModale({
       ouverte: true,
       titre: 'Confirmation requise',
@@ -402,7 +449,7 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
     }
   };
 
-  const ouvrirEdition = (role) => {
+  const ouvrirEdition = async (role) => {
     if (enTrainDeSauvegarder) return;
     setRoleEnEdition(role);
     setNouveauRole({
@@ -410,7 +457,31 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
       description: role.description || '',
       permissions: { ...initialiserPermissionsDefaut(), ...(role.permissions || {}) },
     });
+    setNbUtilisateursRattaches(0);
     setAfficherForm(true);
+
+    try {
+      const { data: tousLesUsers, error } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+
+      if (!error && tousLesUsers) {
+        const idRoleStr = String(role.id);
+        const nomRoleStr = String(role.nom_role || '').trim().toUpperCase();
+
+        const count = tousLesUsers.filter((u) => {
+          const valIdRole = String(u.id_role || u.role_id || '');
+          const valNomRole = String(u.nom_role || u.role || '').trim().toUpperCase();
+          return valIdRole === idRoleStr || valNomRole === nomRoleStr;
+        }).length;
+
+        setNbUtilisateursRattaches(count);
+      }
+    } catch (err) {
+      console.error('Erreur vérification utilisateurs rattachés :', err);
+    }
   };
 
   const annulerForm = () => {
@@ -421,10 +492,10 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
       description: '',
       permissions: initialiserPermissionsDefaut(),
     });
+    setNbUtilisateursRattaches(0);
     setAfficherForm(false);
   };
 
-  // 🚀 DEMANDE DE SUPPRESSION VIA MODALE DE CONFIRMATION
   const demanderSuppressionRole = () => {
     if (enTrainDeSauvegarder || !roleEnEdition) return;
 
@@ -436,6 +507,17 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
         ouverte: true,
         titre: '❌ Suppression interdite',
         message: `Le rôle système ${nomRoleCible} ne peut pas être supprimé.`,
+        type: 'erreur',
+        onConfirmer: null
+      });
+      return;
+    }
+
+    if (nbUtilisateursRattaches > 0) {
+      setEtatModale({
+        ouverte: true,
+        titre: '❌ Suppression bloquée',
+        message: `Ce rôle est rattaché à ${nbUtilisateursRattaches} utilisateur(s). Il ne peut pas être supprimé.`,
         type: 'erreur',
         onConfirmer: null
       });
@@ -465,35 +547,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
   const executerSuppressionRole = async () => {
     setEnTrainDeSauvegarder(true);
     try {
-      const { data: tousLesUsers, error: errUsers } = await supabase
-        .from('utilisateurs')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-
-      if (errUsers) throw errUsers;
-
-      const idRoleStr = String(roleEnEdition.id);
-      const nomRoleStr = String(roleEnEdition.nom_role || '').trim().toUpperCase();
-
-      const usersRattaches = (tousLesUsers || []).filter((u) => {
-        const valIdRole = String(u.id_role || u.role_id || '');
-        const valNomRole = String(u.nom_role || u.role || '').trim().toUpperCase();
-        return valIdRole === idRoleStr || valNomRole === nomRoleStr;
-      });
-
-      if (usersRattaches.length > 0) {
-        setEtatModale({
-          ouverte: true,
-          titre: '❌ Suppression bloquée',
-          message: `Ce rôle ("${roleEnEdition.nom_role}") est actuellement affecté à ${usersRattaches.length} utilisateur(s).`,
-          type: 'erreur',
-          onConfirmer: null
-        });
-        setEnTrainDeSauvegarder(false);
-        return;
-      }
-
       const { error } = await supabase.from('roles').delete().eq('id', roleEnEdition.id);
       if (error) throw error;
 
@@ -552,18 +605,18 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
     });
 
   const rolesAffiches = rolesFiltres.slice(0, limiteRoles);
-
   const rolesSystemeInterditsModification = ['ADMINISTRATEUR'];
 
-  // 🎨 CONFIGURATION DES COULEURS DYNAMIQUE (MODE JOUR vs MODE NUIT)
   const modalBg = isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-100 shadow-2xl' : 'bg-white border-[#0d2347]/30 text-[#0d2347] shadow-2xl';
   const modalTitleColor = isDarkMode ? 'text-slate-100' : 'text-[#0d2347]';
   const modalMessageColor = isDarkMode ? 'text-slate-300' : 'text-slate-700';
 
+  const modificationsApportees = aSubiDesModifications();
+  const suppressionBloquee = nbUtilisateursRattaches > 0;
+
   return (
     <div className="space-y-2.5 text-[11px] font-sans w-full max-w-full overflow-hidden relative">
       
-      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
@@ -596,106 +649,215 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
           disabled={enTrainDeSauvegarder}
           onClick={() => {
             if (enTrainDeSauvegarder) return;
-            if (afficherForm) {
-              annulerForm();
-            } else {
-              setNouveauRole({ nom_role: '', description: '', permissions: initialiserPermissionsDefaut() });
-              setRoleEnEdition(null);
-              setAfficherForm(true);
-            }
+            setNouveauRole({ nom_role: '', description: '', permissions: initialiserPermissionsDefaut() });
+            setRoleEnEdition(null);
+            setNbUtilisateursRattaches(0);
+            setAfficherForm(true);
           }}
           className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-2xs text-xs shrink-0 cursor-pointer"
         >
-          {afficherForm ? '✖' : '＋ Nouveau Rôle'}
-        </button>
-      </div>
-
-      <div className="flex justify-start items-center gap-1.5">
-        <button
-          type="button"
-          disabled={enTrainDeSauvegarder}
-          onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border shadow-2xs cursor-pointer ${
-            !afficherForm 
-              ? 'bg-orange-600 text-white border-orange-600 shadow-xs' 
-              : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
-          }`}
-        >
-          Liste ({roles.length})
+          ＋ Nouveau Rôle
         </button>
       </div>
 
       {afficherForm && (
-        <form onSubmit={enregistrerRole} className="bg-white border-2 border-orange-500/50 p-3 rounded-xl space-y-3 shadow-md max-h-[75vh] overflow-y-auto w-full">
-          <div className="flex justify-between items-center border-b border-slate-200 pb-1">
-            <h4 className="font-black text-orange-600 uppercase text-[11px]">
-              {roleEnEdition ? '✏️ Modifier le Rôle & ses Permissions' : '➕ Nouveau Rôle & Permissions'}
-            </h4>
-            <button
-              type="button"
-              disabled={enTrainDeSauvegarder}
-              onClick={annulerForm}
-              className="text-slate-400 hover:text-slate-700 font-bold text-xs p-0.5 cursor-pointer"
-            >
-              ✖
-            </button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2 w-full">
-            <div className="w-full sm:w-1/3">
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Nom du Rôle *</label>
-              <input
-                type="text"
-                required
-                disabled={enTrainDeSauvegarder || (roleEnEdition && rolesSystemeInterditsModification.includes((roleEnEdition.nom_role || '').trim().toUpperCase()))}
-                value={nouveauRole.nom_role}
-                onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
-                placeholder="EX: RESPONSABLE..."
-                className="w-full border border-slate-300 rounded p-1.5 font-extrabold uppercase text-xs shadow-xs bg-white text-slate-900 disabled:bg-slate-100"
-              />
-            </div>
-            <div className="w-full sm:w-2/3">
-              <label className="block font-black mb-0.5 text-[9px] text-slate-700 uppercase">Description</label>
-              <input
-                type="text"
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 animate-fadeIn">
+          <div className="bg-white border-2 border-orange-500/70 p-4 sm:p-6 rounded-2xl space-y-4 shadow-2xl max-h-[96vh] w-full max-w-4xl overflow-y-auto">
+            
+            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+              <h4 className="font-black text-orange-600 uppercase text-xs sm:text-sm">
+                {roleEnEdition ? '✏️ MODIFIER LE RÔLE & SES PERMISSIONS' : '➕ CRÉER UN NOUVEAU RÔLE & PERMISSIONS'}
+              </h4>
+              <button
+                type="button"
                 disabled={enTrainDeSauvegarder}
-                value={nouveauRole.description}
-                onChange={(e) => setNouveauRole({ ...nouveauRole, description: e.target.value })}
-                placeholder="Description détaillée des attributions de ce rôle..."
-                className="w-full border border-slate-300 rounded p-1.5 text-xs shadow-xs bg-white text-slate-900"
-              />
+                onClick={annulerForm}
+                className="text-slate-400 hover:text-slate-700 font-bold text-sm p-1 cursor-pointer"
+              >
+                ✖
+              </button>
             </div>
-          </div>
 
-          <div className="space-y-2 pt-2 border-t border-slate-200">
-            <h5 className="font-black text-slate-900 text-[10px] uppercase">🔐 Matrice des Droits par Module ({moduleActuel}) :</h5>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs max-h-56">
+            <form onSubmit={enregistrerRole} className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3 w-full">
+                <div className="w-full sm:w-1/3">
+                  <label className="block font-black mb-1 text-[10px] text-slate-700 uppercase">Nom du Rôle *</label>
+                  <input
+                    type="text"
+                    required
+                    disabled={enTrainDeSauvegarder || (roleEnEdition && rolesSystemeInterditsModification.includes((roleEnEdition.nom_role || '').trim().toUpperCase()))}
+                    value={nouveauRole.nom_role}
+                    onChange={(e) => setNouveauRole({ ...nouveauRole, nom_role: e.target.value.toUpperCase() })}
+                    placeholder="EX: GESTIONNAIRE..."
+                    className="w-full border border-slate-300 rounded-lg p-2 font-extrabold uppercase text-xs shadow-xs bg-white text-slate-900 disabled:bg-slate-100"
+                  />
+                </div>
+                <div className="w-full sm:w-2/3">
+                  <label className="block font-black mb-1 text-[10px] text-slate-700 uppercase">Description</label>
+                  <input
+                    type="text"
+                    disabled={enTrainDeSauvegarder}
+                    value={nouveauRole.description}
+                    onChange={(e) => setNouveauRole({ ...nouveauRole, description: e.target.value })}
+                    placeholder="Description détaillée des attributions de ce rôle..."
+                    className="w-full border border-slate-300 rounded-lg p-2 text-xs shadow-xs bg-white text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <h5 className="font-black text-[#0d2347] text-xs uppercase flex items-center gap-1.5">
+                  <span>🔒</span> Matrice des Droits par Module ({moduleActuel}) :
+                </h5>
+                
+                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs max-h-[55vh]">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#0d2347] text-white border-b border-slate-300 text-[10px] uppercase font-black sticky top-0 z-10">
+                      <tr>
+                        <th className="p-3">Module / Table</th>
+                        <th className="p-3 text-center">👁️ Lecture</th>
+                        <th className="p-3 text-center">➕ Création</th>
+                        <th className="p-3 text-center">✏️ Modif.</th>
+                        <th className="p-3 text-center">🗑️ Suppr.</th>
+                        <th className="p-3 text-center">Action Rapide</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[11px]">
+                      {modulesApp.map((m) => {
+                        const p = nouveauRole.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
+                        const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
+                        return (
+                          <tr key={m.id} className="hover:bg-slate-50 transition">
+                            <td className="p-2.5 font-extrabold text-slate-950">{m.nom}</td>
+                            <td className="p-2.5 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.lecture} onChange={() => togglePermissionRole(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
+                            <td className="p-2.5 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.creation} onChange={() => togglePermissionRole(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
+                            <td className="p-2.5 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.modification} onChange={() => togglePermissionRole(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
+                            <td className="p-2.5 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.suppression} onChange={() => togglePermissionRole(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
+                            <td className="p-2.5 text-center">
+                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => accorderToutModuleRole(m.id, !estToutAccorde)} className={`px-2 py-1 rounded text-[9.5px] font-black cursor-pointer shadow-2xs ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+                                {estToutAccorde ? 'Aucun' : 'Tous'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex justify-between items-center gap-3">
+                {roleEnEdition && !rolesSystemeInterditsModification.includes((roleEnEdition.nom_role || '').trim().toUpperCase()) ? (
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      disabled={enTrainDeSauvegarder || suppressionBloquee}
+                      onClick={demanderSuppressionRole}
+                      title={suppressionBloquee ? `Impossible : ${nbUtilisateursRattaches} utilisateur(s) rattaché(s)` : 'Supprimer le rôle'}
+                      className={`font-black px-4 py-2 rounded-xl text-xs shadow-md transition ${
+                        suppressionBloquee 
+                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-400' 
+                          : 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                      }`}
+                    >
+                      {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer le rôle'}
+                    </button>
+                    {suppressionBloquee && (
+                      <span className="text-[9px] text-rose-600 font-bold">
+                        ⚠️ Rattaché à {nbUtilisateursRattaches} utilisateur(s)
+                      </span>
+                    )}
+                  </div>
+                ) : <div />}
+                
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={annulerForm}
+                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-4 py-2 rounded-xl text-xs cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={enTrainDeSauvegarder || !modificationsApportees} 
+                    className={`font-black px-5 py-2 rounded-xl text-xs shadow-md transition ${
+                      !modificationsApportees 
+                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-400' 
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                    }`}
+                  >
+                    {enTrainDeSauvegarder ? 'Enregistrement...' : (roleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                  </button>
+                </div>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* LISTE DES RÔLES ENREGISTRÉS */}
+      <>
+        <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+          <input
+            type="text"
+            disabled={enTrainDeSauvegarder}
+            value={recherche}
+            onChange={(e) => setRecherche(e.target.value.toUpperCase())}
+            placeholder="RECHERCHER UN RÔLE..."
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400"
+          />
+        </div>
+
+        <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
+          <span>Répertoire : <strong>{rolesAffiches.length} / {rolesFiltres.length}</strong> rôle(s)</span>
+        </div>
+
+        {chargement ? (
+          <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
+        ) : rolesAffiches.length === 0 ? (
+          <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
+            Aucun rôle personnalisé enregistré. Cliquez sur "＋ Nouveau Rôle".
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs w-full">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 text-[10px] uppercase font-black sticky top-0">
+                <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
                   <tr>
-                    <th className="p-2">Module</th>
-                    <th className="p-2 text-center">👁️ Lecture</th>
-                    <th className="p-2 text-center">➕ Création</th>
-                    <th className="p-2 text-center">✏️ Modif.</th>
-                    <th className="p-2 text-center">🗑️ Suppr.</th>
-                    <th className="p-2 text-center">Action</th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_role')} className="p-2.5 cursor-pointer hover:bg-slate-200 transition w-1/3">
+                      Intitulé {rendreFlecheTri('nom_role')}
+                    </th>
+                    <th className="p-2.5 w-1/2">Description</th>
+                    <th className="p-2.5 text-center w-1/6">Modules</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-[10px]">
-                  {modulesApp.map((m) => {
-                    const p = nouveauRole.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
-                    const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
+                <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                  {rolesAffiches.map((r) => {
+                    const nomRoleUpper = (r.nom_role || '').trim().toUpperCase();
+                    const estAdmin = nomRoleUpper === 'ADMINISTRATEUR';
+                    const nbModulesActifs = estAdmin ? modulesApp.length : Object.values(r.permissions || {}).filter(p => p.lecture).length;
                     return (
-                      <tr key={m.id} className="hover:bg-slate-50">
-                        <td className="p-2 font-black text-slate-950 truncate max-w-[120px]">{m.nom}</td>
-                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.lecture} onChange={() => togglePermissionRole(m.id, 'lecture')} className="w-4 h-4 accent-orange-600 rounded cursor-pointer" /></td>
-                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.creation} onChange={() => togglePermissionRole(m.id, 'creation')} className="w-4 h-4 accent-emerald-600 rounded cursor-pointer" /></td>
-                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.modification} onChange={() => togglePermissionRole(m.id, 'modification')} className="w-4 h-4 accent-blue-600 rounded cursor-pointer" /></td>
-                        <td className="p-2 text-center"><input type="checkbox" disabled={enTrainDeSauvegarder} checked={p.suppression} onChange={() => togglePermissionRole(m.id, 'suppression')} className="w-4 h-4 accent-red-600 rounded cursor-pointer" /></td>
-                        <td className="p-2 text-center">
-                          <button type="button" disabled={enTrainDeSauvegarder} onClick={() => accorderToutModuleRole(m.id, !estToutAccorde)} className={`px-1.5 py-1 rounded text-[9px] font-black cursor-pointer ${estToutAccorde ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-                            {estToutAccorde ? 'Aucun' : 'Tous'}
-                          </button>
+                      <tr
+                        key={r.id}
+                        onClick={() => !enTrainDeSauvegarder && ouvrirEdition(r)}
+                        className="hover:bg-orange-50/70 cursor-pointer transition select-none"
+                        title="Cliquer pour modifier"
+                      >
+                        <td className="p-2.5 font-extrabold uppercase text-slate-900 w-1/3 truncate">
+                          <span className={`${estAdmin ? 'bg-indigo-100 text-indigo-900 border-indigo-200' : 'bg-slate-100 text-slate-900 border-slate-200'} border px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full`}>
+                            {estAdmin ? '👑' : '🛡️'} {r.nom_role}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-slate-600 font-medium w-1/2 truncate max-w-[150px] sm:max-w-xs">
+                          {r.description || 'Aucune description'}
+                        </td>
+                        <td className="p-2.5 text-center w-1/6">
+                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded font-black text-[9px]">
+                            {estAdmin ? 'Tous' : nbModulesActifs}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -703,122 +865,23 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
                 </tbody>
               </table>
             </div>
-          </div>
 
-          <div className="pt-2 border-t border-slate-200 flex justify-between items-center gap-2">
-            {roleEnEdition && !rolesSystemeInterditsModification.includes((roleEnEdition.nom_role || '').trim().toUpperCase()) ? (
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={demanderSuppressionRole}
-                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1.5 rounded text-[10px] shadow-xs shrink-0 cursor-pointer"
-              >
-                {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
-              </button>
-            ) : <div />}
-            <div className="flex items-center gap-1.5 ml-auto">
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={annulerForm}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-1.5 rounded text-[10px] cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button type="submit" disabled={enTrainDeSauvegarder} className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-4 py-1.5 rounded text-[10px] shadow-xs cursor-pointer">
-                {enTrainDeSauvegarder ? 'Enregistrement...' : (roleEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-
-      {!afficherForm && (
-        <>
-          <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-            <input
-              type="text"
-              disabled={enTrainDeSauvegarder}
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value.toUpperCase())}
-              placeholder="RECHERCHER UN RÔLE..."
-              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 font-extrabold uppercase text-slate-900 text-xs focus:outline-none shadow-xs placeholder:text-slate-400"
-            />
-          </div>
-
-          <div className="flex justify-between items-center text-[10px] text-slate-700 px-1 font-black">
-            <span>Répertoire : <strong>{rolesAffiches.length} / {rolesFiltres.length}</strong> rôle(s)</span>
-          </div>
-
-          {chargement ? (
-            <div className="p-4 text-center text-slate-500 font-bold">Chargement...</div>
-          ) : rolesAffiches.length === 0 ? (
-            <div className="p-4 text-center text-slate-500 bg-white border border-slate-200 rounded-xl font-bold">
-              Aucun rôle personnalisé enregistré. Cliquez sur "＋ Nouveau Rôle".
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs w-full">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-slate-800 border-b border-slate-200 uppercase text-[9px] font-black select-none">
-                    <tr>
-                      <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_role')} className="p-2.5 cursor-pointer hover:bg-slate-200 transition w-1/3">
-                        Intitulé {rendreFlecheTri('nom_role')}
-                      </th>
-                      <th className="p-2.5 w-1/2">Description</th>
-                      <th className="p-2.5 text-center w-1/6">Modules</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                    {rolesAffiches.map((r) => {
-                      const nomRoleUpper = (r.nom_role || '').trim().toUpperCase();
-                      const estAdmin = nomRoleUpper === 'ADMINISTRATEUR';
-                      const nbModulesActifs = estAdmin ? modulesApp.length : Object.values(r.permissions || {}).filter(p => p.lecture).length;
-                      return (
-                        <tr
-                          key={r.id}
-                          onClick={() => !enTrainDeSauvegarder && ouvrirEdition(r)}
-                          className="hover:bg-orange-50/70 cursor-pointer transition select-none"
-                          title="Cliquer pour modifier"
-                        >
-                          <td className="p-2.5 font-extrabold uppercase text-slate-900 w-1/3 truncate">
-                            <span className={`${estAdmin ? 'bg-indigo-100 text-indigo-900 border-indigo-200' : 'bg-slate-100 text-slate-900 border-slate-200'} border px-2 py-0.5 rounded font-black text-[9.5px] inline-block truncate max-w-full`}>
-                              {estAdmin ? '👑' : '🛡️'} {r.nom_role}
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-slate-600 font-medium w-1/2 truncate max-w-[150px] sm:max-w-xs">
-                            {r.description || 'Aucune description'}
-                          </td>
-                          <td className="p-2.5 text-center w-1/6">
-                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded font-black text-[9px]">
-                              {estAdmin ? 'Tous' : nbModulesActifs}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            {limiteRoles < rolesFiltres.length && (
+              <div className="text-center pt-2 pb-2">
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={() => setLimiteRoles(prev => prev + 20)}
+                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full cursor-pointer"
+                >
+                  📥 Charger plus ({rolesFiltres.length - limiteRoles} restants)
+                </button>
               </div>
+            )}
+          </div>
+        )}
+      </>
 
-              {limiteRoles < rolesFiltres.length && (
-                <div className="text-center pt-2 pb-2">
-                  <button
-                    type="button"
-                    disabled={enTrainDeSauvegarder}
-                    onClick={() => setLimiteRoles(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-xs transition shadow-xs border border-slate-300 w-full cursor-pointer"
-                  >
-                    📥 Charger plus ({rolesFiltres.length - limiteRoles} restants)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* 🚀 MODALE UNIFIÉE ADAPTÉE MODE JOUR / MODE NUIT */}
       {etatModale.ouverte && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`${modalBg} rounded-2xl border max-w-sm w-full p-5 space-y-4 text-center transition-colors`}>

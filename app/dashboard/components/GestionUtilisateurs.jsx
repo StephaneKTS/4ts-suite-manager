@@ -57,7 +57,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
 
+  // 🔄 LISTE UNIFIÉE IDENTIQUE À GestionRoles.jsx
   const modulesBoutique = [
+    { id: 'commandes_clients_qr', nom: '📱 Commandes QR Code' },
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
     { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
@@ -70,10 +72,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     { id: 'fournisseurs', nom: '🤝 Fournisseurs' },
     { id: 'caisses', nom: '💵 Gestion Caisses' },
     { id: 'ventes_historiques', nom: '📊 Historique Ventes & Rapports' },
+    { id: 'journal', nom: '📝 Journal de Caisse & Saisie' },
+    { id: 'grand_livre', nom: '📚 Grand Livre & Rapports' },
+    { id: 'controle', nom: '🔍 Contrôle & Clôture' },
     { id: 'commandes_livraison', nom: '📦 Commandes & Livraisons' },
     { id: 'grille_tarifaire', nom: '🗺️ Grille Tarifaire Livraison' },
     { id: 'challenges_commerciaux', nom: '🏆 Challenges Commerciaux' },
-    { id: 'plan_comptable', nom: '📚 Plan Comptable & Journal' },
+    { id: 'plan_comptable', nom: '📚 Plan Comptable' },
+    { id: 'taxes_ristournes', nom: '🏷️ Taxes & Promos' },
     { id: 'roles_utilisateurs', nom: '🔑 Rôles & Personnel' }
   ];
 
@@ -229,7 +235,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         .from('utilisateurs')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
       
@@ -286,6 +292,30 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   useEffect(() => {
     chargerDonnees();
     localSync.synchroniserVersCloud(supabase);
+  }, [entrepriseId, moduleActuel]);
+
+  // 🔄 SYNCHRONISATION AUTOMATIQUE CORRIGÉE (.on() AVANT .subscribe())[cite: 61]
+  useEffect(() => {
+    const channelRoles = supabase
+      .channel(`sync-roles-${entrepriseId}-${moduleActuel}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'roles',
+          filter: `id_entreprise=eq.${entrepriseId}`
+        },
+        () => {
+          localStorage.removeItem(cleCacheRoles);
+          chargerDonnees();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channelRoles);
+    };
   }, [entrepriseId, moduleActuel]);
 
   const gererSaisieTelephone = (e) => {
@@ -351,6 +381,28 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     }));
   };
 
+  // 🎯 CONSTRUCTION DES PERMISSIONS EN FUSIONNANT LE RÔLE ET LES DROITS SPÉCIFIQUES
+  const construirePermissionsFusionnees = (roleObj, permsPerso = {}) => {
+    const base = initialiserPermissionsDefaut();
+    const rolePerms = roleObj?.permissions || {};
+    const estPleinAcces = rolePerms._plein_acces === true || (roleObj?.nom_role || '').trim().toUpperCase() === 'ADMINISTRATEUR';
+
+    modulesApp.forEach((m) => {
+      if (estPleinAcces) {
+        base[m.id] = { lecture: true, creation: true, modification: true, suppression: true };
+      } else {
+        base[m.id] = {
+          lecture: Boolean(permsPerso?.[m.id]?.lecture ?? rolePerms?.[m.id]?.lecture ?? false),
+          creation: Boolean(permsPerso?.[m.id]?.creation ?? rolePerms?.[m.id]?.creation ?? false),
+          modification: Boolean(permsPerso?.[m.id]?.modification ?? rolePerms?.[m.id]?.modification ?? false),
+          suppression: Boolean(permsPerso?.[m.id]?.suppression ?? rolePerms?.[m.id]?.suppression ?? false),
+        };
+      }
+    });
+
+    return base;
+  };
+
   const changerRoleUtilisateur = (e) => {
     const roleId = e.target.value;
     const roleObj = roles.find(r => String(r.id) === String(roleId));
@@ -359,7 +411,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       ...prev,
       id_role: roleId,
       nom_role: roleObj ? roleObj.nom_role : '',
-      permissions: roleObj && roleObj.permissions ? { ...initialiserPermissionsDefaut(), ...roleObj.permissions } : prev.permissions
+      permissions: construirePermissionsFusionnees(roleObj, {})
     }));
   };
 
@@ -575,11 +627,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     }
 
     let roleIdMatch = '';
+    let roleObjMatch = null;
     if (user.id_role && roles.some(r => String(r.id) === String(user.id_role))) {
       roleIdMatch = String(user.id_role);
+      roleObjMatch = roles.find(r => String(r.id) === String(user.id_role));
     } else if (user.nom_role) {
       const roleParNom = roles.find(r => (r.nom_role || '').trim().toUpperCase() === user.nom_role.trim().toUpperCase());
-      if (roleParNom) roleIdMatch = String(roleParNom.id);
+      if (roleParNom) {
+        roleIdMatch = String(roleParNom.id);
+        roleObjMatch = roleParNom;
+      }
     }
 
     setNouveauUser({
@@ -606,7 +663,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
       modules_cibles: [moduleActuel],
-      permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
+      permissions: construirePermissionsFusionnees(roleObjMatch, user.permissions || {}),
     });
     setAfficherForm(true);
   };
@@ -691,6 +748,21 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const nbLicencesUtilisees = utilisateurs.filter(u => u.acces_application).length;
   const limiteLicenceMax = entrepriseInfo?.limite_utilisateurs || 5;
 
+  const utilisateursTriesParCreation = [...utilisateurs].sort((a, b) => {
+    const tA = a.created_at || '';
+    const tB = b.created_at || '';
+    if (tA < tB) return -1;
+    if (tA > tB) return 1;
+    return (a.nom_complet || '').localeCompare(b.nom_complet || '');
+  });
+
+  const mapIdStables = new Map();
+  const largeurPad = Math.max(2, String(utilisateursTriesParCreation.length).length);
+  utilisateursTriesParCreation.forEach((u, idx) => {
+    const numeroSeq = String(idx + 1).padStart(largeurPad, '0');
+    mapIdStables.set(u.id, `${entrepriseId}-${numeroSeq}`);
+  });
+
   const usersFiltres = utilisateurs
     .filter((u) => {
       const nomComplet = `${u.nom_complet || ''} ${u.prenom || ''}`.toLowerCase();
@@ -701,7 +773,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     .sort((a, b) => {
       let valA = '';
       let valB = '';
-      if (triCol === 'nom_complet') {
+      
+      if (triCol === 'id') {
+        valA = mapIdStables.get(a.id) || '';
+        valB = mapIdStables.get(b.id) || '';
+      } else if (triCol === 'nom_complet') {
         valA = a.nom_complet || '';
         valB = b.nom_complet || '';
       } else if (triCol === 'role') {
@@ -709,7 +785,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         const rB = roles.find((r) => String(r.id) === String(b.id_role));
         valA = (rA ? rA.nom_role : a.nom_role) || '';
         valB = (rB ? rB.nom_role : b.nom_role) || '';
+      } else if (triCol === 'acces') {
+        valA = String(a.acces_application ?? true);
+        valB = String(b.acces_application ?? true);
       }
+
       if (valA < valB) return triOrdre === 'asc' ? -1 : 1;
       if (valA > valB) return triOrdre === 'asc' ? 1 : -1;
       return 0;
@@ -718,11 +798,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
 
   const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-[#0a1931]';
-  const headerCardBg = isDarkMode ? 'bg-[#0b1329] border-2 border-slate-600 text-slate-100 shadow-md' : 'bg-white border-2 border-[#0a1931]/60 text-[#0a1931] shadow-md';
-  const subTextColor = isDarkMode ? 'text-slate-300' : 'text-slate-900 font-bold';
-  const inputBg = isDarkMode ? 'bg-slate-900 border-2 border-slate-600 text-slate-100 placeholder:text-slate-500' : 'bg-white border-2 border-slate-400 text-black font-semibold placeholder:text-slate-400';
-  const tableHeaderBg = isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900';
-  const rowHoverBg = isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-blue-50';
+  const headerCardBg = isDarkMode ? 'bg-[#0b1329] border border-slate-800 text-slate-100 shadow-sm' : 'bg-white border border-slate-200 text-[#0a1931] shadow-sm';
+  const subTextColor = isDarkMode ? 'text-slate-400' : 'text-slate-600 font-medium';
+  const inputBg = isDarkMode ? 'bg-slate-900 border border-slate-800 text-slate-100 placeholder:text-slate-600' : 'bg-white border border-slate-200 text-black font-medium placeholder:text-slate-400';
+  const tableHeaderBg = isDarkMode ? 'bg-slate-900/80 text-slate-300 border-b border-slate-800' : 'bg-[#0a1931] text-white border-b border-blue-900';
+  const rowHoverBg = isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-blue-50/50';
 
   return (
     <div className={`space-y-3 text-[11px] font-sans ${containerBg} p-2 rounded-xl transition-colors`}>
@@ -756,10 +836,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               setAfficherForm(true);
             }
           }}
-          className={`font-black px-3.5 py-2 rounded-lg transition shadow-md text-xs cursor-pointer ${
+          className={`font-black px-3.5 py-2 rounded-lg transition shadow-xs text-xs cursor-pointer ${
             isDarkMode 
-              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-2 border-slate-600' 
-              : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-2 border-[#0a1931]'
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700' 
+              : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border border-[#0a1931]'
           }`}
         >
           {afficherForm ? '✖ Fermer' : '＋ Nouveau'}
@@ -771,10 +851,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
           type="button"
           disabled={enTrainDeSauvegarder}
           onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border-2 shadow-xs cursor-pointer ${
+          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap shadow-xs cursor-pointer ${
             !afficherForm 
-              ? (isDarkMode ? 'bg-slate-800 text-white border-slate-500' : 'bg-[#0a1931] text-white border-[#0a1931]') 
-              : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800' : 'bg-white text-[#0a1931] border-slate-400 hover:bg-slate-50')
+              ? (isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-[#0a1931] text-white border border-[#0a1931]') 
+              : (isDarkMode ? 'bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800' : 'bg-white text-[#0a1931] border border-slate-200 hover:bg-slate-50')
           }`}
         >
           📋 Liste du personnel ({utilisateurs.length})
@@ -783,8 +863,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
       {/* FORMULAIRE D'EDITION / CREATION */}
       {afficherForm && (
-        <div className={`border-3 p-3.5 rounded-xl space-y-3.5 shadow-xl max-h-[80vh] overflow-y-auto pr-2 pb-24 ${isDarkMode ? 'bg-[#0b1329] border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
-          <div className="flex justify-between items-center border-b-2 pb-2 border-slate-400/40">
+        <div className={`border p-3.5 rounded-xl space-y-3.5 shadow-md max-h-[80vh] overflow-y-auto pr-2 pb-24 ${isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
+          <div className="flex justify-between items-center border-b pb-2 border-slate-700/20">
             <div>
               <h4 className={`font-black uppercase text-xs ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
                 {userEnEdition ? '✏️ Fiche du collaborateur & Permissions' : '➕ Nouveau collaborateur & Permissions'}
@@ -799,7 +879,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
           </div>
 
           <form onSubmit={preparerEnregistrement} className="space-y-3">
-            <div className={`p-3 rounded-xl space-y-1 border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-400 text-[#0a1931]'}`}>
+            <div className={`p-3 rounded-xl space-y-1 border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-blue-50/50 border-blue-200 text-[#0a1931]'}`}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -814,7 +894,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </label>
             </div>
 
-            <div className={`p-3 rounded-xl space-y-2 border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
+            <div className={`p-3 rounded-xl space-y-2 border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
               <span className={`font-black text-[10.5px] uppercase block tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
                 💳 Modules et accès autorisés pour cet employé :
               </span>
@@ -827,12 +907,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                     <div 
                       key={mod.id} 
                       onClick={() => estSouscrit && basculerModuleCible(mod.id)}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border-2 transition select-none ${
+                      className={`flex items-center justify-between p-2.5 rounded-lg border transition select-none ${
                         !estSouscrit 
-                          ? (isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-60 cursor-not-allowed' : 'bg-slate-200 border-slate-300 text-slate-600 opacity-70 cursor-not-allowed font-semibold') 
+                          ? (isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-600 opacity-60 cursor-not-allowed' : 'bg-slate-100 border-slate-200 text-slate-400 opacity-70 cursor-not-allowed font-medium') 
                           : estCoche 
-                            ? (isDarkMode ? 'bg-slate-800 border-slate-500 text-white font-black cursor-pointer shadow-xs' : 'bg-blue-100 border-blue-600 text-[#0a1931] font-black cursor-pointer shadow-xs') 
-                            : (isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200 cursor-pointer hover:bg-slate-800 font-bold' : 'bg-white border-slate-400 text-slate-900 cursor-pointer hover:bg-slate-100 font-bold')
+                            ? (isDarkMode ? 'bg-slate-800 border-slate-700 text-white font-black cursor-pointer shadow-xs' : 'bg-blue-50 border-blue-400 text-[#0a1931] font-black cursor-pointer shadow-xs') 
+                            : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 cursor-pointer hover:bg-slate-800/80 font-medium' : 'bg-white border-slate-200 text-slate-800 cursor-pointer hover:bg-slate-50 font-medium')
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -845,7 +925,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                         />
                         <span className="text-[11px] truncate">{mod.label}</span>
                       </div>
-                      {!estSouscrit && <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-black shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-300 text-slate-700'}`}>Non souscrit</span>}
+                      {!estSouscrit && <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-600'}`}>Non souscrit</span>}
                     </div>
                   );
                 })}
@@ -854,10 +934,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
             <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
 
-            <div className={`flex items-center gap-3 p-3 rounded-xl border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
+            <div className={`flex items-center gap-3 p-3 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
               <div 
                 onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
-                className="w-14 h-14 rounded-full bg-slate-800 border-2 border-slate-500 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
+                className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
               >
                 {nouveauUser.photo ? (
                   <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
@@ -867,7 +947,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </div>
               <div className="flex-1">
                 <p className={`font-black text-[10px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>Photo de profil du collaborateur</p>
-                <p className={`text-[9.5px] font-semibold mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Cliquez sur l'icône pour ajouter une photo.</p>
+                <p className={`text-[9.5px] font-medium mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Cliquez sur l'icône pour ajouter une photo.</p>
               </div>
             </div>
 
@@ -894,9 +974,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                 <button
                   type="button"
                   onClick={() => setAfficherModalePermissions(true)}
-                  className={`w-full font-black py-2.5 px-3 rounded-lg text-xs transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer border-2 ${
+                  className={`w-full font-black py-2.5 px-3 rounded-lg text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer border ${
                     isDarkMode 
-                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-500' 
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700' 
                       : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'
                   }`}
                 >
@@ -934,7 +1014,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t-2 border-slate-400/40">
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700/20">
               <div>
                 <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Pays</label>
                 <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className={`w-full rounded p-2 font-extrabold text-[11px] shadow-xs ${inputBg}`}>
@@ -943,8 +1023,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </div>
               <div className="col-span-2">
                 <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                <div className={`flex items-center rounded overflow-hidden shadow-xs border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-400'}`}>
-                  <span className={`px-2.5 py-2 text-[11px] font-black border-r-2 shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600' : 'bg-slate-200 text-[#0a1931] border-slate-400'}`}>{paysActuelObj.indicatif}</span>
+                <div className={`flex items-center rounded overflow-hidden shadow-xs border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                  <span className={`px-2.5 py-2 text-[11px] font-bold border-r shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-800' : 'bg-slate-100 text-[#0a1931] border-slate-200'}`}>{paysActuelObj.indicatif}</span>
                   <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className={`w-full p-2 font-mono text-[11px] font-extrabold focus:outline-none ${inputBg} border-0`} />
                 </div>
               </div>
@@ -955,17 +1035,17 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className={`w-full rounded p-2 font-bold lowercase text-[11px] shadow-xs ${inputBg}`} />
             </div>
 
-            <div className="pt-3 border-t-2 border-slate-400/40 flex justify-between items-center">
+            <div className="pt-3 border-t border-slate-700/20 flex justify-between items-center">
               {userEnEdition && (
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 rounded-lg text-xs shadow-md transition cursor-pointer">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 rounded-lg text-xs shadow-xs transition cursor-pointer">
                   🗑️ Supprimer
                 </button>
               )}
               <div className="flex items-center gap-2 ml-auto">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className={`font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className={`font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-300 hover:bg-slate-300'}`}>
                   Annuler
                 </button>
-                <button type="submit" disabled={enTrainDeSauvegarder} className={`font-black px-5 py-2 rounded-lg text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}>
+                <button type="submit" disabled={enTrainDeSauvegarder} className={`font-black px-5 py-2 rounded-lg text-xs shadow-xs transition cursor-pointer border ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}>
                   {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : 'Valider & Enregistrer')}
                 </button>
               </div>
@@ -977,11 +1057,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       {/* 🪟 MODALE DE CONFIGURATION DES PERMISSIONS */}
       {afficherModalePermissions && (
         <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className={`border-3 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
+          <div className={`border rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
             
-            <div className="flex justify-between items-center border-b-2 pb-3 border-slate-400/40">
+            <div className="flex justify-between items-center border-b pb-3 border-slate-700/20">
               <h4 className={`font-black text-sm uppercase tracking-wider flex items-center gap-2 ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
-                <span>🔑</span> Matrice des Autorisations & Permissions
+                <span>🔑</span> Matrice des Droits par Module ({moduleActuel})
               </h4>
               <button
                 type="button"
@@ -992,28 +1072,28 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </button>
             </div>
 
-            <p className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+            <p className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
               Cochez ou décochez les actions autorisées pour ce collaborateur sur chaque module du système.
             </p>
 
-            <div className={`overflow-x-auto border-2 rounded-xl shadow-inner max-h-[50vh] ${isDarkMode ? 'bg-slate-950 border-slate-700' : 'bg-slate-50 border-slate-400'}`}>
+            <div className={`overflow-x-auto border rounded-xl shadow-inner max-h-[55vh] ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
               <table className="w-full text-left text-xs">
-                <thead className={`border-b-2 text-[10px] uppercase font-black sticky top-0 ${isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-700' : 'bg-[#0a1931] text-white border-blue-900'}`}>
+                <thead className={`border-b text-[10px] uppercase font-black sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900'}`}>
                   <tr>
-                    <th className="p-2.5">Module</th>
+                    <th className="p-2.5">Module / Table</th>
                     <th className="p-2.5 text-center">👁️ Lecture</th>
                     <th className="p-2.5 text-center">➕ Création</th>
                     <th className="p-2.5 text-center">✏️ Modif.</th>
                     <th className="p-2.5 text-center">🗑️ Suppr.</th>
-                    <th className="p-2.5 text-center">Action</th>
+                    <th className="p-2.5 text-center">Action Rapide</th>
                   </tr>
                 </thead>
-                <tbody className={`divide-y-2 text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
+                <tbody className={`divide-y text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
                   {modulesApp.map((m) => {
                     const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
                     const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
                     return (
-                      <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/50' : 'hover:bg-blue-50/80 font-bold'}>
+                      <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/50' : 'hover:bg-blue-50/50 font-medium'}>
                         <td className={`p-2.5 font-bold ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>{m.nom}</td>
                         <td className="p-2.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" /></td>
                         <td className="p-2.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" /></td>
@@ -1035,7 +1115,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               <button
                 type="button"
                 onClick={() => setAfficherModalePermissions(false)}
-                className={`font-black px-6 py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                className={`font-black px-6 py-2.5 rounded-xl text-xs shadow-xs transition cursor-pointer border ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
               >
                 Valider & Fermer 👍
               </button>
@@ -1048,11 +1128,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       {/* 🔔 MODALE UNIFIÉE DE CONFIRMATION / SUCCÈS / ERREUR */}
       {etatModale.ouverte && (
         <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className={`border-3 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
+          <div className={`border rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
             
             <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
-              etatModale.type === 'confirmation' ? 'bg-amber-500/20 text-amber-400 border-2 border-amber-500/40' :
-              etatModale.type === 'succes' ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border-2 border-rose-500/40'
+              etatModale.type === 'confirmation' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+              etatModale.type === 'succes' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
             }`}>
               {etatModale.type === 'confirmation' ? '❓' :
                etatModale.type === 'succes' ? '✓' : '⚠️'}
@@ -1062,7 +1142,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               <h4 className={`font-black text-sm uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
                 {etatModale.titre}
               </h4>
-              <p className={`text-xs font-semibold leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+              <p className={`text-xs font-medium leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
                 {etatModale.message}
               </p>
             </div>
@@ -1073,7 +1153,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                   <button
                     type="button"
                     onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                    className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
+                    className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-300 hover:bg-slate-300'}`}
                   >
                     Annuler
                   </button>
@@ -1084,7 +1164,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                       setEtatModale({ ...etatModale, ouverte: false });
                       if (action) action();
                     }}
-                    className={`flex-1 font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                    className={`flex-1 font-black py-2.5 rounded-xl text-xs shadow-xs transition cursor-pointer border ${isDarkMode ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
                   >
                     Confirmer
                   </button>
@@ -1093,7 +1173,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                 <button
                   type="button"
                   onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                  className={`w-full font-black py-2.5 rounded-xl text-xs transition shadow-md cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                  className={`w-full font-black py-2.5 rounded-xl text-xs transition shadow-xs cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-slate-100 border-slate-700' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
                 >
                   Compris 👍
                 </button>
@@ -1107,45 +1187,50 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       {/* LISTE DES UTILISATEURS */}
       {!afficherForm && (
         <>
-          <div className={`p-2.5 rounded-xl border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-400'}`}>
+          <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
             <input type="text" disabled={enTrainDeSauvegarder} value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className={`w-full rounded-lg px-3 py-2 font-extrabold uppercase text-xs focus:outline-none shadow-xs ${inputBg}`} />
           </div>
 
-          <div className={`flex justify-between items-center text-[10.5px] px-1 font-black ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>
+          <div className={`flex justify-between items-center text-[10.5px] px-1 font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
             <span>Total répertorié : <strong>{usersFiltres.length}</strong> personne(s)</span>
           </div>
 
           {chargement ? (
             <div className="p-4 text-center text-slate-400 font-bold">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
-            <div className={`p-4 text-center border-2 rounded-xl font-bold ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-white border-slate-400 text-slate-600'}`}>Aucun enregistrement trouvé.</div>
+            <div className={`p-4 text-center border rounded-xl font-medium ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}>Aucun enregistrement trouvé.</div>
           ) : (
-            <div className={`overflow-x-auto border-2 rounded-xl shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-400'}`}>
+            <div className={`overflow-x-auto border rounded-xl shadow-xs ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
               <table className="w-full text-left text-xs">
-                <thead className={`border-b-2 uppercase text-[9.5px] font-black select-none ${tableHeaderBg}`}>
+                <thead className={`border-b uppercase text-[9.5px] font-black select-none ${tableHeaderBg}`}>
                   <tr>
                     <th className="p-2.5 w-10 text-center">Avatar</th>
-                    <th className="p-2.5 text-center font-mono">ID Unique</th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:opacity-80">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2.5 cursor-pointer hover:opacity-80">Rôle {rendreFlecheTri('role')}</th>
-                    <th className="p-2.5 text-center">Type d'accès</th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('id')} className="p-2.5 text-center font-mono cursor-pointer hover:opacity-80 whitespace-nowrap">
+                      ID Unique {rendreFlecheTri('id')}
+                    </th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:opacity-80">
+                      Nom & Prénom {rendreFlecheTri('nom_complet')}
+                    </th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2.5 cursor-pointer hover:opacity-80">
+                      Rôle {rendreFlecheTri('role')}
+                    </th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('acces')} className="p-2.5 text-center cursor-pointer hover:opacity-80">
+                      Type d'accès {rendreFlecheTri('acces')}
+                    </th>
                   </tr>
                 </thead>
-                <tbody className={`divide-y-2 text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
-                  {usersFiltres.map((u, index) => {
+                <tbody className={`divide-y text-[10.5px] ${isDarkMode ? 'divide-slate-800/80' : 'divide-slate-100'}`}>
+                  {usersFiltres.map((u) => {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
                     const libelleRole = (roleTrouve ? roleTrouve.nom_role : u.nom_role) || 'NON DÉFINI';
                     const aAcces = u.acces_application ?? true;
 
-                    // Génération de l'identifiant lisible (ex: 4TS-TEST-01, 4TS-TEST-02, ... ou s'adapte si > 99)
-                    const largeurPad = Math.max(2, String(usersFiltres.length).length);
-                    const numeroSeq = String(index + 1).padStart(largeurPad, '0');
-                    const idAffichageLisible = `${entrepriseId}-${numeroSeq}`;
+                    const idAffichageLisible = mapIdStables.get(u.id) || `${entrepriseId}-01`;
 
                     return (
                       <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className={`cursor-pointer transition select-none ${rowHoverBg}`}>
                         <td className="p-2.5 text-center">
-                          <div className="w-7 h-7 rounded-full bg-slate-800 border-2 border-slate-500 mx-auto overflow-hidden flex items-center justify-center">
+                          <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 mx-auto overflow-hidden flex items-center justify-center">
                             {u.photo ? (
                               <img src={u.photo} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
                             ) : (
@@ -1153,8 +1238,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                             )}
                           </div>
                         </td>
-                        <td className="p-2.5 text-center font-mono font-bold text-[9.5px]" title={`ID Technique (Back-office) : ${u.id}`}>
-                          <span className={`px-2 py-0.5 rounded border ${isDarkMode ? 'bg-slate-800 text-cyan-400 border-slate-700' : 'bg-blue-100 text-blue-900 border-blue-300'}`}>
+                        <td className="p-2.5 text-center font-mono font-bold text-[9.5px] whitespace-nowrap" title={`ID Technique (Back-office) : ${u.id}`}>
+                          <span className={`px-2 py-0.5 rounded border inline-block whitespace-nowrap ${isDarkMode ? 'bg-slate-800/80 text-cyan-400 border-slate-700/60' : 'bg-blue-50 text-blue-900 border-blue-200'}`}>
                             {idAffichageLisible}
                           </span>
                         </td>
@@ -1162,12 +1247,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                           {u.nom_complet} {u.prenom ? u.prenom : ''}
                         </td>
                         <td className="p-2.5">
-                          <span className={`inline-block border-2 px-2.5 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600' : 'bg-blue-100 text-[#0a1931] border-blue-400'}`}>
+                          <span className={`inline-block border px-2 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-blue-50 text-[#0a1931] border-blue-200'}`}>
                             🛡️ {libelleRole}
                           </span>
                         </td>
                         <td className="p-2.5 text-center">
-                          <span className={`inline-block px-2.5 py-0.5 rounded font-black text-[9.5px] border-2 whitespace-nowrap ${aAcces ? 'bg-emerald-950 text-emerald-300 border-emerald-700' : 'bg-slate-800 text-slate-300 border-slate-600'}`}>
+                          <span className={`inline-block px-2.5 py-0.5 rounded font-black text-[9.5px] border whitespace-nowrap ${aAcces ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60' : 'bg-slate-800/60 text-slate-300 border-slate-700/60'}`}>
                             {aAcces ? '🟢 Utilisateur' : '👤 Terrain'}
                           </span>
                         </td>

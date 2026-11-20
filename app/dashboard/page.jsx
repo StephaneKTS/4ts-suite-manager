@@ -65,13 +65,13 @@ function DashboardContent() {
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   
-  // ⚡ Initialisation immédiate depuis le localStorage pour éviter l'affichage par défaut de la Boutique
+  // ⚡ Initialisation intelligente et sécurisée du module courant
   const [moduleCourant, setModuleCourant] = useState(() => {
     if (typeof window !== 'undefined') {
       const modLocal = localStorage.getItem('module_actif');
       if (modLocal) return modLocal.toUpperCase();
     }
-    return 'BOUTIQUE';
+    return 'LIVRAISON';
   });
   
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
@@ -157,11 +157,20 @@ function DashboardContent() {
             localStorage.setItem(cleCacheDashboard, JSON.stringify(entData));
 
             const modLocal = localStorage.getItem('module_actif');
-            if (modLocal && entData.espaces_souscrits && entData.espaces_souscrits.map(m => m.toUpperCase()).includes(modLocal.toUpperCase())) {
+            const espacesAutorises = entData.espaces_souscrits 
+              ? entData.espaces_souscrits.map(m => m.toUpperCase()) 
+              : ['BOUTIQUE'];
+
+            // 🛡️ Validation stricte : si le module en cache est autorisé, on l'utilise, sinon on prend le premier module valide de l'entreprise
+            if (modLocal && espacesAutorises.includes(modLocal.toUpperCase())) {
               setModuleCourant(modLocal.toUpperCase());
-            } else if (entData.module_actif) {
-              setModuleCourant(entData.module_actif.toUpperCase());
-              localStorage.setItem('module_actif', entData.module_actif.toUpperCase());
+            } else {
+              const moduleDefaut = espacesAutorises.includes('LIVRAISON') && !espacesAutorises.includes('BOUTIQUE') 
+                ? 'LIVRAISON' 
+                : (espacesAutorises[0] || 'BOUTIQUE');
+              
+              setModuleCourant(moduleDefaut);
+              localStorage.setItem('module_actif', moduleDefaut);
             }
           }
         }
@@ -875,7 +884,7 @@ function DashboardContent() {
     </div>
   );
 
-  return (
+    return (
     <div className={`w-full h-screen ${isDarkMode ? 'bg-[#02050b]' : 'bg-slate-200'} flex justify-center items-center overflow-hidden`}>
       <div className="hidden md:block w-full h-full max-w-full px-2 py-1">
         <SimulateurCadre>
