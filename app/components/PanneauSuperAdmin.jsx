@@ -31,18 +31,19 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     return [];
   });
   const [sousVueTableau, setSousVueTableau] = useState('creer'); // 'creer' ou 'liste'
-  const [tableauEnEditionId, setTableauEnEditionId] = useState(null); // ID du tableau en cours de modification de structure
+  const [tableauEnEditionId, setTableauEnEditionId] = useState(null);
   const [nouveauTableauTitre, setNouveauTableauTitre] = useState('');
   const [avecNumerotationAutomatique, setAvecNumerotationAutomatique] = useState(true);
   const [colonnesTableau, setColonnesTableau] = useState([
     { id: 1, nom: 'Nom et Prénom', type: 'texte' }
   ]);
   
-  // États pour la modale de remplissage/consultation
+  // États pour la modale de remplissage/consultation et modification de ligne
   const [modalRemplissageOuverte, setModalRemplissageOuverte] = useState(false);
   const [tableauEnCoursRemplissage, setTableauEnCoursRemplissage] = useState(null);
   const [nouvelleLigneDonnees, setNouvelleLigneDonnees] = useState({});
   const [modalSaisieLigneOuverte, setModalSaisieLigneOuverte] = useState(false);
+  const [indexLigneEnEdition, setIndexLigneEnEdition] = useState(null); // null = ajout, nombre = index en modification
 
   // 🧩 États pour la gestion dynamique des modules et comptage des souscriptions réelles
   const [listeModulesSupabase, setListeModulesSupabase] = useState([]);
@@ -1245,7 +1246,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                     }
 
                     if (tableauEnEditionId) {
-                      // Mode mise à jour de structure
                       const miseAJour = listeTableaux.map(t => {
                         if (t.id === tableauEnEditionId) {
                           return { ...t, titre: nouveauTableauTitre.trim(), colonnes: finalColonnes };
@@ -1257,7 +1257,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                       setTableauEnEditionId(null);
                       afficherMessageModal("Succès", "La structure du tableau a été mise à jour !", "succes");
                     } else {
-                      // Mode création
                       const nouveauTab = {
                         id: Date.now(),
                         titre: nouveauTableauTitre.trim(),
@@ -1270,7 +1269,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                       afficherMessageModal("Succès", "Votre tableau a été créé avec succès !", "succes");
                     }
 
-                    // Réinitialiser et basculer sur la liste
                     setNouveauTableauTitre('');
                     setColonnesTableau([{ id: 1, nom: 'Nom et Prénom', type: 'texte' }]);
                     setSousVueTableau('liste');
@@ -1306,12 +1304,10 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                             Remplir / Consulter 📝
                           </button>
                           
-                          {/* Bouton modifier la structure */}
                           <button
                             onClick={() => {
                               setTableauEnEditionId(tab.id);
                               setNouveauTableauTitre(tab.titre);
-                              // Retirer la colonne auto si présente pour l'édition des colonnes perso
                               const colsSansAuto = tab.colonnes.filter(c => !c.automatique);
                               const aAuto = tab.colonnes.some(c => c.automatique);
                               setAvecNumerotationAutomatique(aAuto);
@@ -1348,7 +1344,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* MODALE DE REMMPLISSAGE ET CONSULTATION DES DONNÉES DU TABLEAU */}
+      {/* MODALE DE REMPLISSAGE ET CONSULTATION DES DONNÉES DU TABLEAU */}
       {modalRemplissageOuverte && tableauEnCoursRemplissage && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-4xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
@@ -1365,7 +1361,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-[10px] font-bold uppercase text-slate-400">Données enregistrées ({tableauEnCoursRemplissage.lignes.length} lignes)</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400">Données enregistrées ({tableauEnCoursRemplissage.lignes.length} lignes) — Cliquez sur une ligne pour la modifier</span>
               <button
                 onClick={() => {
                   const initialData = {};
@@ -1377,6 +1373,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                     }
                   });
                   setNouvelleLigneDonnees(initialData);
+                  setIndexLigneEnEdition(null);
                   setModalSaisieLigneOuverte(true);
                 }}
                 className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase shadow-sm ${accentBtnBg}`}
@@ -1406,13 +1403,22 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                     </tr>
                   ) : (
                     tableauEnCoursRemplissage.lignes.map((ligne, lIndex) => (
-                      <tr key={lIndex} className={`border-b ${isDarkMode ? 'border-slate-800 hover:bg-slate-800/50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                      <tr 
+                        key={lIndex} 
+                        onClick={() => {
+                          setNouvelleLigneDonnees({ ...ligne });
+                          setIndexLigneEnEdition(lIndex);
+                          setModalSaisieLigneOuverte(true);
+                        }}
+                        className={`border-b cursor-pointer transition ${isDarkMode ? 'border-slate-800 hover:bg-slate-800/80' : 'border-slate-200 hover:bg-blue-50/50'}`}
+                        title="Cliquez pour modifier cette ligne"
+                      >
                         {tableauEnCoursRemplissage.colonnes.map((col, cIndex) => (
                           <td key={cIndex} className="p-2.5 font-medium">
                             {ligne[col.nom] !== undefined ? String(ligne[col.nom]) : '-'}
                           </td>
                         ))}
-                        <td className="p-2.5 text-right">
+                        <td className="p-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => {
                               const nouvellesLignes = tableauEnCoursRemplissage.lignes.filter((_, idx) => idx !== lIndex);
@@ -1433,6 +1439,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                               localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
                             }}
                             className="bg-rose-600 hover:bg-rose-700 text-white p-1.5 rounded text-[10px] font-bold"
+                            title="Supprimer la ligne"
                           >
                             🗑️
                           </button>
@@ -1447,12 +1454,14 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* SOUS-MODALE DE SAISIE D'UNE NOUVELLE LIGNE */}
+      {/* SOUS-MODALE DE SAISIE OU DE MODIFICATION D'UNE LIGNE (POSITIONNÉE TOUT EN HAUT) */}
       {modalSaisieLigneOuverte && tableauEnCoursRemplissage && (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-start justify-center z-50 p-4 pt-10 sm:pt-16 overflow-y-auto">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 space-y-4 ${cardBg}`}>
             <div className="flex justify-between items-center border-b pb-3 border-slate-300/40">
-              <h4 className={`font-black uppercase text-xs ${titleColor}`}>➕ Ajouter une information</h4>
+              <h4 className={`font-black uppercase text-xs ${titleColor}`}>
+                {indexLigneEnEdition !== null ? '✏️ Modifier la ligne' : '➕ Ajouter une information'}
+              </h4>
               <button onClick={() => setModalSaisieLigneOuverte(false)} className={`text-xs font-bold px-2 py-0.5 rounded ${secondaryBtnBg}`}>✕</button>
             </div>
 
@@ -1480,7 +1489,15 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               <button onClick={() => setModalSaisieLigneOuverte(false)} className={`py-2 rounded-xl font-black text-xs uppercase ${secondaryBtnBg}`}>Annuler</button>
               <button
                 onClick={() => {
-                  const nouvellesLignes = [...tableauEnCoursRemplissage.lignes, nouvelleLigneDonnees];
+                  let nouvellesLignes = [...tableauEnCoursRemplissage.lignes];
+                  if (indexLigneEnEdition !== null) {
+                    // Mode modification
+                    nouvellesLignes[indexLigneEnEdition] = nouvelleLigneDonnees;
+                  } else {
+                    // Mode ajout
+                    nouvellesLignes.push(nouvelleLigneDonnees);
+                  }
+
                   const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: nouvellesLignes };
                   
                   setTableauEnCoursRemplissage(tableauMisAJour);
@@ -1489,7 +1506,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                   localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
 
                   setModalSaisieLigneOuverte(false);
-                  afficherMessageModal("Succès", "Ligne ajoutée avec succès !", "succes");
+                  afficherMessageModal("Succès", indexLigneEnEdition !== null ? "Ligne modifiée avec succès !" : "Ligne ajoutée avec succès !", "succes");
                 }}
                 className={`py-2 rounded-xl font-black text-xs uppercase ${accentBtnBg}`}
               >
