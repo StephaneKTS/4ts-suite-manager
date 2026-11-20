@@ -64,7 +64,15 @@ function DashboardContent() {
 
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
-  const [moduleCourant, setModuleCourant] = useState('BOUTIQUE');
+  
+  // ⚡ Initialisation immédiate depuis le localStorage pour éviter l'affichage par défaut de la Boutique
+  const [moduleCourant, setModuleCourant] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const modLocal = localStorage.getItem('module_actif');
+      if (modLocal) return modLocal.toUpperCase();
+    }
+    return 'BOUTIQUE';
+  });
   
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
@@ -127,6 +135,9 @@ function DashboardContent() {
             setInfosEntreprise(parsed);
             setEntrepriseId(parsed.id_entreprise);
             if (parsed.logo) setLogoEntreprise(parsed.logo);
+            if (parsed.module_actif && !localStorage.getItem('module_actif')) {
+              setModuleCourant(parsed.module_actif.toUpperCase());
+            }
           }
         }
 
@@ -793,7 +804,6 @@ function DashboardContent() {
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Gestion du Personnel</span>
                 </div>
               )}
-              {/* ✅ CORRECTION : Conditionné par verifierPermission pour le module taxes et promos */}
               {verifierPermission('taxes_ristournes', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('taxes_ristournes', 'Taxes & Promos')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🏷️</span>

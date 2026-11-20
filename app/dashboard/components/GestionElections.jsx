@@ -26,7 +26,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
   // États de sélection multiple pour les candidatures
   const [posteCandidatureId, setPosteCandidatureId] = useState('');
-  const [participantsCoches, setParticipantsCoches] = useState({}); // { id_participant: true/false }
+  const [participantsCoches, setParticipantsCoches] = useState({});
 
   // États des modales d'ajout
   const [modalPosteOuverte, setModalPosteOuverte] = useState(false);
@@ -36,8 +36,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const [electeurId, setElecteurId] = useState('');
   const [nomElecteurConnecte, setNomElecteurConnecte] = useState('');
   const [bulletinVote, setBulletinVote] = useState({});
-  const [posteVoteModal, setPosteVoteModal] = useState(null); // Poste actuellement ouvert dans la modal de vote
-  const [modalConfirmationSoumissionOuverte, setModalConfirmationSoumissionOuverte] = useState(false); // Modale de confirmation finale
+  const [posteVoteModal, setPosteVoteModal] = useState(null);
+  const [modalConfirmationSoumissionOuverte, setModalConfirmationSoumissionOuverte] = useState(false);
   const [resultatsDetails, setResultatsDetails] = useState([]);
 
   const [chargement, setChargement] = useState(false);
@@ -45,15 +45,13 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const [estAdmin, setEstAdmin] = useState(false);
   const [emailConnecte, setEmailConnecte] = useState('');
 
-  // Styles dynamiques Jour / Nuit épurés (Rouge - Gris - Noir)
-  const cardBg = isDarkMode ? 'bg-slate-900/90 text-slate-100 border border-slate-800' : 'bg-white text-slate-900 border border-slate-200 shadow-sm';
+  // Styles dynamiques Jour / Nuit
+  const cardBg = isDarkMode ? 'bg-[#0b1329] text-slate-100 border border-slate-800' : 'bg-white text-slate-900 border border-slate-200 shadow-sm';
   const innerCardBg = isDarkMode ? 'bg-slate-950/70 text-slate-100 border border-slate-800' : 'bg-slate-50 text-slate-900 border border-slate-200';
-  const inputBg = isDarkMode ? 'bg-slate-950 text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
-  const titleColor = isDarkMode ? 'text-red-400' : 'text-red-600';
-  const subTitleColor = isDarkMode ? 'text-red-400' : 'text-red-600';
+  const inputBg = isDarkMode ? 'bg-[#1b263b] text-white border-slate-700' : 'bg-white text-slate-900 border-slate-300';
+  const titleColor = isDarkMode ? 'text-slate-200' : 'text-slate-900';
   const textMuted = isDarkMode ? 'text-slate-400' : 'text-slate-600';
 
-  // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
@@ -168,7 +166,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const chargerDonneesInitiales = async () => {
     const idEnt = entrepriseId || '4TS-290136';
 
-    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     try {
       const cachePart = localStorage.getItem(`4ts_cache_participants_list_${idEnt}`);
       const cacheElec = localStorage.getItem(`4ts_cache_elections_list_${idEnt}`);
@@ -216,7 +213,6 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       }
 
       const roleParticipant = participantConnecte?.libelle_role?.toUpperCase() || '';
-      
       const isUserAdmin = isSuper || 
         roleParticipant.includes('ADMIN') || 
         roleParticipant.includes('PRESIDENT') || 
@@ -336,7 +332,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         .insert([payload]);
 
       if (error) throw error;
-      alert('✅ Élection créée avec succès ![cite: 19]');
+      alert('✅ Élection créée avec succès !');
       setNouveauTitre('');
       await chargerDonneesInitiales();
       setVue('liste');
@@ -382,7 +378,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         .eq('id', el.id);
 
       if (error) throw error;
-      alert('✅ Élection modifiée avec succès ![cite: 19]');
+      alert('✅ Élection modifiée avec succès !');
       await chargerDonneesInitiales();
     } catch (err) {
       alert('❌ Erreur lors de la modification : ' + err.message);
@@ -419,7 +415,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         .eq('id', el.id);
 
       if (error) throw error;
-      alert('✅ Élection supprimée avec succès ![cite: 19]');
+      alert('✅ Élection supprimée avec succès !');
       await chargerDonneesInitiales();
     } catch (err) {
       alert('❌ Erreur lors de la suppression : ' + err.message);
@@ -521,7 +517,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         .insert(inserts);
 
       if (error) throw error;
-      alert('✅ Candidatures enregistrées avec succès ![cite: 19]');
+      alert('✅ Candidatures enregistrées avec succès !');
       setParticipantsCoches({});
       setPosteCandidatureId('');
       setModalCandidatOuverte(false);
@@ -558,7 +554,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
         .eq('id', candidatId);
 
       if (error) throw error;
-      alert('✅ Candidature retirée avec succès ![cite: 19]');
+      alert('✅ Candidature retirée avec succès !');
       await chargerDetailsElection(electionActive);
     } catch (err) {
       alert('❌ Erreur : ' + err.message);
@@ -822,9 +818,9 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
   const aucuneCandidature = candidats.length === 0;
 
   return (
-    <div className={`w-full h-full space-y-3 font-sans text-xs relative ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
+    <div className={`w-full max-w-3xl mx-auto p-2.5 rounded-xl border shadow-md space-y-2.5 text-xs font-sans ${cardBg}`}>
       
-      {/* BANDEAU DE STATUT CONNEXION ÉPURÉ */}
+      {/* BANDEAU DE STATUT CONNEXION MIS À JOUR */}
       <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
@@ -842,7 +838,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       </div>
 
       {/* BARRE D'EN-TÊTE DU MODULE */}
-      <div className={`flex justify-between items-center px-3 py-2 rounded-xl gap-2 ${isDarkMode ? 'bg-slate-900/40 text-slate-100' : 'bg-white text-slate-900 shadow-xs'}`}>
+      <div className={`flex justify-between items-center px-3 py-2 rounded-xl gap-2 border ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-gray-100 border-gray-300'}`}>
         <div className="flex items-center gap-2">
           <span className={`font-black uppercase text-xs ${titleColor}`}>🏛️ Élections & Renouvellement du Bureau</span>
         </div>
@@ -853,14 +849,14 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               onClick={() => setVue('liste')}
               className="bg-slate-700 hover:bg-slate-600 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition cursor-pointer"
             >
-              ⬅️ Retour aux Élections
+              ⬅️ Retour
             </button>
           )}
           {vue === 'liste' && estAdmin && (
             <button
               type="button"
               onClick={() => setVue('creation')}
-              className="bg-red-600 hover:bg-red-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow cursor-pointer border border-red-500"
+              className="bg-slate-800 hover:bg-slate-700 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase transition shadow cursor-pointer border border-slate-600"
             >
               ➕ Organiser une Élection
             </button>
@@ -874,7 +870,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
           {chargement ? (
             <p className={`text-center py-6 animate-pulse ${textMuted}`}>Chargement des scrutins...</p>
           ) : elections.length === 0 ? (
-            <div className={`${cardBg} p-8 rounded-2xl text-center space-y-2 w-full border-2 border-red-600`}>
+            <div className={`${cardBg} p-8 rounded-2xl text-center space-y-2 w-full border border-slate-700`}>
               <p className="font-bold">Aucune élection enregistrée pour le moment.</p>
               <p className={`text-[10px] ${textMuted}`}>Seul un administrateur peut organiser une élection.</p>
             </div>
@@ -883,14 +879,14 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               {elections.map((el) => {
                 const estElectionValidee = el.statut === 'VALIDE';
                 return (
-                  <div key={el.id} className={`${cardBg} p-3.5 rounded-xl shadow-md border border-red-600/50 space-y-2.5 w-full`}>
+                  <div key={el.id} className={`${cardBg} p-3.5 rounded-xl shadow-md border space-y-2.5 w-full`}>
                     
                     <div className="flex justify-between items-center flex-wrap gap-2">
                       <span className={`font-black text-xs uppercase ${titleColor}`}>📌 {el.titre_election}</span>
                       <div className="flex items-center gap-2">
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${
                           estElectionValidee ? 'bg-emerald-950 text-emerald-300 border-emerald-800' :
-                          el.statut === 'EN_COURS' ? 'bg-red-950 text-red-300 border-red-800' :
+                          el.statut === 'EN_COURS' ? 'bg-blue-950 text-blue-300 border-blue-800' :
                           isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'
                         }`}>
                           {el.statut === 'EN_COURS' ? 'OUVERT AUX VOTES' : el.statut}
@@ -925,7 +921,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                         }}
                         className={`font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer border ${
                           el.statut === 'EN_COURS' 
-                            ? 'bg-red-600 hover:bg-red-500 text-white border-red-500' 
+                            ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-600' 
                             : isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700' : 'bg-slate-200 hover:bg-slate-300 text-slate-900 border-slate-300'
                         }`}
                       >
@@ -950,7 +946,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                           <button
                             type="button"
                             onClick={() => supprimerElection(el)}
-                            className="bg-red-700 hover:bg-red-600 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer border border-red-600"
+                            className="bg-red-600 hover:bg-red-500 text-white font-black px-2 py-1 rounded-md text-[9px] uppercase transition shadow-xs cursor-pointer border border-red-500"
                             title="Suppression réservée au Super Admin"
                           >
                             🗑️ Supprimer
@@ -979,8 +975,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
       {/* VUE 2 : CRÉATION D'UNE ÉLECTION */}
       {vue === 'creation' && estAdmin && (
-        <div className={`max-w-xl mx-auto ${cardBg} p-5 rounded-2xl shadow-xl space-y-4 w-full border border-red-600/60`}>
-          <h4 className={`font-black text-xs uppercase ${titleColor} border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'} pb-2`}>➕ Nouvelle Élection de Bureau</h4>
+        <div className={`max-w-xl mx-auto ${cardBg} p-4 rounded-2xl shadow-xl space-y-3 w-full border`}>
+          <h4 className={`font-black text-xs uppercase ${titleColor} border-b pb-1.5`}>➕ Nouvelle Élection de Bureau</h4>
           <form onSubmit={creerElection} className="space-y-3">
             <div>
               <label className={`block text-[10px] font-bold uppercase mb-1 ${textMuted}`}>Titre de l'élection :</label>
@@ -1004,11 +1000,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                 className={`w-full p-2.5 rounded-lg border font-bold text-xs disabled:opacity-50 ${inputBg}`}
               />
             </div>
-            <div className={`flex justify-end gap-2 pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-              <button type="button" disabled={actionEnCours} onClick={() => setVue('liste')} className={`${isDarkMode ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300'} border font-bold px-4 py-2 rounded-xl text-[10px] disabled:opacity-50 cursor-pointer`}>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-700">
+              <button type="button" disabled={actionEnCours} onClick={() => setVue('liste')} className="border font-bold px-4 py-2 rounded-xl text-[10px] disabled:opacity-50 cursor-pointer">
                 Annuler
               </button>
-              <button type="submit" disabled={actionEnCours} className="bg-red-600 hover:bg-red-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer border border-red-500">
+              <button type="submit" disabled={actionEnCours} className="bg-slate-800 hover:bg-slate-700 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer border border-slate-600">
                 {actionEnCours && <span className="animate-spin">⏳</span>}
                 Enregistrer
               </button>
@@ -1020,8 +1016,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* VUE 3 : GESTION DES POSTES ET DES CANDIDATS */}
       {vue === 'gestion' && electionActive && (
         <div className="space-y-4 w-full">
-          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border border-red-600/60`}>
-            <div className={`flex justify-between items-center border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'} pb-2 flex-wrap gap-2`}>
+          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border`}>
+            <div className="flex justify-between items-center border-b pb-2 flex-wrap gap-2">
               <h4 className={`font-black text-xs uppercase ${titleColor}`}>⚙️ Candidature : {electionActive.titre_election}</h4>
               
               {estAdmin && !estValide && (
@@ -1029,7 +1025,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   <button
                     type="button"
                     onClick={() => setModalPosteOuverte(true)}
-                    className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition shadow-xs cursor-pointer border border-red-500"
+                    className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition shadow-xs cursor-pointer border border-slate-600"
                   >
                     ➕ Ajouter un Poste
                   </button>
@@ -1071,13 +1067,13 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
             </div>
 
             {aucuneCandidature && !estValide && !estOuvert && (
-              <div className={`p-2.5 rounded-xl font-bold text-center text-[10px] border ${isDarkMode ? 'bg-amber-950/60 text-amber-300 border-amber-800' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>
+              <div className="p-2.5 rounded-xl font-bold text-center text-[10px] border bg-amber-950/60 text-amber-300 border-amber-800">
                 ⚠️ Le bouton d'ouverture du scrutin est désactivé car aucune candidature n'a encore été enregistrée.
               </div>
             )}
           </div>
 
-          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border border-red-600/60`}>
+          <div className={`${cardBg} p-4 rounded-2xl space-y-3 shadow-lg w-full border`}>
             <h6 className={`font-bold text-[10px] uppercase ${textMuted}`}>Candidats validés :</h6>
             <div className="space-y-2">
               {postes.length === 0 ? (
@@ -1125,10 +1121,10 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* MODALE 1 : AJOUT DE POSTE */}
       {modalPosteOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
-          <div className={`w-full max-w-lg rounded-2xl shadow-2xl border border-red-600 p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}>
-            <div className="flex justify-between items-center border-b pb-2 border-red-600/40">
-              <h4 className="font-black text-red-500 uppercase text-xs">➕ Ajouter un Poste à Pourvoir</h4>
-              <button type="button" onClick={() => setModalPosteOuverte(false)} className="text-slate-400 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+          <div className={`w-full max-w-lg rounded-2xl shadow-2xl border p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-gray-300 text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-slate-700">
+              <h4 className="font-black uppercase text-xs">➕ Ajouter un Poste à Pourvoir</h4>
+              <button type="button" onClick={() => setModalPosteOuverte(false)} className="font-bold text-sm cursor-pointer">✖</button>
             </div>
 
             <form onSubmit={ajouterPoste} className="space-y-3 w-full">
@@ -1144,11 +1140,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                 />
               </div>
 
-              <div className={`flex justify-end gap-2 pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                <button type="button" onClick={() => setModalPosteOuverte(false)} className={`font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300'}`}>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-700">
+                <button type="button" onClick={() => setModalPosteOuverte(false)} className="border font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer">
                   Annuler
                 </button>
-                <button type="submit" disabled={actionEnCours} className="bg-red-600 hover:bg-red-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow flex items-center gap-2 cursor-pointer border border-red-500">
+                <button type="submit" disabled={actionEnCours} className="bg-slate-800 hover:bg-slate-700 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow flex items-center gap-2 cursor-pointer border border-slate-600">
                   {actionEnCours && <span className="animate-spin">⏳</span>}
                   Enregistrer le poste
                 </button>
@@ -1161,16 +1157,16 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* MODALE 2 : ENREGISTREMENT DES CANDIDATURES MULTIPLES */}
       {modalCandidatOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
-          <div className={`w-full max-w-2xl rounded-2xl shadow-2xl border border-red-600 p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}>
-            <div className="flex justify-between items-center border-b pb-2 border-red-600/40">
-              <h4 className="font-black text-red-500 uppercase text-xs">👥 Enregistrement des Candidatures</h4>
-              <button type="button" onClick={() => setModalCandidatOuverte(false)} className="text-slate-400 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+          <div className={`w-full max-w-2xl rounded-2xl shadow-2xl border p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-gray-300 text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-slate-700">
+              <h4 className="font-black uppercase text-xs">👥 Enregistrement des Candidatures</h4>
+              <button type="button" onClick={() => setModalCandidatOuverte(false)} className="font-bold text-sm cursor-pointer">✖</button>
             </div>
 
             {postes.length === 0 ? (
               <div className="py-6 text-center space-y-2">
-                <p className="text-xs font-bold text-red-400">⚠️ Aucun poste n'a été créé. Veuillez d'abord ajouter au moins un poste.</p>
-                <button type="button" onClick={() => { setModalCandidatOuverte(false); setModalPosteOuverte(true); }} className="bg-red-600 hover:bg-red-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase cursor-pointer border border-red-500">
+                <p className="text-xs font-bold text-amber-400">⚠️ Aucun poste n'a été créé. Veuillez d'abord ajouter au moins un poste.</p>
+                <button type="button" onClick={() => { setModalCandidatOuverte(false); setModalPosteOuverte(true); }} className="bg-slate-800 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase cursor-pointer border border-slate-600">
                   ➕ Créer un poste maintenant
                 </button>
               </div>
@@ -1192,7 +1188,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                           }}
                           className={`p-2.5 rounded-xl border text-left font-black text-xs uppercase transition cursor-pointer flex items-center justify-between ${
                             estSelectionne 
-                              ? 'bg-red-600 text-white border-red-500 shadow-md' 
+                              ? 'bg-slate-800 text-white border-slate-600 shadow-md' 
                               : isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-700 hover:bg-slate-800' : 'bg-slate-50 text-slate-800 border-slate-300 hover:bg-slate-100'
                           }`}
                         >
@@ -1206,12 +1202,12 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
                 <div className="space-y-1.5">
                   <label className={`block text-[10px] font-bold uppercase ${textMuted}`}>
-                    2. Cocher les membres candidats pour este poste {!posteCandidatureId && <span className="text-red-400 font-bold">(Veuillez d'abord choisir un poste ci-dessus)</span>} :
+                    2. Cocher les membres candidats pour ce poste {!posteCandidatureId && <span className="text-amber-400 font-bold">(Veuillez d'abord choisir un poste ci-dessus)</span>} :
                   </label>
                   
                   <div className="max-h-56 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-slate-950/40 rounded-xl border border-slate-800">
                     {participantsUniques.length === 0 ? (
-                      <p className="col-span-full text-center text-xs py-4 text-slate-400">Aucun membre avec identifiant unique enregistré.</p>
+                      <p className="col-span-full text-center text-xs py-4 text-slate-400">Aucun membre enregistré.</p>
                     ) : (
                       participantsUniques.map(part => {
                         const candExistant = candidats.find(c => c.id_participant === part.id);
@@ -1237,7 +1233,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                               !posteCandidatureId || estDejaCandidatAilleurs
                                 ? 'opacity-50 cursor-not-allowed bg-slate-900/40 border-slate-800 text-slate-500'
                                 : estCoche 
-                                  ? 'bg-red-950/60 text-red-200 border-red-600 font-bold shadow-md cursor-pointer' 
+                                  ? 'bg-slate-800 text-white border-slate-600 font-bold shadow-md cursor-pointer' 
                                   : isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800 cursor-pointer' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50 cursor-pointer'
                             }`}
                           >
@@ -1247,16 +1243,16 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                                 disabled={!posteCandidatureId || estDejaCandidatAilleurs}
                                 checked={estCoche}
                                 onChange={() => {}}
-                                className="w-4 h-4 rounded accent-red-600 cursor-pointer"
+                                className="w-4 h-4 rounded accent-slate-600 cursor-pointer"
                               />
                               <div className="min-w-0">
                                 <p className="font-black uppercase truncate text-xs">{nomComplet}</p>
                                 <p className="text-[9px] font-mono text-slate-400">
-                                  {estDejaCandidatAilleurs ? <span className="text-red-400 font-bold">⚠️ Déjà candidat ({posteExistantLibelle})</span> : part.identifiant_unique}
+                                  {estDejaCandidatAilleurs ? <span className="text-amber-400 font-bold">⚠️ Déjà candidat ({posteExistantLibelle})</span> : part.identifiant_unique}
                                 </p>
                               </div>
                             </div>
-                            {estCoche && <span className="shrink-0 font-bold text-red-400 text-xs">✓ Coché</span>}
+                            {estCoche && <span className="shrink-0 font-bold text-xs">✓ Coché</span>}
                           </div>
                         );
                       })
@@ -1264,15 +1260,15 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   </div>
                 </div>
 
-                <div className={`flex justify-end gap-2 pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                  <button type="button" onClick={() => setModalCandidatOuverte(false)} className={`font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300'}`}>
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-700">
+                  <button type="button" onClick={() => setModalCandidatOuverte(false)} className="border font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer">
                     Annuler
                   </button>
                   <button 
                     type="button" 
                     onClick={enregistrerCandidaturesMultiples} 
                     disabled={actionEnCours || !posteCandidatureId || Object.values(participantsCoches).filter(Boolean).length === 0} 
-                    className="bg-red-600 hover:bg-red-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer border border-red-500"
+                    className="bg-slate-800 hover:bg-slate-700 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer border border-slate-600"
                   >
                     {actionEnCours && <span className="animate-spin">⏳</span>}
                     Valider les candidatures
@@ -1286,19 +1282,19 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
       {/* VUE 4 : L'ISLOIR GLOBAL */}
       {vue === 'vote' && electionActive && (
-        <div className={`max-w-2xl mx-auto ${cardBg} p-5 rounded-2xl shadow-xl space-y-4 w-full border border-red-600/60`}>
-          <div className={`text-center border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'} pb-3 space-y-1`}>
+        <div className={`max-w-2xl mx-auto ${cardBg} p-5 rounded-2xl shadow-xl space-y-4 w-full border`}>
+          <div className="text-center border-b pb-3 space-y-1 border-slate-700">
             <h4 className={`font-black text-xs uppercase ${titleColor}`}>🗳️ Isoloir Électronique Global</h4>
             <p className={`text-[10px] ${textMuted}`}>{electionActive.titre_election}</p>
           </div>
 
           {!estOuvert ? (
-            <div className={`p-4 rounded-xl font-bold text-center space-y-2 border ${isDarkMode ? 'bg-amber-950/60 text-amber-300 border-amber-800' : 'bg-amber-100 text-amber-800 border-amber-300'}`}>
+            <div className="p-4 rounded-xl font-bold text-center space-y-2 border bg-amber-950/60 text-amber-300 border-amber-800">
               <p>⚠️ Le scrutin n'est pas ouvert par l'administrateur.</p>
               <p className={`text-[10px] ${textMuted}`}>Veuillez patienter jusqu'à l'ouverture officielle des votes.</p>
             </div>
           ) : estValide ? (
-            <div className={`p-4 rounded-xl font-bold text-center space-y-2 border ${isDarkMode ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800' : 'bg-emerald-100 text-emerald-800 border-emerald-300'}`}>
+            <div className="p-4 rounded-xl font-bold text-center space-y-2 border bg-emerald-950/60 text-emerald-300 border-emerald-800">
               <p>🔒 Le scrutin est officiellement clôturé et validé.</p>
               <p className={`text-[10px] ${textMuted}`}>Les votes ne sont plus autorisés.</p>
             </div>
@@ -1315,8 +1311,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               </div>
 
               <div className="space-y-3 pt-2">
-                <h5 className={`font-black text-xs uppercase border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'} pb-1 ${subTitleColor}`}>
-                  📋 Bulletin de Vote (Cliquez sur chaque poste pour choisir votre candidat) :
+                <h5 className="font-black text-xs uppercase border-b border-slate-700 pb-1">
+                  📋 Bulletin de Vote :
                 </h5>
 
                 {postes.length === 0 ? (
@@ -1333,7 +1329,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                       <div 
                         key={poste.id} 
                         onClick={() => setPosteVoteModal(poste)}
-                        className={`${innerCardBg} p-3.5 rounded-xl space-y-1 w-full border border-red-600/40 hover:border-red-600 transition cursor-pointer flex items-center justify-between shadow-xs`}
+                        className={`${innerCardBg} p-3.5 rounded-xl space-y-1 w-full border hover:border-slate-500 transition cursor-pointer flex items-center justify-between shadow-xs`}
                       >
                         <div>
                           <span className={`block font-black uppercase text-xs ${titleColor}`}>👑 {poste.libelle_poste}</span>
@@ -1341,8 +1337,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                             {nomCandidatChoisi}
                           </span>
                         </div>
-                        <span className="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase shadow-xs border border-red-500">
-                          {candidatChoisi ? 'Modifier le choix' : 'Voter ➔'}
+                        <span className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] uppercase shadow-xs border border-slate-600">
+                          {candidatChoisi ? 'Modifier' : 'Voter ➔'}
                         </span>
                       </div>
                     );
@@ -1355,7 +1351,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   type="button"
                   disabled={actionEnCours}
                   onClick={() => setModalConfirmationSoumissionOuverte(true)}
-                  className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer border border-red-500"
+                  className="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-3 rounded-xl text-xs uppercase shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer border border-slate-600"
                 >
                   {actionEnCours && <span className="animate-spin">⏳</span>}
                   📥 Soumettre mon bulletin
@@ -1369,10 +1365,10 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* MODALE DE VOTE */}
       {posteVoteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
-          <div className={`w-full max-w-xl rounded-2xl shadow-2xl border border-red-600 p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}>
-            <div className="flex justify-between items-center border-b pb-2 border-red-600/40">
-              <h4 className="font-black text-red-500 uppercase text-xs">🗳️ VOTE POUR : {posteVoteModal.libelle_poste}</h4>
-              <button type="button" onClick={() => setPosteVoteModal(null)} className="text-slate-400 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+          <div className={`w-full max-w-xl rounded-2xl shadow-2xl border p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-gray-300 text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-slate-700">
+              <h4 className="font-black uppercase text-xs">🗳️ VOTE POUR : {posteVoteModal.libelle_poste}</h4>
+              <button type="button" onClick={() => setPosteVoteModal(null)} className="font-bold text-sm cursor-pointer">✖</button>
             </div>
 
             <div className="space-y-2 py-1">
@@ -1411,7 +1407,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                         }}
                         className={`p-3 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
                           estSelectionne 
-                            ? 'bg-red-600 text-white border-red-500 font-bold shadow-md' 
+                            ? 'bg-slate-800 text-white border-slate-600 font-bold shadow-md' 
                             : isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-800 hover:bg-slate-800' : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50'
                         }`}
                       >
@@ -1427,8 +1423,8 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               </div>
             </div>
 
-            <div className={`flex justify-end pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-              <button type="button" onClick={() => setPosteVoteModal(null)} className={`font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300'}`}>
+            <div className="flex justify-end pt-2 border-t border-slate-700">
+              <button type="button" onClick={() => setPosteVoteModal(null)} className="border font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer">
                 Fermer
               </button>
             </div>
@@ -1439,10 +1435,10 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* MODALE DE CONFIRMATION DE SOUMISSION */}
       {modalConfirmationSoumissionOuverte && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 animate-fadeIn">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl border border-red-600 p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}`}>
-            <div className="flex justify-between items-center border-b pb-2 border-red-600/40">
-              <h4 className="font-black text-red-500 uppercase text-xs">⚠️ Confirmation de soumission</h4>
-              <button type="button" onClick={() => setModalConfirmationSoumissionOuverte(false)} className="text-slate-400 hover:text-white font-bold text-sm cursor-pointer">✖</button>
+          <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-gray-300 text-slate-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2 border-slate-700">
+              <h4 className="font-black uppercase text-xs">⚠️ Confirmation de soumission</h4>
+              <button type="button" onClick={() => setModalConfirmationSoumissionOuverte(false)} className="font-bold text-sm cursor-pointer">✖</button>
             </div>
 
             <div className="space-y-3 py-2 text-center">
@@ -1452,11 +1448,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               </p>
             </div>
 
-            <div className={`flex justify-end gap-2 pt-2 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-700">
               <button 
                 type="button" 
                 onClick={() => setModalConfirmationSoumissionOuverte(false)} 
-                className={`font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-200 text-slate-800 border-slate-300'}`}
+                className="border font-bold px-4 py-2 rounded-xl text-[10px] cursor-pointer"
               >
                 Annuler
               </button>
@@ -1467,7 +1463,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   setModalConfirmationSoumissionOuverte(false);
                   await soumettreBulletinGlobal(e);
                 }} 
-                className="bg-red-600 hover:bg-red-500 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow flex items-center gap-2 cursor-pointer border border-red-500"
+                className="bg-slate-800 hover:bg-slate-700 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow flex items-center gap-2 cursor-pointer border border-slate-600"
               >
                 {actionEnCours && <span className="animate-spin">⏳</span>}
                 Oui, soumettre définitivement
@@ -1480,11 +1476,11 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
       {/* VUE 5 : RÉSULTATS & PROCÈS-VERBAL */}
       {vue === 'resultats' && electionActive && (
         <div className="space-y-4 w-full">
-          <div className={`${cardBg} p-4 rounded-2xl shadow-xl space-y-4 w-full border border-red-600/60`}>
+          <div className={`${cardBg} p-4 rounded-2xl shadow-xl space-y-4 w-full border`}>
             
-            <div className={`text-center border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'} pb-3 space-y-2`}>
+            <div className="text-center border-b pb-3 space-y-2 border-slate-700">
               <div className="flex justify-between items-center flex-wrap gap-2">
-                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${estValide ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : estOuvert ? 'bg-red-950 text-red-300 border-red-800' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
+                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase border ${estValide ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : estOuvert ? 'bg-blue-950 text-blue-300 border-blue-800' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
                   {estValide ? '✅ Procès-Verbal Officiel Clôturé et Validé' : estOuvert ? '📊 Scrutin Ouvert (Votes en cours)' : '📊 Rapport Provisoire (Scrutin fermé)'}
                 </span>
                 
@@ -1508,7 +1504,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
 
                 return (
                   <div key={poste.id} className={`${innerCardBg} p-3.5 rounded-xl space-y-2 w-full`}>
-                    <div className={`flex justify-between items-center border-b ${isDarkMode ? 'border-slate-800' : 'border-slate-200'} pb-1.5 flex-wrap gap-1`}>
+                    <div className="flex justify-between items-center border-b pb-1.5 flex-wrap gap-1 border-slate-700">
                       <span className={`font-black text-xs uppercase ${titleColor}`}>👑 {poste.libelle_poste}</span>
                       {gagnant && gagnant.voix > 0 && (
                         <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-2.5 py-0.5 rounded text-[9px] font-black uppercase">
@@ -1531,12 +1527,12 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                             <tr><td colSpan="3" className={`p-3 text-center ${textMuted}`}>Aucun candidat pour ce poste.</td></tr>
                           ) : (
                             scores.map((s, idx) => (
-                              <tr key={s.id} className={idx === 0 && s.voix > 0 ? (isDarkMode ? 'bg-red-950/40 font-bold' : 'bg-red-50 font-bold') : ''}>
+                              <tr key={s.id} className={idx === 0 && s.voix > 0 ? (isDarkMode ? 'bg-slate-800 font-bold' : 'bg-gray-100 font-bold') : ''}>
                                 <td className="p-2 uppercase font-extrabold">
                                   {idx === 0 && s.voix > 0 ? '🥇 ' : ''}
                                   {s.tontine_participants?.nom_participant} {s.tontine_participants?.prenom || ''}
                                 </td>
-                                <td className={`p-2 text-center font-mono font-black ${titleColor}`}>{s.voix} voix</td>
+                                <td className="p-2 text-center font-mono font-black text-emerald-500">{s.voix} voix</td>
                                 <td className={`p-2 text-right font-mono ${textMuted}`}>{s.pourcentage} %</td>
                               </tr>
                             ))
@@ -1549,7 +1545,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
               })}
             </div>
 
-            <div className={`pt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+            <div className="pt-3 border-t border-slate-700">
               {estValide ? (
                 <div className={`w-full font-black py-3 rounded-xl text-xs uppercase text-center flex items-center justify-center gap-2 border ${isDarkMode ? 'bg-slate-800 text-emerald-400 border-slate-700' : 'bg-emerald-50 text-emerald-700 border-emerald-300'}`}>
                   <span>🔒</span> Élection officiellement clôturée et validée (Mode Consultation)
@@ -1559,7 +1555,7 @@ export default function GestionElections({ entrepriseId = '4TS-290136', isDarkMo
                   type="button"
                   disabled={actionEnCours}
                   onClick={() => changerStatutElection('VALIDE')}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer border border-emerald-500"
+                  className="w-full bg-slate-800 hover:bg-slate-700 text-white font-black py-3 rounded-xl text-xs uppercase shadow transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer border border-slate-600"
                 >
                   {actionEnCours && <span className="animate-spin">⏳</span>}
                   🔒 Valider et Clôturer officiellement l'Élection
