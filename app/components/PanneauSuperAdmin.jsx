@@ -43,7 +43,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   const [tableauEnCoursRemplissage, setTableauEnCoursRemplissage] = useState(null);
   const [nouvelleLigneDonnees, setNouvelleLigneDonnees] = useState({});
   const [modalSaisieLigneOuverte, setModalSaisieLigneOuverte] = useState(false);
-  const [indexLigneEnEdition, setIndexLigneEnEdition] = useState(null); // null = ajout, nombre = index en modification
+  const [indexLigneEnEdition, setIndexLigneEnEdition] = useState(null);
 
   // 🧩 États pour la gestion dynamique des modules et comptage des souscriptions réelles
   const [listeModulesSupabase, setListeModulesSupabase] = useState([]);
@@ -1344,23 +1344,44 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* MODALE DE REMPLISSAGE ET CONSULTATION DES DONNÉES DU TABLEAU */}
+      {/* MODALE DE REMPLISSAGE ET CONSULTATION DES DONNÉES DU TABLEAU AVEC EN-TÊTE 4TS SUITE MANAGER ET MASQUAGE IMPRESSION */}
       {modalRemplissageOuverte && tableauEnCoursRemplissage && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-4xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
-            <div className="flex justify-between items-center border-b pb-3 border-slate-300/40">
-              <h4 className={`font-black uppercase text-sm ${titleColor}`}>
-                📊 {tableauEnCoursRemplissage.titre}
-              </h4>
-              <button 
-                onClick={() => { setModalRemplissageOuverte(false); setTableauEnCoursRemplissage(null); }} 
-                className={`font-bold px-3 py-1 rounded-lg text-xs cursor-pointer ${secondaryBtnBg}`}
-              >
-                Fermer ✕
-              </button>
+            
+            {/* EN-TÊTE DE MARQUE 4TS SUITE MANAGER (VISIBLE ET IMPRIMÉ) */}
+            <div className="flex items-center justify-between border-b pb-3 border-slate-300/40">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">📊</span>
+                <div>
+                  <h4 className={`font-black uppercase text-sm tracking-wide ${titleColor}`}>
+                    {tableauEnCoursRemplissage.titre}
+                  </h4>
+                  <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">
+                    Généré par 4TSuite Manager
+                  </p>
+                </div>
+              </div>
+
+              {/* BOUTONS ACTIONS SYSTÈME (MASQUÉS LORS DE L'IMPRESSION/CAPTURE) */}
+              <div className="flex items-center gap-2 print:hidden">
+                <button
+                  onClick={() => window.print()}
+                  className={`font-bold px-3 py-1 rounded-lg text-xs cursor-pointer flex items-center gap-1.5 ${secondaryBtnBg}`}
+                  title="Imprimer ou exporter cette vue"
+                >
+                  <span>🖨️</span> Imprimer / Exporter
+                </button>
+                <button 
+                  onClick={() => { setModalRemplissageOuverte(false); setTableauEnCoursRemplissage(null); }} 
+                  className={`font-bold px-3 py-1 rounded-lg text-xs cursor-pointer ${secondaryBtnBg}`}
+                >
+                  Fermer ✕
+                </button>
+              </div>
             </div>
 
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center print:hidden">
               <span className="text-[10px] font-bold uppercase text-slate-400">Données enregistrées ({tableauEnCoursRemplissage.lignes.length} lignes) — Cliquez sur une ligne pour la modifier</span>
               <button
                 onClick={() => {
@@ -1391,13 +1412,12 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                         {col.nom} {col.automatique && '⚙️'}
                       </th>
                     ))}
-                    <th className="p-2.5 font-black uppercase border-b border-slate-300/40 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tableauEnCoursRemplissage.lignes.length === 0 ? (
                     <tr>
-                      <td colSpan={tableauEnCoursRemplissage.colonnes.length + 1} className="text-center py-8 text-slate-400 font-bold">
+                      <td colSpan={tableauEnCoursRemplissage.colonnes.length} className="text-center py-8 text-slate-400 font-bold">
                         Aucune donnée enregistrée dans ce tableau. Cliquez sur "Ajouter une ligne".
                       </td>
                     </tr>
@@ -1411,39 +1431,13 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                           setModalSaisieLigneOuverte(true);
                         }}
                         className={`border-b cursor-pointer transition ${isDarkMode ? 'border-slate-800 hover:bg-slate-800/80' : 'border-slate-200 hover:bg-blue-50/50'}`}
-                        title="Cliquez pour modifier cette ligne"
+                        title="Cliquez pour modifier ou supprimer cette ligne"
                       >
                         {tableauEnCoursRemplissage.colonnes.map((col, cIndex) => (
                           <td key={cIndex} className="p-2.5 font-medium">
                             {ligne[col.nom] !== undefined ? String(ligne[col.nom]) : '-'}
                           </td>
                         ))}
-                        <td className="p-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => {
-                              const nouvellesLignes = tableauEnCoursRemplissage.lignes.filter((_, idx) => idx !== lIndex);
-                              const colonnesAuto = tableauEnCoursRemplissage.colonnes.filter(c => c.automatique);
-                              const lignesMisesAJour = nouvellesLignes.map((lig, indexLig) => {
-                                const copieLig = { ...lig };
-                                colonnesAuto.forEach(ca => {
-                                  copieLig[ca.nom] = indexLig + 1;
-                                });
-                                return copieLig;
-                              });
-
-                              const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: lignesMisesAJour };
-                              setTableauEnCoursRemplissage(tableauMisAJour);
-                              
-                              const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
-                              setListeTableaux(listeMaj);
-                              localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
-                            }}
-                            className="bg-rose-600 hover:bg-rose-700 text-white p-1.5 rounded text-[10px] font-bold"
-                            title="Supprimer la ligne"
-                          >
-                            🗑️
-                          </button>
-                        </td>
                       </tr>
                     ))
                   )}
@@ -1454,13 +1448,13 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* SOUS-MODALE DE SAISIE OU DE MODIFICATION D'UNE LIGNE (POSITIONNÉE TOUT EN HAUT) */}
+      {/* SOUS-MODALE DE SAISIE / MODIFICATION D'UNE LIGNE AVEC OPTION DE SUPPRESSION INTÉGRÉE */}
       {modalSaisieLigneOuverte && tableauEnCoursRemplissage && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-start justify-center z-50 p-4 pt-10 sm:pt-16 overflow-y-auto">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 space-y-4 ${cardBg}`}>
             <div className="flex justify-between items-center border-b pb-3 border-slate-300/40">
               <h4 className={`font-black uppercase text-xs ${titleColor}`}>
-                {indexLigneEnEdition !== null ? '✏️ Modifier la ligne' : '➕ Ajouter une information'}
+                {indexLigneEnEdition !== null ? '✏️ Modifier ou supprimer la ligne' : '➕ Ajouter une information'}
               </h4>
               <button onClick={() => setModalSaisieLigneOuverte(false)} className={`text-xs font-bold px-2 py-0.5 rounded ${secondaryBtnBg}`}>✕</button>
             </div>
@@ -1485,33 +1479,65 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button onClick={() => setModalSaisieLigneOuverte(false)} className={`py-2 rounded-xl font-black text-xs uppercase ${secondaryBtnBg}`}>Annuler</button>
-              <button
-                onClick={() => {
-                  let nouvellesLignes = [...tableauEnCoursRemplissage.lignes];
-                  if (indexLigneEnEdition !== null) {
-                    // Mode modification
-                    nouvellesLignes[indexLigneEnEdition] = nouvelleLigneDonnees;
-                  } else {
-                    // Mode ajout
-                    nouvellesLignes.push(nouvelleLigneDonnees);
-                  }
+            <div className="flex flex-col gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setModalSaisieLigneOuverte(false)} className={`py-2 rounded-xl font-black text-xs uppercase ${secondaryBtnBg}`}>Annuler</button>
+                <button
+                  onClick={() => {
+                    let nouvellesLignes = [...tableauEnCoursRemplissage.lignes];
+                    if (indexLigneEnEdition !== null) {
+                      nouvellesLignes[indexLigneEnEdition] = nouvelleLigneDonnees;
+                    } else {
+                      nouvellesLignes.push(nouvelleLigneDonnees);
+                    }
 
-                  const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: nouvellesLignes };
-                  
-                  setTableauEnCoursRemplissage(tableauMisAJour);
-                  const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
-                  setListeTableaux(listeMaj);
-                  localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
+                    const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: nouvellesLignes };
+                    setTableauEnCoursRemplissage(tableauMisAJour);
+                    
+                    const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
+                    setListeTableaux(listeMaj);
+                    localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
 
-                  setModalSaisieLigneOuverte(false);
-                  afficherMessageModal("Succès", indexLigneEnEdition !== null ? "Ligne modifiée avec succès !" : "Ligne ajoutée avec succès !", "succes");
-                }}
-                className={`py-2 rounded-xl font-black text-xs uppercase ${accentBtnBg}`}
-              >
-                Enregistrer ✓
-              </button>
+                    setModalSaisieLigneOuverte(false);
+                    afficherMessageModal("Succès", indexLigneEnEdition !== null ? "Ligne modifiée avec succès !" : "Ligne ajoutée avec succès !", "succes");
+                  }}
+                  className={`py-2 rounded-xl font-black text-xs uppercase ${accentBtnBg}`}
+                >
+                  Enregistrer ✓
+                </button>
+              </div>
+
+              {indexLigneEnEdition !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm("Voulez-vous vraiment supprimer cette ligne ?")) {
+                      const nouvellesLignes = tableauEnCoursRemplissage.lignes.filter((_, idx) => idx !== indexLigneEnEdition);
+                      const colonnesAuto = tableauEnCoursRemplissage.colonnes.filter(c => c.automatique);
+                      const lignesMisesAJour = nouvellesLignes.map((lig, indexLig) => {
+                        const copieLig = { ...lig };
+                        colonnesAuto.forEach(ca => {
+                          copieLig[ca.nom] = indexLig + 1;
+                        });
+                        return copieLig;
+                      });
+
+                      const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: lignesMisesAJour };
+                      setTableauEnCoursRemplissage(tableauMisAJour);
+                      
+                      const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
+                      setListeTableaux(listeMaj);
+                      localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
+
+                      setModalSaisieLigneOuverte(false);
+                      afficherMessageModal("Supprimé", "La ligne a été supprimée.", "succes");
+                    }
+                  }}
+                  className="w-full py-2 rounded-xl font-black text-xs uppercase bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm"
+                >
+                  Supprimer cette ligne 🗑️
+                </button>
+              )}
             </div>
           </div>
         </div>
