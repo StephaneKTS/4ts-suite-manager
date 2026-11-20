@@ -7,14 +7,13 @@ import EspaceSouscription from './EspaceSouscription';
 export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const idEffectif = entrepriseId || (typeof window !== 'undefined' ? (localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id')) : null) || '4TS-234321';
   
-  // ⚡ 1. RÉCUPÉRATION INSTANTANÉMENT DU CACHE COMPLET (Zéro latence, tout s'affiche ensemble)
+  // ⚡ 1. RÉCUPÉRATION INSTANTANÉE DU CACHE COMPLET
   const profilCache = typeof window !== 'undefined' ? (() => {
     try {
       const brutCache = localStorage.getItem(`4ts_cache_profil_complet_${idEffectif}`);
       if (brutCache) return JSON.parse(brutCache);
     } catch (e) {}
 
-    // Fallback intelligent si le cache complet n'existe pas encore
     let sessionObj = null;
     const brutJson = localStorage.getItem('utilisateur_connecte') || localStorage.getItem('utilisateurConnecte') || localStorage.getItem('user');
     if (brutJson && brutJson.trim().startsWith('{')) {
@@ -91,7 +90,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     }
   };
 
-  // 🔄 2. SYNCHRONISATION SILENCIEUSE ET SAUVEGARDE DANS LE CACHE GLOBAL
+  // 🔄 SYNCHRONISATION SILENCIEUSE ET MISE À JOUR DU CACHE
   const chargerInfosUtilisateurEtEntrepriseSilencieux = async () => {
     try {
       let entrepriseTrouvee = null;
@@ -108,9 +107,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
         if (dataFallback) entrepriseTrouvee = dataFallback;
       }
 
-      if (entrepriseTrouvee) {
-        setEntreprise(entrepriseTrouvee);
-      }
+      if (entrepriseTrouvee) setEntreprise(entrepriseTrouvee);
 
       const { data: usersList } = await supabase
         .from('utilisateurs')
@@ -161,7 +158,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       const photoFinal = utilisateurTrouve?.photo || profilCache.avatar;
       const entNomFinal = entrepriseTrouvee?.nom_entreprise || profilCache.entrepriseNom;
 
-      // Mise à jour des états
       setModulesAutorisesUser(modulesUser);
       if (utilisateurTrouve) setUtilisateurDbId(utilisateurTrouve.id);
       setNomUtilisateurConnecte(nomFinal);
@@ -170,7 +166,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
       setRoleUtilisateur(roleFinal);
       if (photoFinal) { setAvatarUtilisateur(photoFinal); setLogoEntreprise(photoFinal); }
 
-      // ⚡ Enregistrement instantané dans le cache complet pour les prochains clics
       if (typeof window !== 'undefined') {
         const profilAEnregistrer = {
           id: utilisateurTrouve?.id || profilCache.id,
@@ -187,7 +182,6 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
           localStorage.setItem(`cache_entreprise_${idEffectif}`, JSON.stringify(entrepriseTrouvee));
         }
       }
-
     } catch (err) {
       console.warn("Erreur actualisation arrière-plan :", err.message);
     }
@@ -204,7 +198,10 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   }
   espacesSouscrits = Array.from(new Set(espacesSouscrits));
 
-  const modulesAccessiblesEffectifs = estAdminEntreprise ? (espacesSouscrits.length > 0 ? espacesSouscrits : modulesAutorisesUser) : modulesAutorisesUser;
+  const modulesAccessiblesEffectifs = estAdminEntreprise 
+    ? (espacesSouscrits.length > 0 ? espacesSouscrits : modulesAutorisesUser) 
+    : modulesAutorisesUser;
+
   const premierModuleAutorise = modulesAccessiblesEffectifs[0] || espacesSouscrits[0] || 'LIVRAISON';
   const moduleActif = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || premierModuleAutorise).toUpperCase() : premierModuleAutorise.toUpperCase();
 
@@ -500,38 +497,53 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               <button type="button" onClick={() => setModeAction(null)} className={`text-xs font-bold px-3 py-1 rounded-lg ${secondaryBtnBg}`}>Fermer ✕</button>
             </div>
             <div className="grid grid-cols-2 gap-2.5">
-              {['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'].map((mod) => {
-                const estActif = moduleActif === mod;
-                return (
-                  <button
-                    key={mod}
-                    type="button"
-                    disabled={estActif}
-                    onClick={() => { setModeAction(null); initierBasculementModule(mod); }}
-                    className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${estActif ? accentBtnBg + ' font-black' : innerCardBg}`}
-                  >
-                    <span className="text-xs uppercase font-black">{mod}</span>
-                    <span className={`text-[8.5px] font-bold px-2 py-0.5 rounded ${estActif ? 'bg-white/20 text-white' : secondaryBtnBg}`}>
-                      {estActif ? 'Actif ✓' : 'Basculer ⚡'}
-                    </span>
-                  </button>
-                );
-              })}
+              {['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE']
+                .filter(mod => {
+                  const estAutoriseUser = estAdminEntreprise || modulesAutorisesUser.includes(mod) || mod === moduleActif;
+                  const estSouscrit = espacesSouscrits.includes(mod) || mod === moduleActif || estAdminEntreprise;
+                  return estAutoriseUser && estSouscrit;
+                })
+                .map((mod) => {
+                  const estActif = moduleActif === mod;
+                  return (
+                    <button
+                      key={mod}
+                      type="button"
+                      disabled={estActif}
+                      onClick={() => { setModeAction(null); initierBasculementModule(mod); }}
+                      className={`p-3 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1.5 cursor-pointer ${estActif ? accentBtnBg + ' font-black' : innerCardBg}`}
+                    >
+                      <span className="text-xs uppercase font-black">{mod}</span>
+                      <span className={`text-[8.5px] font-bold px-2 py-0.5 rounded ${estActif ? 'bg-white/20 text-white' : secondaryBtnBg}`}>
+                        {estActif ? 'Actif ✓' : 'Basculer ⚡'}
+                      </span>
+                    </button>
+                  );
+                })}
             </div>
           </div>
         </div>
       )}
 
+      {/* MODALE QR CODE AVEC LE JOLI MESSAGE */}
       {modeAction === 'generateur_qr' && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-sm rounded-2xl shadow-2xl border p-5 space-y-4 text-center ${cardBg}`}>
             <div className="flex justify-between items-center border-b pb-3 border-slate-300/40">
               <h4 className={`font-black uppercase text-xs ${titleColor}`}>📱 CODE QR DE VOTRE BOUTIQUE</h4>
-              <button type="button" onClick={() => setModeAction(null)} className={`text-xs font-bold px-3 py-1 rounded-lg ${secondaryBtnBg}`}>Fermer ✕</button>
+              <button type="button" onClick={() => setModeAction(null)} className={`text-xs font-bold px-3 py-1 rounded-lg cursor-pointer ${secondaryBtnBg}`}>Fermer ✕</button>
             </div>
+            
             <div className="bg-white p-4 rounded-2xl inline-block shadow-md border border-slate-300 mx-auto">
               <img src={imageUrlQrCode} alt="Code QR" className="w-48 h-48 object-contain mx-auto" />
               <p className="mt-2 font-black text-slate-900 text-xs uppercase">{entreprise.nom_entreprise || 'BOUTIQUE'}</p>
+            </div>
+
+            {/* Joli message incitatif à scanner pour commander */}
+            <div className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-rose-600 text-white shadow-lg border border-amber-300/50 animate-pulse">
+              <p className="text-xs sm:text-sm font-black tracking-wider uppercase drop-shadow-md">
+                📱 Flashez ce code pour commander en un clin d'œil !
+              </p>
             </div>
           </div>
         </div>
