@@ -25,8 +25,8 @@ const LISTE_PAYS = [
 const MODULES_DISPONIBLES = [
   { id: 'BOUTIQUE', label: '🏪 Boutique / Ventes' },
   { id: 'LIVRAISON', label: '🚚 Livraison / Transport' },
-  { id: 'STOCK', label: '📦 Stock & Logistique' },
-  { id: 'COMPTABILITE', label: '📊 Comptabilité & Caisse' },
+  { id: 'LOGISTIQUE', label: '📦 Stock & Logistique' },
+  { id: 'TONTINE', label: '👥 Tontine & Épargne' },
 ];
 
 export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkMode = false }) {
@@ -43,13 +43,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const [afficherMotDePasse, setAfficherMotDePasse] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
-  // 🪟 États pour les modales (permissions et confirmations stylisées)
   const [afficherModalePermissions, setAfficherModalePermissions] = useState(false);
   const [etatModale, setEtatModale] = useState({
     ouverte: false,
     titre: '',
     message: '',
-    type: 'info', // 'confirmation', 'succes', 'erreur'
+    type: 'info',
     onConfirmer: null
   });
 
@@ -125,6 +124,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     telephone: '',
     mot_de_passe: '',
     id_role: '',
+    nom_role: '',
     id_caisse: '',
     id_emplacement: '',
     photo: '',
@@ -162,10 +162,17 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       
       if (dataEnt) {
         setEntrepriseInfo(dataEnt);
-        if (dataEnt.modules_souscrits && Array.isArray(dataEnt.modules_souscrits)) {
-          setModulesSouscrits(dataEnt.modules_souscrits.map(m => m.toUpperCase()));
+        // CORRECTION : Lecture de espaces_souscrits (ou modules_souscrits) avec normalisation
+        let rawEspaces = dataEnt.espaces_souscrits || dataEnt.modules_souscrits;
+        if (rawEspaces) {
+          if (typeof rawEspaces === 'string') {
+            rawEspaces = rawEspaces.split(',').map(m => m.trim().toUpperCase());
+          } else if (Array.isArray(rawEspaces)) {
+            rawEspaces = rawEspaces.map(m => String(m).trim().toUpperCase());
+          }
+          setModulesSouscrits(rawEspaces.map(m => m.replace('ESPACE_', '')));
         } else if (dataEnt.module) {
-          setModulesSouscrits([dataEnt.module.toUpperCase()]);
+          setModulesSouscrits([dataEnt.module.toUpperCase().replace('ESPACE_', '')]);
         } else {
           setModulesSouscrits([moduleActuel, 'BOUTIQUE']);
         }
@@ -259,7 +266,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       const mapUniques = new Map();
       rawUsers.forEach((u) => {
         const cleUnique = (u.nom_complet || '').trim().toUpperCase() + '_' + (u.prenom || '').trim().toUpperCase();
-        if (!mapUniques.has(cleUnique) || u.acces_application) {
+        if (!mapUniques.has(cleUnique) || (u.module || '').toUpperCase() === moduleActuel) {
           mapUniques.set(cleUnique, u);
         }
       });
@@ -352,6 +359,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     setNouveauUser(prev => ({
       ...prev,
       id_role: roleId,
+      nom_role: roleObj ? roleObj.nom_role : '',
       permissions: roleObj && roleObj.permissions ? { ...initialiserPermissionsDefaut(), ...roleObj.permissions } : prev.permissions
     }));
   };
@@ -433,8 +441,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     const emailFinal = emailNettoye ? emailNettoye : null;
 
     const selectedRoleObj = roles.find(r => String(r.id) === String(nouveauUser.id_role));
-    const nomRoleFinal = selectedRoleObj ? selectedRoleObj.nom_role : 'EMPLOYE';
-    const isRoleAdmin = nomRoleFinal.trim().toUpperCase() === 'ADMINISTRATEUR';
+    const nomRoleFinal = selectedRoleObj ? selectedRoleObj.nom_role.trim().toUpperCase() : (nouveauUser.nom_role || 'EMPLOYE').trim().toUpperCase();
+    const isRoleAdmin = nomRoleFinal === 'ADMINISTRATEUR';
 
     setEnTrainDeSauvegarder(true);
     try {
@@ -490,13 +498,18 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       };
 
       if (userEnEdition) {
-        const { data: existingRecords, error: errFetch } = await supabase
+        const { error: errUpdateDirect } = await supabase
+          .from('utilisateurs')
+          .update(basePayload)
+          .eq('id', userEnEdition.id);
+
+        if (errUpdateDirect) throw errUpdateDirect;
+
+        const { data: existingRecords } = await supabase
           .from('utilisateurs')
           .select('id, module')
           .eq('id_entreprise', entrepriseId)
-          .or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomNomCollab}`);
-
-        if (errFetch) throw errFetch;
+          .eq('nom_complet', nomNomCollab);
 
         for (const modObj of MODULES_DISPONIBLES) {
           const modCible = modObj.id;
@@ -514,13 +527,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                 .from('utilisateurs')
                 .insert([{ ...basePayload, module: modCible }]);
             }
-          } else {
-            if (recordTrouve) {
-              await supabase
-                .from('utilisateurs')
-                .delete()
-                .eq('id', recordTrouve.id);
-            }
+          } else if (recordTrouve && recordTrouve.id !== userEnEdition.id) {
+            await supabase
+              .from('utilisateurs')
+              .delete()
+              .eq('id', recordTrouve.id);
           }
         }
       } else {
@@ -556,7 +567,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     }
   };
 
-  const ouvrirEdition = async (user) => {
+  const ouvrirEdition = (user) => {
     setUserEnEdition(user);
     let telLocal = user.telephone || '';
     const paysTrouve = LISTE_PAYS.find(p => user.telephone && user.telephone.startsWith(p.indicatif)) || LISTE_PAYS[0];
@@ -564,26 +575,12 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       telLocal = user.telephone.replace(paysTrouve.indicatif, '');
     }
 
-    let modulesActuelsUser = [moduleActuel];
-    try {
-      const nomCollab = (user.nom_complet || '').trim();
-      let query = supabase
-        .from('utilisateurs')
-        .select('module')
-        .eq('id_entreprise', entrepriseId);
-
-      if (nomCollab) {
-        query = query.or(`id.eq.${user.id},nom_complet.eq.${nomCollab}`);
-      } else {
-        query = query.eq('id', user.id);
-      }
-
-      const { data: userModulesData, error: errMod } = await query;
-      if (!errMod && userModulesData && userModulesData.length > 0) {
-        modulesActuelsUser = userModulesData.map(item => (item.module || '').toUpperCase()).filter(Boolean);
-      }
-    } catch (err) {
-      console.error('Erreur récupération modules utilisateur :', err);
+    let roleIdMatch = '';
+    if (user.id_role && roles.some(r => String(r.id) === String(user.id_role))) {
+      roleIdMatch = String(user.id_role);
+    } else if (user.nom_role) {
+      const roleParNom = roles.find(r => (r.nom_role || '').trim().toUpperCase() === user.nom_role.trim().toUpperCase());
+      if (roleParNom) roleIdMatch = String(roleParNom.id);
     }
 
     setNouveauUser({
@@ -602,13 +599,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       pays: user.pays || paysTrouve.code,
       telephone: telLocal.replace(/[^0-9]/g, ''),
       mot_de_passe: user.mot_de_passe || '',
-      id_role: user.id_role || '',
+      id_role: roleIdMatch,
+      nom_role: user.nom_role || '',
       id_caisse: user.id_caisse || '',
       id_emplacement: user.id_emplacement || '',
       photo: user.photo || '',
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
-      modules_cibles: Array.from(new Set([...modulesActuelsUser, moduleActuel])),
+      modules_cibles: [moduleActuel],
       permissions: { ...initialiserPermissionsDefaut(), ...(user.permissions || {}) },
     });
     setAfficherForm(true);
@@ -620,7 +618,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     setNouveauUser({
       nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
       nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
-      numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
+      numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', nom_role: '', id_caisse: '',
       id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel],
       permissions: initialiserPermissionsDefaut()
     });
@@ -708,8 +706,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         valA = a.nom_complet || '';
         valB = b.nom_complet || '';
       } else if (triCol === 'role') {
-        valA = roles.find((r) => String(r.id) === String(a.id_role))?.nom_role || '';
-        valB = roles.find((r) => String(r.id) === String(b.id_role))?.nom_role || '';
+        const rA = roles.find((r) => String(r.id) === String(a.id_role));
+        const rB = roles.find((r) => String(r.id) === String(b.id_role));
+        valA = (rA ? rA.nom_role : a.nom_role) || '';
+        valB = (rB ? rB.nom_role : b.nom_role) || '';
       }
       if (valA < valB) return triOrdre === 'asc' ? -1 : 1;
       if (valA > valB) return triOrdre === 'asc' ? 1 : -1;
@@ -718,7 +718,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
 
-  // 🎨 CLASSES DYNAMIQUES SELON LE MODE (NUIT vs JOUR) AVEC BORDURES RENFORCÉES
   const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-[#0a1931]';
   const headerCardBg = isDarkMode ? 'bg-[#0b1329] border-2 border-slate-600 text-slate-100 shadow-md' : 'bg-white border-2 border-[#0a1931]/60 text-[#0a1931] shadow-md';
   const subTextColor = isDarkMode ? 'text-slate-300' : 'text-slate-900 font-bold';
@@ -733,7 +732,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       <div className={`flex justify-between items-center p-3 rounded-xl ${headerCardBg}`}>
         <div>
           <h3 className={`font-black uppercase text-xs sm:text-sm flex items-center gap-1.5 ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
-            <span>👥</span> GESTION DU PERSONNEL & PERMISSIONS
+            <span>👥</span> GESTION DU PERSONNEL & PERMISSIONS ({moduleActuel})
           </h3>
           <p className={`text-[10px] mt-0.5 ${subTextColor}`}>
             Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-500' : (isDarkMode ? 'text-emerald-400' : 'text-emerald-700 font-extrabold')}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
@@ -750,7 +749,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               setNouveauUser({
                 nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
                 nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
-                numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', id_caisse: '',
+                numero_permis: '', email: '', pays: 'cmr', telephone: '', mot_de_passe: '', id_role: '', nom_role: '', id_caisse: '',
                 id_emplacement: '', photo: '', statut: 'ACTIF', acces_application: true, modules_cibles: [moduleActuel],
                 permissions: initialiserPermissionsDefaut()
               });
@@ -783,13 +782,20 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         </button>
       </div>
 
-      {/* FORMULAIRE D'EDITION / CREATION AVEC BORDURES RENFORCÉES */}
+      {/* FORMULAIRE D'EDITION / CREATION */}
       {afficherForm && (
         <div className={`border-3 p-3.5 rounded-xl space-y-3.5 shadow-xl max-h-[80vh] overflow-y-auto pr-2 pb-24 ${isDarkMode ? 'bg-[#0b1329] border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
           <div className="flex justify-between items-center border-b-2 pb-2 border-slate-400/40">
-            <h4 className={`font-black uppercase text-xs ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
-              {userEnEdition ? '✏️ Fiche du collaborateur & Permissions' : '➕ Nouveau collaborateur & Permissions'}
-            </h4>
+            <div>
+              <h4 className={`font-black uppercase text-xs ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
+                {userEnEdition ? '✏️ Fiche du collaborateur & Permissions' : '➕ Nouveau collaborateur & Permissions'}
+              </h4>
+              {userEnEdition && userEnEdition.id && (
+                <p className="text-[10px] font-mono font-bold text-amber-500 mt-0.5">
+                  ID Unique : {userEnEdition.id}
+                </p>
+              )}
+            </div>
             <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-white font-bold text-xs p-0.5 cursor-pointer">✖</button>
           </div>
 
@@ -809,7 +815,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </label>
             </div>
 
-            {/* ZONE MODULES ET ACCÈS AUTORISÉS AVEC CONTRASTE ET BORDURE RENFORCÉE */}
             <div className={`p-3 rounded-xl space-y-2 border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
               <span className={`font-black text-[10.5px] uppercase block tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
                 💳 Modules et accès autorisés pour cet employé :
@@ -880,10 +885,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end pt-1">
               <div>
-                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Rôle / Fonction *</label>
+                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Rôle / Fonction ({moduleActuel}) *</label>
                 <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={changerRoleUtilisateur} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
-                  <option value="">-- Rôle --</option>
-                  {roles.map((r) => (<option key={r.id} value={r.id}>{r.nom_role}</option>))}
+                  <option value="">-- Sélectionner un Rôle --</option>
+                  {roles.map((r) => (<option key={r.id} value={String(r.id)}>{r.nom_role}</option>))}
                 </select>
               </div>
               <div>
@@ -1121,6 +1126,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                 <thead className={`border-b-2 uppercase text-[9.5px] font-black select-none ${tableHeaderBg}`}>
                   <tr>
                     <th className="p-2.5 w-10 text-center">Avatar</th>
+                    <th className="p-2.5 text-center font-mono">ID Unique</th>
                     <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:opacity-80">Nom & Prénom {rendreFlecheTri('nom_complet')}</th>
                     <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2.5 cursor-pointer hover:opacity-80">Rôle {rendreFlecheTri('role')}</th>
                     <th className="p-2.5 text-center">Type d'accès</th>
@@ -1129,6 +1135,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                 <tbody className={`divide-y-2 text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
                   {usersFiltres.map((u) => {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
+                    const libelleRole = (roleTrouve ? roleTrouve.nom_role : u.nom_role) || 'NON DÉFINI';
                     const aAcces = u.acces_application ?? true;
                     return (
                       <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className={`cursor-pointer transition select-none ${rowHoverBg}`}>
@@ -1141,12 +1148,15 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                             )}
                           </div>
                         </td>
+                        <td className="p-2.5 text-center font-mono font-bold text-[9.5px] opacity-80" title={u.id}>
+                          {u.id ? `${u.id.substring(0, 8)}...` : '-'}
+                        </td>
                         <td className={`p-2.5 font-black uppercase ${isDarkMode ? 'text-slate-100' : 'text-[#0a1931]'}`}>
                           {u.nom_complet} {u.prenom ? u.prenom : ''}
                         </td>
                         <td className="p-2.5">
                           <span className={`inline-block border-2 px-2.5 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600' : 'bg-blue-100 text-[#0a1931] border-blue-400'}`}>
-                            🛡️ {roleTrouve ? roleTrouve.nom_role : (u.nom_role || 'Administrateur')}
+                            🛡️ {libelleRole}
                           </span>
                         </td>
                         <td className="p-2.5 text-center">
