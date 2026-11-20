@@ -20,16 +20,11 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   const [modeContournement, setModeContournement] = useState(false);
   const [chargementTarifs, setChargementTarifs] = useState(false);
 
-  // 📋 États pour la création et gestion de tableaux dynamiques
-  const [listeTableaux, setListeTableaux] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('4ts_super_admin_tableaux');
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
-      }
-    }
-    return [];
-  });
+  // 📋 États pour la création et gestion de tableaux dynamiques synchronisés via Supabase
+  const [listeTableaux, setListeTableaux] = useState([]);
+  const [chargementTableaux, setChargementTableaux] = useState(false);
+  const [chargementCreationTableau, setChargementCreationTableau] = useState(false);
+
   const [sousVueTableau, setSousVueTableau] = useState('creer'); // 'creer' ou 'liste'
   const [tableauEnEditionId, setTableauEnEditionId] = useState(null);
   const [nouveauTableauTitre, setNouveauTableauTitre] = useState('');
@@ -179,13 +174,70 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     chargerDonneesSuperAdmin();
   }, []);
 
+  // ⚡ ÉCOUTEUR TEMPS RÉEL (REALTIME SUPABASE) POUR LES TABLEAUX DYNAMIQUES
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    const canalRealtime = supabase
+      .channel('public:tableaux_dynamiques')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tableaux_dynamiques' }, (payload) => {
+        // Rechargement automatique de la liste dès qu'un changement survient sur un autre appareil
+        chargerTableauxSupabase();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(canalRealtime);
+    };
+  }, []);
+
   useEffect(() => {
     if (modalActive === 'entreprises') {
       chargerListeEntreprises();
     } else if (modalActive === 'modules') {
       chargerModulesSupabase();
+    } else if (modalActive === 'tableaux') {
+      chargerTableauxSupabase();
     }
   }, [modalActive]);
+
+  const chargerTableauxSupabase = async () => {
+    setChargementTableaux(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase
+        .from('tableaux_dynamiques')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("Erreur Supabase tableaux_dynamiques :", error.message);
+        afficherMessageModal("Erreur Base de Données", "Impossible de charger les tableaux : " + error.message, "erreur");
+        return;
+      }
+
+      if (data) {
+        const tableauxFormates = data.map(item => ({
+          id: item.id,
+          titre: item.titre,
+          colonnes: typeof item.colonnes === 'string' ? JSON.parse(item.colonnes) : (item.colonnes || []),
+          lignes: typeof item.lignes === 'string' ? JSON.parse(item.lignes) : (item.lignes || [])
+        }));
+        setListeTableaux(tableauxFormates);
+
+        // Si une modale de remplissage est ouverte, mettre à jour le tableau actif en temps réel
+        setTableauEnCoursRemplissage(prev => {
+          if (!prev) return null;
+          const trouve = tableauxFormates.find(t => t.id === prev.id);
+          return trouve || prev;
+        });
+      }
+    } catch (err) {
+      console.error("Erreur inattendue chargement tableaux :", err);
+      afficherMessageModal("Erreur", "Une erreur technique est survenue lors du chargement des tableaux.", "erreur");
+    } finally {
+      setChargementTableaux(false);
+    }
+  };
 
   const chargerModulesSupabase = async () => {
     setChargementModules(true);
@@ -1151,7 +1203,10 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               </button>
               <button
                 type="button"
-                onClick={() => setSousVueTableau('liste')}
+                onClick={() => {
+                  setSousVueTableau('liste');
+                  chargerTableauxSupabase();
+                }}
                 className={`py-2 px-3 rounded-xl font-black text-xs uppercase transition cursor-pointer flex items-center justify-center gap-2 ${
                   sousVueTableau === 'liste' ? accentBtnBg : secondaryBtnBg
                 }`}
@@ -1234,7 +1289,8 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
 
                 <button
                   type="button"
-                  onClick={() => {
+                  disabled={chargementCreationTableau}
+                  onClick={async () => {
                     if (!nouveauTableauTitre.trim()) {
                       afficherMessageModal("Erreur", "Veuillez donner un nom à votre tableau.", "erreur");
                       return;
@@ -1245,44 +1301,71 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                       finalColonnes.unshift({ id: 'auto_num', nom: 'N°', type: 'nombre', automatique: true });
                     }
 
-                    if (tableauEnEditionId) {
-                      const miseAJour = listeTableaux.map(t => {
-                        if (t.id === tableauEnEditionId) {
-                          return { ...t, titre: nouveauTableauTitre.trim(), colonnes: finalColonnes };
-                        }
-                        return t;
-                      });
-                      setListeTableaux(miseAJour);
-                      localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(miseAJour));
-                      setTableauEnEditionId(null);
-                      afficherMessageModal("Succès", "La structure du tableau a été mise à jour !", "succes");
-                    } else {
-                      const nouveauTab = {
-                        id: Date.now(),
-                        titre: nouveauTableauTitre.trim(),
-                        colonnes: finalColonnes,
-                        lignes: []
-                      };
-                      const miseAJour = [nouveauTab, ...listeTableaux];
-                      setListeTableaux(miseAJour);
-                      localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(miseAJour));
-                      afficherMessageModal("Succès", "Votre tableau a été créé avec succès !", "succes");
-                    }
+                    setChargementCreationTableau(true);
+                    try {
+                      const supabase = getSupabaseClient();
 
-                    setNouveauTableauTitre('');
-                    setColonnesTableau([{ id: 1, nom: 'Nom et Prénom', type: 'texte' }]);
-                    setSousVueTableau('liste');
+                      if (tableauEnEditionId) {
+                        const { error } = await supabase
+                          .from('tableaux_dynamiques')
+                          .update({
+                            titre: nouveauTableauTitre.trim(),
+                            colonnes: finalColonnes
+                          })
+                          .eq('id', tableauEnEditionId);
+
+                        if (error) throw error;
+
+                        setTableauEnEditionId(null);
+                        afficherMessageModal("Succès", "La structure du tableau a été mise à jour et synchronisée sur tous vos appareils !", "succes");
+                      } else {
+                        const nouveauTabPayload = {
+                          titre: nouveauTableauTitre.trim(),
+                          colonnes: finalColonnes,
+                          lignes: []
+                        };
+
+                        const { error } = await supabase
+                          .from('tableaux_dynamiques')
+                          .insert([nouveauTabPayload]);
+
+                        if (error) throw error;
+
+                        afficherMessageModal("Succès", "Votre tableau a été créé et synchronisé sur tous vos appareils !", "succes");
+                      }
+
+                      setNouveauTableauTitre('');
+                      setColonnesTableau([{ id: 1, nom: 'Nom et Prénom', type: 'texte' }]);
+                      await chargerTableauxSupabase();
+                      setSousVueTableau('liste');
+
+                    } catch (err) {
+                      afficherMessageModal("Erreur de synchronisation", "Impossible d'enregistrer sur Supabase : " + err.message, "erreur");
+                    } finally {
+                      setChargementCreationTableau(false);
+                    }
                   }}
-                  className={`w-full py-2.5 rounded-xl font-black uppercase text-xs shadow-md ${accentBtnBg}`}
+                  className={`w-full py-2.5 rounded-xl font-black uppercase text-xs shadow-md ${chargementCreationTableau ? 'opacity-50 cursor-not-allowed' : ''} ${accentBtnBg}`}
                 >
-                  {tableauEnEditionId ? 'Mettre à jour le Tableau 💾' : 'Enregistrer et Créer le Tableau 🚀'}
+                  {chargementCreationTableau ? 'Enregistrement en cours...' : (tableauEnEditionId ? 'Mettre à jour le Tableau 💾' : 'Enregistrer et Créer le Tableau 🚀')}
                 </button>
               </div>
             ) : (
               <div className="space-y-3">
-                <h4 className={`font-black uppercase text-xs ${titleColor}`}>📂 Mes Tableaux Enregistrés ({listeTableaux.length})</h4>
-                {listeTableaux.length === 0 ? (
-                  <p className={`text-xs font-medium italic py-6 text-center ${subTitleColor}`}>Aucun tableau créé pour le moment. Cliquez sur "Créer un tableau".</p>
+                <div className="flex justify-between items-center">
+                  <h4 className={`font-black uppercase text-xs ${titleColor}`}>📂 Mes Tableaux Synchronisés ({listeTableaux.length})</h4>
+                  <button
+                    onClick={chargerTableauxSupabase}
+                    className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-[10px] font-bold"
+                  >
+                    🔄 Rafraîchir
+                  </button>
+                </div>
+
+                {chargementTableaux ? (
+                  <p className={`text-xs font-medium py-6 text-center ${subTitleColor}`}>Chargement des tableaux...</p>
+                ) : listeTableaux.length === 0 ? (
+                  <p className={`text-xs font-medium italic py-6 text-center ${subTitleColor}`}>Aucun tableau trouvé. Créez-en un pour commencer.</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {listeTableaux.map((tab) => (
@@ -1321,11 +1404,21 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                           </button>
 
                           <button
-                            onClick={() => {
-                              if (window.confirm(`Voulez-vous supprimer le tableau "${tab.titre}" ?`)) {
-                                const filtre = listeTableaux.filter(t => t.id !== tab.id);
-                                setListeTableaux(filtre);
-                                localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(filtre));
+                            onClick={async () => {
+                              if (window.confirm(`Voulez-vous supprimer définitivement le tableau "${tab.titre}" ?`)) {
+                                try {
+                                  const supabase = getSupabaseClient();
+                                  const { error } = await supabase
+                                    .from('tableaux_dynamiques')
+                                    .delete()
+                                    .eq('id', tab.id);
+
+                                  if (error) throw error;
+                                  await chargerTableauxSupabase();
+                                  afficherMessageModal("Supprimé", "Le tableau a été supprimé avec succès.", "succes");
+                                } catch (err) {
+                                  afficherMessageModal("Erreur", "Impossible de supprimer : " + err.message, "erreur");
+                                }
                               }
                             }}
                             className="bg-rose-600 hover:bg-rose-700 text-white p-1.5 rounded-lg text-xs"
@@ -1448,7 +1541,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* SOUS-MODALE DE SAISIE / MODIFICATION D'UNE LIGNE AVEC OPTION DE SUPPRESSION INTÉGRÉE */}
+      {/* SOUS-MODALE DE SAISIE / MODIFICATION D'UNE LIGNE AVEC SYNCHRONISATION SUPABASE */}
       {modalSaisieLigneOuverte && tableauEnCoursRemplissage && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-start justify-center z-50 p-4 pt-10 sm:pt-16 overflow-y-auto">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 space-y-4 ${cardBg}`}>
@@ -1483,7 +1576,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => setModalSaisieLigneOuverte(false)} className={`py-2 rounded-xl font-black text-xs uppercase ${secondaryBtnBg}`}>Annuler</button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     let nouvellesLignes = [...tableauEnCoursRemplissage.lignes];
                     if (indexLigneEnEdition !== null) {
                       nouvellesLignes[indexLigneEnEdition] = nouvelleLigneDonnees;
@@ -1491,15 +1584,24 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                       nouvellesLignes.push(nouvelleLigneDonnees);
                     }
 
-                    const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: nouvellesLignes };
-                    setTableauEnCoursRemplissage(tableauMisAJour);
-                    
-                    const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
-                    setListeTableaux(listeMaj);
-                    localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
+                    try {
+                      const supabase = getSupabaseClient();
+                      const { error } = await supabase
+                        .from('tableaux_dynamiques')
+                        .update({ lignes: nouvellesLignes })
+                        .eq('id', tableauEnCoursRemplissage.id);
 
-                    setModalSaisieLigneOuverte(false);
-                    afficherMessageModal("Succès", indexLigneEnEdition !== null ? "Ligne modifiée avec succès !" : "Ligne ajoutée avec succès !", "succes");
+                      if (error) throw error;
+
+                      const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: nouvellesLignes };
+                      setTableauEnCoursRemplissage(tableauMisAJour);
+                      await chargerTableauxSupabase();
+
+                      setModalSaisieLigneOuverte(false);
+                      afficherMessageModal("Succès", indexLigneEnEdition !== null ? "Ligne modifiée et synchronisée !" : "Ligne ajoutée et synchronisée !", "succes");
+                    } catch (err) {
+                      afficherMessageModal("Erreur", "Impossible de synchroniser la ligne : " + err.message, "erreur");
+                    }
                   }}
                   className={`py-2 rounded-xl font-black text-xs uppercase ${accentBtnBg}`}
                 >
@@ -1510,7 +1612,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               {indexLigneEnEdition !== null && (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     if (window.confirm("Voulez-vous vraiment supprimer cette ligne ?")) {
                       const nouvellesLignes = tableauEnCoursRemplissage.lignes.filter((_, idx) => idx !== indexLigneEnEdition);
                       const colonnesAuto = tableauEnCoursRemplissage.colonnes.filter(c => c.automatique);
@@ -1522,15 +1624,24 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                         return copieLig;
                       });
 
-                      const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: lignesMisesAJour };
-                      setTableauEnCoursRemplissage(tableauMisAJour);
-                      
-                      const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
-                      setListeTableaux(listeMaj);
-                      localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
+                      try {
+                        const supabase = getSupabaseClient();
+                        const { error } = await supabase
+                          .from('tableaux_dynamiques')
+                          .update({ lignes: lignesMisesAJour })
+                          .eq('id', tableauEnCoursRemplissage.id);
 
-                      setModalSaisieLigneOuverte(false);
-                      afficherMessageModal("Supprimé", "La ligne a été supprimée.", "succes");
+                        if (error) throw error;
+
+                        const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: lignesMisesAJour };
+                        setTableauEnCoursRemplissage(tableauMisAJour);
+                        await chargerTableauxSupabase();
+
+                        setModalSaisieLigneOuverte(false);
+                        afficherMessageModal("Supprimé", "La ligne a été supprimée et synchronisée.", "succes");
+                      } catch (err) {
+                        afficherMessageModal("Erreur", "Impossible de supprimer la ligne : " + err.message, "erreur");
+                      }
                     }
                   }}
                   className="w-full py-2 rounded-xl font-black text-xs uppercase bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm"
