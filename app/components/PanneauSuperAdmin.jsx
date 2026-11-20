@@ -20,6 +20,25 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   const [modeContournement, setModeContournement] = useState(false);
   const [chargementTarifs, setChargementTarifs] = useState(false);
 
+  // 📋 États pour la création de tableaux dynamiques
+  const [listeTableaux, setListeTableaux] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('4ts_super_admin_tableaux');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return [];
+  });
+  const [nouveauTableauTitre, setNouveauTableauTitre] = useState('');
+  const [avecNumerotationAutomatique, setAvecNumerotationAutomatique] = useState(true);
+  const [colonnesTableau, setColonnesTableau] = useState([
+    { id: 1, nom: 'Nom et Prénom', type: 'texte' }
+  ]);
+  const [tableauEnCoursRemplissage, setTableauEnCoursRemplissage] = useState(null);
+  const [nouvelleLigneDonnees, setNouvelleLigneDonnees] = useState({});
+  const [modalSaisieLigneOuverte, setModalSaisieLigneOuverte] = useState(false);
+
   // 🧩 États pour la gestion dynamique des modules et comptage des souscriptions réelles
   const [listeModulesSupabase, setListeModulesSupabase] = useState([]);
   const [chargementModules, setChargementModules] = useState(false);
@@ -710,6 +729,9 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         <button onClick={() => setModalActive('maintenance')} className={menuButtonClass}>
           <span>⚙️</span> Maintenance
         </button>
+        <button onClick={() => setModalActive('tableaux')} className={menuButtonClass}>
+          <span>📋</span> Tableaux Dynamiques
+        </button>
       </div>
 
       {/* 💳 MODALE PAIEMENTS */}
@@ -1092,6 +1114,315 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
+      {/* 📋 MODALE TABLEAUX DYNAMIQUES */}
+      {modalActive === 'tableaux' && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`w-full max-w-4xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
+            <div className="flex justify-between items-center border-b pb-3 border-slate-300/40">
+              <h3 className={`font-black uppercase text-xs sm:text-sm ${titleColor}`}>
+                📋 Gestionnaire de Tableaux Dynamiques
+              </h3>
+              <button onClick={() => { setModalActive(null); setTableauEnCoursRemplissage(null); }} className={`font-bold px-3 py-1 rounded-lg text-xs cursor-pointer ${secondaryBtnBg}`}>
+                Fermer ✕
+              </button>
+            </div>
+
+            {tableauEnCoursRemplissage ? (
+              /* VUE REMPLISSAGE ET CONSULTATION DU TABLEAU */
+              <div className="space-y-4">
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <div>
+                    <button 
+                      onClick={() => setTableauEnCoursRemplissage(null)} 
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg mb-1 ${secondaryBtnBg}`}
+                    >
+                      ← Retour aux tableaux
+                    </button>
+                    <h4 className={`font-black uppercase text-sm ${titleColor}`}>
+                      📊 {tableauEnCoursRemplissage.titre}
+                    </h4>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const initialData = {};
+                      tableauEnCoursRemplissage.colonnes.forEach((col, idx) => {
+                        if (col.automatique && idx === 0) {
+                          initialData[col.nom] = (tableauEnCoursRemplissage.lignes.length + 1);
+                        } else {
+                          initialData[col.nom] = '';
+                        }
+                      });
+                      setNouvelleLigneDonnees(initialData);
+                      setModalSaisieLigneOuverte(true);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase shadow-sm ${accentBtnBg}`}
+                  >
+                    + Ajouter une ligne
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl border border-slate-300/40">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className={isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-800'}>
+                        {tableauEnCoursRemplissage.colonnes.map((col, idx) => (
+                          <th key={idx} className="p-2.5 font-black uppercase border-b border-slate-300/40">
+                            {col.nom} {col.automatique && '⚙️'}
+                          </th>
+                        ))}
+                        <th className="p-2.5 font-black uppercase border-b border-slate-300/40 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableauEnCoursRemplissage.lignes.length === 0 ? (
+                        <tr>
+                          <td colSpan={tableauEnCoursRemplissage.colonnes.length + 1} className="text-center py-8 text-slate-400 font-bold">
+                            Aucune donnée enregistrée dans ce tableau. Cliquez sur "Ajouter une ligne".
+                          </td>
+                        </tr>
+                      ) : (
+                        tableauEnCoursRemplissage.lignes.map((ligne, lIndex) => (
+                          <tr key={lIndex} className={`border-b ${isDarkMode ? 'border-slate-800 hover:bg-slate-800/50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                            {tableauEnCoursRemplissage.colonnes.map((col, cIndex) => (
+                              <td key={cIndex} className="p-2.5 font-medium">
+                                {ligne[col.nom] !== undefined ? String(ligne[col.nom]) : '-'}
+                              </td>
+                            ))}
+                            <td className="p-2.5 text-right">
+                              <button
+                                onClick={() => {
+                                  const nouvellesLignes = tableauEnCoursRemplissage.lignes.filter((_, idx) => idx !== lIndex);
+                                  const colonnesAuto = tableauEnCoursRemplissage.colonnes.filter(c => c.automatique);
+                                  const lignesMisesAJour = nouvellesLignes.map((lig, indexLig) => {
+                                    const copieLig = { ...lig };
+                                    colonnesAuto.forEach(ca => {
+                                      copieLig[ca.nom] = indexLig + 1;
+                                    });
+                                    return copieLig;
+                                  });
+
+                                  const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: lignesMisesAJour };
+                                  setTableauEnCoursRemplissage(tableauMisAJour);
+                                  
+                                  const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
+                                  setListeTableaux(listeMaj);
+                                  localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
+                                }}
+                                className="bg-rose-600 hover:bg-rose-700 text-white p-1.5 rounded text-[10px] font-bold"
+                              >
+                                🗑️
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              /* VUE LISTE ET CRÉATION DE NOUVEAUX TABLEAUX */
+              <div className="space-y-6">
+                <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
+                  <h4 className={`font-black uppercase text-xs ${titleColor}`}>➕ Créer un nouveau tableau personnalisé</h4>
+                  
+                  <div>
+                    <label className="block text-[9px] uppercase font-bold mb-1">Nom du tableau (ex: Liste des joueurs de la réunion)</label>
+                    <input
+                      type="text"
+                      value={nouveauTableauTitre}
+                      onChange={(e) => setNouveauTableauTitre(e.target.value)}
+                      placeholder="Ex: Liste des participants..."
+                      className={`w-full border rounded-lg p-2 text-xs ${inputBg}`}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="checkAuto"
+                      checked={avecNumerotationAutomatique}
+                      onChange={(e) => setAvecNumerotationAutomatique(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                    />
+                    <label htmlFor="checkAuto" className="font-bold text-xs cursor-pointer">
+                      Activer la première colonne en numérotation automatique croissante (1, 2, 3...)
+                    </label>
+                  </div>
+
+                  <div className="space-y-2 pt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold uppercase text-[10px]">Colonnes personnalisées :</span>
+                      <button
+                        type="button"
+                        onClick={() => setColonnesTableau([...colonnesTableau, { id: Date.now(), nom: `Colonne ${colonnesTableau.length + 1}`, type: 'texte' }])}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2.5 py-1 rounded text-[10px]"
+                      >
+                        + Ajouter une colonne
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {colonnesTableau.map((col, idx) => (
+                        <div key={col.id} className="flex items-center gap-2">
+                          <span className="font-bold text-[10px] w-6">#{idx + 1}</span>
+                          <input
+                            type="text"
+                            value={col.nom}
+                            onChange={(e) => {
+                              const copie = [...colonnesTableau];
+                              copie[idx].nom = e.target.value;
+                              setColonnesTableau(copie);
+                            }}
+                            placeholder={`Nom de la colonne ${idx + 1}`}
+                            className={`w-full border rounded-lg p-1.5 text-xs ${inputBg}`}
+                          />
+                          {colonnesTableau.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setColonnesTableau(colonnesTableau.filter((_, i) => i !== idx))}
+                              className="bg-rose-600 text-white px-2 py-1.5 rounded text-xs font-bold"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!nouveauTableauTitre.trim()) {
+                        afficherMessageModal("Erreur", "Veuillez donner un nom à votre tableau.", "erreur");
+                        return;
+                      }
+
+                      let finalColonnes = [...colonnesTableau];
+                      if (avecNumerotationAutomatique) {
+                        finalColonnes.unshift({ id: 'auto_num', nom: 'N°', type: 'nombre', automatique: true });
+                      }
+
+                      const nouveauTab = {
+                        id: Date.now(),
+                        titre: nouveauTableauTitre.trim(),
+                        colonnes: finalColonnes,
+                        lignes: []
+                      };
+
+                      const miseAJour = [nouveauTab, ...listeTableaux];
+                      setListeTableaux(miseAJour);
+                      localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(miseAJour));
+
+                      setNouveauTableauTitre('');
+                      setColonnesTableau([{ id: 1, nom: 'Nom et Prénom', type: 'texte' }]);
+                      afficherMessageModal("Succès", "Votre tableau a été créé avec succès !", "succes");
+                    }}
+                    className={`w-full py-2.5 rounded-xl font-black uppercase text-xs shadow-md ${accentBtnBg}`}
+                  >
+                    Enregistrer et Créer le Tableau 🚀
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className={`font-black uppercase text-xs ${titleColor}`}>📂 Mes Tableaux Enregistrés ({listeTableaux.length})</h4>
+                  {listeTableaux.length === 0 ? (
+                    <p className={`text-xs font-medium italic ${subTitleColor}`}>Aucun tableau créé pour le moment.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {listeTableaux.map((tab) => (
+                        <div key={tab.id} className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 ${innerCardBg}`}>
+                          <div>
+                            <h5 className="font-black text-xs uppercase tracking-wide">{tab.titre}</h5>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {tab.colonnes.length} colonne(s) | {tab.lignes.length} ligne(s) enregistrée(s)
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setTableauEnCoursRemplissage(tab)}
+                              className={`flex-1 py-1.5 rounded-lg font-black text-[10px] uppercase ${accentBtnBg}`}
+                            >
+                              Remplir / Consulter 📝
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Voulez-vous supprimer le tableau "${tab.titre}" ?`)) {
+                                  const filtre = listeTableaux.filter(t => t.id !== tab.id);
+                                  setListeTableaux(filtre);
+                                  localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(filtre));
+                                }
+                              }}
+                              className="bg-rose-600 hover:bg-rose-700 text-white p-1.5 rounded-lg text-xs"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE SAISIE D'UNE NOUVELLE LIGNE */}
+      {modalSaisieLigneOuverte && tableauEnCoursRemplissage && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 space-y-4 ${cardBg}`}>
+            <div className="flex justify-between items-center border-b pb-3 border-slate-300/40">
+              <h4 className={`font-black uppercase text-xs ${titleColor}`}>➕ Ajouter une information</h4>
+              <button onClick={() => setModalSaisieLigneOuverte(false)} className={`text-xs font-bold px-2 py-0.5 rounded ${secondaryBtnBg}`}>✕</button>
+            </div>
+
+            <div className="space-y-3">
+              {tableauEnCoursRemplissage.colonnes.map((col, idx) => (
+                <div key={idx}>
+                  <label className="block text-[9px] uppercase font-bold mb-1">{col.nom} {col.automatique && '(Auto)'}</label>
+                  <input
+                    type="text"
+                    disabled={col.automatique}
+                    value={nouvelleLigneDonnees[col.nom] !== undefined ? nouvelleLigneDonnees[col.nom] : ''}
+                    onChange={(e) => {
+                      setNouvelleLigneDonnees({
+                        ...nouvelleLigneDonnees,
+                        [col.nom]: e.target.value
+                      });
+                    }}
+                    className={`w-full border rounded-lg p-2 text-xs ${col.automatique ? 'opacity-60 cursor-not-allowed' : ''} ${inputBg}`}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button onClick={() => setModalSaisieLigneOuverte(false)} className={`py-2 rounded-xl font-black text-xs uppercase ${secondaryBtnBg}`}>Annuler</button>
+              <button
+                onClick={() => {
+                  const nouvellesLignes = [...tableauEnCoursRemplissage.lignes, nouvelleLigneDonnees];
+                  const tableauMisAJour = { ...tableauEnCoursRemplissage, lignes: nouvellesLignes };
+                  
+                  setTableauEnCoursRemplissage(tableauMisAJour);
+                  const listeMaj = listeTableaux.map(t => t.id === tableauMisAJour.id ? tableauMisAJour : t);
+                  setListeTableaux(listeMaj);
+                  localStorage.setItem('4ts_super_admin_tableaux', JSON.stringify(listeMaj));
+
+                  setModalSaisieLigneOuverte(false);
+                  afficherMessageModal("Succès", "Ligne ajoutée avec succès !", "succes");
+                }}
+                className={`py-2 rounded-xl font-black text-xs uppercase ${accentBtnBg}`}
+              >
+                Enregistrer ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🏢 MODALE SECONDAIRE : DÉTAILS ET MODIFICATION D'UNE ENTREPRISE */}
       {entrepriseSelectionnee && donneesEdition && (() => {
         const idEnt = donneesEdition.id_entreprise || donneesEdition.id;
@@ -1306,7 +1637,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                   const nomUser = usr.nom || usr.nom_complet || 'Nom inconnu';
                   const aAcces = usr.acces !== false && usr.acces_application !== false && usr.statut !== 'bloque';
 
-                  // Recherche du rôle correspondant dans rolesEntrepriseSelectionnee ou utilisation directe
                   const roleTrouve = rolesEntrepriseSelectionnee.find(
                     (r) => String(r.id) === String(usr.id_role) || String(r.id) === String(usr.role_id)
                   );
