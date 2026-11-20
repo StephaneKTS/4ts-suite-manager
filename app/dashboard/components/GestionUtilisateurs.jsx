@@ -162,7 +162,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       
       if (dataEnt) {
         setEntrepriseInfo(dataEnt);
-        // CORRECTION : Lecture de espaces_souscrits (ou modules_souscrits) avec normalisation
         let rawEspaces = dataEnt.espaces_souscrits || dataEnt.modules_souscrits;
         if (rawEspaces) {
           if (typeof rawEspaces === 'string') {
@@ -1133,10 +1132,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                   </tr>
                 </thead>
                 <tbody className={`divide-y-2 text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
-                  {usersFiltres.map((u) => {
+                  {usersFiltres.map((u, index) => {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
                     const libelleRole = (roleTrouve ? roleTrouve.nom_role : u.nom_role) || 'NON DÉFINI';
                     const aAcces = u.acces_application ?? true;
+
+                    // Génération de l'identifiant lisible (ex: 4TS-TEST-01, 4TS-TEST-02, ... ou s'adapte si > 99)
+                    const largeurPad = Math.max(2, String(usersFiltres.length).length);
+                    const numeroSeq = String(index + 1).padStart(largeurPad, '0');
+                    const idAffichageLisible = `${entrepriseId}-${numeroSeq}`;
+
                     return (
                       <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className={`cursor-pointer transition select-none ${rowHoverBg}`}>
                         <td className="p-2.5 text-center">
@@ -1148,8 +1153,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                             )}
                           </div>
                         </td>
-                        <td className="p-2.5 text-center font-mono font-bold text-[9.5px] opacity-80" title={u.id}>
-                          {u.id ? `${u.id.substring(0, 8)}...` : '-'}
+                        <td className="p-2.5 text-center font-mono font-bold text-[9.5px]" title={`ID Technique (Back-office) : ${u.id}`}>
+                          <span className={`px-2 py-0.5 rounded border ${isDarkMode ? 'bg-slate-800 text-cyan-400 border-slate-700' : 'bg-blue-100 text-blue-900 border-blue-300'}`}>
+                            {idAffichageLisible}
+                          </span>
                         </td>
                         <td className={`p-2.5 font-black uppercase ${isDarkMode ? 'text-slate-100' : 'text-[#0a1931]'}`}>
                           {u.nom_complet} {u.prenom ? u.prenom : ''}
