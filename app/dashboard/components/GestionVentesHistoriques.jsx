@@ -1410,54 +1410,56 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         <div className="space-y-2">
           <div className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 relative shadow-2xs">
             
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
-              <div className="sm:col-span-2">
+            {/* Ligne 1 : Date, Caisse, Caissier, N° Ticket sur une seule ligne */}
+            <div className="grid grid-cols-4 gap-1.5 items-end">
+              <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DATE</label>
                 <input
                   type="date"
                   disabled={enTrainDeSauvegarder}
                   value={dateJour}
                   onChange={(e) => setDateJour(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-1 font-mono font-bold text-[9.5px] text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-1 font-mono font-bold text-[9px] text-slate-900"
                 />
               </div>
 
-              <div className="sm:col-span-4">
+              <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE *</label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalCaisse(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
                 >
                   <span className="truncate">{caisseNomSelectionnee}</span>
-                  <span className="text-[9px] text-slate-400">🔍</span>
+                  <span className="text-[8px] text-slate-400">🔍</span>
                 </div>
               </div>
 
-              <div className="sm:col-span-4">
+              <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSIER</label>
                 <input
                   type="text"
                   readOnly
                   value={caissierNomActuel}
-                  className="w-full bg-slate-100 border border-slate-200 rounded-lg px-1.5 py-1 font-extrabold uppercase text-slate-800 text-[10px] truncate h-[26px]"
+                  className="w-full bg-slate-100 border border-slate-200 rounded-lg px-1.5 py-1 font-extrabold uppercase text-slate-800 text-[9px] truncate h-[26px]"
                 />
               </div>
 
-              <div className="sm:col-span-2 text-right bg-slate-50 border border-slate-100 rounded-lg p-1">
-                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase block tracking-tighter">N° TICKET</span>
-                <span className="font-mono font-black text-orange-600 text-[10px]">{numeroTicket}</span>
+              <div className="text-right bg-slate-50 border border-slate-100 rounded-lg p-1 h-[26px] flex flex-col justify-center">
+                <span className="text-[7px] font-extrabold text-slate-400 uppercase block tracking-tighter leading-none">N° TICKET</span>
+                <span className="font-mono font-black text-orange-600 text-[9.5px] leading-tight">{numeroTicket}</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100">
+            {/* Ligne 2 : Dépôt, Client, Client Libre sur la même ligne juste en dessous */}
+            <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100">
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DÉPÔT</label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalDepot(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
                 >
                   <span className="truncate">{depotNomSelectionne}</span>
-                  <span className="text-[9px] text-slate-400">🔍</span>
+                  <span className="text-[8px] text-slate-400">🔍</span>
                 </div>
               </div>
 
@@ -1467,10 +1469,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalClient(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
                 >
                   <span className="truncate">{clientNomSelectionne}</span>
-                  <span className="text-[9px] text-slate-400">🔍</span>
+                  <span className="text-[8px] text-slate-400">🔍</span>
                 </div>
               </div>
 
@@ -1484,7 +1486,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   value={nomClientLibre}
                   onChange={(e) => setNomClientLibre(e.target.value.toUpperCase())}
                   placeholder={moduleActuel === 'LIVRAISON' ? 'LIVREUR LIBRE...' : 'NOM LIBRE...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400 h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[9px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400 h-[26px]"
                 />
               </div>
             </div>
