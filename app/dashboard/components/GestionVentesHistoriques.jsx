@@ -411,6 +411,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return false;
   };
 
+  // ✅ CORRECTION DU DOUBLE DÉSTOCKAGE :
+  // Les ventes créant déjà une ligne 'SORTIE' dans `mouvements_stock`, 
+  // on ne doit pas re-parcourir `ventesHistoriques` ici.
   const obtenirTousLesFluxArticle = (articleId) => {
     let flux = [];
     mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
@@ -425,18 +428,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       articlesAppro.forEach((ligne) => {
         if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
           flux.push({ date: app.created_at || '', depot_source: app.id_depot_destination, depot_destination: null, quantite: parseInt(ligne.quantite || 0), type: 'APPROVISIONNEMENT' });
-        }
-      });
-    });
-    ventesHistoriques.forEach((v) => {
-      let articlesVente = [];
-      if (v.details_articles) {
-        if (typeof v.details_articles === 'string') { try { articlesVente = JSON.parse(v.details_articles); } catch (e) {} }
-        else if (Array.isArray(v.details_articles)) { articlesVente = v.details_articles; }
-      }
-      articlesVente.forEach((ligne) => {
-        if (String(ligne.id || ligne.id_article) === String(articleId)) {
-          flux.push({ date: v.created_at || '', depot_source: v.id_depot, depot_destination: null, quantite: parseInt(ligne.quantite || 0), type: 'SORTIE' });
         }
       });
     });
@@ -2500,7 +2491,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 autoFocus
                 disabled={enTrainDeSauvegarder}
                 value={rechercheClientInput}
-                onChange={(e) => setSearchArticleInput?.(e.target.value.toUpperCase()) || setRechercheClientInput(e.target.value.toUpperCase())}
+                onChange={(e) => setRechercheClientInput(e.target.value.toUpperCase())}
                 placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER UN LIVREUR..." : "RECHERCHER UN CLIENT..."}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
               />
