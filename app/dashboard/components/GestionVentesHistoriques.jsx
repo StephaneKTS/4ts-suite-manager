@@ -300,7 +300,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         setCaisseNomSelectionne(caisseParDefaut.nom_caisse || 'CAISSE');
         const codeCaisseDefaut = caisseParDefaut.code_caisse || 'C01';
         setCodeCaisseActif(codeCaisseDefaut);
-        setNumeroTicket(genererNumeroTicket(codeCaisseDefaut, ventesData.length));
+        
+        const nbTixCaisse = ventesData.filter(v => String(v.id_caisse) === String(caisseParDefaut.id)).length;
+        setNumeroTicket(genererNumeroTicket(codeCaisseDefaut, nbTixCaisse));
         setCaisseDestinationVersementId(caisseParDefaut.id);
       }
 
@@ -383,7 +385,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     setCaisseNomSelectionne(caisseObj.nom_caisse || 'CAISSE');
     const code = caisseObj.code_caisse || 'C01';
     setCodeCaisseActif(code);
-    setNumeroTicket(genererNumeroTicket(code, ventes.length));
+    
+    const nbTixCaisse = ventes.filter(v => String(v.id_caisse) === String(idCaisseSel)).length;
+    setNumeroTicket(genererNumeroTicket(code, nbTixCaisse));
     setAfficherModalCaisse(false);
   };
 
@@ -494,7 +498,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         setClientSelectionneObj(clientDivers);
         setClientNomSelectionne((clientDivers.nom_client || clientDivers.nom || clientDivers.libelle || 'CLIENTS DIVERS').toUpperCase());
       }
-      setNumeroTicket(genererNumeroTicket(codeCaisseActif, ventes.length));
+      const nbTixCaisse = ventes.filter(v => String(v.id_caisse) === String(caisseId)).length;
+      setNumeroTicket(genererNumeroTicket(codeCaisseActif, nbTixCaisse));
     }
   };
 
@@ -538,7 +543,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setClientSelectionneObj(clientDivers);
       setClientNomSelectionne((clientDivers.nom_client || clientDivers.nom || clientDivers.libelle || 'CLIENTS DIVERS').toUpperCase());
     }
-    setNumeroTicket(genererNumeroTicket(codeCaisseActif, ventes.length));
+    const nbTixCaisse = ventes.filter(v => String(v.id_caisse) === String(caisseId)).length;
+    setNumeroTicket(genererNumeroTicket(codeCaisseActif, nbTixCaisse));
   };
 
   const rappelerTicket = (ticketAttente) => {
@@ -739,26 +745,39 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       }
     }
 
-    let nomClientFacture = (
-      nomClientLibre.trim() || 
-      clientSelectionneObj?.nom_client || 
-      clientSelectionneObj?.nom || 
-      clientSelectionneObj?.libelle || 
-      clientSelectionneObj?.raison_sociale || 
-      clientNomSelectionne || 
-      'CLIENTS DIVERS'
-    ).toUpperCase();
-
-    let clientIdFinal = clientId ? parseInt(clientId) : null;
-
     setEnTrainDeSauvegarder(true);
     try {
+      const { count: countCaisse, error: errCount } = await supabase
+        .from('ventes_historiques')
+        .select('*', { count: 'exact', head: true })
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .eq('id_caisse', caisseId);
+
+      const nbTicketsCaisse = (errCount || countCaisse === null) 
+        ? ventes.filter(v => String(v.id_caisse) === String(caisseId)).length 
+        : countCaisse;
+      
+      const numeroTicketSecurise = `${codeCaisseActif || 'C01'}-${String(nbTicketsCaisse + 1).padStart(2, '0')}`;
+
+      let nomClientFacture = (
+        nomClientLibre.trim() || 
+        clientSelectionneObj?.nom_client || 
+        clientSelectionneObj?.nom || 
+        clientSelectionneObj?.libelle || 
+        clientSelectionneObj?.raison_sociale || 
+        clientNomSelectionne || 
+        'CLIENTS DIVERS'
+      ).toUpperCase();
+
+      let clientIdFinal = clientId ? parseInt(clientId) : null;
+
       const idLocalTemp = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       
       const payloadVente = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        numero_ticket: numeroTicket,
+        numero_ticket: numeroTicketSecurise,
         mode_paiement: modePaiementTicket,
         total_montant: totalFinal,
         montant_regle: montantRegleEffectif,
@@ -819,7 +838,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             id_depot_destination: null,
             id_article: parseInt(item.id),
             quantite: item.quantite,
-            motif_remarque: `VENTE TICKET ${numeroTicket} (${nomClientFacture}) - ${typeReglementVente}`
+            motif_remarque: `VENTE TICKET ${numeroTicketSecurise} (${nomClientFacture}) - ${typeReglementVente}`
           };
 
           const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
@@ -908,9 +927,39 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         return;
       }
 
+      // 1. Suppression du ticket dans la table des ventes
       const { error } = await supabase.from('ventes_historiques').delete().eq('id', ticketEnCoursDeSuppression.id);
       if (error) {
         localSync.ajouterFileAttente('DELETE', 'ventes_historiques', { id: ticketEnCoursDeSuppression.id });
+      }
+
+      // 2. RESTITUTION AUTOMATIQUE DU STOCK (ALIGNÉ SUR LE MODULE LIVRAISON)
+      const numeroTicketConcerne = ticketEnCoursDeSuppression.numero_ticket;
+      if (numeroTicketConcerne) {
+        const motifRecherche = `VENTE TICKET ${numeroTicketConcerne}`;
+        
+        // Recherche des mouvements de stock de type SORTIE associés à ce ticket
+        const { data: mouvementslies, error: errRechercheMvt } = await supabase
+          .from('mouvements_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .ilike('motif_remarque', `%${motifRecherche}%`);
+
+        if (!errRechercheMvt && mouvementslies && mouvementslies.length > 0) {
+          for (const mvt of mouvementslies) {
+            // Suppression du mouvement de sortie initial pour remettre le stock à niveau dans le dépôt
+            const { error: errSuppMvt } = await supabase.from('mouvements_stock').delete().eq('id', mvt.id);
+            if (errSuppMvt) {
+              localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { id: mvt.id });
+            }
+          }
+        }
+      }
+
+      // 3. Purger le cache local pour forcer le rafraîchissement immédiat de la vue sur tous les appareils
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(cacheKey);
       }
 
       setVentes(prev => {
@@ -919,7 +968,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         return listeMaj;
       });
 
-      alert(`✅ Ticket #${ticketEnCoursDeSuppression.numero_ticket} supprimé avec succès par l'administrateur.`);
+      alert(`✅ Ticket #${ticketEnCoursDeSuppression.numero_ticket} supprimé avec succès et stock restitué dans le dépôt !`);
       setAfficherModalAuthSuppression(false);
       setTicketSelectionne(null);
       setTicketEnCoursDeSuppression(null);
@@ -1407,7 +1456,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       {ongletActif === 'vente' && (
         <div className="flex-1 min-h-0 flex flex-col space-y-1 overflow-hidden">
           
-          {/* EN-TÊTE FIXE (NON DÉFILANT) AVEC GRID ADAPTÉ POUR MODE TÉLÉPHONE */}
           <div className="bg-white border border-slate-200 rounded-xl p-1.5 space-y-1 shrink-0 shadow-2xs">
             <div className="grid grid-cols-12 gap-1 items-end">
               <div className="col-span-3">
@@ -1489,10 +1537,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
           </div>
 
-          {/* ZONE CENTRALE : AVEC MIN-H-0 POUR ÉVITER TOUT DÉBORDEMENT GLOBAL */}
           <div className="flex-1 min-h-0 grid grid-cols-2 gap-1.5 overflow-hidden">
             
-            {/* Zone Articles avec scroll interne indépendant */}
             <div className="bg-white border border-slate-200 rounded-xl p-1.5 flex flex-col h-full overflow-hidden">
               <div className="flex justify-between items-center mb-1 gap-1 shrink-0">
                 <span className="font-extrabold text-slate-700 text-[9.5px] uppercase flex-1">Articles</span>
@@ -1551,7 +1597,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </div>
             </div>
 
-            {/* Zone Panier avec scroll interne indépendant */}
             <div className="bg-white border border-slate-200 rounded-xl p-1.5 flex flex-col h-full overflow-hidden">
               <div className="flex justify-between items-center border-b border-slate-100 pb-1 mb-1 shrink-0">
                 <span className="font-extrabold text-slate-800 uppercase text-[9.5px]">PANIER</span>
@@ -1605,7 +1650,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
           </div>
 
-          {/* BANDEAU PIED DE PAGE FIXE (NON DÉFILANT) AVEC BOUTONS RÉDUITS */}
           <div className="bg-white border border-slate-200 rounded-xl p-1.5 space-y-1 shrink-0 shadow-2xs">
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 items-center bg-slate-50 p-1 rounded-xl border border-slate-100">
@@ -1723,7 +1767,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE REMISE AVEC MESSAGES EXPLICATIFS */}
       {afficherModalRemise && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
@@ -1787,7 +1830,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE TVA JOLIE ET STRUCTURÉE */}
       {afficherModalTva && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
@@ -1843,7 +1885,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* Reste des onglets et modales standards conservés */}
       {ongletActif === 'tickets' && (
         <div className="space-y-2">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
@@ -2291,7 +2332,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE CHOIX MODE DE PAIEMENT (PANIER) */}
       {afficherModalPaiement && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
           <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
@@ -2324,7 +2364,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE CHOIX TYPE DE RÈGLEMENT */}
       {afficherModalReglement && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
           <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
@@ -2360,7 +2399,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE SÉLECTION CAISSE */}
       {afficherModalCaisse && (
         <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-3">
           <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-200">
@@ -2404,7 +2442,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE SÉLECTION DÉPÔT */}
       {afficherModalDepot && (
         <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-3">
           <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-200">
@@ -2463,7 +2500,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 autoFocus
                 disabled={enTrainDeSauvegarder}
                 value={rechercheClientInput}
-                onChange={(e) => setRechercheClientInput(e.target.value.toUpperCase())}
+                onChange={(e) => setSearchArticleInput?.(e.target.value.toUpperCase()) || setRechercheClientInput(e.target.value.toUpperCase())}
                 placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER UN LIVREUR..." : "RECHERCHER UN CLIENT..."}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
               />
