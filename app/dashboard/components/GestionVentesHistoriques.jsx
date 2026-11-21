@@ -45,6 +45,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   const [afficherModalPaiement, setAfficherModalPaiement] = useState(false);
   const [afficherModalReglement, setAfficherModalReglement] = useState(false);
+  
+  // Nouvelles modales pour Remise et TVA
+  const [afficherModalRemise, setAfficherModalRemise] = useState(false);
+  const [afficherModalTva, setAfficherModalTva] = useState(false);
 
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   
@@ -1605,17 +1609,29 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
           </div>
 
-          {/* BANDEAU PIED DE PAGE FIXE ET COMPACT */}
+          {/* BANDEAU PIED DE PAGE FIXE ET COMPACT AVEC DÉTAIL TVA & MODALES */}
           <div className="bg-white border border-slate-200 rounded-xl p-2 space-y-1.5 shrink-0 shadow-2xs">
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 items-center bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+              
+              {/* Bloc Net à Payer / TVA Détaillé */}
               <div>
-                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">NAP (NET À PAYER)</span>
+                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">
+                  {appliquerTva === 'OUI' ? 'NET À PAYER (TTC)' : 'NET À PAYER'}
+                </span>
                 <span className="font-black text-emerald-700 font-mono text-[11px]">
                   {totalFinal.toLocaleString('fr-FR')} F
                 </span>
+                {appliquerTva === 'OUI' && (
+                  <div className="text-[7.5px] text-slate-500 font-mono space-x-1 mt-0.5">
+                    <span>HT: {baseImposable.toLocaleString('fr-FR')}F</span>
+                    <span>|</span>
+                    <span>TVA(19.25%): {montantTva.toLocaleString('fr-FR')}F</span>
+                  </div>
+                )}
               </div>
 
+              {/* Règlement */}
               <div>
                 <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">RÈGLEMENT</span>
                 <div
@@ -1627,42 +1643,34 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </div>
               </div>
 
+              {/* Bouton Remise (Ouvre la modale Remise) */}
               <div>
                 <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">REMISE</span>
-                <div className="flex gap-1">
-                  <select
-                    disabled={enTrainDeSauvegarder}
-                    value={typeRemise}
-                    onChange={(e) => setTypeRemise(e.target.value)}
-                    className="bg-white border border-slate-200 rounded-lg px-1 py-0.5 text-[8px] font-bold text-slate-800 h-[24px]"
-                  >
-                    <option value="POURCENTAGE">%</option>
-                    <option value="MONTANT">F</option>
-                  </select>
-                  <input
-                    type="number"
-                    min="0"
-                    disabled={enTrainDeSauvegarder}
-                    value={valeurRemise}
-                    onChange={(e) => setValeurRemise(e.target.value)}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-1 py-0.5 text-center text-[9px] font-mono font-bold text-slate-900 h-[24px]"
-                  />
+                <div
+                  onClick={() => !enTrainDeSauvegarder && setAfficherModalRemise(true)}
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-[9px] font-bold text-slate-900 cursor-pointer flex justify-between items-center h-[24px] shadow-2xs"
+                >
+                  <span className="truncate">
+                    {valeurRemise > 0 ? `${valeurRemise} ${typeRemise === 'POURCENTAGE' ? '%' : 'F'}` : 'Aucune'}
+                  </span>
+                  <span className="text-[8px] text-slate-400">✏️</span>
                 </div>
               </div>
 
+              {/* Bouton TVA (Ouvre la modale TVA) */}
               <div>
-                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">TVA</span>
-                <select
-                  disabled={enTrainDeSauvegarder}
-                  value={appliquerTva}
-                  onChange={(e) => setAppliquerTva(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-1.5 py-0.5 text-[9px] font-bold text-slate-900 h-[24px]"
+                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">TVA (19.25%)</span>
+                <div
+                  onClick={() => !enTrainDeSauvegarder && setAfficherModalTva(true)}
+                  className={`border rounded-lg px-2 py-0.5 text-[9px] font-bold cursor-pointer flex justify-between items-center h-[24px] shadow-2xs ${
+                    appliquerTva === 'OUI' ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-white border-slate-200 text-slate-900'
+                  }`}
                 >
-                  <option value="NON">Non (0%)</option>
-                  <option value="OUI">Oui (19.25%)</option>
-                </select>
+                  <span>{appliquerTva === 'OUI' ? 'Appliquée' : 'Non appliquée'}</span>
+                  <span className="text-[8px] text-slate-400">⚙️</span>
+                </div>
               </div>
+
             </div>
 
             {typeReglementVente === 'AVANCE' && (
@@ -1732,6 +1740,127 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
+      {/* MODALE REMISE AVEC MESSAGES EXPLICATIFS */}
+      {afficherModalRemise && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-[11px] font-black">
+              <span>🎁 GESTION DE LA REMISE SUR FACTURE</span>
+              <button onClick={() => setAfficherModalRemise(false)} className="text-slate-300 hover:text-white">✕</button>
+            </div>
+            
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-[9px] font-black text-slate-700 uppercase mb-1">Type de remise :</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div
+                    onClick={() => setTypeRemise('POURCENTAGE')}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                      typeRemise === 'POURCENTAGE' ? 'bg-orange-50 border-orange-500 text-orange-800 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="font-black text-xs">Pourcentage (%)</span>
+                    <span className="text-[8.5px] text-slate-500 mt-1">Accorder une remise en pourcentage sur le total de la commande.</span>
+                  </div>
+
+                  <div
+                    onClick={() => setTypeRemise('MONTANT')}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                      typeRemise === 'MONTANT' ? 'bg-orange-50 border-orange-500 text-orange-800 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="font-black text-xs">Montant fixe (F)</span>
+                    <span className="text-[8.5px] text-slate-500 mt-1">Accorder une remise en montant forfaitaire en francs CFA.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-black text-slate-700 uppercase mb-1">
+                  Valeur de la remise ({typeRemise === 'POURCENTAGE' ? '%' : 'CFA'}) :
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  autoFocus
+                  value={valeurRemise}
+                  onChange={(e) => setValeurRemise(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-xs text-slate-900"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAfficherModalRemise(false)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2 rounded-xl text-[10px] shadow-xs w-full"
+                >
+                  Valider la remise
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE TVA JOLIE ET STRUCTURÉE */}
+      {afficherModalTva && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-[11px] font-black">
+              <span>⚙️ PARAMÉTRAGE DE LA TVA</span>
+              <button onClick={() => setAfficherModalTva(false)} className="text-slate-300 hover:text-white">✕</button>
+            </div>
+            
+            <div className="p-4 space-y-3">
+              <p className="text-[10px] text-slate-600 font-bold">
+                Le taux de TVA applicable dans ce module est de <strong className="text-slate-900 font-mono">19,25 %</strong>. Veuillez choisir si vous souhaitez l'appliquer ou non sur cette facture.
+              </p>
+
+              <div className="space-y-2">
+                <div
+                  onClick={() => setAppliquerTva('OUI')}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
+                    appliquerTva === 'OUI' ? 'bg-emerald-50 border-emerald-500 text-emerald-800 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div>
+                    <span className="font-black text-xs block">Appliquer la TVA (19.25%)</span>
+                    <span className="text-[9px] text-slate-500">Ajoute le calcul de la TVA sur le montant net hors-taxes.</span>
+                  </div>
+                  {appliquerTva === 'OUI' && <span className="text-emerald-600 font-black text-sm">✓</span>}
+                </div>
+
+                <div
+                  onClick={() => setAppliquerTva('NON')}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
+                    appliquerTva === 'NON' ? 'bg-orange-50 border-orange-500 text-orange-800 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  <div>
+                    <span className="font-black text-xs block">Ne pas appliquer la TVA (0%)</span>
+                    <span className="text-[9px] text-slate-500">Facturation hors taxes simple sans taxe de valeur ajoutée.</span>
+                  </div>
+                  {appliquerTva === 'NON' && <span className="text-orange-600 font-black text-sm">✓</span>}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAfficherModalTva(false)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2 rounded-xl text-[10px] shadow-xs w-full"
+                >
+                  Enregistrer et fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Autres onglets et modales standards (Tickets, Journal, Clôture, Articles, etc.) conservés à l'identique */}
       {ongletActif === 'tickets' && (
         <div className="space-y-2">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
