@@ -1242,7 +1242,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   };
 
   return (
-    <div className="h-full max-h-[85vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
+    <div className="h-full max-h-[72vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
       
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
@@ -1407,21 +1407,21 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       {ongletActif === 'vente' && (
         <div className="flex-1 min-h-0 flex flex-col space-y-1 overflow-hidden">
           
-          {/* EN-TÊTE FIXE (NON DÉFILANT) */}
+          {/* EN-TÊTE FIXE (NON DÉFILANT) AVEC GRID ADAPTÉ POUR MODE TÉLÉPHONE */}
           <div className="bg-white border border-slate-200 rounded-xl p-1.5 space-y-1 shrink-0 shadow-2xs">
-            <div className="grid grid-cols-4 gap-1 items-end">
-              <div>
+            <div className="grid grid-cols-12 gap-1 items-end">
+              <div className="col-span-3">
                 <label className="block text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter">DATE</label>
                 <input
                   type="date"
                   disabled={enTrainDeSauvegarder}
                   value={dateJour}
                   onChange={(e) => setDateJour(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 font-mono font-bold text-[8.5px] text-slate-900 h-[22px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 font-mono font-bold text-[8px] text-slate-900 h-[22px]"
                 />
               </div>
 
-              <div>
+              <div className="col-span-3">
                 <label className="block text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE *</label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalCaisse(true)}
@@ -1432,7 +1432,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </div>
               </div>
 
-              <div>
+              <div className="col-span-4">
                 <label className="block text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSIER</label>
                 <input
                   type="text"
@@ -1442,9 +1442,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 />
               </div>
 
-              <div className="text-right bg-slate-50 border border-slate-100 rounded-lg p-0.5 h-[22px] flex flex-col justify-center">
-                <span className="text-[6.5px] font-extrabold text-slate-400 uppercase block tracking-tighter leading-none">N° TICKET</span>
-                <span className="font-mono font-black text-orange-600 text-[8.5px] leading-tight">{numeroTicket}</span>
+              <div className="col-span-2 text-right bg-slate-50 border border-slate-100 rounded-lg p-0.5 h-[22px] flex flex-col justify-center">
+                <span className="text-[6px] font-extrabold text-slate-400 uppercase block tracking-tighter leading-none">N° TICKET</span>
+                <span className="font-mono font-black text-orange-600 text-[8px] leading-tight truncate">{numeroTicket}</span>
               </div>
             </div>
 
@@ -1489,7 +1489,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
           </div>
 
-          {/* ZONE CENTRALE : LES BARRES DE DÉFILEMENT S'APPLIQUENT UNIQUEMENT ICI */}
+          {/* ZONE CENTRALE : AVEC MIN-H-0 POUR ÉVITER TOUT DÉBORDEMENT GLOBAL */}
           <div className="flex-1 min-h-0 grid grid-cols-2 gap-1.5 overflow-hidden">
             
             {/* Zone Articles avec scroll interne indépendant */}
@@ -1605,7 +1605,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
           </div>
 
-          {/* BANDEAU PIED DE PAGE FIXE (NON DÉFILANT) */}
+          {/* BANDEAU PIED DE PAGE FIXE (NON DÉFILANT) AVEC BOUTONS RÉDUITS */}
           <div className="bg-white border border-slate-200 rounded-xl p-1.5 space-y-1 shrink-0 shadow-2xs">
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 items-center bg-slate-50 p-1 rounded-xl border border-slate-100">
@@ -1682,7 +1682,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <button
                 disabled={enTrainDeSauvegarder || panier.length === 0}
                 onClick={mettreTicketEnAttente}
-                className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-1 py-1 rounded-xl text-[8px] transition shadow-2xs flex items-center justify-center"
+                className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-0.5 py-0.5 rounded-lg text-[7.5px] transition shadow-2xs flex items-center justify-center truncate"
               >
                 ⏳ Attente
               </button>
@@ -1690,7 +1690,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <button
                 disabled={enTrainDeSauvegarder}
                 onClick={() => setAfficherModalAttente(true)}
-                className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-1 py-1 rounded-xl text-[8px] transition shadow-2xs flex items-center justify-center"
+                className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-0.5 py-0.5 rounded-lg text-[7.5px] transition shadow-2xs flex items-center justify-center truncate"
               >
                 📂 Rappel({ticketsEnAttente.length})
               </button>
@@ -1698,7 +1698,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <button
                 disabled={enTrainDeSauvegarder}
                 onClick={annulerVenteEnCours}
-                className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-1 py-1 rounded-xl text-[8px] transition shadow-2xs flex items-center justify-center"
+                className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-0.5 py-0.5 rounded-lg text-[7.5px] transition shadow-2xs flex items-center justify-center truncate"
               >
                 ❌ Annuler
               </button>
@@ -1707,7 +1707,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 <button
                   onClick={validerEtEnregistrerVente}
                   disabled={panier.length === 0 || enTrainDeSauvegarder}
-                  className={`font-black px-1 py-1 rounded-xl text-[8.5px] transition shadow-2xs flex items-center justify-center ${
+                  className={`font-black px-0.5 py-0.5 rounded-lg text-[8px] transition shadow-2xs flex items-center justify-center truncate ${
                     panier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
                 >
