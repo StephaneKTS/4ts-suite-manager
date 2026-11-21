@@ -1239,7 +1239,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   };
 
   return (
-    <div className="space-y-2 text-[10px] font-sans">
+    <div className="h-full flex flex-col space-y-1.5 text-[10px] font-sans overflow-hidden">
       
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
@@ -1360,7 +1360,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         )}
       </div>
 
-      <div className="flex justify-between items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+      <div className="flex justify-between items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
         <div className="flex flex-1 gap-1">
           <button
             disabled={enTrainDeSauvegarder}
@@ -1407,10 +1407,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       </div>
 
       {ongletActif === 'vente' && (
-        <div className="space-y-2">
-          <div className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 relative shadow-2xs">
-            
-            {/* Ligne 1 : Date, Caisse, Caissier, N° Ticket sur une seule ligne */}
+        <div className="flex-1 min-h-0 flex flex-col space-y-1.5">
+          
+          {/* EN-TÊTE FIXE ET COMPACT */}
+          <div className="bg-white border border-slate-200 rounded-xl p-2 space-y-1.5 shrink-0 shadow-2xs">
             <div className="grid grid-cols-4 gap-1.5 items-end">
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DATE</label>
@@ -1419,7 +1419,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   disabled={enTrainDeSauvegarder}
                   value={dateJour}
                   onChange={(e) => setDateJour(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-1 font-mono font-bold text-[9px] text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 font-mono font-bold text-[9px] text-slate-900"
                 />
               </div>
 
@@ -1427,7 +1427,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE *</label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalCaisse(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[24px]"
                 >
                   <span className="truncate">{caisseNomSelectionnee}</span>
                   <span className="text-[8px] text-slate-400">🔍</span>
@@ -1440,23 +1440,22 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   type="text"
                   readOnly
                   value={caissierNomActuel}
-                  className="w-full bg-slate-100 border border-slate-200 rounded-lg px-1.5 py-1 font-extrabold uppercase text-slate-800 text-[9px] truncate h-[26px]"
+                  className="w-full bg-slate-100 border border-slate-200 rounded-lg px-1.5 py-0.5 font-extrabold uppercase text-slate-800 text-[9px] truncate h-[24px]"
                 />
               </div>
 
-              <div className="text-right bg-slate-50 border border-slate-100 rounded-lg p-1 h-[26px] flex flex-col justify-center">
+              <div className="text-right bg-slate-50 border border-slate-100 rounded-lg p-0.5 h-[24px] flex flex-col justify-center">
                 <span className="text-[7px] font-extrabold text-slate-400 uppercase block tracking-tighter leading-none">N° TICKET</span>
-                <span className="font-mono font-black text-orange-600 text-[9.5px] leading-tight">{numeroTicket}</span>
+                <span className="font-mono font-black text-orange-600 text-[9px] leading-tight">{numeroTicket}</span>
               </div>
             </div>
 
-            {/* Ligne 2 : Dépôt, Client, Client Libre sur la même ligne juste en dessous */}
             <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100">
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DÉPÔT</label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalDepot(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[24px]"
                 >
                   <span className="truncate">{depotNomSelectionne}</span>
                   <span className="text-[8px] text-slate-400">🔍</span>
@@ -1469,7 +1468,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalClient(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5 font-bold text-[9px] text-slate-900 cursor-pointer flex justify-between items-center h-[24px]"
                 >
                   <span className="truncate">{clientNomSelectionne}</span>
                   <span className="text-[8px] text-slate-400">🔍</span>
@@ -1486,19 +1485,19 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   value={nomClientLibre}
                   onChange={(e) => setNomClientLibre(e.target.value.toUpperCase())}
                   placeholder={moduleActuel === 'LIVRAISON' ? 'LIVREUR LIBRE...' : 'NOM LIBRE...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[9px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400 h-[26px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400 h-[24px]"
                 />
               </div>
             </div>
-
           </div>
 
-          {/* Affichage côte à côte permanent (Side by side) */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* ZONES ARTICLES ET PANIER ADAPTÉES SANS DÉBORDEMENT */}
+          <div className="flex-1 min-h-0 grid grid-cols-2 gap-2">
             
-            <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col h-[380px]">
-              <div className="flex justify-between items-center mb-2 gap-1">
-                <span className="font-extrabold text-slate-700 text-[11px] uppercase flex-1">Articles</span>
+            {/* Zone Articles */}
+            <div className="bg-white border border-slate-200 rounded-xl p-2 flex flex-col h-full overflow-hidden">
+              <div className="flex justify-between items-center mb-1.5 gap-1 shrink-0">
+                <span className="font-extrabold text-slate-700 text-[10px] uppercase flex-1">Articles</span>
                 <button
                   disabled={enTrainDeSauvegarder}
                   onClick={() => {
@@ -1508,7 +1507,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     }
                     setAfficherModalArticle(true);
                   }}
-                  className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] shadow-2xs whitespace-nowrap"
+                  className="bg-orange-600 hover:bg-orange-500 disabled:bg-orange-400 text-white font-bold px-2.5 py-1 rounded-xl text-[9px] shadow-2xs whitespace-nowrap"
                 >
                   🔍 recherche
                 </button>
@@ -1531,17 +1530,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       <div
                         key={artId}
                         onClick={() => !enTrainDeSauvegarder && !estEpuise && ajouterAuPanier(art)}
-                        className={`p-2.5 border rounded-xl flex justify-between items-center transition gap-2 shadow-2xs ${
+                        className={`p-2 border rounded-xl flex justify-between items-center transition gap-2 shadow-2xs ${
                           estEpuise ? 'bg-slate-100 opacity-60 cursor-not-allowed border-slate-200' : 'bg-slate-50 hover:bg-orange-50 border-slate-200 cursor-pointer'
                         }`}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className={`font-black text-xs truncate ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
-                          <p className={`text-[10px] font-mono mt-0.5 ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
-                            {estSuivi ? `Stock : ${artStock} ${estEpuise ? '(Épuisé)' : ''}` : <span className="text-slate-400 italic">Non suivi en stock</span>}
+                          <p className={`font-black text-[11px] truncate ${estEpuise ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{artDes}</p>
+                          <p className={`text-[9px] font-mono mt-0.5 ${estEpuise ? 'text-rose-500 font-bold' : 'text-slate-600 font-bold'}`}>
+                            {estSuivi ? `Stock : ${artStock} ${estEpuise ? '(Épuisé)' : ''}` : <span className="text-slate-400 italic">Non suivi</span>}
                           </p>
                         </div>
-                        <span className={`font-black font-mono text-sm whitespace-nowrap ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
+                        <span className={`font-black font-mono text-xs whitespace-nowrap ${estEpuise ? 'text-slate-400' : 'text-emerald-700'}`}>
                           {artPrix.toLocaleString('fr-FR')}
                         </span>
                       </div>
@@ -1551,180 +1550,185 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-[380px]">
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-1">
-                  <span className="font-extrabold text-slate-800 uppercase text-[10px]">PANIER</span>
-                  <div
-                    onClick={() => !enTrainDeSauvegarder && setAfficherModalPaiement(true)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold text-slate-900 cursor-pointer flex items-center gap-1 shadow-2xs"
-                  >
-                    <span>{modePaiementTicket}</span>
-                    <span className="text-[8px] text-slate-400">▼</span>
-                  </div>
+            {/* Zone Panier */}
+            <div className="bg-white border border-slate-200 rounded-xl p-2 flex flex-col h-full overflow-hidden">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-1 mb-1.5 shrink-0">
+                <span className="font-extrabold text-slate-800 uppercase text-[10px]">PANIER</span>
+                <div
+                  onClick={() => !enTrainDeSauvegarder && setAfficherModalPaiement(true)}
+                  className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 text-[9px] font-bold text-slate-900 cursor-pointer flex items-center gap-1 shadow-2xs"
+                >
+                  <span>{modePaiementTicket}</span>
+                  <span className="text-[8px] text-slate-400">▼</span>
                 </div>
+              </div>
 
-                <div className="overflow-y-auto h-[120px] space-y-1 divide-y divide-slate-100">
-                  {panier.length === 0 ? (
-                    <p className="text-center text-slate-400 py-8 text-[10px]">Le panier est vide.</p>
-                  ) : (
-                    panier.map((item) => (
-                      <div key={item.id} className="pt-1 flex justify-between items-center text-[10px]">
-                        <div>
-                          <p className="font-extrabold uppercase text-slate-900">{item.designation}</p>
-                          <div className="text-[9px] text-slate-600 font-mono font-bold flex items-center gap-1">
-                            {item.remise_appliquee > 0 ? (
-                              <>
-                                <span className="line-through text-slate-400">{Number(item.prix_initial).toLocaleString('fr-FR')} F</span>
-                                <span className="text-orange-600 font-bold">(-{item.remise_appliquee.toLocaleString('fr-FR')}F)</span>
-                              </>
-                            ) : null}
-                            <span>{Number(item.prix_unitaire).toLocaleString('fr-FR')} F x {item.quantite}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-5 h-5 bg-slate-100 rounded-lg font-bold text-slate-900">-</button>
-                          <input
-                            type="number"
-                            disabled={enTrainDeSauvegarder}
-                            value={item.quantite}
-                            onChange={(e) => modifierQuantite(item.id, Number(e.target.value))}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={handleKeyDownQuantite}
-                            className="w-10 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold font-mono text-[10px] text-slate-900"
-                          />
-                          <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-5 h-5 bg-slate-100 rounded-lg font-bold text-slate-900">+</button>
-                          <span className="font-black text-emerald-700 font-mono ml-1 w-14 text-right">
-                            {Number(item.quantite * item.prix_unitaire).toLocaleString('fr-FR')} F
-                          </span>
+              <div className="flex-1 overflow-y-auto space-y-1 divide-y divide-slate-100 pr-1">
+                {panier.length === 0 ? (
+                  <p className="text-center text-slate-400 py-24 text-[10px]">Le panier est vide.</p>
+                ) : (
+                  panier.map((item) => (
+                    <div key={item.id} className="pt-1 pb-1 flex justify-between items-center text-[10px]">
+                      <div>
+                        <p className="font-extrabold uppercase text-slate-900">{item.designation}</p>
+                        <div className="text-[9px] text-slate-600 font-mono font-bold flex items-center gap-1">
+                          {item.remise_appliquee > 0 ? (
+                            <>
+                              <span className="line-through text-slate-400">{Number(item.prix_initial).toLocaleString('fr-FR')} F</span>
+                              <span className="text-orange-600 font-bold">(-{item.remise_appliquee.toLocaleString('fr-FR')}F)</span>
+                            </>
+                          ) : null}
+                          <span>{Number(item.prix_unitaire).toLocaleString('fr-FR')} F x {item.quantite}</span>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-1.5 border-t border-slate-200 space-y-1">
-                
-                <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[7.5px] font-extrabold uppercase text-slate-500 block leading-none">NAP :</span>
-                    <span className="font-black text-emerald-700 font-mono text-[11px]">
-                      {totalFinal.toLocaleString('fr-FR')} F
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      onClick={() => !enTrainDeSauvegarder && setAfficherModalReglement(true)}
-                      className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-[9.5px] font-extrabold text-orange-600 cursor-pointer flex items-center gap-1 shadow-2xs"
-                    >
-                      <span>{typeReglementVente === 'COMPTANT' ? 'Comptant' : typeReglementVente === 'CREDIT' ? 'Crédit' : 'Avance'}</span>
-                      <span className="text-[8px] text-slate-400">▼</span>
+                      <div className="flex items-center gap-1">
+                        <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite - 1)} className="w-5 h-5 bg-slate-100 rounded-lg font-bold text-slate-900">-</button>
+                        <input
+                          type="number"
+                          disabled={enTrainDeSauvegarder}
+                          value={item.quantite}
+                          onChange={(e) => modifierQuantite(item.id, Number(e.target.value))}
+                          onFocus={(e) => e.target.select()}
+                          onKeyDown={handleKeyDownQuantite}
+                          className="w-10 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold font-mono text-[10px] text-slate-900"
+                        />
+                        <button disabled={enTrainDeSauvegarder} onClick={() => modifierQuantite(item.id, item.quantite + 1)} className="w-5 h-5 bg-slate-100 rounded-lg font-bold text-slate-900">+</button>
+                        <span className="font-black text-emerald-700 font-mono ml-1 w-12 text-right">
+                          {Number(item.quantite * item.prix_unitaire).toLocaleString('fr-FR')} F
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                {typeReglementVente === 'AVANCE' && (
-                  <div className="flex items-center justify-between gap-1 px-1">
-                    <span className="text-[8px] font-bold text-slate-600">Avance (CFA) :</span>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={enTrainDeSauvegarder}
-                      value={montantAvance}
-                      onChange={(e) => setMontantAvance(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      className="w-24 bg-white border border-slate-300 rounded-lg px-1.5 py-0.5 text-right font-mono font-bold text-[9.5px] text-slate-900"
-                    />
-                  </div>
+                  ))
                 )}
-
-                {typeReglementVente !== 'COMPTANT' && (
-                  <div className="flex justify-between items-center text-[8.5px] font-mono px-1">
-                    <span className="text-rose-600 font-bold">Reste crédit :</span>
-                    <span className="font-black text-rose-600">{montantCreditRestant.toLocaleString('fr-FR')} F</span>
-                  </div>
-                )}
-
-                <div className="flex gap-1 items-center justify-between pt-0.5">
-                  <div className="flex items-center gap-1">
-                    <select
-                      disabled={enTrainDeSauvegarder}
-                      value={typeRemise}
-                      onChange={(e) => setTypeRemise(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 text-[8px] font-bold text-slate-800"
-                    >
-                      <option value="POURCENTAGE">Remise %</option>
-                      <option value="MONTANT">Remise F</option>
-                    </select>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={enTrainDeSauvegarder}
-                      value={valeurRemise}
-                      onChange={(e) => setValeurRemise(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      className="w-12 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 text-center text-[9.5px] font-mono font-bold text-slate-900"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <span className="text-[8px] font-bold text-slate-700">TVA:</span>
-                    <select
-                      disabled={enTrainDeSauvegarder}
-                      value={appliquerTva}
-                      onChange={(e) => setAppliquerTva(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 text-[8.5px] font-bold text-slate-900 max-w-[65px]"
-                    >
-                      <option value="NON">Non</option>
-                      <option value="OUI">Oui</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1">
-                  <button
-                    disabled={enTrainDeSauvegarder || panier.length === 0}
-                    onClick={mettreTicketEnAttente}
-                    className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-1 rounded-xl text-[8.5px] transition shadow-2xs flex items-center justify-center gap-0.5 truncate"
-                  >
-                    ⏳ Mettre en attente
-                  </button>
-                  <button
-                    disabled={enTrainDeSauvegarder}
-                    onClick={() => setAfficherModalAttente(true)}
-                    className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-1.5 py-1 rounded-xl text-[8.5px] transition shadow-2xs flex items-center justify-center gap-0.5 truncate"
-                  >
-                    📂 Rappel ({ticketsEnAttente.length})
-                  </button>
-                </div>
-
-                <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                  <button
-                    disabled={enTrainDeSauvegarder}
-                    onClick={annulerVenteEnCours}
-                    className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-3 py-1.5 rounded-xl text-[10px] transition shadow-2xs"
-                  >
-                    ❌ Annuler
-                  </button>
-
-                  {permissions.creation && (
-                    <button
-                      onClick={validerEtEnregistrerVente}
-                      disabled={panier.length === 0 || enTrainDeSauvegarder}
-                      className={`font-bold px-4 py-1.5 rounded-xl text-[10px] transition shadow-2xs ${
-                        panier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      }`}
-                    >
-                      {enTrainDeSauvegarder ? 'Validation...' : 'Valider'}
-                    </button>
-                  )}
-                </div>
-
               </div>
             </div>
+
           </div>
+
+          {/* BANDEAU PIED DE PAGE FIXE ET COMPACT */}
+          <div className="bg-white border border-slate-200 rounded-xl p-2 space-y-1.5 shrink-0 shadow-2xs">
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 items-center bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+              <div>
+                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">NAP (NET À PAYER)</span>
+                <span className="font-black text-emerald-700 font-mono text-[11px]">
+                  {totalFinal.toLocaleString('fr-FR')} F
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">RÈGLEMENT</span>
+                <div
+                  onClick={() => !enTrainDeSauvegarder && setAfficherModalReglement(true)}
+                  className="bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-[9px] font-extrabold text-orange-600 cursor-pointer flex justify-between items-center shadow-2xs h-[24px]"
+                >
+                  <span>{typeReglementVente === 'COMPTANT' ? 'Comptant' : typeReglementVente === 'CREDIT' ? 'Crédit' : 'Avance'}</span>
+                  <span className="text-[8px] text-slate-400">▼</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">REMISE</span>
+                <div className="flex gap-1">
+                  <select
+                    disabled={enTrainDeSauvegarder}
+                    value={typeRemise}
+                    onChange={(e) => setTypeRemise(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-lg px-1 py-0.5 text-[8px] font-bold text-slate-800 h-[24px]"
+                  >
+                    <option value="POURCENTAGE">%</option>
+                    <option value="MONTANT">F</option>
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={enTrainDeSauvegarder}
+                    value={valeurRemise}
+                    onChange={(e) => setValeurRemise(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-1 py-0.5 text-center text-[9px] font-mono font-bold text-slate-900 h-[24px]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter block">TVA</span>
+                <select
+                  disabled={enTrainDeSauvegarder}
+                  value={appliquerTva}
+                  onChange={(e) => setAppliquerTva(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-1.5 py-0.5 text-[9px] font-bold text-slate-900 h-[24px]"
+                >
+                  <option value="NON">Non (0%)</option>
+                  <option value="OUI">Oui (19.25%)</option>
+                </select>
+              </div>
+            </div>
+
+            {typeReglementVente === 'AVANCE' && (
+              <div className="flex items-center justify-between gap-2 px-1">
+                <span className="text-[8px] font-bold text-slate-600 uppercase">Montant Avancé (CFA) :</span>
+                <input
+                  type="number"
+                  min="0"
+                  disabled={enTrainDeSauvegarder}
+                  value={montantAvance}
+                  onChange={(e) => setMontantAvance(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  className="w-28 bg-slate-50 border border-slate-300 rounded-lg px-2 py-0.5 text-right font-mono font-bold text-[9px] text-slate-900"
+                />
+              </div>
+            )}
+
+            {typeReglementVente !== 'COMPTANT' && (
+              <div className="flex justify-between items-center text-[8.5px] font-mono px-1">
+                <span className="text-rose-600 font-bold">Reste crédit :</span>
+                <span className="font-black text-rose-600">{montantCreditRestant.toLocaleString('fr-FR')} F</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-slate-100">
+              <button
+                disabled={enTrainDeSauvegarder || panier.length === 0}
+                onClick={mettreTicketEnAttente}
+                className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-2 py-1.5 rounded-xl text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+              >
+                ⏳ Mettre en attente
+              </button>
+
+              <button
+                disabled={enTrainDeSauvegarder}
+                onClick={() => setAfficherModalAttente(true)}
+                className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-2 py-1.5 rounded-xl text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+              >
+                📂 Rappel ({ticketsEnAttente.length})
+              </button>
+
+              <button
+                disabled={enTrainDeSauvegarder}
+                onClick={annulerVenteEnCours}
+                className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-2 py-1.5 rounded-xl text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+              >
+                ❌ Annuler
+              </button>
+
+              {permissions.creation ? (
+                <button
+                  onClick={validerEtEnregistrerVente}
+                  disabled={panier.length === 0 || enTrainDeSauvegarder}
+                  className={`font-black px-3 py-1.5 rounded-xl text-[9.5px] transition shadow-2xs flex items-center justify-center gap-1 ${
+                    panier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  {enTrainDeSauvegarder ? 'Validation...' : '✅ Valider'}
+                </button>
+              ) : (
+                <div />
+              )}
+            </div>
+
+          </div>
+
         </div>
       )}
 
