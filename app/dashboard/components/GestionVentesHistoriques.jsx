@@ -18,14 +18,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const [utilisateursList, setUtilisateursList] = useState([]);
   const [cloturesList, setCloturesList] = useState([]);
   
-  // --- NOUVEAU : ÉTAT POUR LES RISTOURNES ET PROMOTIONS PAR ARTICLE ---
   const [reglesPromotions, setReglesPromotions] = useState([]);
 
   const [chargement, setChargement] = useState(false);
   
-  // --- GESTION DES DROITS ET AUTORISATIONS ---
   const [roleNom, setRoleNom] = useState('');
-  const [caissierNomActuel, setCaissierNomActuel] = useState('Administrateur');
+  const [caissierNomActuel, setCaissierNomActuel] = useState('UTILISATEUR');
   const [permissions, setPermissions] = useState({
     lecture: true,
     creation: true,
@@ -33,50 +31,45 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     suppression: false,
   });
 
-  // --- MODAL DE VALIDATION SUPERVISEUR / ADMIN POUR SUPPRESSION ---
   const [afficherModalAuthSuppression, setAfficherModalAuthSuppression] = useState(false);
   const [adminEmailAuth, setAdminEmailAuth] = useState('');
   const [adminPasswordAuth, setAdminPasswordAuth] = useState('');
   const [ticketEnCoursDeSuppression, setTicketEnCoursDeSuppression] = useState(null);
 
-  // --- MODAL DE VERSEMENT CLÔTURE CAISSE & HISTORIQUE DÉTAIL ---
   const [afficherModalVersementCloture, setAfficherModalVersementCloture] = useState(false);
   const [caisseDestinationVersementId, setCaisseDestinationVersementId] = useState('');
   const [clotureDetailSelectionnee, setClotureDetailSelectionnee] = useState(null);
 
-  // --- MODAL SUCCÈS VALIDATION TICKET & IMPRESSION ---
   const [afficherModalSuccesTicket, setAfficherModalSuccesTicket] = useState(false);
   const [ticketDernierValide, setTicketDernierValide] = useState(null);
 
-  // --- DÉSACTIVATION TEMPORAIRE ---
+  // Nouvelles modales pour les sélecteurs
+  const [afficherModalPaiement, setAfficherModalPaiement] = useState(false);
+  const [afficherModalReglement, setAfficherModalReglement] = useState(false);
+
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   
   const [recherche, setRecherche] = useState('');
   const [filtreModePaiement, setFiltreModePaiement] = useState('TOUS');
   const [ticketSelectionne, setTicketSelectionne] = useState(null);
 
-  // --- ONGLETS : 'vente', 'tickets', 'journal', 'cloture' ---
   const [ongletActif, setOngletActif] = useState('vente');
 
   const [limiteVentes, setLimiteVentes] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
 
-  // --- TRI DES TICKETS ---
   const [triTicketCol, setTriTicketCol] = useState('created_at');
   const [triTicketOrdre, setTriTicketOrdre] = useState('desc');
 
-  // --- TRI DU JOURNAL ---
   const [triJournalCol, setTriJournalCol] = useState('date');
   const [triJournalOrdre, setTriJournalOrdre] = useState('desc');
 
-  // --- FILTRES DU JOURNAL DES VENTES ---
   const dateDuJourStr = new Date().toISOString().split('T')[0];
   const [journalDateDebut, setJournalDateDebut] = useState(dateDuJourStr);
   const [journalDateFin, setJournalDateFin] = useState(dateDuJourStr);
   const [journalCaisseId, setJournalCaisseId] = useState('TOUTES');
   const [journalCaissierId, setJournalCaissierId] = useState('TOUS');
 
-  // --- FILTRES DE LA CLÔTURE CAISSE ---
   const [clotureDateDebut, setClotureDateDebut] = useState(dateDuJourStr);
   const [clotureDateFin, setClotureDateFin] = useState(dateDuJourStr);
   const [clotureCaisseId, setClotureCaisseId] = useState('TOUTES');
@@ -90,13 +83,20 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const [filtreDateFin, setFiltreDateFin] = useState(dernierJourMoisStr);
 
   const [caisseId, setCaisseId] = useState('');
+  const [caisseNomSelectionnee, setCaisseNomSelectionne] = useState('-- Saisir une caisse --');
+  const [afficherModalCaisse, setAfficherModalCaisse] = useState(false);
+  const [rechercheCaisseInput, setRechercheCaisseInput] = useState('');
+
   const [depotId, setDepotId] = useState('');
+  const [depotNomSelectionne, setDepotNomSelectionne] = useState('-- Aucun dépôt --');
+  const [afficherModalDepot, setAfficherModalDepot] = useState(false);
+  const [rechercheDepotInput, setRechercheDepotInput] = useState('');
+
   const [codeCaisseActif, setCodeCaisseActif] = useState('C01');
   const [numeroTicket, setNumeroTicket] = useState('');
   const [dateJour, setDateJour] = useState(dateDuJourStr);
   const [modePaiementTicket, setModePaiementTicket] = useState('ESPECES');
   
-  // --- GESTION COMPTANT / CRÉDIT / AVANCE ---
   const [typeReglementVente, setTypeReglementVente] = useState('COMPTANT');
   const [montantAvance, setMontantAvance] = useState(0);
 
@@ -197,7 +197,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           const userObj = JSON.parse(utilisateurConnecteStr);
           const nomRoleUser = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
           setRoleNom(nomRoleUser);
-          setCaissierNomActuel(userObj.nom_complet || userObj.nom || userObj.email || 'Administrateur');
+          
+          const nomReelCaissier = (
+            userObj.nom_complet || 
+            userObj.nom_complet_utilisateur || 
+            userObj.nom || 
+            localStorage.getItem('utilisateurConnecte') || 
+            userObj.email || 
+            'UTILISATEUR'
+          ).toUpperCase();
+          
+          setCaissierNomActuel(nomReelCaissier);
           
           if (userObj.permissions) {
             const pHist = userObj.permissions['ventes_historiques'] || userObj.permissions['caisse'] || userObj.permissions['ventes'];
@@ -211,8 +221,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             }
           }
         } catch (e) {
-          setCaissierNomActuel(utilisateurConnecteStr);
+          const fallbackNom = (localStorage.getItem('utilisateurConnecte') || 'UTILISATEUR').toUpperCase();
+          setCaissierNomActuel(fallbackNom);
         }
+      } else {
+        const fallbackNom = (localStorage.getItem('utilisateurConnecte') || 'UTILISATEUR').toUpperCase();
+        setCaissierNomActuel(fallbackNom);
       }
 
       let ventesCloud = [];
@@ -272,14 +286,20 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setCaissesList(dataCaisses);
       setReglesPromotions(dataPromos);
 
-      const caissePrincipale = dataCaisses.find(c => 
-        (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE') || 
-        (c.code_caisse || '').toUpperCase().includes('CP') ||
-        (c.nom_caisse || '').toUpperCase().includes('CP')
-      ) || dataCaisses[0];
+      const caisseParDefaut = dataCaisses.find(c => c.est_defaut === true) || 
+                              dataCaisses.find(c => 
+                                (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE') || 
+                                (c.code_caisse || '').toUpperCase().includes('CP')
+                              ) || 
+                              dataCaisses[0];
 
-      if (caissePrincipale) {
-        setCaisseDestinationVersementId(caissePrincipale.id);
+      if (caisseParDefaut) {
+        setCaisseId(caisseParDefaut.id);
+        setCaisseNomSelectionne(caisseParDefaut.nom_caisse || 'CAISSE');
+        const codeCaisseDefaut = caisseParDefaut.code_caisse || 'C01';
+        setCodeCaisseActif(codeCaisseDefaut);
+        setNumeroTicket(genererNumeroTicket(codeCaisseDefaut, ventesData.length));
+        setCaisseDestinationVersementId(caisseParDefaut.id);
       }
 
       setDepotsList(dataDepots);
@@ -290,11 +310,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       setDateJour(dateDuJourStr);
 
-      let codeCaisseCourant = 'C01';
-      setNumeroTicket(genererNumeroTicket(codeCaisseCourant, ventesData.length));
-
-      if (dataDepots.length > 0) {
-        setDepotId(dataDepots[0].id);
+      const depotParDefaut = dataDepots.find(d => d.est_depot_par_defaut === true || d.Est_Depot_Par_Defaut === true) || dataDepots[0];
+      if (depotParDefaut) {
+        const idDepot = depotParDefaut.id || depotParDefaut.ID;
+        const nomDepot = depotParDefaut.nom_depot || depotParDefaut.designation || 'DÉPÔT';
+        setDepotId(idDepot);
+        setDepotNomSelectionne(nomDepot);
       }
 
       const clientDivers = dataClients.find(c => c.est_par_defaut || (c.nom_client || c.nom || '').toLowerCase().includes('divers'));
@@ -353,21 +374,30 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   const ventesNonCloturees = ventes.filter(v => !idsTicketsClotures.has(v.id));
 
-  const changerCaisseSelectionnee = (idCaisseSel) => {
+  const selectionnerCaisseModale = (caisseObj) => {
     if (enTrainDeSauvegarder) return;
+    const idCaisseSel = caisseObj.id;
     setCaisseId(idCaisseSel);
-    const trouve = caissesList.find(c => c.id === idCaisseSel);
-    if (trouve) {
-      const code = trouve.code_caisse || 'C01';
-      setCodeCaisseActif(code);
-      setNumeroTicket(genererNumeroTicket(code, ventes.length));
-    }
+    setCaisseNomSelectionne(caisseObj.nom_caisse || 'CAISSE');
+    const code = caisseObj.code_caisse || 'C01';
+    setCodeCaisseActif(code);
+    setNumeroTicket(genererNumeroTicket(code, ventes.length));
+    setAfficherModalCaisse(false);
+  };
+
+  const selectionnerDepotModale = (depotObj) => {
+    if (enTrainDeSauvegarder) return;
+    const idDepotSel = depotObj.id || depotObj.ID;
+    const nomDepotSel = depotObj.nom_depot || depotObj.designation || 'DÉPÔT';
+    setDepotId(idDepotSel);
+    setDepotNomSelectionne(nomDepotSel);
+    setAfficherModalDepot(false);
   };
 
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
     if (!valeurDepotFlux || !depotCibleId) return false;
     if (String(valeurDepotFlux) === String(depotCibleId)) return true;
-    const depotObj = depotsList.find((d) => String(d.id) === String(depotCibleId));
+    const depotObj = depotsList.find((d) => String(d.id || d.ID) === String(depotCibleId));
     if (depotObj && (depotObj.nom_depot || depotObj.nom || depotObj.libelle)) {
       const nomDepotCible = depotObj.nom_depot || depotObj.nom || depotObj.libelle;
       if (String(valeurDepotFlux).trim().toUpperCase() === String(nomDepotCible).trim().toUpperCase()) return true;
@@ -545,7 +575,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     }, 100);
   };
 
-  // 🛡️ INTERDICTION DE SÉLECTIONNER UN ARTICLE SANS CHOIX D'UNE CAISSE + APPLICATION AUTO DES PROMOSSIONS PAR ARTICLE
   const ajouterAuPanier = (article) => {
     if (enTrainDeSauvegarder) return;
 
@@ -560,7 +589,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     const prixU = Number(article.Prix_Vente || article.prix_vente || article.prix || 0);
     const prixAchatU = Number(article.Prix_Achat || article.prix_achat || article.prix_revient || 0);
 
-    // --- LOGIQUE ISOLÉE : CALCUL DE LA PROMOTION / RISTOURNE DE L'ARTICLE ---
     let prixRemiseU = prixU;
     let montantRemiseLigne = 0;
 
@@ -589,7 +617,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       }
     });
-    // --------------------------------------------------------------------------
 
     const estSuivi = articleEstSuiviEnStock(article);
     const stockDispo = estSuivi ? getStockReelArticle(article) : 999999;
@@ -676,7 +703,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     montantCreditRestant = Math.max(0, totalFinal - montantRegleEffectif);
   }
 
-  // 🛡️ Enregistrement d'une vente avec protection anti-écrasement multi-superviseur
   const validerEtEnregistrerVente = async () => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.creation) {
@@ -726,6 +752,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     setEnTrainDeSauvegarder(true);
     try {
       const idLocalTemp = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      
       const payloadVente = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -1028,7 +1055,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         prixVente: prixVenteU,
         montantTotal: montantTotalVente,
         marge: margeLigne,
-        caissier: v.caissier || 'Administrateur',
+        caissier: v.caissier || caissierNomActuel,
         rawDate: v.created_at || ''
       });
     });
@@ -1098,9 +1125,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     }
 
     const caissePrincipale = caissesList.find(c => 
+      c.est_defaut === true ||
       (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE') || 
-      (c.code_caisse || '').toUpperCase().includes('CP') ||
-      (c.nom_caisse || '').toUpperCase().includes('CP')
+      (c.code_caisse || '').toUpperCase().includes('CP')
     ) || caissesList[0];
 
     if (caissePrincipale) {
@@ -1121,7 +1148,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     setEnTrainDeSauvegarder(true);
     try {
       const caisseDestObj = caissesList.find(c => String(c.id) === String(caisseDestinationVersementId));
-      const nomCaisseDest = caisseDestObj ? (caissesList.nom_caisse || caisseDestObj.code_caisse || 'Caisse Principale') : 'Caisse Principale';
+      const nomCaisseDest = caisseDestObj ? (caisseDestObj.nom_caisse || caisseDestObj.code_caisse || 'Caisse Principale') : 'Caisse Principale';
 
       const idsTicketsInclus = ventesClotureFiltrees.map(v => v.id);
       const codeClotureRef = `CLOTURE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
@@ -1196,11 +1223,12 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   };
 
   const clientsFiltres = clientsList.filter(c => (c.nom_client || c.nom || c.libelle || '').toLowerCase().includes(rechercheClientInput.toLowerCase()));
+  const caissesFiltrees = caissesList.filter(c => (c.nom_caisse || '').toLowerCase().includes(rechercheCaisseInput.toLowerCase()));
+  const depotsFiltres = depotsList.filter(d => (d.nom_depot || d.designation || '').toLowerCase().includes(rechercheDepotInput.toLowerCase()));
 
   const articlesFiltres = articlesStock.filter(a => (a.Designation || a.nom || '').toLowerCase().includes(rechercheArticleInput.toLowerCase()));
   const articlesFiltresModalAffiches = articlesFiltres.slice(0, limiteArticlesModal);
 
-  // Ticket actif pour l'impression (si aucun n'est sélectionné, on prend le tout dernier ticket enregistré pour éviter la page blanche)
   const ticketImpressionActif = ticketSelectionne || ticketDernierValide || ventes[0];
 
   const declencherImpressionSecurisee = () => {
@@ -1214,7 +1242,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   return (
     <div className="space-y-2 text-[10px] font-sans">
       
-      {/* 🖨️ STYLE CSS D'IMPRESSION STRICTEMENT SUR UNE SEULE PAGE THERMIQUE SANS ESPACE BLANC (AUTO-CUT) */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           html, body {
@@ -1259,7 +1286,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       ` }} />
 
-      {/* 📄 CONTENEUR DU TICKET THERMIQUE OPTIMISÉ POUR 1 PAGE SANS ESPACE BLANC */}
       <div className="ticket-impression-container hidden">
         {ticketImpressionActif ? (
           <div style={{ width: '100%' }}>
@@ -1335,7 +1361,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         )}
       </div>
 
-      {/* 🟡 ONGLETS DU HAUT AVEC CADRES ARRONDIS */}
       <div className="flex justify-between items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
         <div className="flex flex-1 gap-1">
           <button
@@ -1385,70 +1410,56 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       {ongletActif === 'vente' && (
         <div className="space-y-2">
           <div className="bg-white border border-slate-200 rounded-xl p-2.5 space-y-2 relative shadow-2xs">
-            <div className="absolute top-2 right-2 text-right">
-              <span className="text-[7.5px] font-extrabold text-slate-400 uppercase block tracking-tighter">N° TICKET</span>
-              <span className="font-mono font-black text-orange-600 text-[9.5px]">{numeroTicket}</span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 pr-12">
-              <div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+              <div className="sm:col-span-2">
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DATE</label>
                 <input
                   type="date"
                   disabled={enTrainDeSauvegarder}
                   value={dateJour}
                   onChange={(e) => setDateJour(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-mono font-bold text-[10px] text-slate-900"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-1 font-mono font-bold text-[9.5px] text-slate-900"
                 />
               </div>
 
-              <div>
+              <div className="sm:col-span-4">
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE *</label>
-                <select
-                  disabled={enTrainDeSauvegarder}
-                  value={caisseId}
-                  onChange={(e) => changerCaisseSelectionnee(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900"
+                <div
+                  onClick={() => !enTrainDeSauvegarder && setAfficherModalCaisse(true)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
                 >
-                  <option value="">-- Saisir une caisse --</option>
-                  {caissesList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code_caisse || 'C01'} - {c.nom_caisse}
-                    </option>
-                  ))}
-                </select>
+                  <span className="truncate">{caisseNomSelectionnee}</span>
+                  <span className="text-[9px] text-slate-400">🔍</span>
+                </div>
               </div>
 
-              <div>
+              <div className="sm:col-span-4">
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSIER</label>
                 <input
                   type="text"
                   readOnly
                   value={caissierNomActuel}
-                  className="w-full bg-slate-100 border border-slate-200 rounded-lg px-1.5 py-1 font-extrabold uppercase text-slate-800 text-[10px] truncate"
+                  className="w-full bg-slate-100 border border-slate-200 rounded-lg px-1.5 py-1 font-extrabold uppercase text-slate-800 text-[10px] truncate h-[26px]"
                 />
+              </div>
+
+              <div className="sm:col-span-2 text-right bg-slate-50 border border-slate-100 rounded-lg p-1">
+                <span className="text-[7.5px] font-extrabold text-slate-400 uppercase block tracking-tighter">N° TICKET</span>
+                <span className="font-mono font-black text-orange-600 text-[10px]">{numeroTicket}</span>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100">
               <div>
                 <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter">DÉPÔT</label>
-                <select
-                  disabled={enTrainDeSauvegarder}
-                  value={depotId}
-                  onChange={(e) => setDepotId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900"
+                <div
+                  onClick={() => !enTrainDeSauvegarder && setAfficherModalDepot(true)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 font-bold text-[10px] text-slate-900 cursor-pointer flex justify-between items-center h-[26px]"
                 >
-                  {depotsList.length === 0 ? (
-                    <option value="">Aucun dépôt</option>
-                  ) : (
-                    depotsList.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.nom_depot || d.designation || 'Dépôt'}
-                      </option>
-                    ))
-                  )}
-                </select>
+                  <span className="truncate">{depotNomSelectionne}</span>
+                  <span className="text-[9px] text-slate-400">🔍</span>
+                </div>
               </div>
 
               <div>
@@ -1474,7 +1485,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   value={nomClientLibre}
                   onChange={(e) => setNomClientLibre(e.target.value.toUpperCase())}
                   placeholder={moduleActuel === 'LIVRAISON' ? 'LIVREUR LIBRE...' : 'NOM LIBRE...'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-extrabold uppercase text-slate-900 placeholder:text-slate-400 h-[26px]"
                 />
               </div>
             </div>
@@ -1539,19 +1550,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col justify-between h-[380px]">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-1">
-                  <span className="font-extrabold text-slate-800 uppercase text-[10px]">Panier & Règlements</span>
-                  <select
-                    disabled={enTrainDeSauvegarder}
-                    value={modePaiementTicket}
-                    onChange={(e) => setModePaiementTicket(e.target.value)}
-                    className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold text-slate-900"
+                  <span className="font-extrabold text-slate-800 uppercase text-[10px]">PANIER</span>
+                  <div
+                    onClick={() => !enTrainDeSauvegarder && setAfficherModalPaiement(true)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold text-slate-900 cursor-pointer flex items-center gap-1 shadow-2xs"
                   >
-                    <option value="ESPECES">ESPECES</option>
-                    <option value="MOBILE_MONEY">MOBILE MONEY</option>
-                    <option value="CARTE">CARTE BANCAIRE</option>
-                  </select>
+                    <span>{modePaiementTicket}</span>
+                    <span className="text-[8px] text-slate-400">▼</span>
+                  </div>
                 </div>
 
                 <div className="overflow-y-auto h-[120px] space-y-1 divide-y divide-slate-100">
@@ -1594,56 +1602,60 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-200 space-y-1.5">
+              <div className="pt-1.5 border-t border-slate-200 space-y-1">
                 
-                <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 space-y-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[8px] font-extrabold uppercase text-slate-600">Type de règlement :</span>
-                    <select
-                      disabled={enTrainDeSauvegarder}
-                      value={typeReglementVente}
-                      onChange={(e) => setTypeReglementVente(e.target.value)}
-                      className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-[9px] font-extrabold text-orange-600"
-                    >
-                      <option value="COMPTANT">Paiement Comptant</option>
-                      <option value="CREDIT">Vente 100% Crédit</option>
-                      <option value="AVANCE">Vente avec Avance</option>
-                    </select>
+                {/* Ligne NAP et Mode de Règlement combinés */}
+                <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-[7.5px] font-extrabold uppercase text-slate-500 block leading-none">NAP :</span>
+                    <span className="font-black text-emerald-700 font-mono text-[11px]">
+                      {totalFinal.toLocaleString('fr-FR')} F
+                    </span>
                   </div>
 
-                  {typeReglementVente === 'AVANCE' && (
-                    <div className="flex items-center justify-between gap-1 pt-0.5">
-                      <span className="text-[8px] font-bold text-slate-600">Montant de l'avance (CFA) :</span>
-                      <input
-                        type="number"
-                        min="0"
-                        disabled={enTrainDeSauvegarder}
-                        value={montantAvance}
-                        onChange={(e) => setMontantAvance(e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        className="w-24 bg-white border border-slate-300 rounded-lg px-2 py-1 text-right font-mono font-bold text-[10px] text-slate-900"
-                      />
+                  <div className="flex items-center gap-1.5">
+                    <div
+                      onClick={() => !enTrainDeSauvegarder && setAfficherModalReglement(true)}
+                      className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-[9.5px] font-extrabold text-orange-600 cursor-pointer flex items-center gap-1 shadow-2xs"
+                    >
+                      <span>{typeReglementVente === 'COMPTANT' ? 'Comptant' : typeReglementVente === 'CREDIT' ? 'Crédit' : 'Avance'}</span>
+                      <span className="text-[8px] text-slate-400">▼</span>
                     </div>
-                  )}
-
-                  {typeReglementVente !== 'COMPTANT' && (
-                    <div className="flex justify-between items-center text-[8.5px] font-mono pt-0.5 border-t border-slate-200">
-                      <span className="text-rose-600 font-bold">Reste à crédit :</span>
-                      <span className="font-black text-rose-600">{montantCreditRestant.toLocaleString('fr-FR')} CFA</span>
-                    </div>
-                  )}
+                  </div>
                 </div>
 
-                <div className="flex gap-2 items-center justify-between">
+                {typeReglementVente === 'AVANCE' && (
+                  <div className="flex items-center justify-between gap-1 px-1">
+                    <span className="text-[8px] font-bold text-slate-600">Avance (CFA) :</span>
+                    <input
+                      type="number"
+                      min="0"
+                      disabled={enTrainDeSauvegarder}
+                      value={montantAvance}
+                      onChange={(e) => setMontantAvance(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      className="w-24 bg-white border border-slate-300 rounded-lg px-1.5 py-0.5 text-right font-mono font-bold text-[9.5px] text-slate-900"
+                    />
+                  </div>
+                )}
+
+                {typeReglementVente !== 'COMPTANT' && (
+                  <div className="flex justify-between items-center text-[8.5px] font-mono px-1">
+                    <span className="text-rose-600 font-bold">Reste crédit :</span>
+                    <span className="font-black text-rose-600">{montantCreditRestant.toLocaleString('fr-FR')} F</span>
+                  </div>
+                )}
+
+                <div className="flex gap-1 items-center justify-between pt-0.5">
                   <div className="flex items-center gap-1">
                     <select
                       disabled={enTrainDeSauvegarder}
                       value={typeRemise}
                       onChange={(e) => setTypeRemise(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-[8px] font-bold text-slate-800"
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 text-[8px] font-bold text-slate-800"
                     >
-                      <option value="POURCENTAGE">Remise % :</option>
-                      <option value="MONTANT">Remise (F) :</option>
+                      <option value="POURCENTAGE">Remise %</option>
+                      <option value="MONTANT">Remise F</option>
                     </select>
                     <input
                       type="number"
@@ -1652,69 +1664,62 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                       value={valeurRemise}
                       onChange={(e) => setValeurRemise(e.target.value)}
                       onFocus={(e) => e.target.select()}
-                      className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-1 text-center text-[10px] font-mono font-bold text-slate-900"
+                      className="w-12 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 text-center text-[9.5px] font-mono font-bold text-slate-900"
                     />
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <span className="text-[9px] font-bold text-slate-700">TVA :</span>
+                    <span className="text-[8px] font-bold text-slate-700">TVA:</span>
                     <select
                       disabled={enTrainDeSauvegarder}
                       value={appliquerTva}
                       onChange={(e) => setAppliquerTva(e.target.value)}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[9px] font-bold text-slate-900"
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 text-[8.5px] font-bold text-slate-900 max-w-[65px]"
                     >
                       <option value="NON">Non</option>
-                      <option value="OUI">Oui ({tauxTvaClient}%)</option>
+                      <option value="OUI">Oui</option>
                     </select>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-2 gap-1">
                   <button
                     disabled={enTrainDeSauvegarder || panier.length === 0}
                     onClick={mettreTicketEnAttente}
-                    className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-2.5 py-1.5 rounded-xl text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+                    className="bg-amber-50 hover:bg-amber-100 disabled:opacity-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-1 rounded-xl text-[8.5px] transition shadow-2xs flex items-center justify-center gap-0.5 truncate"
                   >
                     ⏳ Mettre en attente
                   </button>
                   <button
                     disabled={enTrainDeSauvegarder}
                     onClick={() => setAfficherModalAttente(true)}
-                    className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-2.5 py-1.5 rounded-xl text-[9px] transition shadow-2xs flex items-center justify-center gap-1"
+                    className="bg-sky-50 hover:bg-sky-100 disabled:opacity-50 text-sky-800 border border-sky-200 font-bold px-1.5 py-1 rounded-xl text-[8.5px] transition shadow-2xs flex items-center justify-center gap-0.5 truncate"
                   >
-                    📂 Rappel ticket ({ticketsEnAttente.length})
+                    📂 Rappel ({ticketsEnAttente.length})
                   </button>
                 </div>
 
+                {/* Boutons Annuler à l'extrême gauche et Valider à l'extrême droite */}
                 <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                  <div>
-                    <span className="text-[8px] uppercase text-slate-500 font-bold block">NAP :</span>
-                    <span className="font-black text-emerald-700 font-mono text-xs">
-                      {totalFinal.toLocaleString('fr-FR')} CFA
-                    </span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      disabled={enTrainDeSauvegarder}
-                      onClick={annulerVenteEnCours}
-                      className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-3 py-1.5 rounded-xl text-[10px] transition shadow-2xs"
-                    >
-                      ❌ Annuler
-                    </button>
+                  <button
+                    disabled={enTrainDeSauvegarder}
+                    onClick={annulerVenteEnCours}
+                    className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-bold px-3 py-1.5 rounded-xl text-[10px] transition shadow-2xs"
+                  >
+                    ❌ Annuler
+                  </button>
 
-                    {permissions.creation && (
-                      <button
-                        onClick={validerEtEnregistrerVente}
-                        disabled={panier.length === 0 || enTrainDeSauvegarder}
-                        className={`font-bold px-4 py-1.5 rounded-xl text-[10px] transition shadow-2xs ${
-                          panier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        }`}
-                      >
-                        {enTrainDeSauvegarder ? 'Validation...' : 'Valider'}
-                      </button>
-                    )}
-                  </div>
+                  {permissions.creation && (
+                    <button
+                      onClick={validerEtEnregistrerVente}
+                      disabled={panier.length === 0 || enTrainDeSauvegarder}
+                      className={`font-bold px-4 py-1.5 rounded-xl text-[10px] transition shadow-2xs ${
+                        panier.length > 0 && !enTrainDeSauvegarder ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {enTrainDeSauvegarder ? 'Validation...' : 'Valider'}
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -1910,7 +1915,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 >
                   <option value="TOUTES">Toutes les caisses</option>
                   {caissesList.map(c => (
-                    <option key={c.id} value={c.id}>{c.code_caisse || 'C01'} - {c.nom_caisse}</option>
+                    <option key={c.id} value={c.id}>{c.nom_caisse}</option>
                   ))}
                 </select>
               </div>
@@ -2035,7 +2040,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 >
                   <option value="TOUTES">Toutes les caisses</option>
                   {caissesList.map(c => (
-                    <option key={c.id} value={c.id}>{c.code_caisse || 'C01'} - {c.nom_caisse}</option>
+                    <option key={c.id} value={c.id}>{c.nom_caisse}</option>
                   ))}
                 </select>
               </div>
@@ -2170,6 +2175,165 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
+      {/* MODALE CHOIX MODE DE PAIEMENT (PANIER) */}
+      {afficherModalPaiement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-[11px] font-black">
+              <span>💳 MODE DE PAIEMENT</span>
+              <button onClick={() => setAfficherModalPaiement(false)} className="text-slate-300 hover:text-white">✕</button>
+            </div>
+            <div className="p-3 space-y-1.5">
+              {[
+                { id: 'ESPECES', label: 'Espèces', icon: '💵' },
+                { id: 'MOBILE_MONEY', label: 'Mobile Money', icon: '📱' },
+                { id: 'CARTE', label: 'Carte Bancaire', icon: '💳' }
+              ].map((mode) => (
+                <div
+                  key={mode.id}
+                  onClick={() => {
+                    setModePaiementTicket(mode.id);
+                    setAfficherModalPaiement(false);
+                  }}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition font-bold text-xs ${
+                    modePaiementTicket === mode.id ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-2xs' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-2"><span>{mode.icon}</span> {mode.label}</span>
+                  {modePaiementTicket === mode.id && <span className="text-orange-600 font-black">✓</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE CHOIX TYPE DE RÈGLEMENT */}
+      {afficherModalReglement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
+            <div className="p-3 bg-slate-900 text-white flex justify-between items-center text-[11px] font-black">
+              <span>🧾 TYPE DE RÈGLEMENT</span>
+              <button onClick={() => setAfficherModalReglement(false)} className="text-slate-300 hover:text-white">✕</button>
+            </div>
+            <div className="p-3 space-y-1.5">
+              {[
+                { id: 'COMPTANT', label: 'Paiement Comptant', desc: 'Règlement total immédiat' },
+                { id: 'CREDIT', label: 'Vente 100% Crédit', desc: 'Aucun versement immédiat' },
+                { id: 'AVANCE', label: 'Vente avec Avance', desc: 'Versement partiel & reste à crédit' }
+              ].map((reg) => (
+                <div
+                  key={reg.id}
+                  onClick={() => {
+                    setTypeReglementVente(reg.id);
+                    setAfficherModalReglement(false);
+                  }}
+                  className={`p-3 rounded-xl border flex flex-col cursor-pointer transition ${
+                    typeReglementVente === reg.id ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-2xs' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-800'
+                  }`}
+                >
+                  <div className="flex justify-between items-center font-black text-xs">
+                    <span>{reg.label}</span>
+                    {typeReglementVente === reg.id && <span className="text-orange-600 font-black">✓</span>}
+                  </div>
+                  <span className="text-[9px] text-slate-500 mt-0.5">{reg.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE SÉLECTION CAISSE */}
+      {afficherModalCaisse && (
+        <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-3">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-200">
+            <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px] font-bold">
+              <span>SÉLECTIONNER UNE CAISSE</span>
+              <button onClick={() => setAfficherModalCaisse(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div className="p-3 space-y-2 overflow-y-auto">
+              <input
+                type="text"
+                autoFocus
+                disabled={enTrainDeSauvegarder}
+                value={rechercheCaisseInput}
+                onChange={(e) => setRechercheCaisseInput(e.target.value.toUpperCase())}
+                placeholder="RECHERCHER UNE CAISSE..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
+              />
+              <div className="space-y-1 pt-1">
+                {caissesFiltrees.length === 0 ? (
+                  <p className="text-center text-slate-400 py-6 text-[10px]">Aucune caisse trouvée.</p>
+                ) : (
+                  caissesFiltrees.map((c) => {
+                    const nomC = c.nom_caisse || 'CAISSE';
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => !enTrainDeSauvegarder && selectionnerCaisseModale(c)}
+                        className="p-2.5 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded-xl flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <div>
+                          <p className="font-extrabold uppercase text-slate-900 text-[11px]">{nomC}</p>
+                        </div>
+                        <span className="font-bold text-orange-600 text-[10px] bg-orange-100 px-2 py-0.5 rounded-lg">Sélectionner</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE SÉLECTION DÉPÔT */}
+      {afficherModalDepot && (
+        <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-3">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-200">
+            <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px] font-bold">
+              <span>SÉLECTIONNER UN DÉPÔT</span>
+              <button onClick={() => setAfficherModalDepot(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div className="p-3 space-y-2 overflow-y-auto">
+              <input
+                type="text"
+                autoFocus
+                disabled={enTrainDeSauvegarder}
+                value={rechercheDepotInput}
+                onChange={(e) => setRechercheDepotInput(e.target.value.toUpperCase())}
+                placeholder="RECHERCHER UN DÉPÔT..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
+              />
+              <div className="space-y-1 pt-1">
+                {depotsFiltres.length === 0 ? (
+                  <p className="text-center text-slate-400 py-6 text-[10px]">Aucun dépôt trouvé.</p>
+                ) : (
+                  depotsFiltres.map((d) => {
+                    const idD = d.id || d.ID;
+                    const nomD = d.nom_depot || d.designation || 'DÉPÔT';
+                    return (
+                      <div
+                        key={idD}
+                        onClick={() => !enTrainDeSauvegarder && selectionnerDepotModale(d)}
+                        className="p-2.5 bg-slate-50 hover:bg-orange-50 border border-slate-200 rounded-xl flex justify-between items-center cursor-pointer transition shadow-2xs"
+                      >
+                        <div>
+                          <p className="font-extrabold uppercase text-slate-900 text-[11px]">{nomD}</p>
+                          <p className="text-[9.5px] text-slate-600 font-mono font-bold">{d.adresse_localisation || ''}</p>
+                        </div>
+                        <span className="font-bold text-orange-600 text-[10px] bg-orange-100 px-2 py-0.5 rounded-lg">Sélectionner</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {afficherModalClient && (
         <div className="fixed inset-x-0 top-4 z-50 flex justify-center px-3">
           <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-200">
@@ -2238,7 +2402,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 >
                   <option value="">-- Sélectionner une caisse --</option>
                   {caissesList.map(c => (
-                    <option key={c.id} value={c.id}>{c.code_caisse || 'C01'} - {c.nom_caisse}</option>
+                    <option key={c.id} value={c.id}>{c.nom_caisse}</option>
                   ))}
                 </select>
               </div>
@@ -2309,7 +2473,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* BOÎTE DE DIALOGUE SUCCÈS TICKET & CHOIX IMPRESSION */}
       {afficherModalSuccesTicket && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">

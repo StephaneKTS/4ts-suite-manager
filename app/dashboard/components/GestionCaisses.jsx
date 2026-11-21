@@ -14,11 +14,22 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   // Pagination / Limite d'affichage pour fluidifier le mobile
   const [limiteCaisses, setLimiteCaisses] = useState(20);
 
-  const [afficherForm, setAfficherForm] = useState(false);
+  // Gestion des modales
+  const [modalFormOuverte, setModalFormOuverte] = useState(false);
+  const [modalConfirmationOuverte, setModalConfirmationOuverte] = useState(false);
+  const [modalNatureOuverte, setModalNatureOuverte] = useState(false);
+  const [modalHistoriqueOuverte, setModalHistoriqueOuverte] = useState(false);
+
   const [codeCaisse, setCodeCaisse] = useState('');
   const [nomCaisse, setNomCaisse] = useState('');
   const [natureCaisse, setNatureCaisse] = useState('FACTURATION');
+  const [estDefautCaisse, setEstDefautCaisse] = useState(false);
   const [caisseEnEdition, setCaisseEnEdition] = useState(null);
+  
+  // État pour l'historique et les interrogations de la caisse sélectionnée
+  const [caisseSelectionneeHistorique, setCaisseSelectionneeHistorique] = useState(null);
+  const [historiqueOperations, setHistoriqueOperations] = useState([]);
+  const [chargementHistorique, setChargementHistorique] = useState(false);
 
   // États initialisés vides pour éviter les faux droits par défaut au démarrage
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
@@ -76,25 +87,37 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
   }, [entrepriseId, moduleActuel]);
 
   const chargerCaisses = async () => {
-    // 1. CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL DU MODULE ACTIF
-    const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses);
-    if (caissesLocales && caissesLocales.length > 0) {
-      setCaisses(caissesLocales);
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
+    setLoading(true);
 
     try {
-      // 2. RÉCUPÉRATION SUPABASE STRICTEMENT ISOLÉE PAR MODULE[cite: 31]
+      // Filtrage STRICTEMENT isolé par entreprise et par module
       const { data, error } = await supabase
         .from('caisses')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel) // ⬅️ Isolation stricte par module actif pour éviter les fuites Boutique/Livraison
+        .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Si la colonne n'existe pas encore en base, on charge sans bloquer
+        const resFallback = await supabase
+          .from('caisses')
+          .select('id, id_entreprise, module, code_caisse, nom_caisse, nature, created_at')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .order('created_at', { ascending: false });
+        
+        if (resFallback.data) {
+          const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses) || [];
+          const fusion = resFallback.data.map(c => {
+            const trouveLocal = caissesLocales.find(l => l.id === c.id);
+            return { ...c, est_defaut: trouveLocal ? trouveLocal.est_defaut : false };
+          });
+          setCaisses(fusion);
+        }
+        setLoading(false);
+        return;
+      }
 
       if (data) {
         setCaisses(data);
@@ -102,7 +125,10 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       }
     } catch (err) {
       console.error('Erreur chargement caisses :', err.message);
-      if (!caissesLocales || caissesLocales.length === 0) {
+      const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses);
+      if (caissesLocales && caissesLocales.length > 0) {
+        setCaisses(caissesLocales);
+      } else {
         setMsg({ type: 'error', text: 'Erreur lors du chargement des caisses.' });
       }
     } finally {
@@ -119,7 +145,8 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     setCodeCaisse('');
     setNomCaisse('');
     setNatureCaisse(moduleActuel === 'LIVRAISON' ? 'CAISSE ENTREPRISE' : 'FACTURATION');
-    setAfficherForm(true);
+    setEstDefautCaisse(false);
+    setModalFormOuverte(true);
     setMsg({ type: '', text: '' });
   };
 
@@ -132,20 +159,56 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
     setCodeCaisse(caisse.code_caisse || '');
     setNomCaisse(caisse.nom_caisse || '');
     setNatureCaisse(caisse.nature || (moduleActuel === 'LIVRAISON' ? 'CAISSE ENTREPRISE' : 'FACTURATION'));
-    setAfficherForm(true);
+    
+    // 🔍 Récupération fiable de l'état par défaut (depuis l'objet caisse ou la mémoire locale)
+    const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses) || [];
+    const caisseLocale = caissesLocales.find(l => l.id === caisse.id);
+    const estDefautValeur = Boolean(caisse.est_defaut || caisse.par_defaut || caisseLocale?.est_defaut);
+    
+    setEstDefautCaisse(estDefautValeur);
+    setModalFormOuverte(true);
     setMsg({ type: '', text: '' });
   };
 
-  const annulerForm = () => {
+  const ouvrirHistoriqueCaisse = async (caisse) => {
+    setCaisseSelectionneeHistorique(caisse);
+    setModalHistoriqueOuverte(true);
+    setChargementHistorique(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('journal_caisse')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('id_caisse', caisse.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        setHistoriqueOperations([]);
+      } else {
+        setHistoriqueOperations(data || []);
+      }
+    } catch (err) {
+      console.warn("Impossible de charger l'historique direct :", err.message);
+      setHistoriqueOperations([]);
+    } finally {
+      setChargementHistorique(false);
+    }
+  };
+
+  const fermerModalForm = () => {
     if (enTrainDeSauvegarder) return;
     setCaisseEnEdition(null);
     setCodeCaisse('');
     setNomCaisse('');
     setNatureCaisse(moduleActuel === 'LIVRAISON' ? 'CAISSE ENTREPRISE' : 'FACTURATION');
-    setAfficherForm(false);
+    setEstDefautCaisse(false);
+    setModalFormOuverte(false);
+    setModalConfirmationOuverte(false);
+    setModalNatureOuverte(false);
   };
 
-  const enregistrerCaisse = async (e) => {
+  const initierEnregistrement = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
@@ -163,11 +226,17 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
-    const codeSaisi = codeCaisse.trim().toUpperCase();
-    const nomSaisi = nomCaisse.trim().toUpperCase();
+    setModalFormOuverte(false);
+    setModalConfirmationOuverte(true);
+  };
 
+  const confirmerEtEnregistrerCaisse = async () => {
+    if (enTrainDeSauvegarder) return;
     setEnTrainDeSauvegarder(true);
     setMsg({ type: '', text: '' });
+
+    const codeSaisi = codeCaisse.trim().toUpperCase();
+    const nomSaisi = nomCaisse.trim().toUpperCase();
 
     try {
       let payload = {
@@ -176,46 +245,70 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         code_caisse: codeSaisi,
         nom_caisse: nomSaisi,
         nature: natureCaisse,
+        est_defaut: estDefautCaisse,
       };
 
       if (caisseEnEdition) {
         payload.id = caisseEnEdition.id;
-        const { error } = await supabase
+        
+        // Tentative d'update avec est_defaut
+        let { error } = await supabase
           .from('caisses')
           .update(payload)
           .eq('id', caisseEnEdition.id);
 
+        // Si la colonne n'existe pas encore dans Supabase, on enlève est_defaut pour que la mise à jour passe quand même
+        if (error && error.code === 'PGRST204') {
+          delete payload.est_defaut;
+          const resRetry = await supabase.from('caisses').update(payload).eq('id', caisseEnEdition.id);
+          error = resRetry.error;
+        }
+
         if (error) throw error;
         
-        setCaisses(prev => prev.map(c => c.id === caisseEnEdition.id ? { ...c, ...payload } : c));
         setMsg({ type: 'success', text: '✅ Caisse mise à jour avec succès !' });
       } else {
-        const { data, error } = await supabase
+        let { error } = await supabase
           .from('caisses')
-          .insert([payload])
-          .select()
-          .single();
+          .insert([payload]);
+
+        if (error && error.code === 'PGRST204') {
+          delete payload.est_defaut;
+          const resRetry = await supabase.from('caisses').insert([payload]);
+          error = resRetry.error;
+        }
 
         if (error) throw error;
 
-        if (data) {
-          setCaisses(prev => [data, ...prev.filter(c => c.id !== data.id)]);
-        }
         setMsg({ type: 'success', text: '✅ Nouvelle caisse enregistrée avec succès !' });
       }
 
-      localStorage.removeItem(cleCacheCaisses);
+      // Mise à jour de la liste locale et du cache en mémoire pour refléter instantanément le statut par défaut
+      const caissesActuelles = [...caisses];
+      const caisseIdCible = caisseEnEdition ? caisseEnEdition.id : null;
+      
+      const caissesMisesAJour = caissesActuelles.map(c => {
+        const estCelleCI = caisseIdCible ? c.id === caisseIdCible : c.code_caisse === codeSaisi;
+        return {
+          ...c,
+          est_defaut: estDefautCaisse ? estCelleCI : (estCelleCI ? false : c.est_defaut)
+        };
+      });
 
-      annulerForm();
+      setCaisses(caissesMisesAJour);
+      localSync.sauvegarderDonneesLocales(cleCacheCaisses, caissesMisesAJour);
+
+      fermerModalForm();
       await chargerCaisses();
     } catch (err) {
       if (err.code === '23505') {
-        setMsg({ type: 'error', text: '⛔ Erreur : Ce code caisse ou ce nom existe déjà.' });
+        setMsg({ type: 'error', text: '⛔ Erreur : Ce code caisse existe déjà dans VOTRE entreprise pour ce module.' });
       } else {
         setMsg({ type: 'error', text: 'Erreur : ' + err.message });
       }
     } finally {
       setEnTrainDeSauvegarder(false);
+      setModalConfirmationOuverte(false);
     }
   };
 
@@ -237,11 +330,9 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
 
       if (error) throw error;
 
-      setCaisses(prev => prev.filter(c => c.id !== caisseEnEdition.id));
       localStorage.removeItem(cleCacheCaisses);
-      
       setMsg({ type: 'success', text: 'Caisse supprimée avec succès.' });
-      annulerForm();
+      fermerModalForm();
       await chargerCaisses();
     } catch (err) {
       setMsg({ type: 'error', text: 'Erreur suppression : ' + err.message });
@@ -273,23 +364,11 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={ouvrirFormulaireNouveau}
-              className="px-2.5 py-1 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white"
+              className="px-3 py-1.5 rounded-lg font-black text-[10px] transition shadow-2xs bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white cursor-pointer"
             >
               ＋ Nouveau
             </button>
           )}
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => { if (!enTrainDeSauvegarder) { setAfficherForm(false); setCaisseEnEdition(null); } }}
-            className={`px-2.5 py-1 rounded-lg font-black text-[10px] transition border shadow-2xs ${
-              !afficherForm 
-                ? 'bg-slate-900 text-white border-slate-900' 
-                : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            📋 Liste
-          </button>
         </div>
       </div>
 
@@ -303,175 +382,361 @@ export default function GestionCaisses({ entrepriseId = '4TS-TEST' }) {
         </div>
       )}
 
-      {afficherForm && permissions.peutCreer ? (
-        <form onSubmit={enregistrerCaisse} className="bg-white p-3 rounded-xl border border-orange-500/50 shadow-sm space-y-2.5">
-          <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-            <h3 className="font-extrabold text-slate-900 text-[11px] uppercase">
-              {caisseEnEdition ? `✏️ Modifier la Caisse [${moduleActuel}]` : `🏧 Nouvelle Caisse [${moduleActuel}]`}
-            </h3>
-            <button
-              type="button"
-              disabled={enTrainDeSauvegarder}
-              onClick={annulerForm}
-              className="text-slate-400 hover:text-slate-700 font-black text-xs px-1"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2">
-            <div>
-              <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter mb-0.5">Code Caisse (ex: C01)</label>
-              <input
-                type="text"
-                value={codeCaisse}
-                onChange={(e) => setCodeCaisse(e.target.value.toUpperCase())}
-                placeholder="C01"
-                required
-                disabled={!!caisseEnEdition || enTrainDeSauvegarder}
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-mono font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter mb-0.5">Nom de la Caisse</label>
-              <input
-                type="text"
-                value={nomCaisse}
-                onChange={(e) => setNomCaisse(e.target.value.toUpperCase())}
-                placeholder="CAISSE PRINCIPALE"
-                required
-                disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[8px] font-extrabold text-slate-400 uppercase tracking-tighter mb-0.5">Nature de la Caisse</label>
-              <select
-                value={natureCaisse}
-                onChange={(e) => setNatureCaisse(e.target.value)}
-                disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
-                className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 font-black text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
-              >
-                {moduleActuel === 'LIVRAISON' ? (
-                  <>
-                    <option value="CAISSE ENTREPRISE">CAISSE ENTREPRISE</option>
-                    <option value="BANQUE">BANQUE</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="FACTURATION">FACTURATION</option>
-                    <option value="PRINCIPALE">PRINCIPALE</option>
-                  </>
-                )}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-            {caisseEnEdition && permissions.peutSupprimer ? (
+      <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+        {loading && caisses.length === 0 ? (
+          <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des caisses...</p>
+        ) : caisses.length === 0 ? (
+          <div className="text-center py-6 space-y-2">
+            <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée pour le module {moduleActuel}.</p>
+            {permissions.peutCreer && (
               <button
                 type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={supprimerCaisse}
-                className="bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-bold px-3 py-1 rounded text-[10px] transition shadow-xs"
+                onClick={ouvrirFormulaireNouveau}
+                className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1 rounded text-[10px]"
               >
-                {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
+                ＋ Déclarer une caisse
               </button>
-            ) : <div />}
-
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={annulerForm}
-                className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold px-2.5 py-1 rounded text-[10px] transition"
-              >
-                Annuler
-              </button>
-              {((caisseEnEdition && permissions.peutModifier) || (!caisseEnEdition && permissions.peutCreer)) && (
-                <button
-                  type="submit"
-                  disabled={enTrainDeSauvegarder}
-                  className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold px-3 py-1 rounded text-[10px] shadow-2xs transition flex items-center gap-1"
-                >
-                  {enTrainDeSauvegarder ? 'Enregistrement...' : (caisseEnEdition ? 'Mettre à jour' : 'Enregistrer')}
-                </button>
-              )}
-            </div>
+            )}
           </div>
-        </form>
-      ) : (
-        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-          {loading && caisses.length === 0 ? (
-            <p className="text-slate-400 text-center py-6 text-[10px]">Chargement des caisses...</p>
-          ) : caisses.length === 0 ? (
-            <div className="text-center py-6 space-y-2">
-              <p className="text-slate-400 font-bold text-[10px]">Aucune caisse enregistrée pour le module {moduleActuel}.</p>
-              {permissions.peutCreer && (
-                <button
-                  type="button"
-                  onClick={ouvrirFormulaireNouveau}
-                  className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-3 py-1 rounded text-[10px]"
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              {caissesAffichees.map((c) => (
+                <div
+                  key={c.id}
+                  className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 transition flex flex-col justify-between shadow-2xs group hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer"
                 >
-                  ＋ Déclarer une caisse
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                {caissesAffichees.map((c) => (
-                  <div
-                    key={c.id}
-                    onClick={() => permissions.peutModifier && ouvrirEdition(c)}
-                    className={`p-2.5 rounded-lg border border-slate-200 bg-slate-50 transition flex flex-col justify-between shadow-2xs group ${
-                      permissions.peutModifier ? 'hover:bg-orange-50/60 hover:border-orange-300 cursor-pointer' : 'cursor-default'
-                    }`}
-                  >
-                    <div className="space-y-1">
-                      <div>
-                        <span className={`inline-block text-[8px] px-1.5 py-0.5 rounded font-black border ${
-                          c.nature === 'PRINCIPALE' || c.nature === 'CAISSE ENTREPRISE'
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                            : 'bg-blue-100 text-blue-800 border-blue-200'
-                        }`}>
-                          {c.nature}
+                  <div className="space-y-1" onClick={() => ouvrirHistoriqueCaisse(c)}>
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-block text-[8px] px-1.5 py-0.5 rounded font-black border ${
+                        c.nature === 'PRINCIPALE' || c.nature === 'CAISSE ENTREPRISE'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          : 'bg-blue-100 text-blue-800 border-blue-200'
+                      }`}>
+                        {c.nature}
+                      </span>
+                      {c.est_defaut && (
+                        <span className="inline-block text-[8px] px-1.5 py-0.5 rounded font-black bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                          ★ DÉFAUT
                         </span>
-                      </div>
+                      )}
+                    </div>
 
-                      <span className="font-mono font-black text-orange-600 text-xs group-hover:underline block">
+                    <div className="flex justify-between items-center pt-1">
+                      <span className="font-mono font-black text-orange-600 text-xs group-hover:underline">
                         {c.code_caisse}
                       </span>
-                      
-                      <p className="font-bold text-[10px] text-slate-900 leading-tight truncate">
-                        {c.nom_caisse}
-                      </p>
-                    </div>
-
-                    <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-end">
-                      <span className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600">
-                        {permissions.peutModifier ? '✏️ Modifier' : '👁️ Consulter'}
+                      <span className="font-mono text-[7px] text-slate-400 bg-slate-200 px-1 py-0.5 rounded" title="ID Unique Interne Supabase">
+                        ID: {c.id.slice(0, 8)}...
                       </span>
                     </div>
+                    
+                    <p className="font-bold text-[10px] text-slate-900 leading-tight truncate">
+                      {c.nom_caisse}
+                    </p>
                   </div>
-                ))}
-              </div>
 
-              {limiteCaisses < caisses.length && (
-                <div className="text-center pt-1 pb-1">
+                  <div className="mt-2 pt-1 border-t border-slate-200/60 flex justify-between items-center">
+                    <button 
+                      onClick={() => ouvrirHistoriqueCaisse(c)}
+                      className="text-[8px] font-extrabold text-blue-600 hover:underline cursor-pointer"
+                    >
+                      📊 Historique / Opérations
+                    </button>
+                    {permissions.peutModifier && (
+                      <span 
+                        onClick={() => ouvrirEdition(c)}
+                        className="text-[8px] font-bold text-slate-400 group-hover:text-orange-600 cursor-pointer"
+                      >
+                        ✏️ Modifier
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {limiteCaisses < caisses.length && (
+              <div className="text-center pt-1 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setLimiteCaisses(prev => prev + 20)}
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                >
+                  📥 Charger 20 caisses de plus ({caisses.length - limiteCaisses} restantes)
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* MODALE DE CRÉATION / MODIFICATION */}
+      {modalFormOuverte && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-3 animate-fadeIn">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 p-4 space-y-3">
+            
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="font-extrabold text-slate-900 text-xs uppercase flex items-center gap-1.5">
+                {caisseEnEdition ? `✏️ Modifier la Caisse [${moduleActuel}]` : `🏧 Nouvelle Caisse [${moduleActuel}]`}
+              </h3>
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={fermerModalForm}
+                className="text-slate-400 hover:text-slate-700 font-black text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={initierEnregistrement} className="space-y-3">
+              
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+                <div>
+                  <label className="block text-[8px] font-extrabold text-slate-500 uppercase tracking-tighter mb-1">Code Caisse (ex: CP)</label>
+                  <input
+                    type="text"
+                    value={codeCaisse}
+                    onChange={(e) => setCodeCaisse(e.target.value.toUpperCase())}
+                    placeholder="CP"
+                    required
+                    disabled={!!caisseEnEdition || enTrainDeSauvegarder}
+                    className="w-full bg-slate-50 border border-slate-300 rounded px-2 py-1.5 font-mono font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:bg-slate-100 disabled:text-slate-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[8px] font-extrabold text-slate-500 uppercase tracking-tighter mb-1">Nom Caisse</label>
+                  <input
+                    type="text"
+                    value={nomCaisse}
+                    onChange={(e) => setNomCaisse(e.target.value.toUpperCase())}
+                    placeholder="CAISSE PRINCIPALE"
+                    required
+                    disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
+                    className="w-full bg-slate-50 border border-slate-300 rounded px-2 py-1.5 font-bold uppercase text-[10px] text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[8px] font-extrabold text-slate-500 uppercase tracking-tighter mb-1">Nature</label>
                   <button
                     type="button"
-                    onClick={() => setLimiteCaisses(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                    onClick={() => setModalNatureOuverte(true)}
+                    disabled={(caisseEnEdition && !permissions.peutModifier) || enTrainDeSauvegarder}
+                    className="w-full bg-slate-50 border border-slate-300 rounded px-2 py-1.5 font-black text-[10px] text-slate-900 flex justify-between items-center cursor-pointer hover:bg-slate-100"
                   >
-                    📥 Charger 20 caisses de plus ({caisses.length - limiteCaisses} restantes)
+                    <span>{natureCaisse}</span>
+                    <span className="text-slate-400">▼</span>
                   </button>
                 </div>
+
+                <div className="flex items-center h-[31px] px-2 bg-slate-50 border border-slate-300 rounded">
+                  <label className="flex items-center gap-1.5 cursor-pointer w-full">
+                    <input
+                      type="checkbox"
+                      checked={estDefautCaisse}
+                      onChange={(e) => setEstDefautCaisse(e.target.checked)}
+                      disabled={enTrainDeSauvegarder}
+                      className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer"
+                    />
+                    <span className="font-extrabold text-[9px] text-slate-800 uppercase">Par défaut</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                {caisseEnEdition && permissions.peutSupprimer ? (
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={supprimerCaisse}
+                    className="bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-bold px-3 py-1.5 rounded text-[10px] transition shadow-xs cursor-pointer"
+                  >
+                    {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
+                  </button>
+                ) : <div />}
+
+                <div className="flex gap-1.5 ml-auto">
+                  <button
+                    type="button"
+                    disabled={enTrainDeSauvegarder}
+                    onClick={fermerModalForm}
+                    className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold px-3 py-1.5 rounded text-[10px] transition cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  {((caisseEnEdition && permissions.peutModifier) || (!caisseEnEdition && permissions.peutCreer)) && (
+                    <button
+                      type="submit"
+                      disabled={enTrainDeSauvegarder}
+                      className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white font-bold px-3.5 py-1.5 rounded text-[10px] shadow-2xs transition flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {enTrainDeSauvegarder ? 'Enregistrement...' : (caisseEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE SÉLECTION DE LA NATURE */}
+      {modalNatureOuverte && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-3 animate-fadeIn">
+          <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl border border-slate-200 p-4 space-y-3 text-center">
+            <h4 className="font-black text-xs uppercase text-slate-900 border-b pb-2">
+              Sélectionner la Nature
+            </h4>
+            
+            <div className="space-y-2">
+              {moduleActuel === 'LIVRAISON' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setNatureCaisse('CAISSE ENTREPRISE'); setModalNatureOuverte(false); }}
+                    className="w-full py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-slate-100 hover:bg-orange-600 hover:text-white transition cursor-pointer"
+                  >
+                    CAISSE ENTREPRISE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setNatureCaisse('BANQUE'); setModalNatureOuverte(false); }}
+                    className="w-full py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-slate-100 hover:bg-orange-600 hover:text-white transition cursor-pointer"
+                  >
+                    BANQUE
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setNatureCaisse('FACTURATION'); setModalNatureOuverte(false); }}
+                    className="w-full py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-slate-100 hover:bg-orange-600 hover:text-white transition cursor-pointer"
+                  >
+                    FACTURATION
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setNatureCaisse('PRINCIPALE'); setModalNatureOuverte(false); }}
+                    className="w-full py-2.5 px-3 rounded-xl font-black text-xs uppercase bg-slate-100 hover:bg-orange-600 hover:text-white transition cursor-pointer"
+                  >
+                    PRINCIPALE
+                  </button>
+                </>
               )}
-            </>
-          )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setModalNatureOuverte(false)}
+              className="mt-2 text-slate-500 font-bold text-[10px] uppercase hover:underline cursor-pointer"
+            >
+              Fermer ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE D'HISTORIQUE ET D'INTERROGATION DES OPÉRATIONS */}
+      {modalHistoriqueOuverte && caisseSelectionneeHistorique && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 p-4 space-y-3">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="font-extrabold text-xs uppercase text-slate-900 flex items-center gap-1.5">
+                  📊 Historique & Opérations : [{caisseSelectionneeHistorique.code_caisse}] {caisseSelectionneeHistorique.nom_caisse}
+                </h3>
+                <p className="text-[8px] text-slate-500">ID Unique : {caisseSelectionneeHistorique.id}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalHistoriqueOuverte(false)}
+                className="text-slate-400 hover:text-slate-700 font-black text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {chargementHistorique ? (
+                <p className="text-center text-slate-400 py-6 text-[10px]">Chargement des opérations...</p>
+              ) : historiqueOperations.length === 0 ? (
+                <div className="text-center py-8 space-y-1 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-slate-600 font-bold text-[10px]">Aucune opération enregistrée pour le moment sur cette caisse.</p>
+                  <p className="text-slate-400 text-[9px]">Toutes les transactions, encaissements et décaissements futurs s'afficheront ici.</p>
+                </div>
+              ) : (
+                historiqueOperations.map((op, index) => (
+                  <div key={op.id || index} className="p-2 rounded border border-slate-200 bg-slate-50 flex justify-between items-center text-[10px]">
+                    <div>
+                      <p className="font-bold text-slate-900">{op.libelle || op.type_operation || 'Opération caisse'}</p>
+                      <span className="text-[8px] text-slate-400">{new Date(op.created_at).toLocaleString()}</span>
+                    </div>
+                    <span className={`font-mono font-black ${op.montant >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {op.montant} FCFA
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setModalHistoriqueOuverte(false)}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-1.5 rounded-xl text-[10px] cursor-pointer shadow-sm"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE CONFIRMATION */}
+      {modalConfirmationOuverte && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 p-4 space-y-3 text-center">
+            <div className="space-y-1">
+              <span className="text-2xl">⚠️</span>
+              <h4 className="font-black text-xs uppercase text-slate-900">
+                Confirmation requise
+              </h4>
+              <p className="text-[10px] font-semibold text-slate-600 leading-relaxed pt-1">
+                Voulez-vous vraiment enregistrer la caisse <strong className="text-orange-600">[{codeCaisse}] {nomCaisse}</strong> ?
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => { setModalConfirmationOuverte(false); setModalFormOuverte(true); }}
+                className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-slate-200 hover:bg-slate-300 text-slate-700 transition cursor-pointer disabled:opacity-50"
+              >
+                Annuler ✕
+              </button>
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={confirmerEtEnregistrerCaisse}
+                className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white shadow-md transition cursor-pointer flex items-center justify-center gap-1"
+              >
+                {enTrainDeSauvegarder ? (
+                  <>
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full"></span>
+                    <span>Patientez...</span>
+                  </>
+                ) : (
+                  'Confirmer ✓'
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

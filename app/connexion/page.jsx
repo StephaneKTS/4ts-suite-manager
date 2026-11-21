@@ -144,8 +144,12 @@ export default function ConnexionEntreprise() {
             entrepriseIdCible = utilisateurTrouve.id_entreprise;
             nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
 
-            // RECUPÉRATION STRICTE DES PERMISSIONS DEPUIS LE RÔLE ASSOCIÉ
-            if (utilisateurTrouve.id_role) {
+            // 🎯 CORRECTION DÉFINITIVE : PRIORITÉ AUX PERMISSIONS DIRECTES DE L'UTILISATEUR
+            if (utilisateurTrouve.permissions && Object.keys(utilisateurTrouve.permissions).length > 0) {
+              matrixPermissions = utilisateurTrouve.permissions;
+            } 
+            else if (utilisateurTrouve.id_role) {
+              // Fallback sur le rôle si les permissions directes sont vides
               const { data: roleData, error: errRole } = await supabase
                 .from('roles')
                 .select('permissions, nom_role')
@@ -162,9 +166,6 @@ export default function ConnexionEntreprise() {
                   matrixPermissions = { _aucun_acces: true };
                 }
               }
-            } else if (utilisateurTrouve.permissions) {
-              // Fallback si les permissions sont stockées directement sur l'utilisateur
-              matrixPermissions = utilisateurTrouve.permissions;
             } else {
               matrixPermissions = { _aucun_acces: true };
             }

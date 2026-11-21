@@ -43,6 +43,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const [afficherMotDePasse, setAfficherMotDePasse] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
+  // 🗂️ État pour gérer l'onglet actif dans la fiche utilisateur ('infos', 'modules', 'permissions')
+  const [ongletFicheActif, setOngletFicheActif] = useState('infos');
+
   const [afficherModalePermissions, setAfficherModalePermissions] = useState(false);
   const [etatModale, setEtatModale] = useState({
     ouverte: false,
@@ -57,7 +60,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const [triCol, setTriCol] = useState('nom_complet');
   const [triOrdre, setTriOrdre] = useState('asc');
 
-  // 🔄 LISTE UNIFIÉE IDENTIQUE À GestionRoles.jsx
   const modulesBoutique = [
     { id: 'commandes_clients_qr', nom: '📱 Commandes QR Code' },
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
@@ -294,10 +296,10 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
-  // 🔄 SYNCHRONISATION AUTOMATIQUE CORRIGÉE (.on() AVANT .subscribe())[cite: 61]
   useEffect(() => {
+    const channelId = `sync-roles-${entrepriseId}-${moduleActuel}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const channelRoles = supabase
-      .channel(`sync-roles-${entrepriseId}-${moduleActuel}`)
+      .channel(channelId)
       .on(
         'postgres_changes',
         {
@@ -381,7 +383,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     }));
   };
 
-  // 🎯 CONSTRUCTION DES PERMISSIONS EN FUSIONNANT LE RÔLE ET LES DROITS SPÉCIFIQUES
   const construirePermissionsFusionnees = (roleObj, permsPerso = {}) => {
     const base = initialiserPermissionsDefaut();
     const rolePerms = roleObj?.permissions || {};
@@ -495,6 +496,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     const nomRoleFinal = selectedRoleObj ? selectedRoleObj.nom_role.trim().toUpperCase() : (nouveauUser.nom_role || 'EMPLOYE').trim().toUpperCase();
     const isRoleAdmin = nomRoleFinal === 'ADMINISTRATEUR';
 
+    // 🔒 CORRECTION DÉFINITIVE : Construction fusionnée garantie des permissions effectives
+    const permissionsEffectives = isRoleAdmin 
+      ? { _plein_acces: true } 
+      : construirePermissionsFusionnees(selectedRoleObj, nouveauUser.permissions);
+
     setEnTrainDeSauvegarder(true);
     try {
       let emplacementIdFinal = nouveauUser.id_emplacement;
@@ -545,7 +551,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
-        permissions: isRoleAdmin ? { _plein_acces: true } : nouveauUser.permissions
+        permissions: permissionsEffectives // 👈 Sauvegarde directe et garantie dans la table utilisateurs
       };
 
       if (userEnEdition) {
@@ -620,6 +626,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
   const ouvrirEdition = (user) => {
     setUserEnEdition(user);
+    setOngletFicheActif('infos'); // Réinitialiser sur le premier onglet à l'ouverture
     let telLocal = user.telephone || '';
     const paysTrouve = LISTE_PAYS.find(p => user.telephone && user.telephone.startsWith(p.indicatif)) || LISTE_PAYS[0];
     if (user.telephone && user.telephone.startsWith(paysTrouve.indicatif)) {
@@ -671,6 +678,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const annulerForm = () => {
     if (enTrainDeSauvegarder) return;
     setUserEnEdition(null);
+    setOngletFicheActif('infos');
     setNouveauUser({
       nom_complet: '', prenom: '', date_naissance: '', lieu_naissance: '', statut_matrimonial: 'CELIBATAIRE',
       nombre_enfants: 0, lieu_residence: '', numero_cni: '', type_collaborateur: 'EMPLOYE', categorie_permis: '',
@@ -833,6 +841,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                 permissions: initialiserPermissionsDefaut()
               });
               setUserEnEdition(null);
+              setOngletFicheActif('infos');
               setAfficherForm(true);
             }
           }}
@@ -861,13 +870,13 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         </button>
       </div>
 
-      {/* FORMULAIRE D'EDITION / CREATION */}
+      {/* FORMULAIRE D'EDITION / CREATION AVEC NAVIGATION PAR ONGLETS */}
       {afficherForm && (
         <div className={`border p-3.5 rounded-xl space-y-3.5 shadow-md max-h-[80vh] overflow-y-auto pr-2 pb-24 ${isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
           <div className="flex justify-between items-center border-b pb-2 border-slate-700/20">
             <div>
               <h4 className={`font-black uppercase text-xs ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
-                {userEnEdition ? '✏️ Fiche du collaborateur & Permissions' : '➕ Nouveau collaborateur & Permissions'}
+                {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
               </h4>
               {userEnEdition && userEnEdition.id && (
                 <p className="text-[10px] font-mono font-bold text-amber-500 mt-0.5">
@@ -878,162 +887,245 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
             <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-white font-bold text-xs p-0.5 cursor-pointer">✖</button>
           </div>
 
+          {/* 🎛️ BARRE DE NAVIGATION ÉPURÉE DE LA FICHE UTILISATEUR */}
+          <div className={`grid grid-cols-3 gap-1.5 p-1 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+            <button
+              type="button"
+              onClick={() => setOngletFicheActif('infos')}
+              className={`py-2 px-2 rounded-lg font-black text-[11px] transition text-center cursor-pointer ${
+                ongletFicheActif === 'infos'
+                  ? (isDarkMode ? 'bg-slate-800 text-white shadow-xs border border-slate-700' : 'bg-[#0a1931] text-white shadow-xs')
+                  : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+              }`}
+            >
+              👤 Informations
+            </button>
+            <button
+              type="button"
+              onClick={() => setOngletFicheActif('modules')}
+              className={`py-2 px-2 rounded-lg font-black text-[11px] transition text-center cursor-pointer ${
+                ongletFicheActif === 'modules'
+                  ? (isDarkMode ? 'bg-slate-800 text-white shadow-xs border border-slate-700' : 'bg-[#0a1931] text-white shadow-xs')
+                  : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+              }`}
+            >
+              💳 Modules ({nouveauUser.modules_cibles.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setOngletFicheActif('permissions')}
+              className={`py-2 px-2 rounded-lg font-black text-[11px] transition text-center cursor-pointer ${
+                ongletFicheActif === 'permissions'
+                  ? (isDarkMode ? 'bg-slate-800 text-white shadow-xs border border-slate-700' : 'bg-[#0a1931] text-white shadow-xs')
+                  : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+              }`}
+            >
+              🔑 Permissions
+            </button>
+          </div>
+
           <form onSubmit={preparerEnregistrement} className="space-y-3">
-            <div className={`p-3 rounded-xl space-y-1 border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-blue-50/50 border-blue-200 text-[#0a1931]'}`}>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  disabled={enTrainDeSauvegarder}
-                  checked={nouveauUser.acces_application}
-                  onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
-                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                />
-                <span className="font-black text-[11px]">
-                  Accès à l'application (Consomme une licence / Connexion active)
-                </span>
-              </label>
-            </div>
+            
+            {/* 👤 ONGLET 1 : INFORMATIONS PERSONNELLES */}
+            {ongletFicheActif === 'infos' && (
+              <div className="space-y-3 animate-fadeIn">
+                <div className={`p-3 rounded-xl space-y-1 border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-blue-50/50 border-blue-200 text-[#0a1931]'}`}>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={enTrainDeSauvegarder}
+                      checked={nouveauUser.acces_application}
+                      onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
+                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                    />
+                    <span className="font-black text-[11px]">
+                      Accès à l'application (Consomme une licence / Connexion active)
+                    </span>
+                  </label>
+                </div>
 
-            <div className={`p-3 rounded-xl space-y-2 border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-              <span className={`font-black text-[10.5px] uppercase block tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
-                💳 Modules et accès autorisés pour cet employé :
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                {MODULES_DISPONIBLES.map((mod) => {
-                  const estSouscrit = modulesSouscrits.includes(mod.id);
-                  const estCoche = nouveauUser.modules_cibles.includes(mod.id);
+                <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
 
-                  return (
-                    <div 
-                      key={mod.id} 
-                      onClick={() => estSouscrit && basculerModuleCible(mod.id)}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border transition select-none ${
-                        !estSouscrit 
-                          ? (isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-600 opacity-60 cursor-not-allowed' : 'bg-slate-100 border-slate-200 text-slate-400 opacity-70 cursor-not-allowed font-medium') 
-                          : estCoche 
-                            ? (isDarkMode ? 'bg-slate-800 border-slate-700 text-white font-black cursor-pointer shadow-xs' : 'bg-blue-50 border-blue-400 text-[#0a1931] font-black cursor-pointer shadow-xs') 
-                            : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 cursor-pointer hover:bg-slate-800/80 font-medium' : 'bg-white border-slate-200 text-slate-800 cursor-pointer hover:bg-slate-50 font-medium')
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <input
-                          type="checkbox"
-                          disabled={!estSouscrit}
-                          checked={estCoche}
-                          onChange={() => {}}
-                          className="w-4 h-4 accent-amber-500 rounded cursor-pointer disabled:cursor-not-allowed"
-                        />
-                        <span className="text-[11px] truncate">{mod.label}</span>
-                      </div>
-                      {!estSouscrit && <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-600'}`}>Non souscrit</span>}
+                <div className={`flex items-center gap-3 p-3 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <div 
+                    onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
+                    className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
+                  >
+                    {nouveauUser.photo ? (
+                      <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-slate-300 text-lg font-black">📷</span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`font-black text-[10px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>Photo de profil du collaborateur</p>
+                    <p className={`text-[9.5px] font-medium mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Cliquez sur l'icône pour ajouter une photo.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Nom *</label>
+                    <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
+                  </div>
+                  <div>
+                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Prénom</label>
+                    <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Rôle / Fonction ({moduleActuel}) *</label>
+                  <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={changerRoleUtilisateur} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
+                    <option value="">-- Sélectionner un Rôle --</option>
+                    {roles.map((r) => (<option key={r.id} value={String(r.id)}>{r.nom_role}</option>))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Type Collaborateur</label>
+                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
+                    <option value="EMPLOYE">Employé standard</option>
+                    <option value="LIVREUR">Livreur</option>
+                    <option value="CHAUFFEUR">Chauffeur</option>
+                  </select>
+                </div>
+
+                {nouveauUser.acces_application && (
+                  <div>
+                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Mot de Passe de Connexion *</label>
+                    <div className="relative flex items-center">
+                      <input 
+                        type={afficherMotDePasse ? "text" : "password"} 
+                        disabled={enTrainDeSauvegarder}
+                        required={nouveauUser.acces_application} 
+                        value={nouveauUser.mot_de_passe} 
+                        onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
+                        placeholder="••••••••" 
+                        className={`w-full rounded p-2 pr-8 font-mono font-extrabold text-xs shadow-xs ${inputBg}`} 
+                      />
+                      <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2.5 text-slate-400 hover:text-white text-xs cursor-pointer">
+                        {afficherMotDePasse ? '🙈' : '👁️'}
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
-
-            <div className={`flex items-center gap-3 p-3 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-              <div 
-                onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
-                className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
-              >
-                {nouveauUser.photo ? (
-                  <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-slate-300 text-lg font-black">📷</span>
+                  </div>
                 )}
-              </div>
-              <div className="flex-1">
-                <p className={`font-black text-[10px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>Photo de profil du collaborateur</p>
-                <p className={`text-[9.5px] font-medium mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Cliquez sur l'icône pour ajouter une photo.</p>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Nom *</label>
-                <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
-              </div>
-              <div>
-                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Prénom</label>
-                <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
-              </div>
-            </div>
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700/20">
+                  <div>
+                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Pays</label>
+                    <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className={`w-full rounded p-2 font-extrabold text-[11px] shadow-xs ${inputBg}`}>
+                      {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Téléphone ({paysActuelObj.longueur} chiffres)</label>
+                    <div className={`flex items-center rounded overflow-hidden shadow-xs border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                      <span className={`px-2.5 py-2 text-[11px] font-bold border-r shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-800' : 'bg-slate-100 text-[#0a1931] border-slate-200'}`}>{paysActuelObj.indicatif}</span>
+                      <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className={`w-full p-2 font-mono text-[11px] font-extrabold focus:outline-none ${inputBg} border-0`} />
+                    </div>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end pt-1">
-              <div>
-                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Rôle / Fonction ({moduleActuel}) *</label>
-                <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={changerRoleUtilisateur} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
-                  <option value="">-- Sélectionner un Rôle --</option>
-                  {roles.map((r) => (<option key={r.id} value={String(r.id)}>{r.nom_role}</option>))}
-                </select>
-              </div>
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setAfficherModalePermissions(true)}
-                  className={`w-full font-black py-2.5 px-3 rounded-lg text-xs transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer border ${
-                    isDarkMode 
-                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700' 
-                      : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'
-                  }`}
-                >
-                  <span>🔑</span> Configurer Permissions
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Type Collaborateur</label>
-              <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
-                <option value="EMPLOYE">Employé standard</option>
-                <option value="LIVREUR">Livreur</option>
-                <option value="CHAUFFEUR">Chauffeur</option>
-              </select>
-            </div>
-
-            {nouveauUser.acces_application && (
-              <div>
-                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Mot de Passe de Connexion *</label>
-                <div className="relative flex items-center">
-                  <input 
-                    type={afficherMotDePasse ? "text" : "password"} 
-                    disabled={enTrainDeSauvegarder}
-                    required={nouveauUser.acces_application} 
-                    value={nouveauUser.mot_de_passe} 
-                    onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
-                    placeholder="••••••••" 
-                    className={`w-full rounded p-2 pr-8 font-mono font-extrabold text-xs shadow-xs ${inputBg}`} 
-                  />
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2.5 text-slate-400 hover:text-white text-xs cursor-pointer">
-                    {afficherMotDePasse ? '🙈' : '👁️'}
-                  </button>
+                <div>
+                  <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Email (minuscules)</label>
+                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className={`w-full rounded p-2 font-bold lowercase text-[11px] shadow-xs ${inputBg}`} />
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700/20">
-              <div>
-                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Pays</label>
-                <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className={`w-full rounded p-2 font-extrabold text-[11px] shadow-xs ${inputBg}`}>
-                  {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                <div className={`flex items-center rounded overflow-hidden shadow-xs border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-                  <span className={`px-2.5 py-2 text-[11px] font-bold border-r shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-800' : 'bg-slate-100 text-[#0a1931] border-slate-200'}`}>{paysActuelObj.indicatif}</span>
-                  <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className={`w-full p-2 font-mono text-[11px] font-extrabold focus:outline-none ${inputBg} border-0`} />
+            {/* 💳 ONGLET 2 : MODULES AUTORISÉS */}
+            {ongletFicheActif === 'modules' && (
+              <div className="space-y-3 animate-fadeIn">
+                <div className={`p-3.5 rounded-xl space-y-2.5 border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className={`font-black text-[11px] uppercase block tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
+                    💳 Cochez les modules autorisés pour ce collaborateur :
+                  </span>
+                  <div className="grid grid-cols-1 gap-2 pt-1">
+                    {MODULES_DISPONIBLES.map((mod) => {
+                      const estSouscrit = modulesSouscrits.includes(mod.id);
+                      const estCoche = nouveauUser.modules_cibles.includes(mod.id);
+
+                      return (
+                        <div 
+                          key={mod.id} 
+                          onClick={() => estSouscrit && basculerModuleCible(mod.id)}
+                          className={`flex items-center justify-between p-3 rounded-lg border transition select-none ${
+                            !estSouscrit 
+                              ? (isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-600 opacity-60 cursor-not-allowed' : 'bg-slate-100 border-slate-200 text-slate-400 opacity-70 cursor-not-allowed font-medium') 
+                              : estCoche 
+                                ? (isDarkMode ? 'bg-slate-800 border-slate-700 text-white font-black cursor-pointer shadow-xs' : 'bg-blue-50 border-blue-400 text-[#0a1931] font-black cursor-pointer shadow-xs') 
+                                : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 cursor-pointer hover:bg-slate-800/80 font-medium' : 'bg-white border-slate-200 text-slate-800 cursor-pointer hover:bg-slate-50 font-medium')
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <input
+                              type="checkbox"
+                              disabled={!estSouscrit}
+                              checked={estCoche}
+                              onChange={() => {}}
+                              className="w-4 h-4 accent-amber-500 rounded cursor-pointer disabled:cursor-not-allowed"
+                            />
+                            <span className="text-xs truncate">{mod.label}</span>
+                          </div>
+                          {!estSouscrit && <span className={`text-[9px] px-2 py-0.5 rounded font-bold shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-600'}`}>Non souscrit</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            <div>
-              <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Email (minuscules)</label>
-              <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className={`w-full rounded p-2 font-bold lowercase text-[11px] shadow-xs ${inputBg}`} />
-            </div>
+            {/* 🔑 ONGLET 3 : PERMISSIONS SPÉCIFIQUES */}
+            {ongletFicheActif === 'permissions' && (
+              <div className="space-y-3 animate-fadeIn">
+                <div className="flex justify-between items-center">
+                  <span className={`font-black text-[11px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
+                    🔑 Droits & Permissions ({moduleActuel})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAfficherModalePermissions(true)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer border ${
+                      isDarkMode 
+                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700' 
+                        : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'
+                    }`}
+                  >
+                    🛠️ Ouvrir la matrice complète
+                  </button>
+                </div>
+
+                <div className={`overflow-x-auto border rounded-xl shadow-inner max-h-[50vh] ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                  <table className="w-full text-left text-xs">
+                    <thead className={`border-b text-[10px] uppercase font-black sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900'}`}>
+                      <tr>
+                        <th className="p-2.5">Module / Table</th>
+                        <th className="p-2.5 text-center">👁️ Lecture</th>
+                        <th className="p-2.5 text-center">➕ Création</th>
+                        <th className="p-2.5 text-center">✏️ Modif.</th>
+                        <th className="p-2.5 text-center">🗑️ Suppr.</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
+                      {modulesApp.map((m) => {
+                        const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
+                        return (
+                          <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/50' : 'hover:bg-blue-50/50 font-medium'}>
+                            <td className={`p-2.5 font-bold ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>{m.nom}</td>
+                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" /></td>
+                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" /></td>
+                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-4 h-4 accent-blue-500 rounded cursor-pointer" /></td>
+                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-4 h-4 accent-red-500 rounded cursor-pointer" /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             <div className="pt-3 border-t border-slate-700/20 flex justify-between items-center">
               {userEnEdition && (
