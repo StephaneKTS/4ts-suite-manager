@@ -43,7 +43,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const [afficherModalSuccesTicket, setAfficherModalSuccesTicket] = useState(false);
   const [ticketDernierValide, setTicketDernierValide] = useState(null);
 
-  // Nouvelles modales pour les sélecteurs
   const [afficherModalPaiement, setAfficherModalPaiement] = useState(false);
   const [afficherModalReglement, setAfficherModalReglement] = useState(false);
 
@@ -1492,7 +1491,8 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {/* Affichage côte à côte permanent (Side by side) */}
+          <div className="grid grid-cols-2 gap-2">
             
             <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col h-[380px]">
               <div className="flex justify-between items-center mb-2 gap-1">
@@ -1604,7 +1604,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
               <div className="pt-1.5 border-t border-slate-200 space-y-1">
                 
-                {/* Ligne NAP et Mode de Règlement combinés */}
                 <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex items-center justify-between gap-2">
                   <div>
                     <span className="text-[7.5px] font-extrabold uppercase text-slate-500 block leading-none">NAP :</span>
@@ -1699,7 +1698,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   </button>
                 </div>
 
-                {/* Boutons Annuler à l'extrême gauche et Valider à l'extrême droite */}
                 <div className="flex justify-between items-center pt-1 border-t border-slate-100">
                   <button
                     disabled={enTrainDeSauvegarder}
