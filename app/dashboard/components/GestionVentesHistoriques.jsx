@@ -146,11 +146,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
 
-  // Formatage précis : Préserve strictement les numéros de caisse (ex: C01-07) et formate uniquement les commandes QR code longues (ex: 20261122-161633-KTS-130 -> CMD-130)
   const formaterNumeroTicket = (numeroBrut) => {
     if (!numeroBrut) return '-';
     const str = String(numeroBrut).trim();
-    // Si c'est déjà un format de caisse standard (ex: C01-07, C02-12...), on le retourne tel quel
     if (/^[A-Z0-9]+-\d+$/i.test(str) && !str.includes('202') && !str.includes('KTS') && !str.includes('CMD')) {
       return str.toUpperCase();
     }
@@ -1082,6 +1080,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   let totalMargeJournalGlobal = 0;
 
   ventesJournalFiltrees.forEach((v) => {
+    // CORRECTION : Si la commande est servie mais non payée (ex: impayé / reste dû total sans règlement effectif validé en caisse), on n'incorpore pas son montant dans le chiffre d'affaires encaissé du journal.
+    const totalMontantVente = Number(v.total_montant || 0);
+    const montantRegleVente = Number(v.montant_regle ?? totalMontantVente);
+    
+    // Si la commande n'a reçu aucun encaissement effectif (ex: non payée ou crédit pur), on exclut du CA encaissé ou on comptabilise uniquement l'avance versée.
+    if (montantRegleVente <= 0 && v.type_reglement === 'CREDIT') {
+      return; 
+    }
+
     let articlesVente = [];
     if (v.details_articles) {
       if (typeof v.details_articles === 'string') { try { articlesVente = JSON.parse(v.details_articles); } catch (e) {} }
@@ -1094,11 +1101,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       const artObj = articlesStock.find(a => String(a.id_article || a.id) === String(item.id || item.id_article));
       const prixAchatU = Number(item.prix_achat || item.prix_revient || artObj?.Prix_Achat || artObj?.prix_achat || 0);
       
-      const montantTotalVente = qte * prixVenteU;
+      const montantTotalLigne = qte * prixVenteU;
       const montantTotalAchat = qte * prixAchatU;
-      const margeLigne = montantTotalVente - montantTotalAchat;
+      const margeLigne = montantTotalLigne - montantTotalAchat;
 
-      totalVentesJournalGlobal += montantTotalVente;
+      totalVentesJournalGlobal += montantTotalLigne;
       totalMargeJournalGlobal += margeLigne;
 
       lignesJournalDetails.push({
@@ -1109,7 +1116,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         quantite: qte,
         prixAchat: prixAchatU,
         prixVente: prixVenteU,
-        montantTotal: montantTotalVente,
+        montantTotal: montantTotalLigne,
         marge: margeLigne,
         caissier: v.caissier || caissierNomActuel,
         rawDate: v.created_at || ''
@@ -1156,7 +1163,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   });
 
   const totalFactureCloture = ventesClotureFiltrees.reduce((acc, v) => acc + Number(v.total_montant || 0), 0);
-  const totalEncaisseCloture = ventesClotureFiltrees.reduce((acc, v) => acc + Number(v.montant_regle ?? v.total_montant ?? 0), 0);
+  
+  // CORRECTION CLÔTURE : Seul le montant réellement réglé (montant_regle) est pris en compte pour l'attendu en caisse
+  const totalEncaisseCloture = ventesClotureFiltrees.reduce((acc, v) => acc + Number(v.montant_regle ?? 0), 0);
   const montantAttenduCloture = totalEncaisseCloture;
   const montantReelClotureNum = Number(montantReelVerseCloture || 0);
   const ecartCaisseCloture = montantReelClotureNum - montantAttenduCloture;
@@ -1990,7 +1999,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     {ventesAffichees.map((v) => {
                       const nomClientVente = (v.nom_client || (moduleActuel === 'LIVRAISON' ? 'LIVREURS DIVERS' : 'CLIENTS DIVERS')).toUpperCase();
                       const totalMontant = Number(v.total_montant || 0);
-                      const montantRegle = Number(v.montant_regle || totalMontant);
+                      const montantRegle = Number(v.montant_regle ?? totalMontant);
                       const resteDu = Math.max(0, totalMontant - montantRegle);
 
                       return (
@@ -2121,7 +2130,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <tbody className="divide-y divide-slate-100">
                 {lignesJournalDetails.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="p-6 text-center text-slate-400">Aucune vente enregistrée pour ces critères.</td>
+                    <td colSpan="7" className="p-6 text-center text-slate-400">Aucune vente encaissée enregistrée pour ces critères.</td>
                   </tr>
                 ) : (
                   lignesJournalDetails.map((ligne, idx) => (
@@ -2142,7 +2151,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
           <div className="bg-slate-900 text-white p-3 rounded-xl flex justify-between items-center shadow-xs">
             <div className="space-y-0.5">
-              <span className="text-[8.5px] text-slate-400 uppercase font-bold block">TOTAL DES VENTES :</span>
+              <span className="text-[8.5px] text-slate-400 uppercase font-bold block">TOTAL ENCAISSÉ (VRAIES VENTES) :</span>
               <span className="text-xs font-black font-mono text-white">
                 {totalVentesJournalGlobal.toLocaleString('fr-FR')} CFA
               </span>

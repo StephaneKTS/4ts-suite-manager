@@ -451,10 +451,9 @@ export default function EspaceClientBoutique() {
     );
   }
 
-  // ÉCRAN DE VALIDATION : Retrait de toute référence à la date, affichage uniquement du nom et du numéro de commande
   if (valide) {
     return (
-      <div className="w-full min-h-screen bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center">
+      <div className="w-full h-screen bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center overflow-y-auto">
         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-xs">✅</div>
         <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
         
@@ -465,15 +464,27 @@ export default function EspaceClientBoutique() {
 
         <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise pour un service sur place.</p>
         
-        <div className="flex gap-2 w-full max-w-xs mt-4">
+        <div className="w-full max-w-xs bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 space-y-2 shadow-sm">
+          <p className="text-[11px] font-black text-amber-900 uppercase leading-snug">
+            🚀 En attendant que votre commande soit servie, venez découvrir nos nouveautés, notre académie et nos services exclusifs !
+          </p>
+          <button
+            onClick={() => { setValide(false); setVuePanier(false); setOngletActif('EXPLORER'); }}
+            className="w-full bg-amber-400 hover:bg-amber-500 text-slate-950 font-black py-3 rounded-xl text-xs uppercase shadow-md transition animate-pulse flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <span>🧭 Explorer l'application (Menu & Découverte)</span>
+          </button>
+        </div>
+
+        <div className="flex gap-2 w-full max-w-xs mt-2">
           <button
             onClick={() => { 
               setValide(false); 
               setVuePanier(false); 
               setCommandeEnCoursModification(null); 
-              const nomMeme = localStorage.getItem('4ts_client_nom'] || '';
-              const telMeme = localStorage.getItem('4ts_client_telephone'] || telephoneRecherche;
-              const tableMeme = localStorage.getItem('4ts_client_table'] || '';
+              const nomMeme = localStorage.getItem('4ts_client_nom') || '';
+              const telMeme = localStorage.getItem('4ts_client_telephone') || telephoneRecherche;
+              const tableMeme = localStorage.getItem('4ts_client_table') || '';
               setClient({ nom: nomMeme, telephone: telMeme, table: tableMeme, modePaiement: 'ESPECES' }); 
             }}
             className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
@@ -484,7 +495,7 @@ export default function EspaceClientBoutique() {
             onClick={() => { setValide(false); setVuePanier(false); setOngletActif('SUIVI'); if (telephoneRecherche) rechercherMesCommandes(); }}
             className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
           >
-            Suivre l'état 👁️
+            Mes commandes 👁️
           </button>
         </div>
       </div>
@@ -493,8 +504,8 @@ export default function EspaceClientBoutique() {
 
   if (vuePanier) {
     return (
-      <div className="w-full min-h-screen bg-white font-sans text-xs flex flex-col justify-between pb-10">
-        <div className="space-y-4">
+      <div className="w-full h-screen bg-white font-sans text-xs flex flex-col justify-between overflow-hidden">
+        <div className="flex-1 overflow-y-auto space-y-4 pb-10">
           <div className="bg-white px-4 py-3 border-b border-slate-100 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
             <button
               type="button"
@@ -644,7 +655,6 @@ export default function EspaceClientBoutique() {
           </div>
         </div>
 
-        {/* MODALE DE CONFIRMATION AVEC RÉCAPITULATIF DÉTAILLÉ DES ARTICLES */}
         {afficherModalConfirmation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-4 text-center max-h-[90vh]">
@@ -659,7 +669,6 @@ export default function EspaceClientBoutique() {
                 </p>
               </div>
 
-              {/* Récapitulatif détaillé des articles */}
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-left space-y-2 text-[10px]">
                 <div className="font-black text-slate-700 uppercase border-b pb-1 flex justify-between">
                   <span>Détails articles</span>
@@ -675,10 +684,8 @@ export default function EspaceClientBoutique() {
                   ))}
                 </div>
 
-                <div className="border-t border-slate-200 pt-2 space-y-0.5 font-bold text-slate-600">
-                  <p><strong>Client :</strong> {client.nom}</p>
-                  <p><strong>Tél :</strong> {client.telephone}</p>
-                  <p><strong>Table :</strong> {client.table || 'N/A'}</p>
+                <div className="border-t border-slate-200 pt-2 font-bold text-slate-600 text-[9px] truncate">
+                  <p><strong>Client :</strong> {client.nom} | <strong>Tél :</strong> {client.telephone} | <strong>Table :</strong> {client.table || 'N/A'}</p>
                 </div>
               </div>
 
@@ -708,16 +715,17 @@ export default function EspaceClientBoutique() {
   }
 
   return (
-    <div className="max-w-md mx-auto p-3 font-sans text-xs space-y-4 bg-slate-50 min-h-screen pb-24">
+    <div className="max-w-md mx-auto p-3 font-sans text-xs bg-slate-50 h-screen flex flex-col justify-between overflow-hidden">
       
-      <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center sticky top-0 z-30 space-y-2">
+      {/* 1. EN-TÊTE FIXE (NE SCROLLE PAS) */}
+      <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center z-30 space-y-2 shrink-0">
         <div className="flex justify-between items-center px-1 mb-1">
           <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
           
           <button
             type="button"
             onClick={() => setOngletActif('BOUTIQUE')}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-xl text-[10px] uppercase transition shadow-md flex items-center gap-1"
+            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-xl text-[10px] uppercase transition shadow-md flex items-center gap-1 cursor-pointer"
           >
             <span>🧭 Explorer le Menu</span>
           </button>
@@ -729,7 +737,7 @@ export default function EspaceClientBoutique() {
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('BOUTIQUE'); }}
-              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+              className={`py-2 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'BOUTIQUE' ? 'bg-orange-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -744,21 +752,21 @@ export default function EspaceClientBoutique() {
                   if (telephoneRecherche.trim() && mesCommandesClient.length === 0) rechercherMesCommandes();
                 }
               }}
-              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+              className={`py-2 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'SUIVI' ? 'bg-orange-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
-              📋 SUIVI
+              📋 MES COMMANDES
             </button>
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('RESTAURANTS'); }}
-              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+              className={`py-2 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'RESTAURANTS' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
-              🏪 RESTOS
+              🏪 MES RESTOS
             </button>
           </div>
 
@@ -767,7 +775,7 @@ export default function EspaceClientBoutique() {
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('EXPLORER'); }}
-              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'EXPLORER' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -777,7 +785,7 @@ export default function EspaceClientBoutique() {
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('SOUSCRIPTION'); }}
-              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate ${
+              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'SOUSCRIPTION' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
               }`}
             >
@@ -787,288 +795,305 @@ export default function EspaceClientBoutique() {
         </div>
       </div>
 
-      {ongletActif === 'SOUSCRIPTION' ? (
-        <div className="space-y-4">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs text-center space-y-4">
-            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
-              🚀
-            </div>
-            <h2 className="font-black text-slate-900 uppercase text-sm">Ouvrez votre propre espace 4TS</h2>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Vous souhaitez digitaliser votre propre structure, restaurant ou service de logistique ? Accédez à notre interface unifiée de souscription en 4 étapes pour activer votre module.
-            </p>
-            
-            <a
-              href="/souscription"
-              className="block w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition text-center"
-            >
-              Lancer l'interface de souscription ➔
-            </a>
-          </div>
-        </div>
-      ) : ongletActif === 'EXPLORER' ? (
-        <MenuExplorer entrepriseId={entrepriseId} />
-      ) : ongletActif === 'RESTAURANTS' ? (
-        <div className="space-y-3">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <h2 className="font-black text-slate-900 uppercase text-xs">Mes restaurants visités</h2>
-            <p className="text-[10px] text-slate-500">Retrouvez ci-dessous l'historique de tous les restaurants dont vous avez scanné le QR code.</p>
-          </div>
-
-          <div className="space-y-2">
-            {restaurantsRecents.length === 0 ? (
-              <p className="text-center text-slate-400 py-6 italic font-bold">Aucun restaurant enregistré pour le moment.</p>
-            ) : (
-              restaurantsRecents.map((rest) => {
-                const estActif = rest.id === entrepriseId;
-                return (
-                  <div 
-                    key={rest.id} 
-                    className={`bg-white rounded-2xl border p-3.5 shadow-xs flex items-center justify-between transition ${
-                      estActif ? 'border-orange-500 ring-2 ring-orange-200 bg-orange-50/20' : 'border-slate-200'
-                    }`}
-                  >
-                    <div>
-                      <h3 className="font-black text-slate-900 uppercase text-xs">🍽️ {rest.nom}</h3>
-                      <p className="text-[9px] text-slate-400 font-bold mt-0.5">ID : {rest.id}</p>
-                    </div>
-
-                    {estActif ? (
-                      <span className="bg-emerald-100 text-emerald-800 font-black px-3 py-1.5 rounded-xl text-[9px] uppercase">
-                        Actuel ✅
-                      </span>
-                    ) : (
-                      <a
-                        href={`?entrepriseId=${rest.id}`}
-                        className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3.5 py-1.5 rounded-xl text-[9px] uppercase shadow-2xs transition"
-                      >
-                        Commander ➔
-                      </a>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      ) : ongletActif === 'SUIVI' ? (
-        <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <h2 className="font-black text-slate-900 uppercase text-xs">Suivre mes commandes en temps réel</h2>
-            <form onSubmit={rechercherMesCommandes} className="space-y-2">
-              <div>
-                <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Votre numéro de téléphone</label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="Ex: 655597099"
-                  value={telephoneRecherche}
-                  onChange={(e) => setTelephoneRecherche(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                />
+      {/* 2. CONTENU CENTRAL DÉFILANT (SCROLLABLE INTERNE) */}
+      <div className="flex-1 overflow-y-auto p-1 space-y-4 my-2">
+        {ongletActif === 'SOUSCRIPTION' ? (
+          <div className="space-y-4">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs text-center space-y-4">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+                🚀
               </div>
-              <button
-                type="submit"
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow-md transition"
+              <h2 className="font-black text-slate-900 uppercase text-sm">Ouvrez votre propre espace 4TS</h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Vous souhaitez digitaliser votre propre structure, restaurant ou service de logistique ? Accédez à notre interface unifiée de souscription en 4 étapes pour activer votre module.
+              </p>
+              
+              <a
+                href="/souscription"
+                className="block w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition text-center"
               >
-                Rechercher mes commandes 🔍
-              </button>
-            </form>
+                Lancer l'interface de souscription ➔
+              </a>
+            </div>
           </div>
-
+        ) : ongletActif === 'EXPLORER' ? (
+          <MenuExplorer entrepriseId={entrepriseId} />
+        ) : ongletActif === 'RESTAURANTS' ? (
           <div className="space-y-3">
-            {chargement ? (
-              <p className="text-center text-slate-400 py-6 font-bold">Chargement...</p>
-            ) : mesCommandesClient.length === 0 ? (
-              <p className="text-center text-slate-400 py-6 italic font-bold">Aucune commande trouvée pour ce numéro dans ce restaurant.</p>
-            ) : (
-              mesCommandesClient.map((cmd) => {
-                let detailsArticles = [];
-                try {
-                  detailsArticles = JSON.parse(cmd.details_articles || '[]');
-                } catch (e) {}
-
-                let badgeColor = 'bg-orange-100 text-orange-800 border-orange-300';
-                if (cmd.statut === 'EN_COURS') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
-                if (cmd.statut === 'SERVI') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
-                if (cmd.statut === 'ANNULE') badgeColor = 'bg-red-100 text-red-800 border-red-300';
-
-                const estPaye = cmd.statut_paiement === 'PAYE';
-
-                return (
-                  <div key={cmd.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
-                    <div className="flex justify-between items-start border-b pb-2">
-                      <div>
-                        <span className="font-mono font-black text-orange-600 text-[11px] block">{cmd.numero_commande}</span>
-                        <span className="text-[9px] text-slate-400 font-bold">
-                          {new Date(cmd.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(cmd.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <span className={`px-2.5 py-1 rounded-full font-black text-[9px] border uppercase ${badgeColor}`}>
-                        {cmd.statut === 'EN_ATTENTE' ? 'En attente' : cmd.statut === 'EN_COURS' ? 'Encours' : cmd.statut === 'SERVI' ? 'Servi ✅' : 'Annulé ❌'}
-                      </span>
-                    </div>
-
-                    <div className="bg-slate-50 p-2 rounded-xl border flex justify-between items-center text-[10px]">
-                      <div>
-                        <p className="font-bold text-slate-700">📍 Table : <strong className="text-slate-900">{cmd.numero_table}</strong></p>
-                        <p className="font-bold text-slate-500">💳 Paiement : {cmd.mode_paiement || 'ESPECES'}</p>
-                      </div>
-                      <div>
-                        <span className={`px-2 py-1 rounded-md font-black text-[9px] uppercase border ${estPaye ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
-                          {estPaye ? 'Payé 🟢' : 'Non payé 🔴'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="divide-y divide-slate-100 max-h-24 overflow-y-auto">
-                        {detailsArticles.map((art, idx) => (
-                          <div key={idx} className="flex justify-between items-center py-1 text-[10px]">
-                            <span className="font-bold text-slate-700">{art.designation} x{art.quantite}</span>
-                            <span className="font-mono font-bold text-slate-900">{(art.prix * art.quantite).toLocaleString()} F</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="pt-2 border-t flex justify-between items-center">
-                      <span className="font-black text-slate-900 text-xs">Total : <strong className="text-emerald-600">{Number(cmd.montant_total).toLocaleString()} FCFA</strong></span>
-                      
-                      {cmd.statut === 'EN_ATTENTE' ? (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => preparerModification(cmd)}
-                            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
-                          >
-                            Modifier ✏️
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => annulerCommandeClient(cmd)}
-                            className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs"
-                          >
-                            Annuler ❌
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[9px] font-bold text-slate-400 italic">🔒 Verrouillé</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {panier.length > 0 && (
-            <div className="sticky top-24 z-40 bg-orange-600 text-white p-3.5 rounded-2xl shadow-lg flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <span className="bg-white text-orange-600 font-black px-2.5 py-0.5 rounded-full text-xs shadow-xs">
-                  {nombreTotalArticlesPanier}
-                </span>
-                <div>
-                  <p className="font-black uppercase text-[11px]">MON PANIER</p>
-                  <p className="font-extrabold text-xs text-orange-100">{totalPanier.toLocaleString()} FCFA</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={() => { if (!enTrainDeSauvegarder) setVuePanier(true); }}
-                className="bg-white text-orange-600 hover:bg-orange-50 disabled:opacity-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1"
-              >
-                <span>Voir le panier 🛒</span>
-              </button>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <h2 className="font-black text-slate-900 uppercase text-xs">Mes restaurants visités</h2>
+              <p className="text-[10px] text-slate-500">Retrouvez ci-dessous l'historique de tous les restaurants dont vous avez scanné le QR code.</p>
             </div>
-          )}
 
-          <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
-            <input
-              type="text"
-              disabled={enTrainDeSauvegarder}
-              value={rechercheArticle}
-              onChange={(e) => setRechercheArticle(e.target.value)}
-              placeholder="🔍 Rechercher un plat ou un article..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Plats & Articles disponibles</h2>
-            {chargement ? (
-              <p className="text-center text-slate-400 py-6 font-bold">Chargement du menu...</p>
-            ) : articlesFiltres.length === 0 ? (
-              <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article trouvé.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {articlesFiltres.map((art) => {
-                  const artId = art.id_article || art.id;
-                  const designation = art.Designation || art.designation;
-                  const prix = art.Prix_Vente || art.prix_vente || 0;
-                  const photoUrl = art.Photo || art.photo || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
-                  const stockReel = calculerStockReel(artId);
-
+            <div className="space-y-2">
+              {restaurantsRecents.length === 0 ? (
+                <p className="text-center text-slate-400 py-6 italic font-bold">Aucun restaurant enregistré pour le moment.</p>
+              ) : (
+                restaurantsRecents.map((rest) => {
+                  const estActif = rest.id === entrepriseId;
                   return (
                     <div 
-                      key={artId} 
-                      className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden flex flex-col justify-between transition hover:shadow-md"
+                      key={rest.id} 
+                      className={`bg-white rounded-2xl border p-3.5 shadow-xs flex items-center justify-between transition ${
+                        estActif ? 'border-orange-500 ring-2 ring-orange-200 bg-orange-50/20' : 'border-slate-200'
+                      }`}
                     >
-                      <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
-                        <img 
-                          src={photoUrl} 
-                          alt={designation} 
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.target.src = 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
-                          }}
-                        />
-                        {stockReel <= 0 && (
-                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                            <span className="bg-slate-900/80 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
-                              Épuisé
-                            </span>
-                          </div>
-                        )}
+                      <div>
+                        <h3 className="font-black text-slate-900 uppercase text-xs">🍽️ {rest.nom}</h3>
+                        <p className="text-[9px] text-slate-400 font-bold mt-0.5">ID : {rest.id}</p>
                       </div>
 
-                      <div className="p-2.5 flex flex-col flex-1 justify-between space-y-2">
-                        <div>
-                          <div className="font-black text-slate-900 text-xs tracking-tight text-emerald-600">
-                            {prix.toLocaleString()} FCFA
-                          </div>
-                          <div className="font-extrabold text-slate-700 text-[11px] uppercase line-clamp-2 mt-0.5">
-                            {designation}
-                          </div>
-                          <div className="text-[9px] text-slate-400 font-bold mt-0.5">
-                            Stock : {stockReel}
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          disabled={stockReel <= 0 || enTrainDeSauvegarder}
-                          onClick={() => ajouterAuPanier(art, stockReel)}
-                          className={`w-full py-1.5 rounded-xl font-black text-[10px] transition shadow-xs flex items-center justify-center gap-1 ${
-                            stockReel > 0 && !enTrainDeSauvegarder
-                              ? 'bg-orange-600 hover:bg-orange-500 text-white active:scale-95' 
-                              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                          }`}
+                      {estActif ? (
+                        <span className="bg-emerald-100 text-emerald-800 font-black px-3 py-1.5 rounded-xl text-[9px] uppercase">
+                          Actuel ✅
+                        </span>
+                      ) : (
+                        <a
+                          href={`?entrepriseId=${rest.id}`}
+                          className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3.5 py-1.5 rounded-xl text-[9px] uppercase shadow-2xs transition"
                         >
-                          {stockReel > 0 ? '+ Ajouter' : 'Épuisé'}
-                        </button>
+                          Commander ➔
+                        </a>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : ongletActif === 'SUIVI' ? (
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <h2 className="font-black text-slate-900 uppercase text-xs">Suivre mes commandes en temps réel</h2>
+              <form onSubmit={rechercherMesCommandes} className="space-y-2">
+                <div>
+                  <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Votre numéro de téléphone</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="Ex: 655597099"
+                    value={telephoneRecherche}
+                    onChange={(e) => setTelephoneRecherche(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl text-xs uppercase shadow-md transition cursor-pointer"
+                >
+                  Rechercher mes commandes 🔍
+                </button>
+              </form>
+            </div>
+
+            <div className="space-y-3">
+              {chargement ? (
+                <p className="text-center text-slate-400 py-6 font-bold">Chargement...</p>
+              ) : mesCommandesClient.length === 0 ? (
+                <p className="text-center text-slate-400 py-6 italic font-bold">Aucune commande trouvée pour ce numéro dans ce restaurant.</p>
+              ) : (
+                mesCommandesClient.map((cmd) => {
+                  let detailsArticles = [];
+                  try {
+                    detailsArticles = JSON.parse(cmd.details_articles || '[]');
+                  } catch (e) {}
+
+                  let badgeColor = 'bg-orange-100 text-orange-800 border-orange-300';
+                  if (cmd.statut === 'EN_COURS') badgeColor = 'bg-blue-100 text-blue-800 border-blue-300';
+                  if (cmd.statut === 'SERVI') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                  if (cmd.statut === 'ANNULE') badgeColor = 'bg-red-100 text-red-800 border-red-300';
+
+                  const estPaye = cmd.statut_paiement === 'PAYE';
+
+                  return (
+                    <div key={cmd.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+                      <div className="flex justify-between items-start border-b pb-2">
+                        <div>
+                          <span className="font-mono font-black text-orange-600 text-[11px] block">{cmd.numero_commande}</span>
+                          <span className="text-[9px] text-slate-400 font-bold">
+                            {new Date(cmd.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(cmd.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full font-black text-[9px] border uppercase ${badgeColor}`}>
+                          {cmd.statut === 'EN_ATTENTE' ? 'En attente' : cmd.statut === 'EN_COURS' ? 'Encours' : cmd.statut === 'SERVI' ? 'Servi ✅' : 'Annulé ❌'}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 p-2 rounded-xl border flex justify-between items-center text-[10px]">
+                        <div>
+                          <p className="font-bold text-slate-700">📍 Table : <strong className="text-slate-900">{cmd.numero_table}</strong></p>
+                          <p className="font-bold text-slate-500">💳 Paiement : {cmd.mode_paiement || 'ESPECES'}</p>
+                        </div>
+                        <div>
+                          <span className={`px-2 py-1 rounded-md font-black text-[9px] uppercase border ${estPaye ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'}`}>
+                            {estPaye ? 'Payé 🟢' : 'Non payé 🔴'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="divide-y divide-slate-100 max-h-24 overflow-y-auto">
+                          {detailsArticles.map((art, idx) => (
+                            <div key={idx} className="flex justify-between items-center py-1 text-[10px]">
+                              <span className="font-bold text-slate-700">{art.designation} x{art.quantite}</span>
+                              <span className="font-mono font-bold text-slate-900">{(art.prix * art.quantite).toLocaleString()} F</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t flex justify-between items-center">
+                        <span className="font-black text-slate-900 text-xs">Total : <strong className="text-emerald-600">{Number(cmd.montant_total).toLocaleString()} FCFA</strong></span>
+                        
+                        {cmd.statut === 'EN_ATTENTE' ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => preparerModification(cmd)}
+                              className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs cursor-pointer"
+                            >
+                              Modifier ✏️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => annulerCommandeClient(cmd)}
+                              className="bg-red-600 hover:bg-red-500 text-white font-black px-2.5 py-1.5 rounded-lg text-[9px] uppercase transition shadow-2xs cursor-pointer"
+                            >
+                              Annuler ❌
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[9px] font-bold text-slate-400 italic">🔒 Verrouillé</span>
+                        )}
                       </div>
                     </div>
                   );
-                })}
+                })
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {panier.length > 0 && (
+              <div className="sticky top-0 z-20 bg-orange-600 text-white p-3.5 rounded-2xl shadow-lg flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="bg-white text-orange-600 font-black px-2.5 py-0.5 rounded-full text-xs shadow-xs">
+                    {nombreTotalArticlesPanier}
+                  </span>
+                  <div>
+                    <p className="font-black uppercase text-[11px]">MON PANIER</p>
+                    <p className="font-extrabold text-xs text-orange-100">{totalPanier.toLocaleString()} FCFA</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={() => { if (!enTrainDeSauvegarder) setVuePanier(true); }}
+                  className="bg-white text-orange-600 hover:bg-orange-50 disabled:opacity-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Voir le panier 🛒</span>
+                </button>
               </div>
             )}
+
+            <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
+              <input
+                type="text"
+                disabled={enTrainDeSauvegarder}
+                value={rechercheArticle}
+                onChange={(e) => setRechercheArticle(e.target.value)}
+                placeholder="🔍 Rechercher un plat ou un article..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-black uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="font-extrabold text-slate-800 uppercase text-[11px]">Plats & Articles disponibles</h2>
+              {chargement ? (
+                <p className="text-center text-slate-400 py-6 font-bold">Chargement du menu...</p>
+              ) : articlesFiltres.length === 0 ? (
+                <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article trouvé.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {articlesFiltres.map((art) => {
+                    const artId = art.id_article || art.id;
+                    const designation = art.Designation || art.designation;
+                    const prix = art.Prix_Vente || art.prix_vente || 0;
+                    const photoUrl = art.Photo || art.photo || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
+                    const stockReel = calculerStockReel(artId);
+
+                    return (
+                      <div 
+                        key={artId} 
+                        className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden flex flex-col justify-between transition hover:shadow-md"
+                      >
+                        <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
+                          <img 
+                            src={photoUrl} 
+                            alt={designation} 
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.src = 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=500';
+                            }}
+                          />
+                          {stockReel <= 0 && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                              <span className="bg-slate-900/80 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
+                                Épuisé
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-2.5 flex flex-col flex-1 justify-between space-y-2">
+                          <div>
+                            <div className="font-black text-slate-900 text-xs tracking-tight text-emerald-600">
+                              {prix.toLocaleString()} FCFA
+                            </div>
+                            <div className="font-extrabold text-slate-700 text-[11px] uppercase line-clamp-2 mt-0.5">
+                              {designation}
+                            </div>
+                            <div className="text-[9px] text-slate-400 font-bold mt-0.5">
+                              Stock : {stockReel}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={stockReel <= 0 || enTrainDeSauvegarder}
+                            onClick={() => ajouterAuPanier(art, stockReel)}
+                            className={`w-full py-1.5 rounded-xl font-black text-[10px] transition shadow-xs flex items-center justify-center gap-1 cursor-pointer ${
+                              stockReel > 0 && !enTrainDeSauvegarder
+                                ? 'bg-orange-600 hover:bg-orange-500 text-white active:scale-95' 
+                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {stockReel > 0 ? '+ Ajouter' : 'Épuisé'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* 3. PIED DE PAGE FIXE EN BAS (TOUJOURS VISIBLE) */}
+      <footer className="bg-slate-900 text-white p-3 rounded-2xl text-center space-y-1.5 border border-slate-800 shadow-md shrink-0 z-30">
+        <p className="text-[9px] font-black uppercase tracking-wider text-orange-400">
+          📱 4TS Suite Manager — Application Officielle
+        </p>
+        <button
+          type="button"
+          onClick={() => setOngletActif('SOUSCRIPTION')}
+          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2 rounded-xl text-[10px] uppercase shadow-md transition cursor-pointer"
+        >
+          📥 INSTALLER / OUVRIR L'APPLICATION ➔
+        </button>
+      </footer>
 
     </div>
   );

@@ -12,6 +12,22 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [audioActive, setAudioActive] = useState(true);
   const [pushActif, setPushActif] = useState(false);
 
+  // État pour la jolie modale de confirmation d'une commande servie non payée
+  const [modalConfirmation, setModalConfirmation] = useState({
+    visible: false,
+    idCommande: null,
+    statutPaiement: null
+  });
+
+  // État pour la jolie modale de confirmation du basculement de paiement
+  const [modalPaiement, setModalPaiement] = useState({
+    visible: false,
+    idCommande: null,
+    statutActuel: null,
+    montantTotal: 0,
+    numeroCmd: null
+  });
+
   // File d'attente audio et vocale strictement séquentielle
   const fileDAbsolueAudio = useRef([]);
   const enTrainDeJouerAudio = useRef(false);
@@ -374,26 +390,38 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     };
   }, [entrepriseId, audioActive]);
 
+  const executerChangementStatutServi = async (idCommande) => {
+    try {
+      const { data, error } = await supabase.rpc('valider_et_destockage_commande_qr', {
+        p_id_commande: idCommande,
+        p_id_entreprise: entrepriseId
+      });
+
+      if (error) throw error;
+      if (data && !data.success) {
+        alert("Erreur de déstockage : " + data.message);
+        return;
+      }
+
+      chargerCommandesQR();
+    } catch (err) {
+      alert('Erreur lors de la mise à jour du statut : ' + err.message);
+    }
+  };
+
   const changerStatutCommande = async (idCommande, nouveauStatut, statutPaiement) => {
     if (nouveauStatut === 'SERVI' && statutPaiement !== 'PAYE') {
-      const confirmer = window.confirm(
-        "⚠️ ATTENTION : Cette commande n'a pas encore été payée !\n\nVoulez-vous vraiment la marquer comme SERVIE ?"
-      );
-      if (!confirmer) return;
+      setModalConfirmation({
+        visible: true,
+        idCommande: idCommande,
+        statutPaiement: statutPaiement
+      });
+      return;
     }
 
     try {
       if (nouveauStatut === 'SERVI') {
-        const { data, error } = await supabase.rpc('valider_et_destockage_commande_qr', {
-          p_id_commande: idCommande,
-          p_id_entreprise: entrepriseId
-        });
-
-        if (error) throw error;
-        if (data && !data.success) {
-          alert("Erreur de déstockage : " + data.message);
-          return;
-        }
+        await executerChangementStatutServi(idCommande);
       } else {
         const { error } = await supabase
           .from('commandes_clients_qr')
@@ -410,7 +438,44 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  const basculerPaiement = async (idCommande, statutActuel) => {
+  const confirmerActionImpaye = async () => {
+    const idCmd = modalConfirmation.idCommande;
+    setModalConfirmation({ visible: false, idCommande: null, statutPaiement: null });
+    if (idCmd) {
+      await executerChangementStatutServi(idCmd);
+    }
+  };
+
+  const fermerModalConfirmation = () => {
+    setModalConfirmation({ visible: false, idCommande: null, statutPaiement: null });
+  };
+
+  // Déclenche l'ouverture de la modale pour basculer le paiement
+  const demanderBasculementPaiement = (idCommande, statutActuel, montantTotalCommande, numeroCmd) => {
+    setModalPaiement({
+      visible: true,
+      idCommande,
+      statutActuel,
+      montantTotal: montantTotalCommande,
+      numeroCmd
+    });
+  };
+
+  const fermerModalPaiement = () => {
+    setModalPaiement({
+      visible: false,
+      idCommande: null,
+      statutActuel: null,
+      montantTotal: 0,
+      numeroCmd: null
+    });
+  };
+
+  // Exécute réellement le basculement après confirmation dans la modale
+  const confirmerBasculementPaiement = async () => {
+    const { idCommande, statutActuel, montantTotal, numeroCmd } = modalPaiement;
+    fermerModalPaiement();
+
     const nouveauStatutPaiement = statutActuel === 'PAYE' ? 'NON_PAYE' : 'PAYE';
     try {
       const { error } = await supabase
@@ -419,13 +484,27 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         .eq('id', idCommande);
 
       if (error) throw error;
+
+      const nouveauMontantRegle = nouveauStatutPaiement === 'PAYE' ? Number(montantTotal || 0) : 0;
+      const nouveauMontantCredit = nouveauStatutPaiement === 'PAYE' ? 0 : Number(montantTotal || 0);
+      const nouveauTypeReglement = nouveauStatutPaiement === 'PAYE' ? 'COMPTANT' : 'CREDIT';
+
+      await supabase
+        .from('ventes_historiques')
+        .update({
+          montant_regle: nouveauMontantRegle,
+          montant_credit: nouveauMontantCredit,
+          type_reglement: nouveauTypeReglement
+        })
+        .eq('id_entreprise', entrepriseId)
+        .eq('numero_ticket', numeroCmd);
+
       chargerCommandesQR();
     } catch (err) {
       alert('Erreur lors de la mise à jour du paiement : ' + err.message);
     }
   };
 
-  // Dédoublonnage strict par ID pour éliminer définitivement l'erreur de clé unique
   const commandesFiltrees = Array.from(
     new Map(
       commandes
@@ -453,7 +532,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   );
 
   return (
-    <div className="space-y-2 font-sans text-xs max-w-4xl mx-auto p-1 pb-16">
+    <div className="space-y-2 font-sans text-xs max-w-4xl mx-auto p-1 pb-16 relative">
       <div className="bg-white p-2 rounded-xl border border-orange-200 shadow-2xs flex flex-col gap-2">
         <div className="flex justify-between items-center gap-1">
           <div>
@@ -619,11 +698,11 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                       <button
                         type="button"
                         disabled={estAnnule}
-                        onClick={() => basculerPaiement(cmd.id, cmd.statut_paiement)}
-                        className={`px-2 py-0.5 rounded-md font-black text-[8px] uppercase border transition ${
+                        onClick={() => demanderBasculementPaiement(cmd.id, cmd.statut_paiement, cmd.montant_total, cmd.numero_commande)}
+                        className={`px-2 py-0.5 rounded-md font-black text-[8px] uppercase border transition cursor-pointer ${
                           estPaye 
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-                            : 'bg-red-100 text-red-800 border-red-300'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' 
+                            : 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
                         }`}
                       >
                         {estPaye ? 'Payé 🟢' : 'Non Payé 🔴'}
@@ -690,6 +769,104 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODALE DE CONFIRMATION POUR COMMANDE SERVIE NON PAYÉE */}
+      {modalConfirmation.visible && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-xl shrink-0 font-black shadow-inner">
+                ⚠️
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 uppercase text-xs">Alerte Paiement</h3>
+                <p className="text-[10px] text-slate-500 font-bold">Vérification de sécurité caisse</p>
+              </div>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1">
+              <p className="text-red-800 font-black text-xs">
+                Cette commande n'a pas encore été payée !
+              </p>
+              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
+                Voulez-vous vraiment la marquer comme <strong className="text-emerald-700 uppercase">SERVIE</strong> et l'enregistrer dans l'historique des ventes ?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={fermerModalConfirmation}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmerActionImpaye}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg shadow-red-600/30 transition cursor-pointer"
+              >
+                Confirmer & Servir ✅
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE CONFIRMATION POUR LE BASCULEMENT DU STATUT DE PAIEMENT */}
+      {modalPaiement.visible && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 font-black shadow-inner ${
+                modalPaiement.statutActuel === 'PAYE' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+              }`}>
+                {modalPaiement.statutActuel === 'PAYE' ? '🔄' : '💳'}
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 uppercase text-xs">Confirmation Paiement</h3>
+                <p className="text-[10px] text-slate-500 font-bold">Modification du statut financier</p>
+              </div>
+            </div>
+
+            <div className={`border rounded-xl p-3 space-y-1 ${
+              modalPaiement.statutActuel === 'PAYE' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'
+            }`}>
+              <p className={`font-black text-xs ${modalPaiement.statutActuel === 'PAYE' ? 'text-amber-800' : 'text-emerald-800'}`}>
+                {modalPaiement.statutActuel === 'PAYE' 
+                  ? "Passer cette commande de PAYÉ à NON PAYÉ ?" 
+                  : "Valider le paiement effectif de cette commande ?"}
+              </p>
+              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
+                {modalPaiement.statutActuel === 'PAYE' 
+                  ? "Cette action va retirer le montant des règlements comptant et le basculer en crédit/impayé dans l'historique."
+                  : "Le client a-t-il réellement payé ? Cette action va valider le règlement complet dans le journal des ventes."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={fermerModalPaiement}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmerBasculementPaiement}
+                className={`flex-1 font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg transition cursor-pointer text-white ${
+                  modalPaiement.statutActuel === 'PAYE' 
+                    ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30' 
+                    : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                }`}
+              >
+                {modalPaiement.statutActuel === 'PAYE' ? 'Mettre en Non Payé 🔴' : 'Confirmer Payé 🟢'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
