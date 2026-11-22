@@ -1282,7 +1282,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   };
 
   return (
-    <div className="h-full max-h-[80vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
+    <div className="h-full max-h-[82vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
       
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
