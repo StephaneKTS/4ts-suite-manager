@@ -21,7 +21,8 @@ export default function ConnexionEntreprise() {
       'entrepriseId',
       'utilisateur_connecte',
       'permissions_utilisateur',
-      'moduleActif'
+      'moduleActif',
+      'module_actif'
     ];
     clesASupprimer.forEach(cle => localStorage.removeItem(cle));
 
@@ -66,8 +67,8 @@ export default function ConnexionEntreprise() {
     try {
       let entrepriseIdCible = null;
       let nomUtilisateurConnecte = '';
-      let matrixPermissions = { _aucun_acces: true }; // Sécurité par défaut : aucun accès
-      let moduleActifEntreprise = 'TOUT';
+      let matrixPermissions = { _aucun_acces: true }; 
+      let moduleActifEntreprise = 'BOUTIQUE';
       let authenticated = false;
 
       // 1. RECHERCHE PRIORITAIRE DANS LA TABLE DES ENTREPRISES (Admin / Propriétaire)
@@ -100,9 +101,8 @@ export default function ConnexionEntreprise() {
 
           entrepriseIdCible = entrepriseTrouvee.id_entreprise;
           nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-          moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'TOUT').trim().toUpperCase();
+          moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'BOUTIQUE').trim().toUpperCase();
 
-          // Propriétaire / Admin principal : Pleins accès
           matrixPermissions = { _plein_acces: true };
           authenticated = true;
         }
@@ -115,7 +115,7 @@ export default function ConnexionEntreprise() {
           .select('*');
 
         if (!errUser && userList) {
-          const utilisateurTrouve = userList.find(u => {
+          const utilisateurRows = userList.filter(u => {
             const matchEmail = u.email && u.email.toLowerCase() === cleanIdentifiant.toLowerCase();
             const matchNom = u.nom_complet && u.nom_complet.toLowerCase() === cleanIdentifiant.toLowerCase();
 
@@ -130,7 +130,9 @@ export default function ConnexionEntreprise() {
             return matchEmail || matchTel || matchNom;
           });
 
-          if (utilisateurTrouve) {
+          if (utilisateurRows.length > 0) {
+            const utilisateurTrouve = utilisateurRows[0];
+
             if (utilisateurTrouve.acces_application === false) {
               throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion.");
             }
@@ -144,12 +146,22 @@ export default function ConnexionEntreprise() {
             entrepriseIdCible = utilisateurTrouve.id_entreprise;
             nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
 
-            // 🎯 CORRECTION DÉFINITIVE : PRIORITÉ AUX PERMISSIONS DIRECTES DE L'UTILISATEUR
+            // 🎯 EXTRACTION ET FUSION DE TOUS LES MODULES AUTORISÉS
+            let modulesAutorises = [];
+            utilisateurRows.forEach(row => {
+              if (Array.isArray(row.modules_cibles) && row.modules_cibles.length > 0) {
+                row.modules_cibles.forEach(m => modulesAutorises.push(m.toUpperCase()));
+              }
+              if (row.module) {
+                modulesAutorises.push(row.module.toUpperCase());
+              }
+            });
+            modulesAutorises = [...new Set(modulesAutorises)];
+
             if (utilisateurTrouve.permissions && Object.keys(utilisateurTrouve.permissions).length > 0) {
               matrixPermissions = utilisateurTrouve.permissions;
             } 
             else if (utilisateurTrouve.id_role) {
-              // Fallback sur le rôle si les permissions directes sont vides
               const { data: roleData, error: errRole } = await supabase
                 .from('roles')
                 .select('permissions, nom_role')
@@ -170,6 +182,16 @@ export default function ConnexionEntreprise() {
               matrixPermissions = { _aucun_acces: true };
             }
 
+            // 🎯 CORRECTION MAJEURE : On sélectionne en priorité un module non-boutique (ex: LIVRAISON) si l'utilisateur y a accès, 
+            // ou le premier module valide de sa liste pour éviter de retomber par défaut sur BOUTIQUE.
+            if (modulesAutorises.includes('LIVRAISON')) {
+              moduleActifEntreprise = 'LIVRAISON';
+            } else if (modulesAutorises.length > 0) {
+              moduleActifEntreprise = modulesAutorises[0];
+            } else {
+              moduleActifEntreprise = 'BOUTIQUE';
+            }
+
             authenticated = true;
           }
         }
@@ -179,11 +201,13 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant ou mot de passe incorrect. Accès non autorisé.");
       }
 
+      // Enregistrement unifié des clés de stockage pour le module actif
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);
       localStorage.setItem('permissions_utilisateur', JSON.stringify(matrixPermissions));
       localStorage.setItem('moduleActif', moduleActifEntreprise);
+      localStorage.setItem('module_actif', moduleActifEntreprise);
 
       router.replace(`/dashboard?entreprise=${entrepriseIdCible}`);
 

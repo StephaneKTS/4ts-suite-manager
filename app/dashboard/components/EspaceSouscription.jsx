@@ -40,6 +40,15 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   });
   const [activationEnCours, setActivationEnCours] = useState(false);
 
+  // 🪟 État pour les jolies modales personnalisées
+  const [modaleInfo, setModaleInfo] = useState({
+    ouverte: false,
+    titre: '',
+    message: '',
+    type: 'info', // 'info', 'confirmation', 'succes', 'erreur'
+    onConfirmer: null
+  });
+
   const LISTE_MODULES_PRINCIPAUX = ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'];
 
   // Récupération blindée de l'ID d'entreprise (Prop -> URL -> LocalStorage -> Fallback)
@@ -60,7 +69,6 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   const chargerInfosEntrepriseEtTarifs = async () => {
     setChargement(true);
     try {
-      // 1. Recherche élargie pour s'assurer de trouver l'entreprise
       const { data, error } = await supabase
         .from('entreprises')
         .select('*')
@@ -74,7 +82,6 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
         if (data.duree_abonnement_mois) setNombreMoisChoisi(data.duree_abonnement_mois);
       }
 
-      // 2. Chargement dynamique de la configuration tarifaire du Super Admin
       const { data: configTarifs } = await supabase
         .from('configuration_globale')
         .select('valeur')
@@ -110,9 +117,9 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
     chargerInfosEntrepriseEtTarifs();
   }, [entrepriseIdEffectif]);
 
-  // Récupération sécurisée du module actif
+  // 🎯 Lecture unifiée et prioritaire des clés du module courant
   const moduleActifCourant = (
-    typeof window !== 'undefined' ? localStorage.getItem('module_actif') : null
+    typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || localStorage.getItem('moduleActif')) : null
   ) || (entreprise?.module_actif || entreprise?.module_courant || 'BOUTIQUE').toUpperCase();
 
   const configModuleCourant = tarifsPlateforme[moduleActifCourant.charAt(0) + moduleActifCourant.slice(1).toLowerCase()] || tarifsPlateforme['Boutique'] || { installation: 25000, mensuelPerUser: 5000 };
@@ -126,7 +133,11 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
       const moduleUpper = nouveauModule.toUpperCase();
       const identifiantCible = entreprise.id_entreprise || entreprise.code_entreprise || entrepriseIdEffectif;
       
-      localStorage.setItem('module_actif', moduleUpper);
+      // 🎯 Sauvegarde unifiée sur les deux clés de stockage pour éviter les conflits
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('module_actif', moduleUpper);
+        localStorage.setItem('moduleActif', moduleUpper);
+      }
 
       await supabase
         .from('entreprises')
@@ -134,16 +145,29 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
         .eq('id_entreprise', identifiantCible);
 
       setEntreprise(prev => ({ ...prev, module_actif: moduleUpper }));
-      alert(`Affichage basculé vers le module : ${moduleUpper} 🚀`);
-      window.location.reload(); 
+      
+      setModaleInfo({
+        ouverte: true,
+        titre: 'Module basculé',
+        message: `Affichage basculé vers le module : ${moduleUpper} 🚀`,
+        type: 'succes',
+        onConfirmer: () => {
+          window.location.href = `/dashboard?entreprise=${identifiantCible}`;
+        }
+      });
     } catch (err) {
-      alert('Erreur lors du changement de module : ' + err.message);
+      setModaleInfo({
+        ouverte: true,
+        titre: 'Erreur',
+        message: 'Erreur lors du changement de module : ' + err.message,
+        type: 'erreur',
+        onConfirmer: null
+      });
     } finally {
       setChangementModuleEnCours(false);
     }
   };
 
-  // Calcul dynamique des réductions combinées (Durée + Utilisateurs) selon les grilles du Super Admin
   const calculerTauxReductionGlobal = (mois, users) => {
     let tauxDuree = 0;
     const paliersDuree = [...(tarifsPlateforme.remisesDuree || [])].sort((a, b) => b.seuil - a.seuil);
@@ -198,17 +222,30 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
 
   const detailsNouveauxModules = calculerDetailsNouveauxModules();
 
-  const validerActivationNouveauxModules = async () => {
+  const declencherValidationActivation = () => {
     const modulesSelectionnes = Object.keys(nouveauxModulesChoisis).filter(m => nouveauxModulesChoisis[m]);
     if (modulesSelectionnes.length === 0) {
-      alert("Veuillez sélectionner au moins un module à activer.");
+      setModaleInfo({
+        ouverte: true,
+        titre: 'Sélection requise',
+        message: 'Veuillez sélectionner au moins un module à activer.',
+        type: 'erreur',
+        onConfirmer: null
+      });
       return;
     }
 
-    if (!confirm(`Activer directement les nouveaux modules [${modulesSelectionnes.join(', ')}] ?`)) {
-      return;
-    }
+    setModaleInfo({
+      ouverte: true,
+      titre: 'Confirmation d’activation',
+      message: `Voulez-vous activer directement les nouveaux modules [${modulesSelectionnes.join(', ')}] ?`,
+      type: 'confirmation',
+      onConfirmer: validerActivationNouveauxModules
+    });
+  };
 
+  const validerActivationNouveauxModules = async () => {
+    const modulesSelectionnes = Object.keys(nouveauxModulesChoisis).filter(m => nouveauxModulesChoisis[m]);
     setActivationEnCours(true);
     try {
       const donneesBrutesEspaces = entreprise?.espaces_souscrits || ['BOUTIQUE'];
@@ -236,13 +273,25 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
 
       if (error) throw error;
 
-      alert(`Succès ! Modules activés : ${fusionEspaces.join(', ')} 🚀`);
-      
-      setModeAjoutModule(false);
-      await chargerInfosEntrepriseEtTarifs();
-      window.location.reload();
+      setModaleInfo({
+        ouverte: true,
+        titre: 'Succès 🚀',
+        message: `Modules activés avec succès : ${fusionEspaces.join(', ')}`,
+        type: 'succes',
+        onConfirmer: () => {
+          setModeAjoutModule(false);
+          chargerInfosEntrepriseEtTarifs();
+          window.location.reload();
+        }
+      });
     } catch (err) {
-      alert("Erreur critique lors de l'activation : " + err.message);
+      setModaleInfo({
+        ouverte: true,
+        titre: 'Erreur critique',
+        message: "Erreur lors de l'activation : " + err.message,
+        type: 'erreur',
+        onConfirmer: null
+      });
     } finally {
       setActivationEnCours(false);
     }
@@ -255,16 +304,23 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
     return date.toLocaleDateString('fr-FR');
   };
 
+  const declencherSouscriptionSurMesure = () => {
+    setModaleInfo({
+      ouverte: true,
+      titre: 'Confirmation d’abonnement',
+      message: `Valider l'abonnement pour ${nombreUtilisateursChoisi} utilisateur(s) supplémentaire(s) pour un montant de ${montantTotalCalculé.toLocaleString()} F ?`,
+      type: 'confirmation',
+      onConfirmer: souscrireSurMesure
+    });
+  };
+
   const souscrireSurMesure = async () => {
     const ancienTotalUtilisateurs = parseInt(entreprise?.limite_utilisateurs || 1);
     const nouveauTotalCumule = ancienTotalUtilisateurs + parseInt(nombreUtilisateursChoisi);
 
-    if (!confirm(`Valider l'abonnement pour ${nombreUtilisateursChoisi} utilisateur(s) supplémentaire(s) pour un montant de ${montantTotalCalculé.toLocaleString()} F ?`)) return;
-
     try {
       const identifiantCible = entreprise?.id_entreprise || entreprise?.code_entreprise || entrepriseIdEffectif;
       
-      // Vérification du mode contournement CinetPay configuré par le Super Admin
       let modeContournementActif = false;
       const { data: configCinet } = await supabase
         .from('configuration_globale')
@@ -289,14 +345,33 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
 
         if (error) throw error;
 
-        alert(`🎉 Abonnement validé et mis à jour avec succès ! Nouvelle limite : ${nouveauTotalCumule} utilisateurs.`);
-        chargerInfosEntrepriseEtTarifs();
-        window.location.reload();
+        setModaleInfo({
+          ouverte: true,
+          titre: '🎉 Abonnement Validé',
+          message: `Mise à jour réussie ! Nouvelle limite : ${nouveauTotalCumule} utilisateurs.`,
+          type: 'succes',
+          onConfirmer: () => {
+            chargerInfosEntrepriseEtTarifs();
+            window.location.reload();
+          }
+        });
       } else {
-        alert(`Redirection vers la passerelle de paiement CinetPay pour un montant de ${montantTotalCalculé.toLocaleString()} XAF...`);
+        setModaleInfo({
+          ouverte: true,
+          titre: 'Redirection CinetPay',
+          message: `Redirection vers la passerelle de paiement pour un montant de ${montantTotalCalculé.toLocaleString()} XAF...`,
+          type: 'info',
+          onConfirmer: null
+        });
       }
     } catch (err) {
-      alert('Erreur lors de la mise à jour : ' + err.message);
+      setModaleInfo({
+        ouverte: true,
+        titre: 'Erreur',
+        message: 'Erreur lors de la mise à jour : ' + err.message,
+        type: 'erreur',
+        onConfirmer: null
+      });
     }
   };
 
@@ -312,7 +387,6 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   };
 
-  // Extraction ultra-sécurisée des espaces souscrits
   const donneesBrutesEspaces = entreprise?.espaces_souscrits;
   let espacesSouscrits = ['BOUTIQUE'];
 
@@ -333,7 +407,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
   }
 
   return (
-    <div className="space-y-3 font-sans text-xs pb-16">
+    <div className="space-y-3 font-sans text-xs pb-16 relative">
       
       {/* EN-TÊTE */}
       <div className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
@@ -353,7 +427,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
           <button
             type="button"
             onClick={() => setModeAjoutModule(!modeAjoutModule)}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-black text-[10px] px-2.5 py-1 rounded-lg shadow-2xs transition flex items-center gap-1 uppercase"
+            className="bg-orange-600 hover:bg-orange-500 text-white font-black text-[10px] px-2.5 py-1 rounded-lg shadow-2xs transition flex items-center gap-1 uppercase cursor-pointer"
           >
             <span>{modeAjoutModule ? '✖ Fermer' : '➕ Souscrire à un nouveau module'}</span>
           </button>
@@ -385,9 +459,9 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
                       <span className="text-[10px] font-black">{mod}</span>
                       <input
                         type="checkbox"
-                        checked={nouveauxModulesChoisis[mod]}
+                        checked={!!nouveauxModulesChoisis[mod]}
                         onChange={(e) => setNouveauxModulesChoisis({ ...nouveauxModulesChoisis, [mod]: e.target.checked })}
-                        className="accent-orange-700 w-4 h-4"
+                        className="accent-orange-700 w-4 h-4 cursor-pointer"
                       />
                     </div>
                     <div className={`text-[8.5px] ${nouveauxModulesChoisis[mod] ? 'text-orange-100' : 'text-slate-500'}`}>
@@ -418,8 +492,8 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
               <button
                 type="button"
                 disabled={activationEnCours}
-                onClick={validerActivationNouveauxModules}
-                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-lg text-[10px] shadow-2xs transition uppercase"
+                onClick={declencherValidationActivation}
+                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-2 rounded-lg text-[10px] shadow-2xs transition uppercase cursor-pointer"
               >
                 {activationEnCours ? 'Enregistrement...' : 'Enregistrer dans la base & Activer 🚀'}
               </button>
@@ -473,7 +547,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
                       type="button"
                       disabled={estActif || changementModuleEnCours}
                       onClick={() => basculerModuleActif(mod)}
-                      className={`px-2 py-1 rounded font-black text-[9px] transition uppercase border ${
+                      className={`px-2 py-1 rounded font-black text-[9px] transition uppercase border cursor-pointer ${
                         estActif
                           ? 'bg-orange-600 text-white border-orange-600 cursor-default shadow-xs'
                           : 'bg-white hover:bg-orange-50 text-slate-700 border-slate-300 shadow-2xs'
@@ -537,7 +611,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
               <button
                 type="button"
                 onClick={() => setNombreUtilisateursChoisi(prev => Math.max(1, prev - 1))}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-0.5 rounded-md text-xs transition"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-0.5 rounded-md text-xs transition cursor-pointer"
               >
                 -
               </button>
@@ -545,7 +619,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
               <button
                 type="button"
                 onClick={() => setNombreUtilisateursChoisi(prev => prev + 1)}
-                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-0.5 rounded-md text-xs transition"
+                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-0.5 rounded-md text-xs transition cursor-pointer"
               >
                 +
               </button>
@@ -565,7 +639,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
               <button
                 type="button"
                 onClick={() => setNombreMoisChoisi(prev => Math.max(1, prev - 1))}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-0.5 rounded-md text-xs transition"
+                className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-black px-2.5 py-0.5 rounded-md text-xs transition cursor-pointer"
               >
                 -
               </button>
@@ -573,7 +647,7 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
               <button
                 type="button"
                 onClick={() => setNombreMoisChoisi(prev => prev + 1)}
-                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-0.5 rounded-md text-xs transition"
+                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-0.5 rounded-md text-xs transition cursor-pointer"
               >
                 +
               </button>
@@ -589,8 +663,8 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
 
           <button
             type="button"
-            onClick={souscrireSurMesure}
-            className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-2 rounded-xl transition shadow-xs text-xs uppercase tracking-wide truncate"
+            onClick={declencherSouscriptionSurMesure}
+            className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 px-2 rounded-xl transition shadow-xs text-xs uppercase tracking-wide truncate cursor-pointer"
           >
             Valider l'abonnement 🚀
           </button>
@@ -620,6 +694,72 @@ export default function EspaceSouscription({ entrepriseId: propEntrepriseId }) {
           </table>
         </div>
       </div>
+
+      {/* 🪟 JOLIE MODALE DE NOTIFICATION / CONFIRMATION STYLISÉE */}
+      {modaleInfo.ouverte && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl">
+            
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
+              modaleInfo.type === 'confirmation' ? 'bg-amber-500/20 text-amber-600 border border-amber-500/30' :
+              modaleInfo.type === 'succes' ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/30' : 
+              modaleInfo.type === 'erreur' ? 'bg-rose-500/20 text-rose-600 border border-rose-500/30' :
+              'bg-blue-500/20 text-blue-600 border border-blue-500/30'
+            }`}>
+              {modaleInfo.type === 'confirmation' ? '❓' :
+               modaleInfo.type === 'succes' ? '✓' : 
+               modaleInfo.type === 'erreur' ? '⚠️' : 'ℹ️'}
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="font-black text-sm uppercase tracking-wider text-slate-900">
+                {modaleInfo.titre}
+              </h4>
+              <p className="text-xs font-medium leading-relaxed text-slate-600">
+                {modaleInfo.message}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              {modaleInfo.type === 'confirmation' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setModaleInfo({ ...modaleInfo, ouverte: false })}
+                    className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const action = modaleInfo.onConfirmer;
+                      setModaleInfo({ ...modaleInfo, ouverte: false });
+                      if (action) action();
+                    }}
+                    className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer"
+                  >
+                    Confirmer
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const action = modaleInfo.onConfirmer;
+                    setModaleInfo({ ...modaleInfo, ouverte: false });
+                    if (action) action();
+                  }}
+                  className="w-full bg-[#0a1931] hover:bg-[#132d5c] text-white font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer"
+                >
+                  Compris 👍
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

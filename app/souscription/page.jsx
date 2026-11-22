@@ -691,7 +691,7 @@ export default function SouscriptionWizard() {
                           <div className="flex items-center">
                             <input
                               type="checkbox"
-                              checked={modules[mod]}
+                              checked={!!modules[mod]}
                               onChange={() => {}}
                               className="w-4 h-4 text-[#005a5b] accent-[#005a5b] rounded border-slate-300 mr-2.5"
                             />

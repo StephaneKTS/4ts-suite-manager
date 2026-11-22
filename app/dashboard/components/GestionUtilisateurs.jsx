@@ -31,6 +31,7 @@ const MODULES_DISPONIBLES = [
 
 export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkMode = false }) {
   const [utilisateurs, setUtilisateurs] = useState([]);
+  const [utilisateursBruts, setUtilisateursBruts] = useState([]);
   const [roles, setRoles] = useState([]);
   const [caisses, setCaisses] = useState([]);
   const [emplacements, setEmplacements] = useState([]);
@@ -64,6 +65,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     { id: 'commandes_clients_qr', nom: '📱 Commandes QR Code' },
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
+    { id: 'gestion_tables', nom: '🪑 Gestion des Tables' },
     { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
     { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' },
     { id: 'familles_articles', nom: '🏷️ Familles & Catégories' },
@@ -94,7 +96,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+      return (localStorage.getItem('moduleActif') || localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
     }
     return 'BOUTIQUE';
   };
@@ -247,6 +249,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         const payloadAdminAuto = {
           id_entreprise: entrepriseId,
           module: moduleActuel,
+          modules_cibles: [moduleActuel],
           nom_complet: (dataEnt.nom_entreprise || 'ADMINISTRATEUR').trim().toUpperCase(),
           prenom: '',
           email: (dataEnt.email || '').trim().toLowerCase(),
@@ -269,6 +272,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
           rawUsers = [insertedAdmin];
         }
       }
+
+      setUtilisateursBruts(rawUsers);
 
       const mapUniques = new Map();
       rawUsers.forEach((u) => {
@@ -485,8 +490,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
 
-    const modulesPayload = nouveauUser.modules_cibles.length > 0 
-      ? nouveauUser.modules_cibles 
+    // 🎯 LOGIQUE UNIVERSELLE : Garantie que modules_cibles contient au moins le module actif si vide
+    const modulesPayload = Array.isArray(nouveauUser.modules_cibles) && nouveauUser.modules_cibles.length > 0 
+      ? [...new Set(nouveauUser.modules_cibles.map(m => m.toUpperCase()))]
       : [moduleActuel];
 
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : null;
@@ -496,7 +502,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     const nomRoleFinal = selectedRoleObj ? selectedRoleObj.nom_role.trim().toUpperCase() : (nouveauUser.nom_role || 'EMPLOYE').trim().toUpperCase();
     const isRoleAdmin = nomRoleFinal === 'ADMINISTRATEUR';
 
-    // 🔒 CORRECTION DÉFINITIVE : Construction fusionnée garantie des permissions effectives
     const permissionsEffectives = isRoleAdmin 
       ? { _plein_acces: true } 
       : construirePermissionsFusionnees(selectedRoleObj, nouveauUser.permissions);
@@ -505,6 +510,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     try {
       let emplacementIdFinal = nouveauUser.id_emplacement;
       const nomNomCollab = (nouveauUser.nom_complet || '').trim().toUpperCase();
+      const prenomCollab = (nouveauUser.prenom || '').trim().toUpperCase();
 
       if (estRoleLivreurStrict) {
         if (!emplacementIdFinal) {
@@ -530,7 +536,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       let basePayload = {
         id_entreprise: entrepriseId,
         nom_complet: nomNomCollab,
-        prenom: (nouveauUser.prenom || '').trim().toUpperCase(),
+        prenom: prenomCollab,
         date_naissance: nouveauUser.date_naissance || null,
         lieu_naissance: (nouveauUser.lieu_naissance || '').trim().toUpperCase(),
         statut_matrimonial: nouveauUser.statut_matrimonial,
@@ -551,51 +557,47 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         photo: nouveauUser.photo || null,
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
-        permissions: permissionsEffectives // 👈 Sauvegarde directe et garantie dans la table utilisateurs
+        permissions: permissionsEffectives,
+        modules_cibles: modulesPayload // 🎯 Sauvegarde garantie du tableau de modules
       };
 
-      if (userEnEdition) {
-        const { error: errUpdateDirect } = await supabase
-          .from('utilisateurs')
-          .update(basePayload)
-          .eq('id', userEnEdition.id);
+      // 🎯 Récupération robuste de tous les enregistrements existants pour cet employé
+      const { data: existingRecords } = await supabase
+        .from('utilisateurs')
+        .select('id, module')
+        .eq('id_entreprise', entrepriseId)
+        .eq('nom_complet', nomNomCollab);
 
-        if (errUpdateDirect) throw errUpdateDirect;
+      // Pour chaque module disponible, on synchronise proprement sa ligne
+      for (const modObj of MODULES_DISPONIBLES) {
+        const modCible = modObj.id;
+        const doitEtreActif = modulesPayload.includes(modCible);
+        const recordTrouve = existingRecords?.find(r => (r.module || '').toUpperCase() === modCible);
 
-        const { data: existingRecords } = await supabase
-          .from('utilisateurs')
-          .select('id, module')
-          .eq('id_entreprise', entrepriseId)
-          .eq('nom_complet', nomNomCollab);
-
-        for (const modObj of MODULES_DISPONIBLES) {
-          const modCible = modObj.id;
-          const doitEtreActif = modulesPayload.includes(modCible);
-          const recordTrouve = existingRecords?.find(r => (r.module || '').toUpperCase() === modCible);
-
-          if (doitEtreActif) {
-            if (recordTrouve) {
-              await supabase
-                .from('utilisateurs')
-                .update({ ...basePayload, module: modCible })
-                .eq('id', recordTrouve.id);
-            } else {
-              await supabase
-                .from('utilisateurs')
-                .insert([{ ...basePayload, module: modCible }]);
-            }
-          } else if (recordTrouve && recordTrouve.id !== userEnEdition.id) {
+        if (doitEtreActif) {
+          if (recordTrouve) {
             await supabase
               .from('utilisateurs')
-              .delete()
+              .update({ ...basePayload, module: modCible })
               .eq('id', recordTrouve.id);
+          } else {
+            await supabase
+              .from('utilisateurs')
+              .insert([{ ...basePayload, module: modCible }]);
           }
+        } else if (recordTrouve) {
+          // Si le module a été décoché, on supprime la ligne correspondante
+          await supabase
+            .from('utilisateurs')
+            .delete()
+            .eq('id', recordTrouve.id);
         }
-      } else {
+      }
+
+      // Si c'était une création pure et qu'aucun enregistrement n'existait
+      if (!userEnEdition && (!existingRecords || existingRecords.length === 0)) {
         for (const modCible of modulesPayload) {
-          let payloadModule = { ...basePayload, module: modCible };
-          const { error } = await supabase.from('utilisateurs').insert([payloadModule]);
-          if (error) console.error(`Erreur insertion module ${modCible}:`, error.message);
+          await supabase.from('utilisateurs').insert([{ ...basePayload, module: modCible }]);
         }
       }
 
@@ -626,7 +628,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
   const ouvrirEdition = (user) => {
     setUserEnEdition(user);
-    setOngletFicheActif('infos'); // Réinitialiser sur le premier onglet à l'ouverture
+    setOngletFicheActif('infos');
     let telLocal = user.telephone || '';
     const paysTrouve = LISTE_PAYS.find(p => user.telephone && user.telephone.startsWith(p.indicatif)) || LISTE_PAYS[0];
     if (user.telephone && user.telephone.startsWith(paysTrouve.indicatif)) {
@@ -644,6 +646,28 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         roleIdMatch = String(roleParNom.id);
         roleObjMatch = roleParNom;
       }
+    }
+
+    // 🎯 RECONSTRUCTION UNIVERSELLE DES MODULES DE L'EMPLOYÉ À L'OUVERTURE
+    let modulesDetectes = [];
+    if (Array.isArray(user.modules_cibles) && user.modules_cibles.length > 0) {
+      user.modules_cibles.forEach(m => modulesDetectes.push(String(m).toUpperCase()));
+    }
+
+    const lignesGlobalesUser = utilisateursBruts.filter(
+      u => (u.nom_complet || '').trim().toUpperCase() === (user.nom_complet || '').trim().toUpperCase()
+    );
+    
+    lignesGlobalesUser.forEach(l => {
+      if (l.module) modulesDetectes.push(l.module.toUpperCase());
+      if (Array.isArray(l.modules_cibles)) {
+        l.modules_cibles.forEach(m => modulesDetectes.push(String(m).toUpperCase()));
+      }
+    });
+
+    modulesDetectes = [...new Set(modulesDetectes)];
+    if (modulesDetectes.length === 0) {
+      modulesDetectes = [user.module ? user.module.toUpperCase() : moduleActuel];
     }
 
     setNouveauUser({
@@ -669,7 +693,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       photo: user.photo || '',
       statut: user.statut || 'ACTIF',
       acces_application: user.acces_application ?? true,
-      modules_cibles: [moduleActuel],
+      modules_cibles: modulesDetectes,
       permissions: construirePermissionsFusionnees(roleObjMatch, user.permissions || {}),
     });
     setAfficherForm(true);
@@ -1146,54 +1170,55 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         </div>
       )}
 
-      {/* 🪟 MODALE DE CONFIGURATION DES PERMISSIONS */}
+      {/* 🪟 MODALE DE CONFIGURATION DES PERMISSIONS EN PLEIN ÉCRAN */}
       {afficherModalePermissions && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className={`border rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-6 animate-fadeIn">
+          <div className={`border rounded-2xl w-full h-full max-w-7xl max-h-[96vh] p-4 sm:p-6 flex flex-col space-y-4 shadow-2xl ${isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
             
-            <div className="flex justify-between items-center border-b pb-3 border-slate-700/20">
-              <h4 className={`font-black text-sm uppercase tracking-wider flex items-center gap-2 ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
-                <span>🔑</span> Matrice des Droits par Module ({moduleActuel})
-              </h4>
+            <div className="flex justify-between items-center border-b pb-3 border-slate-700/25 shrink-0">
+              <div>
+                <h4 className={`font-black text-sm sm:text-base uppercase tracking-wider flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
+                  <span>🔑</span> Matrice complète des Droits par Module ({moduleActuel})
+                </h4>
+                <p className={`text-[11px] mt-0.5 font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                  Cochez ou décochez les actions autorisées pour ce collaborateur sur chaque module du système.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setAfficherModalePermissions(false)}
-                className="text-slate-400 hover:text-white font-bold text-sm p-1 cursor-pointer"
+                className="text-slate-400 hover:text-white font-bold text-base p-2 bg-slate-800/50 rounded-xl cursor-pointer"
               >
-                ✕
+                ✕ Fermer
               </button>
             </div>
 
-            <p className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-              Cochez ou décochez les actions autorisées pour ce collaborateur sur chaque module du système.
-            </p>
-
-            <div className={`overflow-x-auto border rounded-xl shadow-inner max-h-[55vh] ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+            <div className={`flex-1 overflow-y-auto border rounded-2xl shadow-inner ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
               <table className="w-full text-left text-xs">
-                <thead className={`border-b text-[10px] uppercase font-black sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900'}`}>
+                <thead className={`border-b text-[11px] uppercase font-black sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900'}`}>
                   <tr>
-                    <th className="p-2.5">Module / Table</th>
-                    <th className="p-2.5 text-center">👁️ Lecture</th>
-                    <th className="p-2.5 text-center">➕ Création</th>
-                    <th className="p-2.5 text-center">✏️ Modif.</th>
-                    <th className="p-2.5 text-center">🗑️ Suppr.</th>
-                    <th className="p-2.5 text-center">Action Rapide</th>
+                    <th className="p-3.5">Module / Table</th>
+                    <th className="p-3.5 text-center">👁️ Lecture</th>
+                    <th className="p-3.5 text-center">➕ Création</th>
+                    <th className="p-3.5 text-center">✏️ Modif.</th>
+                    <th className="p-3.5 text-center">🗑️ Suppr.</th>
+                    <th className="p-3.5 text-center">Action Rapide</th>
                   </tr>
                 </thead>
-                <tbody className={`divide-y text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
+                <tbody className={`divide-y text-xs ${isDarkMode ? 'divide-slate-800/80' : 'divide-slate-200'}`}>
                   {modulesApp.map((m) => {
                     const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
                     const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
                     return (
-                      <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/50' : 'hover:bg-blue-50/50 font-medium'}>
-                        <td className={`p-2.5 font-bold ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>{m.nom}</td>
-                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" /></td>
-                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" /></td>
-                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-4 h-4 accent-blue-500 rounded cursor-pointer" /></td>
-                        <td className="p-2.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-4 h-4 accent-red-500 rounded cursor-pointer" /></td>
-                        <td className="p-2.5 text-center">
-                          <button type="button" onClick={() => accorderToutModuleUser(m.id, !estToutAccorde)} className={`px-2 py-1 rounded text-[9.5px] font-black cursor-pointer ${estToutAccorde ? 'bg-red-950 text-red-300 border border-red-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}`}>
-                            {estToutAccorde ? 'Aucun' : 'Tous'}
+                      <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/60' : 'hover:bg-blue-50/60 font-medium'}>
+                        <td className={`p-3.5 font-bold ${isDarkMode ? 'text-slate-100' : 'text-[#0a1931]'}`}>{m.nom}</td>
+                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-5 h-5 accent-amber-500 rounded cursor-pointer" /></td>
+                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-5 h-5 accent-emerald-500 rounded cursor-pointer" /></td>
+                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-5 h-5 accent-blue-500 rounded cursor-pointer" /></td>
+                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-5 h-5 accent-red-500 rounded cursor-pointer" /></td>
+                        <td className="p-3.5 text-center">
+                          <button type="button" onClick={() => accorderToutModuleUser(m.id, !estToutAccorde)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black cursor-pointer ${estToutAccorde ? 'bg-red-950 text-red-300 border border-red-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}`}>
+                            {estToutAccorde ? 'Tout retirer' : 'Tout accorder'}
                           </button>
                         </td>
                       </tr>
@@ -1203,11 +1228,11 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </table>
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex justify-end shrink-0 border-t border-slate-700/25">
               <button
                 type="button"
                 onClick={() => setAfficherModalePermissions(false)}
-                className={`font-black px-6 py-2.5 rounded-xl text-xs shadow-xs transition cursor-pointer border ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                className={`font-black px-8 py-3 rounded-xl text-xs shadow-md transition cursor-pointer border ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
               >
                 Valider & Fermer 👍
               </button>

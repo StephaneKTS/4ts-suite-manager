@@ -3,7 +3,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export default function GestionTables({ entrepriseId }) {
+export default function GestionTables({ 
+  entrepriseId, 
+  isDarkMode = false,
+  autoriserCreation = true,
+  autoriserModification = true,
+  autoriserSuppression = true
+}) {
   const [tables, setTables] = useState([]);
   const [numeroTable, setNumeroTable] = useState('');
   const [espace, setEspace] = useState('SALLE PRINCIPALE');
@@ -93,6 +99,18 @@ export default function GestionTables({ entrepriseId }) {
 
   const ajouterTable = async (e) => {
     e.preventDefault();
+    
+    // 🔒 VÉRIFICATION DES DROITS DE CRÉATION
+    if (!autoriserCreation) {
+      setModalMessage({
+        visible: true,
+        titre: 'Accès refusé ⛔',
+        texte: 'Vous ne possédez pas les droits de création sur la gestion des tables.',
+        type: 'erreur'
+      });
+      return;
+    }
+
     if (!numeroTable.trim()) {
       setModalMessage({
         visible: true,
@@ -153,6 +171,18 @@ export default function GestionTables({ entrepriseId }) {
 
   const modifierTable = async (e) => {
     e.preventDefault();
+    
+    // 🔒 VÉRIFICATION DES DROITS DE MODIFICATION
+    if (!autoriserModification) {
+      setModalMessage({
+        visible: true,
+        titre: 'Accès refusé ⛔',
+        texte: 'Vous ne possédez pas les droits de modification sur la gestion des tables.',
+        type: 'erreur'
+      });
+      return;
+    }
+
     if (!tableSelectionnee) return;
 
     try {
@@ -188,6 +218,17 @@ export default function GestionTables({ entrepriseId }) {
   };
 
   const supprimerTable = async (id) => {
+    // 🔒 VÉRIFICATION DES DROITS DE SUPPRESSION
+    if (!autoriserSuppression) {
+      setModalMessage({
+        visible: true,
+        titre: 'Accès refusé ⛔',
+        texte: 'Vous ne possédez pas les droits de suppression sur la gestion des tables.',
+        type: 'erreur'
+      });
+      return;
+    }
+
     if (!window.confirm('Voulez-vous vraiment supprimer cette table ?')) return;
 
     try {
@@ -342,7 +383,7 @@ export default function GestionTables({ entrepriseId }) {
   return (
     <div className="w-full max-w-2xl mx-auto p-3 sm:p-4 space-y-4 font-sans text-xs box-border overflow-hidden">
       
-      {/* 1. ÉCRAN D'ACCUEIL ÉPURÉ ET OPTIMISÉ MOBILE */}
+      {/* 1. ÉCRAN D'ACCUEIL */}
       {vueActive === 'menu' && (
         <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm text-center space-y-4 max-w-md mx-auto">
           <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center mx-auto text-xl shadow-xs">
@@ -356,13 +397,19 @@ export default function GestionTables({ entrepriseId }) {
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 pt-2">
-            <button
-              type="button"
-              onClick={() => setVueActive('creer')}
-              className="bg-orange-600 hover:bg-orange-500 text-white font-black py-3 px-2 rounded-xl uppercase shadow-sm transition flex flex-col items-center justify-center gap-1 cursor-pointer text-[10px] sm:text-xs"
-            >
-              <span className="text-sm">➕</span> CRÉER UNE TABLE
-            </button>
+            {autoriserCreation ? (
+              <button
+                type="button"
+                onClick={() => setVueActive('creer')}
+                className="bg-orange-600 hover:bg-orange-500 text-white font-black py-3 px-2 rounded-xl uppercase shadow-sm transition flex flex-col items-center justify-center gap-1 cursor-pointer text-[10px] sm:text-xs"
+              >
+                <span className="text-sm">➕</span> CRÉER UNE TABLE
+              </button>
+            ) : (
+              <div className="bg-slate-200 text-slate-400 font-bold py-3 px-2 rounded-xl uppercase flex flex-col items-center justify-center gap-1 text-[10px] cursor-not-allowed">
+                <span>🔒</span> CRÉATION BLOQUÉE
+              </div>
+            )}
             <button
               type="button"
               onClick={() => setVueActive('liste')}
@@ -462,13 +509,15 @@ export default function GestionTables({ entrepriseId }) {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => setVueActive('creer')}
-                className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-2 rounded-xl text-[10px] uppercase shadow-md transition cursor-pointer flex-1 sm:flex-none text-center"
-              >
-                + Ajouter
-              </button>
+              {autoriserCreation && (
+                <button
+                  type="button"
+                  onClick={() => setVueActive('creer')}
+                  className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-2 rounded-xl text-[10px] uppercase shadow-md transition cursor-pointer flex-1 sm:flex-none text-center"
+                >
+                  + Ajouter
+                </button>
+              )}
               {tables.length > 0 && (
                 <button
                   type="button"
@@ -557,13 +606,19 @@ export default function GestionTables({ entrepriseId }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setModeEdition(true)}
-                    className="bg-slate-900 hover:bg-slate-800 text-white font-black py-2.5 rounded-xl text-[10px] uppercase shadow-md transition cursor-pointer"
-                  >
-                    ✏️ Modifier
-                  </button>
+                  {autoriserModification ? (
+                    <button
+                      type="button"
+                      onClick={() => setModeEdition(true)}
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-black py-2.5 rounded-xl text-[10px] uppercase shadow-md transition cursor-pointer"
+                    >
+                      ✏️ Modifier
+                    </button>
+                  ) : (
+                    <div className="bg-slate-200 text-slate-400 font-bold py-2.5 rounded-xl text-[10px] uppercase flex items-center justify-center">
+                      🔒 Verrouillé
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => imprimerChevaletTable(tableSelectionnee)}
@@ -573,13 +628,15 @@ export default function GestionTables({ entrepriseId }) {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => supprimerTable(tableSelectionnee.id)}
-                  className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 rounded-xl text-[10px] uppercase transition cursor-pointer"
-                >
-                  Supprimer cette table ❌
-                </button>
+                {autoriserSuppression && (
+                  <button
+                    type="button"
+                    onClick={() => supprimerTable(tableSelectionnee.id)}
+                    className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-black py-2 rounded-xl text-[10px] uppercase transition cursor-pointer"
+                  >
+                    Supprimer cette table ❌
+                  </button>
+                )}
               </div>
             ) : (
               <form onSubmit={modifierTable} className="space-y-3">

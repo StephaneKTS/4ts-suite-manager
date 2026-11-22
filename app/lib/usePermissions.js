@@ -1,28 +1,61 @@
 'use client';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export function usePermissions(entrepriseId, utilisateurConnecte, emailConnecte, moduleCourant) {
-  // Récupération instantanée des permissions stockées dans la session lors de la connexion
-  const obtenirPermissionsSession = () => {
+  const [permissionsUser, setPermissionsUser] = useState(() => {
     if (typeof window === 'undefined') return { _aucun_acces: true };
     try {
       const sessionPerms = localStorage.getItem('permissions_utilisateur');
-      if (sessionPerms) {
-        return JSON.parse(sessionPerms);
-      }
-    } catch (e) {
-      console.error("Erreur lecture session permissions", e);
-    }
-    
-    // Par défaut si non connecté ou session vide : aucun accès (ou plein accès si Super Admin)
+      if (sessionPerms) return JSON.parse(sessionPerms);
+    } catch (e) {}
     const email = String(emailConnecte || '').trim().toLowerCase();
-    if (email === 'stephs7352@gmail.com') {
-      return { _plein_acces: true };
-    }
+    if (email === 'stephs7352@gmail.com') return { _plein_acces: true };
     return { _aucun_acces: true };
-  };
+  });
 
-  const permissionsUser = obtenirPermissionsSession();
-  const chargementPermissions = false; // Plus aucun chargement bloquant en attente
+  // Synchronisation temps réel des permissions pour éviter les caches obsolètes
+  useEffect(() => {
+    if (!emailConnecte && !utilisateurConnecte) return;
+
+    async function rafraichirPermissionsLive() {
+      try {
+        const { data: userRecord } = await supabase
+          .from('utilisateurs')
+          .select('permissions, id_role')
+          .eq('id_entreprise', entrepriseId)
+          .or(`email.eq.${emailConnecte},nom_complet.eq.${utilisateurConnecte}`)
+          .maybeSingle();
+
+        if (userRecord) {
+          let permsFinales = userRecord.permissions;
+          
+          // Si les permissions directes sont vides, on va chercher le rôle associé en direct
+          if ((!permsFinales || Object.keys(permsFinales).length === 0) && userRecord.id_role) {
+            const { data: roleData } = await supabase
+              .from('roles')
+              .select('permissions, nom_role')
+              .eq('id', userRecord.id_role)
+              .maybeSingle();
+
+            if (roleData) {
+              const nomRoleUpper = (roleData.nom_role || '').trim().toUpperCase();
+              permsFinales = nomRoleUpper === 'ADMINISTRATEUR' ? { _plein_acces: true } : (roleData.permissions || { _aucun_acces: true });
+            }
+          }
+
+          if (permsFinales) {
+            setPermissionsUser(permsFinales);
+            localStorage.setItem('permissions_utilisateur', JSON.stringify(permsFinales));
+          }
+        }
+      } catch (err) {
+        console.error("Erreur rafraîchissement permissions live:", err);
+      }
+    }
+
+    rafraichirPermissionsLive();
+  }, [entrepriseId, utilisateurConnecte, emailConnecte]);
 
   const trouverPermissionModule = (perms, moduleId) => {
     if (!perms) return { lecture: false, creation: false, modification: false, suppression: false };
@@ -42,7 +75,8 @@ export function usePermissions(entrepriseId, utilisateurConnecte, emailConnecte,
       'commandes_livraison_en_tete': 'commandes_livraison', 'grille_tarifaire': 'grille_tarifaire',
       'grille_tarifaire_livraison': 'grille_tarifaire', 'challenges_commerciaux': 'challenges_commerciaux',
       'plan_comptable': 'plan_comptable', 'journal': 'plan_comptable',
-      'roles': 'roles_utilisateurs', 'utilisateurs': 'roles_utilisateurs', 'roles_utilisateurs': 'roles_utilisateurs'
+      'roles': 'roles_utilisateurs', 'utilisateurs': 'roles_utilisateurs', 'roles_utilisateurs': 'roles_utilisateurs',
+      'gestion_tables': 'gestion_tables'
     };
 
     const cleNettoyee = String(moduleId || '').toLowerCase().trim();
@@ -86,7 +120,7 @@ export function usePermissions(entrepriseId, utilisateurConnecte, emailConnecte,
 
   return { 
     permissionsUser, 
-    chargementPermissions, 
+    chargementPermissions: false, 
     verifierPermission, 
     verifierCreation, 
     verifierModification, 

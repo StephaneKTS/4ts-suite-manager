@@ -66,12 +66,13 @@ function DashboardContent() {
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   
+  // 🎯 CORRECTION CLEF : Lecture prioritaire du stockage local pour éviter l'écrasement par la base
   const [moduleCourant, setModuleCourant] = useState(() => {
     if (typeof window !== 'undefined') {
-      const modLocal = localStorage.getItem('module_actif');
+      const modLocal = localStorage.getItem('module_actif') || localStorage.getItem('moduleActif');
       if (modLocal) return modLocal.toUpperCase();
     }
-    return 'LIVRAISON';
+    return 'BOUTIQUE';
   });
   
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
@@ -88,12 +89,33 @@ function DashboardContent() {
     return true; 
   });
 
+  // 🔄 Synchronisation instantanée du module courant si modifié dans le localStorage
+  useEffect(() => {
+    const synchroniserModuleStockage = () => {
+      if (typeof window !== 'undefined') {
+        const modStock = localStorage.getItem('module_actif') || localStorage.getItem('moduleActif');
+        if (modStock && modStock.toUpperCase() !== moduleCourant) {
+          setModuleCourant(modStock.toUpperCase());
+        }
+      }
+    };
+
+    window.addEventListener('storage', synchroniserModuleStockage);
+    const intervalId = setInterval(synchroniserModuleStockage, 500);
+
+    return () => {
+      window.removeEventListener('storage', synchroniserModuleStockage);
+      clearInterval(intervalId);
+    };
+  }, [moduleCourant]);
+
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte');
       const emailLocal = localStorage.getItem('emailConnecte');
       const entLocal = localStorage.getItem('entrepriseId');
+      const modLocal = localStorage.getItem('module_actif') || localStorage.getItem('moduleActif');
 
       if (!userLocal || !emailLocal || !entLocal) {
         localStorage.clear();
@@ -104,6 +126,9 @@ function DashboardContent() {
       setAuthentifie(true);
       setUtilisateurConnecte(userLocal.toUpperCase());
       setEmailConnecte(emailLocal);
+      if (modLocal) {
+        setModuleCourant(modLocal.toUpperCase());
+      }
 
       const themeLocal = localStorage.getItem('4ts_theme_mode');
       if (themeLocal) {
@@ -128,19 +153,6 @@ function DashboardContent() {
     async function fetchEntrepriseData() {
       const cleCacheDashboard = `4ts_dashboard_cache_${entrepriseIdUrl}`;
       try {
-        if (typeof window !== 'undefined') {
-          const cacheLocal = localStorage.getItem(cleCacheDashboard);
-          if (cacheLocal) {
-            const parsed = JSON.parse(cacheLocal);
-            setInfosEntreprise(parsed);
-            setEntrepriseId(parsed.id_entreprise);
-            if (parsed.logo) setLogoEntreprise(parsed.logo);
-            if (parsed.module_actif && !localStorage.getItem('module_actif')) {
-              setModuleCourant(parsed.module_actif.toUpperCase());
-            }
-          }
-        }
-
         const { data: entData } = await supabase
           .from('entreprises')
           .select('*')
@@ -155,34 +167,55 @@ function DashboardContent() {
           if (typeof window !== 'undefined') {
             localStorage.setItem('entrepriseId', entData.id_entreprise);
             localStorage.setItem(cleCacheDashboard, JSON.stringify(entData));
+          }
+        }
 
-            const modLocal = localStorage.getItem('module_actif');
-            const espacesAutorises = entData.espaces_souscrits 
-              ? entData.espaces_souscrits.map(m => m.toUpperCase()) 
-              : ['BOUTIQUE'];
+        // 🔍 VÉRIFICATION DES DROITS UTILISATEUR SANS ÉCRASER LE MODULE LOCAL EN COURS
+        if (utilisateurConnecte || emailConnecte) {
+          const { data: userData } = await supabase
+            .from('utilisateurs')
+            .select('modules_cibles, module')
+            .eq('id_entreprise', entrepriseIdUrl)
+            .or(`email.eq.${emailConnecte},nom_complet.eq.${utilisateurConnecte}`);
 
-            if (modLocal && espacesAutorises.includes(modLocal.toUpperCase())) {
-              setModuleCourant(modLocal.toUpperCase());
-            } else {
-              const moduleDefaut = espacesAutorises.includes('LIVRAISON') && !espacesAutorises.includes('BOUTIQUE') 
-                ? 'LIVRAISON' 
-                : (espacesAutorises[0] || 'BOUTIQUE');
-              
-              setModuleCourant(moduleDefaut);
-              localStorage.setItem('module_actif', moduleDefaut);
+          let modulesAutorisesUser = [];
+          if (userData && userData.length > 0) {
+            userData.forEach(row => {
+              if (Array.isArray(row.modules_cibles) && row.modules_cibles.length > 0) {
+                row.modules_cibles.forEach(m => modulesAutorisesUser.push(m.toUpperCase()));
+              }
+              if (row.module) {
+                modulesAutorisesUser.push(row.module.toUpperCase());
+              }
+            });
+          }
+          modulesAutorisesUser = [...new Set(modulesAutorisesUser)];
+
+          const modActuelStorage = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || localStorage.getItem('moduleActif'))?.toUpperCase() : null;
+
+          if (modActuelStorage && modulesAutorisesUser.includes(modActuelStorage)) {
+            setModuleCourant(modActuelStorage);
+          } else if (!modActuelStorage && modulesAutorisesUser.length > 0) {
+            const moduleParDefaut = modulesAutorisesUser[0];
+            setModuleCourant(moduleParDefaut);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('moduleActif', moduleParDefaut);
+              localStorage.setItem('module_actif', moduleParDefaut);
             }
           }
         }
+
       } catch (err) {
         console.error("Erreur de récupération entreprise :", err);
       }
     }
 
     fetchEntrepriseData();
-  }, [authentifie, entrepriseIdUrl]);
+  }, [authentifie, entrepriseIdUrl, utilisateurConnecte, emailConnecte]);
 
   const estModeLivraison = moduleCourant === 'LIVRAISON';
   const estModeTontine = moduleCourant === 'TONTINE';
+  const estModeLogistique = moduleCourant === 'LOGISTIQUE';
   const emailActuel = emailConnecte || infosEntreprise.email || '';
   
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
@@ -621,30 +654,42 @@ function DashboardContent() {
               ACCUEIL - MODULE TONTINE
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 w-full">
-              <div onClick={() => setModuleActif('tontine_cycles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">🔄</span>
-                <span className="font-bold text-xs leading-tight">Cycles & Sessions</span>
-              </div>
-              <div onClick={() => setModuleActif('tontine_participants')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">👥</span>
-                <span className="font-bold text-xs leading-tight">Gestion des Participants</span>
-              </div>
-              <div onClick={() => setModuleActif('tontine_cotisations')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">💰</span>
-                <span className="font-bold text-xs leading-tight">Suivi des Cotisations</span>
-              </div>
-              <div onClick={() => setModuleActif('tontine_emprunts')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">💳</span>
-                <span className="font-bold text-xs leading-tight">Gestion des Emprunts</span>
-              </div>
-              <div onClick={() => setModuleActif('tontine_elections')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">🏛️</span>
-                <span className="font-bold text-xs leading-tight">Élections du Bureau</span>
-              </div>
-              <div onClick={() => tenterAccesModule('roles_utilisateurs', 'Gestion des Rôles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
-                <span className="text-3xl group-hover:scale-110 transition">🛡️</span>
-                <span className="font-bold text-xs leading-tight">Gestion des Rôles</span>
-              </div>
+              {verifierPermission('tontine_cycles', estSuperAdmin) && (
+                <div onClick={() => setModuleActif('tontine_cycles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                  <span className="text-3xl group-hover:scale-110 transition">🔄</span>
+                  <span className="font-bold text-xs leading-tight">Cycles & Sessions</span>
+                </div>
+              )}
+              {verifierPermission('tontine_participants', estSuperAdmin) && (
+                <div onClick={() => setModuleActif('tontine_participants')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                  <span className="text-3xl group-hover:scale-110 transition">👥</span>
+                  <span className="font-bold text-xs leading-tight">Gestion des Participants</span>
+                </div>
+              )}
+              {verifierPermission('tontine_cotisations', estSuperAdmin) && (
+                <div onClick={() => setModuleActif('tontine_cotisations')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                  <span className="text-3xl group-hover:scale-110 transition">💰</span>
+                  <span className="font-bold text-xs leading-tight">Suivi des Cotisations</span>
+                </div>
+              )}
+              {verifierPermission('tontine_emprunts', estSuperAdmin) && (
+                <div onClick={() => setModuleActif('tontine_emprunts')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                  <span className="text-3xl group-hover:scale-110 transition">💳</span>
+                  <span className="font-bold text-xs leading-tight">Gestion des Emprunts</span>
+                </div>
+              )}
+              {verifierPermission('tontine_elections', estSuperAdmin) && (
+                <div onClick={() => setModuleActif('tontine_elections')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                  <span className="text-3xl group-hover:scale-110 transition">🏛️</span>
+                  <span className="font-bold text-xs leading-tight">Élections du Bureau</span>
+                </div>
+              )}
+              {verifierPermission('roles_utilisateurs', estSuperAdmin) && (
+                <div onClick={() => tenterAccesModule('roles_utilisateurs', 'Gestion des Rôles')} className={`${cardClass} p-4 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-2 group`}>
+                  <span className="text-3xl group-hover:scale-110 transition">🛡️</span>
+                  <span className="font-bold text-xs leading-tight">Gestion des Rôles</span>
+                </div>
+              )}
             </div>
           </div>
         ) : !moduleActif && moduleCourant === 'LIVRAISON' ? (
@@ -740,13 +785,15 @@ function DashboardContent() {
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
               
-              <div 
-                onClick={() => setModuleActif('commandes_clients_qr')} 
-                className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-orange-500/50`}
-              >
-                <span className="text-2xl group-hover:scale-110 transition">📱</span>
-                <span className="font-black text-[11px] sm:text-xs leading-tight text-orange-600">Commandes QR Code</span>
-              </div>
+              {verifierPermission('commandes_clients_qr', estSuperAdmin) && (
+                <div 
+                  onClick={() => setModuleActif('commandes_clients_qr')} 
+                  className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-orange-500/50`}
+                >
+                  <span className="text-2xl group-hover:scale-110 transition">📱</span>
+                  <span className="font-black text-[11px] sm:text-xs leading-tight text-orange-600">Commandes QR Code</span>
+                </div>
+              )}
 
               {verifierPermission('caisse', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('ventes', 'Caisse & Ventes')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
@@ -762,7 +809,6 @@ function DashboardContent() {
                 </div>
               )}
 
-              {/* 🪑 GESTION DES TABLES PROTÉGÉE PAR PERMISSION */}
               {verifierPermission('gestion_tables', estSuperAdmin) && (
                 <div 
                   onClick={() => tenterAccesModule('gestion_tables', 'Gestion des Tables')} 

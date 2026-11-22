@@ -8,7 +8,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const idEffectif = entrepriseId || (typeof window !== 'undefined' ? (localStorage.getItem('entrepriseId') || localStorage.getItem('entreprise_id')) : null) || '4TS-234321';
   
   // ⚡ 1. RÉCUPÉRATION INSTANTANÉE ET SÉCURISÉE DU MODULE ACTIF RÉEL DEPUIS LE LOCALSTORAGE
-  const moduleActifLocal = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase() : 'BOUTIQUE';
+  const moduleActifLocal = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || localStorage.getItem('moduleActif') || 'BOUTIQUE').toUpperCase() : 'BOUTIQUE';
 
   const profilCache = typeof window !== 'undefined' ? (() => {
     try {
@@ -62,7 +62,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
   const [confirmerMotDePasse, setConfirmerMotDePasse] = useState('');
   const [afficherMdp, setAfficherMdp] = useState(false);
   
-  const [logoEntreprise, setLogoEntreprise] = useState(profilCache.avatar);
+  const [logoEntreprise, setLogoEntreprise]  = useState(profilCache.avatar);
   const [modeModificationMdp, setModeModificationMdp] = useState(false);
 
   const [modeAction, setModeAction] = useState(null);
@@ -82,7 +82,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     chargerInfosUtilisateurEtEntrepriseSilencieux();
   }, [entrepriseId]);
 
-  // 🔄 SYNCHRONISATION SILENCIEUSE ET RESTRICTION STRICTE DES MODULES PAR UTILISATEUR
+  // 🔄 SYNCHRONISATION INSTANTANÉE ET DYNAMIQUE DES MODULES DEPUIS LA TABLE UTILISATEURS
   const chargerInfosUtilisateurEtEntrepriseSilencieux = async () => {
     try {
       let entrepriseTrouvee = null;
@@ -101,13 +101,14 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
 
       if (entrepriseTrouvee) setEntreprise(entrepriseTrouvee);
 
+      // Récupération de TOUTES les lignes de l'employé dans la table utilisateurs pour cet identifiant/email/nom
       const { data: usersList } = await supabase
         .from('utilisateurs')
         .select('*')
         .eq('id_entreprise', idEffectif);
 
       let utilisateurTrouve = null;
-      let modulesUser = modulesAutorisesUser;
+      let modulesUser = [moduleActifLocal];
 
       if (usersList && usersList.length > 0) {
         let correspondances = usersList.filter(u => {
@@ -138,10 +139,18 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
               modulesUser = rawEspaces.split(',').map(m => String(m).trim().toUpperCase());
             }
           } else {
-            const modPropre = (utilisateurTrouve.module || '').trim().toUpperCase();
-            if (modPropre) {
-              modulesUser = [modPropre];
-            } else {
+            // 🎯 EXTRACTION ROBUSTE : On parcourt toutes les lignes correspondantes pour fusionner modules_cibles et module
+            let modulesDetectes = [];
+            correspondances.forEach(row => {
+              if (Array.isArray(row.modules_cibles) && row.modules_cibles.length > 0) {
+                row.modules_cibles.forEach(m => modulesDetectes.push(String(m).toUpperCase()));
+              }
+              if (row.module) {
+                modulesDetectes.push(String(row.module).toUpperCase());
+              }
+            });
+            modulesUser = [...new Set(modulesDetectes)];
+            if (modulesUser.length === 0) {
               modulesUser = [moduleActifLocal];
             }
           }
@@ -197,7 +206,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     if (Array.isArray(donneesBrutesEspaces)) {
       espacesEntreprise = donneesBrutesEspaces.map(m => String(m).trim().toUpperCase());
     } else if (typeof donneesBrutesEspaces === 'string') {
-      espacesEntreprise = donneesBrutesEspaces.split(',').map(m => m.trim().toUpperCase());
+      espacesEntreprise = donneesBrutesEspaces.split(',').map(m => String(m).trim().toUpperCase());
     }
   }
   espacesEntreprise = Array.from(new Set(espacesEntreprise));
@@ -207,7 +216,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     : (modulesAutorisesUser && modulesAutorisesUser.length > 0 ? modulesAutorisesUser : [moduleActifLocal]);
 
   const premierModuleAutorise = espacesVisiblesUtilisateur[0] || moduleActifLocal;
-  const moduleActif = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || premierModuleAutorise).toUpperCase() : premierModuleAutorise.toUpperCase();
+  const moduleActif = typeof window !== 'undefined' ? (localStorage.getItem('module_actif') || localStorage.getItem('moduleActif') || premierModuleAutorise).toUpperCase() : premierModuleAutorise.toUpperCase();
 
   const afficherModaleNotification = (titre, message, type = 'succes') => {
     setModalesMessage({ ouverte: true, titre, message, type });
@@ -276,6 +285,7 @@ export default function MonProfil({ entrepriseId = '', isDarkMode = false }) {
     setModalConfirmationBasculementOuverte(false);
     if (typeof window !== 'undefined') {
       localStorage.setItem('module_actif', modUpper);
+      localStorage.setItem('moduleActif', modUpper);
     }
     window.location.reload();
   };
