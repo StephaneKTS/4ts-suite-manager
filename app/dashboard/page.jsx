@@ -31,6 +31,7 @@ import ModuleLivraison from './livraison/page';
 import GestionTaxesRistournes from './components/GestionTaxesRistournes';
 import MenuExplorer from './components/MenuExplorer'; 
 import GestionCommandesClientsQR from './components/GestionCommandesClientsQR'; 
+import GestionTables from './components/GestionTables';
 
 import GestionTontineParticipants from './components/GestionTontineParticipants';
 import GestionTontineCycles from './components/GestionTontineCycles';
@@ -65,7 +66,6 @@ function DashboardContent() {
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   
-  // ⚡ Initialisation intelligente et sécurisée du module courant
   const [moduleCourant, setModuleCourant] = useState(() => {
     if (typeof window !== 'undefined') {
       const modLocal = localStorage.getItem('module_actif');
@@ -161,7 +161,6 @@ function DashboardContent() {
               ? entData.espaces_souscrits.map(m => m.toUpperCase()) 
               : ['BOUTIQUE'];
 
-            // 🛡️ Validation stricte : si le module en cache est autorisé, on l'utilise, sinon on prend le premier module valide de l'entreprise
             if (modLocal && espacesAutorises.includes(modLocal.toUpperCase())) {
               setModuleCourant(modLocal.toUpperCase());
             } else {
@@ -188,7 +187,6 @@ function DashboardContent() {
   
   const estSuperAdmin = emailActuel.toLowerCase().trim() === 'stephs7352@gmail.com';
 
-  // 🔐 RÉCUPÉRATION DES DROITS GLOBAUX DEPUIS LE HOOK DE PERMISSIONS
   const { 
     verifierPermission, 
     verifierCreation, 
@@ -209,7 +207,6 @@ function DashboardContent() {
     }
   };
 
-  // 🚀 FONCTION DE RENDU DES MODULES AVEC TRANSMISSION GLOBALE DES DROITS ET DU THÈME
   const rendreModuleActif = () => {
     if (moduleActif === 'souscription') {
       return <EspaceSouscription entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
@@ -219,7 +216,10 @@ function DashboardContent() {
       return <GestionCommandesClientsQR entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
-    // Modules Tontine
+    if (moduleActif === 'gestion_tables') {
+      return <GestionTables entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+    }
+
     if (moduleActif === 'tontine_participants') {
       return <GestionTontineParticipants entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
@@ -244,7 +244,6 @@ function DashboardContent() {
       return <ModuleLivraison entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
     }
 
-    // Modules Boutique & Livraison standard avec injection centralisée des droits
     switch (moduleActif) {
       case 'taxes_ristournes': 
         return <GestionTaxesRistournes entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
@@ -747,12 +746,23 @@ function DashboardContent() {
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Caisse & Ventes</span>
                 </div>
               )}
+
               {verifierPermission('articles_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('articles', 'Articles & Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📦</span>
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Stock Articles</span>
                 </div>
               )}
+
+              {/* 🪑 GESTION DES TABLES PLACÉE JUSTE APRÈS STOCK ARTICLES */}
+              <div 
+                onClick={() => setModuleActif('gestion_tables')} 
+                className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-amber-500/50`}
+              >
+                <span className="text-2xl group-hover:scale-110 transition">🪑</span>
+                <span className="font-black text-[11px] sm:text-xs leading-tight text-amber-500">Gestion des Tables</span>
+              </div>
+
               {verifierPermission('approvisionnements', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">📥</span>
@@ -884,7 +894,7 @@ function DashboardContent() {
     </div>
   );
 
-    return (
+  return (
     <div className={`w-full h-screen ${isDarkMode ? 'bg-[#02050b]' : 'bg-slate-200'} flex justify-center items-center overflow-hidden`}>
       <div className="hidden md:block w-full h-full max-w-full px-2 py-1">
         <SimulateurCadre>

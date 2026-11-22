@@ -8,6 +8,7 @@ import MenuExplorer from '../dashboard/components/MenuExplorer';
 export default function EspaceClientBoutique() {
   const searchParams = useSearchParams();
   const entrepriseId = searchParams.get('entrepriseId');
+  const tableUrl = searchParams.get('table'); // Récupération automatique de la table depuis l'URL du QR Code
 
   const [estMonte, setEstMonte] = useState(false);
   const [articles, setArticles] = useState([]);
@@ -29,6 +30,9 @@ export default function EspaceClientBoutique() {
   const [telephoneRecherche, setTelephoneRecherche] = useState('');
   const [mesCommandesClient, setMesCommandesClient] = useState([]);
   const [commandeEnCoursModification, setCommandeEnCoursModification] = useState(null);
+
+  // État pour la liste des tables du restaurant
+  const [listeTablesResto, setListeTablesResto] = useState([]);
 
   // État pour la PWA (installation de l'application)
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -55,19 +59,6 @@ export default function EspaceClientBoutique() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     
     try {
-      const clesAdmin = [
-        'utilisateurConnecte', 'utilisateur_connecte', 
-        'emailConnecte', 'email_connecte', 
-        'supabase.auth.token'
-      ];
-      clesAdmin.forEach(cle => localStorage.removeItem(cle));
-
-      Object.keys(localStorage).forEach(cle => {
-        if (cle.startsWith('sb-') && cle.endsWith('-auth-token')) {
-          localStorage.removeItem(cle);
-        }
-      });
-
       const stockFavoris = localStorage.getItem('4ts_restaurants_recents');
       if (stockFavoris) {
         setRestaurantsRecents(JSON.parse(stockFavoris));
@@ -75,7 +66,9 @@ export default function EspaceClientBoutique() {
 
       const nomSauve = localStorage.getItem('4ts_client_nom') || '';
       const telSauve = localStorage.getItem('4ts_client_telephone') || '';
-      const tableSauvee = localStorage.getItem('4ts_client_table') || '';
+      
+      // Priorité à la table passée dans l'URL du QR Code, sinon stockée en local
+      const tableSauvee = tableUrl ? tableUrl.toUpperCase() : (localStorage.getItem('4ts_client_table') || '');
 
       if (telSauve) {
         setTelephoneRecherche(telSauve);
@@ -89,13 +82,13 @@ export default function EspaceClientBoutique() {
       }));
 
     } catch (e) {
-      console.error("Erreur nettoyage session :", e);
+      console.error("Erreur initialisation session :", e);
     }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
-  }, []);
+  }, [tableUrl]);
 
   const handleInstallerApp = () => {
     setAfficherModalInstallation(true);
@@ -120,13 +113,17 @@ export default function EspaceClientBoutique() {
       }
       setChargement(true);
       try {
-        const [resEnt, resArt] = await Promise.all([
+        const [resEnt, resArt, resTables] = await Promise.all([
           supabase.from('entreprises').select('*').eq('id_entreprise', entrepriseId).maybeSingle(),
           supabase.from('articles_stock')
             .select('*')
             .eq('id_entreprise', entrepriseId)
             .eq('Disponible_Menu_QR', true)
-            .eq('module', 'BOUTIQUE')
+            .eq('module', 'BOUTIQUE'),
+          supabase.from('tables_restaurant')
+            .select('*')
+            .eq('id_entreprise', entrepriseId)
+            .order('numero_table', { ascending: true })
         ]);
 
         if (resEnt.data) {
@@ -141,6 +138,10 @@ export default function EspaceClientBoutique() {
             } catch (e) {}
             return nouvelleListe;
           });
+        }
+
+        if (resTables.data) {
+          setListeTablesResto(resTables.data);
         }
 
         const articlesBruts = Array.isArray(resArt.data) ? resArt.data : [];
@@ -489,6 +490,7 @@ export default function EspaceClientBoutique() {
         
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 w-full max-w-xs space-y-1 text-xs">
           <p className="text-slate-600 font-bold uppercase">Client : <strong className="text-slate-900">{client.nom}</strong></p>
+          <p className="text-slate-600 font-bold uppercase">Table : <strong className="text-orange-600">{client.table || 'N/A'}</strong></p>
           <p className="text-slate-600 font-bold uppercase">N° de commande : <strong className="text-orange-600 font-mono text-sm block mt-0.5">{numeroCommande}</strong></p>
         </div>
 
@@ -514,7 +516,7 @@ export default function EspaceClientBoutique() {
               setCommandeEnCoursModification(null); 
               const nomMeme = localStorage.getItem('4ts_client_nom') || '';
               const telMeme = localStorage.getItem('4ts_client_telephone') || telephoneRecherche;
-              const tableMeme = localStorage.getItem('4ts_client_table') || '';
+              const tableMeme = tableUrl || localStorage.getItem('4ts_client_table') || '';
               setClient({ nom: nomMeme, telephone: telMeme, table: tableMeme, modePaiement: 'ESPECES' }); 
             }}
             className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
@@ -645,15 +647,32 @@ export default function EspaceClientBoutique() {
                       </div>
 
                       <div>
-                        <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table / Remarque</label>
-                        <input
-                          type="text"
-                          disabled={enTrainDeSauvegarder}
-                          value={client.table}
-                          onChange={(e) => setClient({ ...client, table: e.target.value.toUpperCase() })}
-                          onFocus={(e) => e.target.select()}
-                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
-                        />
+                        <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table *</label>
+                        {/* Sélection automatique via QR Code ou choix dans la liste des tables */}
+                        {listeTablesResto.length > 0 ? (
+                          <select
+                            disabled={enTrainDeSauvegarder}
+                            value={client.table}
+                            onChange={(e) => setClient({ ...client, table: e.target.value })}
+                            className="w-full bg-orange-50 border border-orange-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
+                          >
+                            <option value="">-- Choisir une table --</option>
+                            {listeTablesResto.map((t) => (
+                              <option key={t.id} value={t.numero_table}>
+                                Table {t.numero_table} {t.description ? `(${t.description})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            disabled={enTrainDeSauvegarder}
+                            value={client.table}
+                            onChange={(e) => setClient({ ...client, table: e.target.value.toUpperCase() })}
+                            placeholder="Ex: TABLE 1"
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -715,7 +734,7 @@ export default function EspaceClientBoutique() {
                 </div>
 
                 <div className="border-t border-slate-200 pt-2 font-bold text-slate-600 text-[9px] truncate">
-                  <p><strong>Client :</strong> {client.nom} | <strong>Tél :</strong> {client.telephone} | <strong>Table :</strong> {client.table || 'N/A'}</p>
+                  <p><strong>Client :</strong> {client.nom} | <strong>Tél :</strong> {client.telephone} | <strong>Table :</strong> <span className="text-orange-600 font-black">{client.table || 'N/A'}</span></p>
                 </div>
               </div>
 
@@ -745,13 +764,19 @@ export default function EspaceClientBoutique() {
   }
 
   return (
-    // CONTENEUR PRINCIPAL : Hauteur exacte du viewport mobile (100dvh), sans débordement global
     <div className="max-w-md mx-auto p-2.5 font-sans text-xs bg-slate-50 h-[100dvh] flex flex-col justify-between overflow-hidden">
       
-      {/* 1. EN-TÊTE FIXE (Ne bouge pas) */}
+      {/* 1. EN-TÊTE FIXE */}
       <div className="bg-white p-2.5 rounded-2xl border shadow-2xs text-center z-30 space-y-1.5 shrink-0">
         <div className="flex justify-between items-center px-1">
-          <h1 className="font-black text-slate-900 uppercase text-xs">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="font-black text-slate-900 uppercase text-xs">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
+            {client.table && (
+              <span className="bg-orange-100 text-orange-800 font-black px-2 py-0.5 rounded-md text-[9px] uppercase border border-orange-300">
+                📍 {client.table}
+              </span>
+            )}
+          </div>
           
           <button
             type="button"
@@ -826,7 +851,7 @@ export default function EspaceClientBoutique() {
         </div>
       </div>
 
-      {/* 2. CONTENU CENTRAL DÉFILANT (Prend tout l'espace disponible entre l'en-tête et le pied de page) */}
+      {/* 2. CONTENU CENTRAL DÉFILANT */}
       <div className="flex-1 overflow-y-auto p-1 space-y-3 my-1.5 min-h-0">
         {ongletActif === 'SOUSCRIPTION' ? (
           <div className="space-y-4">
@@ -1122,7 +1147,7 @@ export default function EspaceClientBoutique() {
         )}
       </div>
 
-      {/* 3. PIED DE PAGE FIXE EN BAS (Toujours visible sans scroller, ancré par le flex-col) */}
+      {/* 3. PIED DE PAGE FIXE EN BAS (Toujours visible sans scroller) */}
       <footer className="bg-slate-900 text-white p-2.5 rounded-2xl text-center space-y-1 border border-slate-800 shadow-md shrink-0 z-30">
         <p className="text-[8px] font-black uppercase tracking-wider text-orange-400">
           📱 4TS Suite Manager — Application Officielle
