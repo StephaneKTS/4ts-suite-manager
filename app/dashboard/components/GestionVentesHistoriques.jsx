@@ -146,6 +146,27 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return `${code || 'C01'}-${String(totalVentes + 1).padStart(2, '0')}`;
   };
 
+  // Formatage précis : Préserve strictement les numéros de caisse (ex: C01-07) et formate uniquement les commandes QR code longues (ex: 20261122-161633-KTS-130 -> CMD-130)
+  const formaterNumeroTicket = (numeroBrut) => {
+    if (!numeroBrut) return '-';
+    const str = String(numeroBrut).trim();
+    // Si c'est déjà un format de caisse standard (ex: C01-07, C02-12...), on le retourne tel quel
+    if (/^[A-Z0-9]+-\d+$/i.test(str) && !str.includes('202') && !str.includes('KTS') && !str.includes('CMD')) {
+      return str.toUpperCase();
+    }
+    const parts = str.split('-');
+    if (parts.length > 2) {
+      const suffixe = parts[parts.length - 1];
+      if (suffixe.length <= 4 && !isNaN(suffixe)) {
+        return `CMD-${suffixe}`;
+      }
+    }
+    if (str.toUpperCase().startsWith('CMD-')) {
+      return str.toUpperCase();
+    }
+    return str;
+  };
+
   const chargerCacheLocal = () => {
     if (typeof window === 'undefined') return false;
     try {
@@ -951,7 +972,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         return listeMaj;
       });
 
-      alert(`✅ Ticket #${ticketEnCoursDeSuppression.numero_ticket} supprimé avec succès et stock restitué dans le dépôt !`);
+      alert(`✅ Ticket #${formaterNumeroTicket(ticketEnCoursDeSuppression.numero_ticket)} supprimé avec succès et stock restitué dans le dépôt !`);
       setAfficherModalAuthSuppression(false);
       setTicketSelectionne(null);
       setTicketEnCoursDeSuppression(null);
@@ -978,10 +999,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   };
 
   const ventesFiltrees = ventes.filter((v) => {
-    const numTicket = (v.numero_ticket || '').toLowerCase();
+    const numTicketBrut = (v.numero_ticket || '').toLowerCase();
+    const numTicketFormate = formaterNumeroTicket(v.numero_ticket).toLowerCase();
     const nomClientVente = (v.nom_client || '').toLowerCase();
     const query = recherche.toLowerCase();
-    const matchQuery = numTicket.includes(query) || nomClientVente.includes(query);
+    const matchQuery = numTicketBrut.includes(query) || numTicketFormate.includes(query) || nomClientVente.includes(query);
     const matchPaiement = filtreModePaiement === 'TOUS' || (v.mode_paiement || '').toUpperCase() === filtreModePaiement.toUpperCase();
     
     let matchDate = true;
@@ -1081,7 +1103,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       lignesJournalDetails.push({
         idTicket: v.id,
-        numeroTicket: v.numero_ticket || '-',
+        numeroTicket: formaterNumeroTicket(v.numero_ticket),
         date: v.created_at ? new Date(v.created_at).toLocaleDateString('fr-FR') : '-',
         designation: (item.designation || artObj?.Designation || artObj?.nom || 'ARTICLE').toUpperCase(),
         quantite: qte,
@@ -1330,7 +1352,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
             <div style={{ marginBottom: '4px', fontSize: '9px', borderBottom: '1px dashed #000', paddingBottom: '3px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
-                <span><strong>Ticket :</strong> {ticketImpressionActif.numero_ticket}</span>
+                <span><strong>Ticket :</strong> {formaterNumeroTicket(ticketImpressionActif.numero_ticket)}</span>
                 <span><strong>Date :</strong> {ticketImpressionActif.created_at ? new Date(ticketImpressionActif.created_at).toLocaleDateString('fr-FR') : '-'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
@@ -1637,7 +1659,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 items-center bg-slate-50 p-1 rounded-xl border border-slate-100">
               
-              {/* MODIFICATION EFFECTUÉE ICI : Le libellé et le montant sont désormais alignés horizontalement */}
               <div className="flex items-center justify-between sm:justify-start sm:gap-2">
                 <span className="text-[7px] font-extrabold text-slate-400 uppercase tracking-tighter">
                   {appliquerTva === 'OUI' ? 'NET (TTC)' : 'NET À PAYER'}
@@ -1981,7 +2002,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                           <td className="p-2 text-slate-600 font-mono text-[9px] font-bold">
                             {v.created_at ? new Date(v.created_at).toLocaleDateString('fr-FR') : '-'}
                           </td>
-                          <td className="p-2 font-mono font-bold text-orange-600">{v.numero_ticket || '-'}</td>
+                          <td className="p-2 font-mono font-bold text-orange-600">{formaterNumeroTicket(v.numero_ticket)}</td>
                           <td className="p-2 font-extrabold uppercase text-slate-900 max-w-[120px] truncate" title={nomClientVente}>{nomClientVente}</td>
                           <td className="p-2 text-right font-black text-emerald-700 font-mono">
                             {totalMontant.toLocaleString('fr-FR')}
@@ -2594,7 +2615,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   <tbody className="divide-y divide-slate-100 text-slate-900 font-bold">
                     {clotureDetailSelectionnee.details_tickets?.map((t, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="p-1.5 font-mono text-orange-600">{t.numero_ticket}</td>
+                        <td className="p-1.5 font-mono text-orange-600">{formaterNumeroTicket(t.numero_ticket)}</td>
                         <td className="p-1.5 uppercase text-slate-900">{t.nom_client || 'CLIENTS DIVERS'}</td>
                         <td className="p-1.5 text-right font-mono text-slate-900">{Number(t.total_montant || t.montant_regle).toLocaleString('fr-FR')}</td>
                       </tr>
@@ -2617,7 +2638,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               <div className="text-3xl">✅</div>
               <h3 className="font-black text-sm uppercase">Ticket validé avec succès !</h3>
               <p className="text-[10px] text-emerald-100 font-bold font-mono">
-                Ticket N° {ticketDernierValide?.numero_ticket} ({ticketDernierValide?.nom_client})
+                Ticket N° {formaterNumeroTicket(ticketDernierValide?.numero_ticket)} ({ticketDernierValide?.nom_client})
               </p>
             </div>
 
@@ -2744,7 +2765,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                     className="p-2.5 bg-slate-50 hover:bg-amber-50 border border-slate-200 rounded-xl flex justify-between items-center transition"
                   >
                     <div>
-                      <p className="font-extrabold uppercase text-slate-900 text-[10px]">{t.numeroTicket} - {t.client}</p>
+                      <p className="font-extrabold uppercase text-slate-900 text-[10px]">{formaterNumeroTicket(t.numeroTicket)} - {t.client}</p>
                       <p className="text-[9px] text-slate-600 font-mono font-bold">{t.panier.length} article(s) • Heure : {t.date}</p>
                     </div>
                     <button
@@ -2767,7 +2788,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-2.5 bg-slate-900 text-white flex justify-between items-center text-[11px]">
               <div className="flex flex-col">
-                <span className="font-bold font-mono text-orange-400">Ticket #{ticketSelectionne.numero_ticket} — {ticketSelectionne.nom_client || 'CLIENTS DIVERS'}</span>
+                <span className="font-bold font-mono text-orange-400">Ticket #{formaterNumeroTicket(ticketSelectionne.numero_ticket)} — {ticketSelectionne.nom_client || 'CLIENTS DIVERS'}</span>
                 <span className="text-[8.5px] text-slate-300">Date : {ticketSelectionne.created_at ? new Date(ticketSelectionne.created_at).toLocaleDateString('fr-FR') : '-'}</span>
               </div>
               <button disabled={enTrainDeSauvegarder} onClick={() => setTicketSelectionne(null)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
@@ -2865,7 +2886,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             
             <form onSubmit={verifierEtExecuterSuppressionAdmin} className="p-4 space-y-3">
               <p className="test-[10px] text-slate-600 font-bold">
-                La suppression du ticket <strong>#{ticketEnCoursDeSuppression?.numero_ticket}</strong> nécessite les identifiants d'un superviseur ou administrateur ayant le droit de suppression.
+                La suppression du ticket <strong>#{formaterNumeroTicket(ticketEnCoursDeSuppression?.numero_ticket)}</strong> nécessite les identifiants d'un superviseur ou administrateur ayant le droit de suppression.
               </p>
 
               <div>

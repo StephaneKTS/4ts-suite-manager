@@ -30,6 +30,9 @@ export default function EspaceClientBoutique() {
   const [mesCommandesClient, setMesCommandesClient] = useState([]);
   const [commandeEnCoursModification, setCommandeEnCoursModification] = useState(null);
 
+  // Nouvel état pour gérer l'affichage de la modale de confirmation de commande
+  const [afficherModalConfirmation, setAfficherModalConfirmation] = useState(false);
+
   const [client, setClient] = useState({
     nom: '',
     telephone: '',
@@ -59,7 +62,6 @@ export default function EspaceClientBoutique() {
         setRestaurantsRecents(JSON.parse(stockFavoris));
       }
 
-      // Chargement automatique des informations mémorisées du client
       const nomSauve = localStorage.getItem('4ts_client_nom') || '';
       const telSauve = localStorage.getItem('4ts_client_telephone') || '';
       const tableSauvee = localStorage.getItem('4ts_client_table') || '';
@@ -239,7 +241,8 @@ export default function EspaceClientBoutique() {
   const totalPanier = panier.reduce((acc, item) => acc + (item.prix * item.quantite), 0);
   const nombreTotalArticlesPanier = panier.reduce((acc, item) => acc + item.quantite, 0);
 
-  const passerCommande = async (e) => {
+  // Étape 1 : Vérification des champs et affichage de la modale de confirmation
+  const verifierEtOuvrirConfirmation = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
@@ -256,6 +259,14 @@ export default function EspaceClientBoutique() {
       return;
     }
 
+    // Ouvrir la modale de confirmation
+    setAfficherModalConfirmation(true);
+  };
+
+  // Étape 2 : Validation effective et envoi vers Supabase après confirmation dans la modale
+  const passerCommandeEffective = async () => {
+    if (enTrainDeSauvegarder) return;
+
     // Sauvegarde des informations client dans le localStorage pour les prochaines commandes
     try {
       localStorage.setItem('4ts_client_nom', client.nom.trim().toUpperCase());
@@ -265,6 +276,8 @@ export default function EspaceClientBoutique() {
     } catch (e) {}
 
     setEnTrainDeSauvegarder(true);
+    setAfficherModalConfirmation(false);
+
     try {
       if (commandeEnCoursModification) {
         const montantTotalModif = panier.reduce((acc, item) => acc + (item.prix * item.quantite), 0);
@@ -455,7 +468,6 @@ export default function EspaceClientBoutique() {
               setValide(false); 
               setVuePanier(false); 
               setCommandeEnCoursModification(null); 
-              // Conserve les informations mémorisées du client pour la prochaine commande
               const nomMeme = localStorage.getItem('4ts_client_nom') || '';
               const telMeme = localStorage.getItem('4ts_client_telephone') || telephoneRecherche;
               const tableMeme = localStorage.getItem('4ts_client_table') || '';
@@ -560,7 +572,7 @@ export default function EspaceClientBoutique() {
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
                   <h2 className="font-black text-slate-900 uppercase text-[11px] border-b pb-2">Informations de commande</h2>
                   
-                  <form onSubmit={passerCommande} className="space-y-3">
+                  <form onSubmit={verifierEtOuvrirConfirmation} className="space-y-3">
                     <div>
                       <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Votre Nom complet *</label>
                       <input
@@ -628,6 +640,50 @@ export default function EspaceClientBoutique() {
             )}
           </div>
         </div>
+
+        {/* MODALE DE CONFIRMATION DE COMMANDE */}
+        {afficherModalConfirmation && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-4 text-center">
+              <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold shadow-xs">
+                ❓
+              </div>
+              
+              <div className="space-y-1">
+                <h3 className="font-black text-slate-900 uppercase text-sm">Confirmer votre commande ?</h3>
+                <p className="text-[11px] text-slate-500">
+                  Voulez-vous réellement envoyer cette commande au restaurant d'un montant total de <strong className="text-emerald-600 font-mono text-xs">{totalPanier.toLocaleString()} FCFA</strong> ?
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 text-left space-y-1 text-[10px]">
+                <p><strong>Nom :</strong> {client.nom}</p>
+                <p><strong>Tél :</strong> {client.telephone}</p>
+                <p><strong>Table :</strong> {client.table || 'N/A'}</p>
+                <p><strong>Articles :</strong> {nombreTotalArticlesPanier} article(s)</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={() => setAfficherModalConfirmation(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-3 rounded-xl text-xs uppercase transition shadow-2xs"
+                >
+                  Non, modifier
+                </button>
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={passerCommandeEffective}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-md transition flex items-center justify-center gap-1"
+                >
+                  {enTrainDeSauvegarder ? 'Envoi...' : 'Oui, confirmer ✅'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
