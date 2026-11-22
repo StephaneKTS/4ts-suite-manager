@@ -97,12 +97,10 @@ export default function EspaceClientBoutique() {
     };
   }, []);
 
-  // Déclenche l'affichage de notre jolie modale personnalisée au clic sur le bouton
   const handleInstallerApp = () => {
     setAfficherModalInstallation(true);
   };
 
-  // Exécution réelle de l'installation native depuis notre modale
   const procederInstallationNative = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -485,7 +483,7 @@ export default function EspaceClientBoutique() {
 
   if (valide) {
     return (
-      <div className="w-full h-screen bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center overflow-y-auto">
+      <div className="w-full h-[100dvh] bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center overflow-y-auto">
         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-xs">✅</div>
         <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
         
@@ -536,7 +534,7 @@ export default function EspaceClientBoutique() {
 
   if (vuePanier) {
     return (
-      <div className="w-full h-screen bg-white font-sans text-xs flex flex-col justify-between overflow-hidden">
+      <div className="w-full h-[100dvh] bg-white font-sans text-xs flex flex-col justify-between overflow-hidden">
         <div className="flex-1 overflow-y-auto space-y-4 pb-10">
           <div className="bg-white px-4 py-3 border-b border-slate-100 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
             <button
@@ -747,29 +745,30 @@ export default function EspaceClientBoutique() {
   }
 
   return (
-    <div className="max-w-md mx-auto p-3 font-sans text-xs bg-slate-50 h-screen flex flex-col justify-between overflow-hidden">
+    // CONTENEUR PRINCIPAL : Hauteur exacte du viewport mobile (100dvh), sans débordement global
+    <div className="max-w-md mx-auto p-2.5 font-sans text-xs bg-slate-50 h-[100dvh] flex flex-col justify-between overflow-hidden">
       
-      {/* 1. EN-TÊTE FIXE */}
-      <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center z-30 space-y-2 shrink-0">
-        <div className="flex justify-between items-center px-1 mb-1">
-          <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
+      {/* 1. EN-TÊTE FIXE (Ne bouge pas) */}
+      <div className="bg-white p-2.5 rounded-2xl border shadow-2xs text-center z-30 space-y-1.5 shrink-0">
+        <div className="flex justify-between items-center px-1">
+          <h1 className="font-black text-slate-900 uppercase text-xs">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
           
           <button
             type="button"
             onClick={() => setOngletActif('BOUTIQUE')}
-            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-xl text-[10px] uppercase transition shadow-md flex items-center gap-1 cursor-pointer"
+            className="bg-orange-600 hover:bg-orange-500 text-white font-black px-2.5 py-1 rounded-xl text-[9px] uppercase transition shadow-md flex items-center gap-1 cursor-pointer"
           >
-            <span>🧭 Explorer le Menu</span>
+            <span>🧭 Explorer</span>
           </button>
         </div>
         
-        <div className="space-y-1.5 bg-slate-100 p-1.5 rounded-xl">
+        <div className="space-y-1 bg-slate-100 p-1 rounded-xl">
           <div className="grid grid-cols-3 gap-1">
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('BOUTIQUE'); }}
-              className={`py-2 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
+              className={`py-1.5 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'BOUTIQUE' ? 'bg-orange-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -784,21 +783,21 @@ export default function EspaceClientBoutique() {
                   if (telephoneRecherche.trim() && mesCommandesClient.length === 0) rechercherMesCommandes();
                 }
               }}
-              className={`py-2 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
+              className={`py-1.5 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'SUIVI' ? 'bg-orange-600 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
-              📋 MES COMMANDES
+              📋 COMMANDES
             </button>
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('RESTAURANTS'); }}
-              className={`py-2 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
+              className={`py-1.5 px-0.5 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'RESTAURANTS' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
-              🏪 MES RESTOS
+              🏪 RESTOS
             </button>
           </div>
 
@@ -807,7 +806,7 @@ export default function EspaceClientBoutique() {
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('EXPLORER'); }}
-              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate cursor-pointer ${
+              className={`py-1.5 px-1 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'EXPLORER' ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -817,7 +816,7 @@ export default function EspaceClientBoutique() {
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => { if (!enTrainDeSauvegarder) setOngletActif('SOUSCRIPTION'); }}
-              className={`py-2 px-1 rounded-lg font-black text-[9px] uppercase transition shadow-2xs truncate cursor-pointer ${
+              className={`py-1.5 px-1 rounded-lg font-black text-[8px] uppercase transition shadow-2xs truncate cursor-pointer ${
                 ongletActif === 'SOUSCRIPTION' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
               }`}
             >
@@ -827,8 +826,8 @@ export default function EspaceClientBoutique() {
         </div>
       </div>
 
-      {/* 2. CONTENU CENTRAL DÉFILANT */}
-      <div className="flex-1 overflow-y-auto p-1 space-y-4 my-2">
+      {/* 2. CONTENU CENTRAL DÉFILANT (Prend tout l'espace disponible entre l'en-tête et le pied de page) */}
+      <div className="flex-1 overflow-y-auto p-1 space-y-3 my-1.5 min-h-0">
         {ongletActif === 'SOUSCRIPTION' ? (
           <div className="space-y-4">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs text-center space-y-4">
@@ -1017,7 +1016,7 @@ export default function EspaceClientBoutique() {
         ) : (
           <div className="space-y-3">
             {panier.length > 0 && (
-              <div className="sticky top-0 z-20 bg-orange-600 text-white p-3.5 rounded-2xl shadow-lg flex justify-between items-center">
+              <div className="sticky top-0 z-20 bg-orange-600 text-white p-3 rounded-2xl shadow-lg flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <span className="bg-white text-orange-600 font-black px-2.5 py-0.5 rounded-full text-xs shadow-xs">
                     {nombreTotalArticlesPanier}
@@ -1031,7 +1030,7 @@ export default function EspaceClientBoutique() {
                   type="button"
                   disabled={enTrainDeSauvegarder}
                   onClick={() => { if (!enTrainDeSauvegarder) setVuePanier(true); }}
-                  className="bg-white text-orange-600 hover:bg-orange-50 disabled:opacity-50 font-black px-3.5 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1 cursor-pointer"
+                  className="bg-white text-orange-600 hover:bg-orange-50 disabled:opacity-50 font-black px-3 py-2 rounded-xl text-xs shadow-md transition flex items-center gap-1 cursor-pointer"
                 >
                   <span>Voir le panier 🛒</span>
                 </button>
@@ -1056,7 +1055,7 @@ export default function EspaceClientBoutique() {
               ) : articlesFiltres.length === 0 ? (
                 <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article trouvé.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5">
                   {articlesFiltres.map((art) => {
                     const artId = art.id_article || art.id;
                     const designation = art.Designation || art.designation;
@@ -1069,7 +1068,7 @@ export default function EspaceClientBoutique() {
                         key={artId} 
                         className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden flex flex-col justify-between transition hover:shadow-md"
                       >
-                        <div className="relative w-full h-32 bg-slate-100 overflow-hidden">
+                        <div className="relative w-full h-28 bg-slate-100 overflow-hidden">
                           <img 
                             src={photoUrl} 
                             alt={designation} 
@@ -1080,22 +1079,22 @@ export default function EspaceClientBoutique() {
                           />
                           {stockReel <= 0 && (
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                              <span className="bg-slate-900/80 text-white font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider">
+                              <span className="bg-slate-900/80 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">
                                 Épuisé
                               </span>
                             </div>
                           )}
                         </div>
 
-                        <div className="p-2.5 flex flex-col flex-1 justify-between space-y-2">
+                        <div className="p-2 flex flex-col flex-1 justify-between space-y-1.5">
                           <div>
-                            <div className="font-black text-slate-900 text-xs tracking-tight text-emerald-600">
+                            <div className="font-black text-slate-900 text-[11px] tracking-tight text-emerald-600">
                               {prix.toLocaleString()} FCFA
                             </div>
-                            <div className="font-extrabold text-slate-700 text-[11px] uppercase line-clamp-2 mt-0.5">
+                            <div className="font-extrabold text-slate-700 text-[10px] uppercase line-clamp-2 mt-0.5">
                               {designation}
                             </div>
-                            <div className="text-[9px] text-slate-400 font-bold mt-0.5">
+                            <div className="text-[8px] text-slate-400 font-bold mt-0.5">
                               Stock : {stockReel}
                             </div>
                           </div>
@@ -1104,7 +1103,7 @@ export default function EspaceClientBoutique() {
                             type="button"
                             disabled={stockReel <= 0 || enTrainDeSauvegarder}
                             onClick={() => ajouterAuPanier(art, stockReel)}
-                            className={`w-full py-1.5 rounded-xl font-black text-[10px] transition shadow-xs flex items-center justify-center gap-1 cursor-pointer ${
+                            className={`w-full py-1.5 rounded-xl font-black text-[9px] transition shadow-xs flex items-center justify-center gap-1 cursor-pointer ${
                               stockReel > 0 && !enTrainDeSauvegarder
                                 ? 'bg-orange-600 hover:bg-orange-500 text-white active:scale-95' 
                                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -1123,21 +1122,21 @@ export default function EspaceClientBoutique() {
         )}
       </div>
 
-      {/* 3. PIED DE PAGE FIXE EN BAS */}
-      <footer className="bg-slate-900 text-white p-3 rounded-2xl text-center space-y-1.5 border border-slate-800 shadow-md shrink-0 z-30">
-        <p className="text-[9px] font-black uppercase tracking-wider text-orange-400">
+      {/* 3. PIED DE PAGE FIXE EN BAS (Toujours visible sans scroller, ancré par le flex-col) */}
+      <footer className="bg-slate-900 text-white p-2.5 rounded-2xl text-center space-y-1 border border-slate-800 shadow-md shrink-0 z-30">
+        <p className="text-[8px] font-black uppercase tracking-wider text-orange-400">
           📱 4TS Suite Manager — Application Officielle
         </p>
         <button
           type="button"
           onClick={handleInstallerApp}
-          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2 rounded-xl text-[10px] uppercase shadow-md transition cursor-pointer"
+          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-1.5 rounded-xl text-[9px] uppercase shadow-md transition cursor-pointer"
         >
           📥 INSTALLER L'APPLICATION ➔
         </button>
       </footer>
 
-      {/* NOTRE UNIQUE JOLIE MODALE PERSONNALISÉE (Le message textuel brut a été totalement supprimé) */}
+      {/* MODALE D'INSTALLATION PERSONNALISÉE */}
       {afficherModalInstallation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-5 text-center">
