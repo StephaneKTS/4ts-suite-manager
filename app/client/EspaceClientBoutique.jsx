@@ -30,7 +30,7 @@ export default function EspaceClientBoutique() {
   const [mesCommandesClient, setMesCommandesClient] = useState([]);
   const [commandeEnCoursModification, setCommandeEnCoursModification] = useState(null);
 
-  // Nouvel état pour gérer l'affichage de la modale de confirmation de commande
+  // État pour la modale de confirmation
   const [afficherModalConfirmation, setAfficherModalConfirmation] = useState(false);
 
   const [client, setClient] = useState({
@@ -241,7 +241,6 @@ export default function EspaceClientBoutique() {
   const totalPanier = panier.reduce((acc, item) => acc + (item.prix * item.quantite), 0);
   const nombreTotalArticlesPanier = panier.reduce((acc, item) => acc + item.quantite, 0);
 
-  // Étape 1 : Vérification des champs et affichage de la modale de confirmation
   const verifierEtOuvrirConfirmation = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
@@ -259,15 +258,12 @@ export default function EspaceClientBoutique() {
       return;
     }
 
-    // Ouvrir la modale de confirmation
     setAfficherModalConfirmation(true);
   };
 
-  // Étape 2 : Validation effective et envoi vers Supabase après confirmation dans la modale
   const passerCommandeEffective = async () => {
     if (enTrainDeSauvegarder) return;
 
-    // Sauvegarde des informations client dans le localStorage pour les prochaines commandes
     try {
       localStorage.setItem('4ts_client_nom', client.nom.trim().toUpperCase());
       localStorage.setItem('4ts_client_telephone', client.telephone.trim());
@@ -455,22 +451,29 @@ export default function EspaceClientBoutique() {
     );
   }
 
+  // ÉCRAN DE VALIDATION : Retrait de toute référence à la date, affichage uniquement du nom et du numéro de commande
   if (valide) {
     return (
       <div className="w-full min-h-screen bg-white p-6 text-center space-y-4 font-sans flex flex-col items-center justify-center">
         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-xs">✅</div>
         <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
-        <p className="text-[11px] text-slate-600">Votre numéro de commande est : <strong className="text-orange-600 font-mono text-xs block mt-1">{numeroCommande}</strong></p>
+        
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 w-full max-w-xs space-y-1 text-xs">
+          <p className="text-slate-600 font-bold uppercase">Client : <strong className="text-slate-900">{client.nom}</strong></p>
+          <p className="text-slate-600 font-bold uppercase">N° de commande : <strong className="text-orange-600 font-mono text-sm block mt-0.5">{numeroCommande}</strong></p>
+        </div>
+
         <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise pour un service sur place.</p>
+        
         <div className="flex gap-2 w-full max-w-xs mt-4">
           <button
             onClick={() => { 
               setValide(false); 
               setVuePanier(false); 
               setCommandeEnCoursModification(null); 
-              const nomMeme = localStorage.getItem('4ts_client_nom') || '';
-              const telMeme = localStorage.getItem('4ts_client_telephone') || telephoneRecherche;
-              const tableMeme = localStorage.getItem('4ts_client_table') || '';
+              const nomMeme = localStorage.getItem('4ts_client_nom'] || '';
+              const telMeme = localStorage.getItem('4ts_client_telephone'] || telephoneRecherche;
+              const tableMeme = localStorage.getItem('4ts_client_table'] || '';
               setClient({ nom: nomMeme, telephone: telMeme, table: tableMeme, modePaiement: 'ESPECES' }); 
             }}
             className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
@@ -641,29 +644,45 @@ export default function EspaceClientBoutique() {
           </div>
         </div>
 
-        {/* MODALE DE CONFIRMATION DE COMMANDE */}
+        {/* MODALE DE CONFIRMATION AVEC RÉCAPITULATIF DÉTAILLÉ DES ARTICLES */}
         {afficherModalConfirmation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-4 text-center">
-              <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold shadow-xs">
+            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-4 text-center max-h-[90vh]">
+              <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold shadow-xs">
                 ❓
               </div>
               
               <div className="space-y-1">
                 <h3 className="font-black text-slate-900 uppercase text-sm">Confirmer votre commande ?</h3>
                 <p className="text-[11px] text-slate-500">
-                  Voulez-vous réellement envoyer cette commande au restaurant d'un montant total de <strong className="text-emerald-600 font-mono text-xs">{totalPanier.toLocaleString()} FCFA</strong> ?
+                  Voulez-vous réellement envoyer cette commande d'un montant total de <strong className="text-emerald-600 font-mono text-xs">{totalPanier.toLocaleString()} FCFA</strong> ?
                 </p>
               </div>
 
-              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 text-left space-y-1 text-[10px]">
-                <p><strong>Nom :</strong> {client.nom}</p>
-                <p><strong>Tél :</strong> {client.telephone}</p>
-                <p><strong>Table :</strong> {client.table || 'N/A'}</p>
-                <p><strong>Articles :</strong> {nombreTotalArticlesPanier} article(s)</p>
+              {/* Récapitulatif détaillé des articles */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-left space-y-2 text-[10px]">
+                <div className="font-black text-slate-700 uppercase border-b pb-1 flex justify-between">
+                  <span>Détails articles</span>
+                  <span>Qté & Prix</span>
+                </div>
+
+                <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 space-y-1 pr-1">
+                  {panier.map((item, index) => (
+                    <div key={index} className="flex justify-between items-center pt-1.5">
+                      <span className="font-bold text-slate-800 uppercase truncate max-w-[180px]">{item.designation}</span>
+                      <span className="font-mono font-bold text-slate-600 shrink-0">x{item.quantite} — {(item.prix * item.quantite).toLocaleString()} F</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-200 pt-2 space-y-0.5 font-bold text-slate-600">
+                  <p><strong>Client :</strong> {client.nom}</p>
+                  <p><strong>Tél :</strong> {client.telephone}</p>
+                  <p><strong>Table :</strong> {client.table || 'N/A'}</p>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
                   disabled={enTrainDeSauvegarder}
