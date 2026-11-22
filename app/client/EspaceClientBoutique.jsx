@@ -34,8 +34,9 @@ export default function EspaceClientBoutique() {
   // État pour la liste des tables du restaurant
   const [listeTablesResto, setListeTablesResto] = useState([]);
 
-  // États pour les modales personnalisées (Table et Mode de Paiement)
+  // États pour les modales personnalisées (Table avec choix d'espace et Mode de Paiement)
   const [afficherModalTable, setAfficherModalTable] = useState(false);
+  const [espaceSelectionneModal, setEspaceSelectionneModal] = useState(null); // Pour filtrer les tables par espace dans la modale
   const [afficherModalPaiement, setAfficherModalPaiement] = useState(false);
 
   // État pour la PWA (installation de l'application)
@@ -127,6 +128,7 @@ export default function EspaceClientBoutique() {
           supabase.from('tables_restaurant')
             .select('*')
             .eq('id_entreprise', entrepriseId)
+            .order('espace', { ascending: true })
             .order('numero_table', { ascending: true })
         ]);
 
@@ -455,6 +457,12 @@ export default function EspaceClientBoutique() {
     return designation.includes(rechercheArticle.trim().toLowerCase());
   });
 
+  // Extraction des espaces uniques de la liste des tables
+  const espacesUniques = Array.from(new Set(listeTablesResto.map(t => (t.espace || 'SALLE PRINCIPALE').toUpperCase())));
+  const tablesFiltreesParEspace = espaceSelectionneModal 
+    ? listeTablesResto.filter(t => (t.espace || 'SALLE PRINCIPALE').toUpperCase() === espaceSelectionneModal)
+    : [];
+
   if (!estMonte) {
     return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-400">Chargement de l'espace...</div>;
   }
@@ -650,13 +658,16 @@ export default function EspaceClientBoutique() {
                         />
                       </div>
 
-                      {/* MODALE PERSONNALISÉE POUR LE CHOIX DE LA TABLE */}
+                      {/* MODALE PERSONNALISÉE POUR LE CHOIX DE L'ESPACE ET DE LA TABLE */}
                       <div>
                         <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table *</label>
                         <button
                           type="button"
                           disabled={enTrainDeSauvegarder}
-                          onClick={() => setAfficherModalTable(true)}
+                          onClick={() => {
+                            setEspaceSelectionneModal(null); // Réinitialiser l'étape de l'espace à l'ouverture
+                            setAfficherModalTable(true);
+                          }}
                           className="w-full bg-orange-50 border border-orange-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 text-left flex justify-between items-center transition cursor-pointer"
                         >
                           <span className="truncate">{client.table ? `${client.table}` : '-- Choisir --'}</span>
@@ -696,40 +707,76 @@ export default function EspaceClientBoutique() {
           </div>
         </div>
 
-        {/* MODALE PERSONNALISÉE : CHOISIR LA TABLE */}
+        {/* MODALE PERSONNALISÉE : CHOISIR L'ESPACE PUIS LA TABLE */}
         {afficherModalTable && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-5 space-y-4 max-h-[85vh]">
+              
               <div className="flex justify-between items-center border-b pb-3">
-                <h3 className="font-black text-slate-900 uppercase text-xs">-- Choisir une table --</h3>
+                <h3 className="font-black text-slate-900 uppercase text-xs">
+                  {espaceSelectionneModal ? `📍 ${espaceSelectionneModal}` : '-- Choisir un espace --'}
+                </h3>
                 <button type="button" onClick={() => setAfficherModalTable(false)} className="text-slate-400 hover:text-slate-600 font-bold text-base cursor-pointer">✕</button>
               </div>
 
-              <div className="space-y-1.5 overflow-y-auto max-h-60 pr-1">
-                {listeTablesResto.length === 0 ? (
-                  <p className="text-center text-slate-400 py-4 text-xs font-bold">Aucune table enregistrée.</p>
-                ) : (
-                  listeTablesResto.map((t) => {
-                    const estSelectionne = client.table === t.numero_table;
-                    return (
+              {!espaceSelectionneModal ? (
+                /* ÉTAPE 1 : LISTE DES ESPACES DISPONIBLES */
+                <div className="space-y-1.5 overflow-y-auto max-h-60 pr-1">
+                  {espacesUniques.length === 0 ? (
+                    <p className="text-center text-slate-400 py-4 text-xs font-bold">Aucun espace disponible.</p>
+                  ) : (
+                    espacesUniques.map((esp, idx) => (
                       <button
-                        key={t.id}
+                        key={idx}
                         type="button"
-                        onClick={() => {
-                          setClient({ ...client, table: t.numero_table });
-                          setAfficherModalTable(false);
-                        }}
-                        className={`w-full text-left p-3 rounded-xl font-black text-xs uppercase transition flex items-center justify-between cursor-pointer ${
-                          estSelectionne ? 'bg-orange-600 text-white shadow-xs' : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
-                        }`}
+                        onClick={() => setEspaceSelectionneModal(esp)}
+                        className="w-full text-left p-3.5 rounded-xl font-black text-xs uppercase transition flex items-center justify-between cursor-pointer bg-slate-50 hover:bg-orange-50 text-slate-800 border border-slate-200"
                       >
-                        <span>{t.numero_table} {t.description ? `(${t.description})` : ''}</span>
-                        {estSelectionne && <span>✓</span>}
+                        <span>📍 {esp}</span>
+                        <span className="text-orange-600 font-bold">➔</span>
                       </button>
-                    );
-                  })
-                )}
-              </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                /* ÉTAPE 2 : LISTE DES TABLES DE L'ESPACE SÉLECTIONNÉ */
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setEspaceSelectionneModal(null)}
+                    className="text-orange-600 hover:text-orange-700 font-black text-[10px] uppercase cursor-pointer flex items-center gap-1 mb-1"
+                  >
+                    ← Changer d'espace
+                  </button>
+
+                  <div className="space-y-1.5 overflow-y-auto max-h-60 pr-1">
+                    {tablesFiltreesParEspace.length === 0 ? (
+                      <p className="text-center text-slate-400 py-4 text-xs font-bold">Aucune table dans cet espace.</p>
+                    ) : (
+                      tablesFiltreesParEspace.map((t) => {
+                        const estSelectionne = client.table === t.numero_table;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              setClient({ ...client, table: t.numero_table });
+                              setAfficherModalTable(false);
+                            }}
+                            className={`w-full text-left p-3 rounded-xl font-black text-xs uppercase transition flex items-center justify-between cursor-pointer ${
+                              estSelectionne ? 'bg-orange-600 text-white shadow-xs' : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                            }`}
+                          >
+                            <span>{t.numero_table} {t.nombre_places ? `(${t.nombre_places} pl.)` : ''}</span>
+                            {estSelectionne && <span>✓</span>}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         )}
