@@ -1282,7 +1282,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   };
 
   return (
-    <div className="h-full max-h-[72vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
+    <div className="h-full max-h-[80vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
       
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
@@ -1464,7 +1464,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 <label className="block text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE *</label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalCaisse(true)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 font-bold text-[8.5px] text-slate-900 cursor-pointer flex justify-between items-center h-[22px]"
+                  className="w-full bg-slate-55 border border-slate-200 rounded-lg px-1 py-0.5 font-bold text-[8.5px] text-slate-900 cursor-pointer flex justify-between items-center h-[22px]"
                 >
                   <span className="truncate">{caisseNomSelectionnee}</span>
                   <span className="text-[7.5px] text-slate-400">🔍</span>
