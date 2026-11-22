@@ -17,13 +17,27 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const enTrainDeJouerAudio = useRef(false);
   const idsCommandesConnues = useRef(new Set());
 
+  // Fonction utilitaire pour formater un numéro de commande long/technique en affichage élégant
+  const formaterNumeroElegant = (numeroBrut) => {
+    if (!numeroBrut) return 'CMD-000';
+    const parts = numeroBrut.split('-');
+    if (parts.length > 1) {
+      const suffixe = parts[parts.length - 1];
+      const prefixeRef = parts[parts.length - 2] || '';
+      if (suffixe.length <= 4 && !isNaN(suffixe)) {
+        return `CMD-${suffixe}`;
+      }
+      return `${prefixeRef}-${suffixe}`.toUpperCase();
+    }
+    return numeroBrut;
+  };
+
   useEffect(() => {
     const preferenceAudio = localStorage.getItem('4ts_audio_active');
     if (preferenceAudio !== null) {
       setAudioActive(preferenceAudio === 'true');
     }
 
-    // Vérification sécurisée de l'abonnement push existant au chargement
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
       navigator.serviceWorker.ready.then(async (registration) => {
         try {
@@ -69,14 +83,12 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       let subscription = await registration.pushManager.getSubscription().catch(() => null);
 
       if (pushActif && subscription) {
-        // Si déjà actif, on désabonne l'appareil
         await subscription.unsubscribe();
         setPushActif(false);
         alert("🔕 Notifications push désactivées.");
         return;
       }
 
-      // Sinon, on demande l'activation
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         setPushActif(false);
@@ -258,9 +270,10 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
   const notifierNouvelleCommande = (cmd) => {
     const nomClientPropre = (cmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
-    const messageVocal = `Attention ! Nouvelle commande. Pour le client, ${nomClientPropre}. Table, ${cmd.numero_table || 'non spécifiée'}.`;
+    const numeroElegant = formaterNumeroElegant(cmd.numero_commande);
+    const messageVocal = `Attention ! Nouvelle commande, ${numeroElegant}. Pour le client, ${nomClientPropre}. Table, ${cmd.numero_table || 'non spécifiée'}.`;
     
-    afficherNotificationNATIVE(`🚨 Nouvelle Commande : ${cmd.numero_commande}`, `Client : ${cmd.nom_client} | Table : ${cmd.numero_table}`);
+    afficherNotificationNATIVE(`🚨 Nouvelle Commande : ${numeroElegant}`, `Client : ${cmd.nom_client} | Table : ${cmd.numero_table}`);
 
     if (audioActive) {
       declencherVibration();
@@ -339,10 +352,21 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           .order('created_at', { ascending: false });
 
         if (data) {
-          setCommandes(data);
+          data.forEach(cmd => {
+            if (!idsCommandesConnues.current.has(cmd.id)) {
+              const diffMs = new Date() - new Date(cmd.created_at);
+              if (diffMs < 120000) {
+                idsCommandesConnues.current.add(cmd.id);
+                setCommandes((prev) => [cmd, ...prev]);
+                notifierNouvelleCommande(cmd);
+              } else {
+                idsCommandesConnues.current.add(cmd.id);
+              }
+            }
+          });
         }
       } catch (e) {}
-    }, 2000);
+    }, 4000);
 
     return () => {
       supabase.removeChannel(canalRealtime);
@@ -401,25 +425,32 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  const commandesFiltrees = commandes.filter(cmd => {
-    if (filtreStatut !== 'TOUT' && cmd.statut !== filtreStatut) {
-      return false;
-    }
+  // Dédoublonnage strict par ID pour éliminer définitivement l'erreur de clé unique
+  const commandesFiltrees = Array.from(
+    new Map(
+      commandes
+        .filter(cmd => {
+          if (filtreStatut !== 'TOUT' && cmd.statut !== filtreStatut) {
+            return false;
+          }
 
-    if (filtreDate !== 'TOUTES' && cmd.created_at) {
-      const dateCmd = new Date(cmd.created_at).toDateString();
-      const aujourdhui = new Date().toDateString();
-      
-      const hierDate = new Date();
-      hierDate.setDate(hierDate.getDate() - 1);
-      const hier = hierDate.toDateString();
+          if (filtreDate !== 'TOUTES' && cmd.created_at) {
+            const dateCmd = new Date(cmd.created_at).toDateString();
+            const aujourdhui = new Date().toDateString();
+            
+            const hierDate = new Date();
+            hierDate.setDate(hierDate.getDate() - 1);
+            const hier = hierDate.toDateString();
 
-      if (filtreDate === 'AUJOURDHUI' && dateCmd !== aujourdhui) return false;
-      if (filtreDate === 'HIER' && dateCmd !== hier) return false;
-    }
+            if (filtreDate === 'AUJOURDHUI' && dateCmd !== aujourdhui) return false;
+            if (filtreDate === 'HIER' && dateCmd !== hier) return false;
+          }
 
-    return true;
-  });
+          return true;
+        })
+        .map(cmd => [cmd.id, cmd])
+    ).values()
+  );
 
   return (
     <div className="space-y-2 font-sans text-xs max-w-4xl mx-auto p-1 pb-16">
@@ -434,7 +465,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           </div>
           
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Bouton Push Veille avec bascule ON/OFF interactive */}
             <button
               type="button"
               onClick={basculerPush}
@@ -451,7 +481,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               </span>
             </button>
 
-            {/* Bouton Audio avec icône haut-parleur et bascule ON/OFF interactive */}
             <button
               type="button"
               onClick={toggleAudio}
@@ -526,6 +555,8 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             const estAnnule = cmd.statut === 'ANNULE';
             const estServiImpaye = cmd.statut === 'SERVI' && !estPaye;
 
+            const numeroAffichage = formaterNumeroElegant(cmd.numero_commande);
+
             return (
               <div 
                 key={cmd.id} 
@@ -536,8 +567,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-start border-b border-slate-100 pb-1">
                     <div>
-                      <span className="font-mono font-black text-orange-600 text-[10px] block">{cmd.numero_commande}</span>
-                      <span className="text-[8px] text-slate-400 font-bold">
+                      <span 
+                        title={`Référence technique : ${cmd.numero_commande}`} 
+                        className="font-mono font-black text-orange-600 text-xs block cursor-help tracking-wide bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 inline-block"
+                      >
+                        🏷️ {numeroAffichage}
+                      </span>
+                      <span className="text-[8px] text-slate-400 font-bold block mt-0.5">
                         {new Date(cmd.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(cmd.created_at).toLocaleDateString()}
                       </span>
                     </div>

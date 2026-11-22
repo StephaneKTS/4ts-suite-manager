@@ -58,11 +58,23 @@ export default function EspaceClientBoutique() {
       if (stockFavoris) {
         setRestaurantsRecents(JSON.parse(stockFavoris));
       }
-      const telSauve = localStorage.getItem('4ts_client_telephone');
+
+      // Chargement automatique des informations mémorisées du client
+      const nomSauve = localStorage.getItem('4ts_client_nom') || '';
+      const telSauve = localStorage.getItem('4ts_client_telephone') || '';
+      const tableSauvee = localStorage.getItem('4ts_client_table') || '';
+
       if (telSauve) {
         setTelephoneRecherche(telSauve);
-        setClient(prev => ({ ...prev, telephone: telSauve }));
       }
+
+      setClient(prev => ({
+        ...prev,
+        nom: nomSauve,
+        telephone: telSauve,
+        table: tableSauvee
+      }));
+
     } catch (e) {
       console.error("Erreur nettoyage session :", e);
     }
@@ -244,8 +256,11 @@ export default function EspaceClientBoutique() {
       return;
     }
 
+    // Sauvegarde des informations client dans le localStorage pour les prochaines commandes
     try {
+      localStorage.setItem('4ts_client_nom', client.nom.trim().toUpperCase());
       localStorage.setItem('4ts_client_telephone', client.telephone.trim());
+      localStorage.setItem('4ts_client_table', (client.table || '').trim().toUpperCase());
       setTelephoneRecherche(client.telephone.trim());
     } catch (e) {}
 
@@ -436,7 +451,16 @@ export default function EspaceClientBoutique() {
         <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise pour un service sur place.</p>
         <div className="flex gap-2 w-full max-w-xs mt-4">
           <button
-            onClick={() => { setValide(false); setVuePanier(false); setCommandeEnCoursModification(null); setClient({ nom: '', telephone: telephoneRecherche, table: '', modePaiement: 'ESPECES' }); }}
+            onClick={() => { 
+              setValide(false); 
+              setVuePanier(false); 
+              setCommandeEnCoursModification(null); 
+              // Conserve les informations mémorisées du client pour la prochaine commande
+              const nomMeme = localStorage.getItem('4ts_client_nom') || '';
+              const telMeme = localStorage.getItem('4ts_client_telephone') || telephoneRecherche;
+              const tableMeme = localStorage.getItem('4ts_client_table') || '';
+              setClient({ nom: nomMeme, telephone: telMeme, table: tableMeme, modePaiement: 'ESPECES' }); 
+            }}
             className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black px-4 py-3 rounded-2xl text-xs shadow-md transition"
           >
             Commander 🍽️
@@ -615,7 +639,6 @@ export default function EspaceClientBoutique() {
         <div className="flex justify-between items-center px-1 mb-1">
           <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
           
-          {/* Bouton d'accès rapide direct toujours visible en haut pour explorer sans se connecter */}
           <button
             type="button"
             onClick={() => setOngletActif('BOUTIQUE')}
@@ -625,9 +648,7 @@ export default function EspaceClientBoutique() {
           </button>
         </div>
         
-        {/* Navigation sur deux lignes pour un affichage mobile optimal sans coupure */}
         <div className="space-y-1.5 bg-slate-100 p-1.5 rounded-xl">
-          {/* Ligne 1 : Exclusivement le restaurant (Menu, Suivi, Restos) */}
           <div className="grid grid-cols-3 gap-1">
             <button
               type="button"
@@ -666,7 +687,6 @@ export default function EspaceClientBoutique() {
             </button>
           </div>
 
-          {/* Ligne 2 : Exploration et Compte / Inscription */}
           <div className="grid grid-cols-2 gap-1">
             <button
               type="button"

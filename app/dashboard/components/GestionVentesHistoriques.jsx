@@ -411,9 +411,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return false;
   };
 
-  // ✅ CORRECTION DU DOUBLE DÉSTOCKAGE :
-  // Les ventes créant déjà une ligne 'SORTIE' dans `mouvements_stock`, 
-  // on ne doit pas re-parcourir `ventesHistoriques` ici.
   const obtenirTousLesFluxArticle = (articleId) => {
     let flux = [];
     mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
@@ -918,18 +915,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         return;
       }
 
-      // 1. Suppression du ticket dans la table des ventes
       const { error } = await supabase.from('ventes_historiques').delete().eq('id', ticketEnCoursDeSuppression.id);
       if (error) {
         localSync.ajouterFileAttente('DELETE', 'ventes_historiques', { id: ticketEnCoursDeSuppression.id });
       }
 
-      // 2. RESTITUTION AUTOMATIQUE DU STOCK (ALIGNÉ SUR LE MODULE LIVRAISON)
       const numeroTicketConcerne = ticketEnCoursDeSuppression.numero_ticket;
       if (numeroTicketConcerne) {
         const motifRecherche = `VENTE TICKET ${numeroTicketConcerne}`;
         
-        // Recherche des mouvements de stock de type SORTIE associés à ce ticket
         const { data: mouvementslies, error: errRechercheMvt } = await supabase
           .from('mouvements_stock')
           .select('*')
@@ -939,7 +933,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
         if (!errRechercheMvt && mouvementslies && mouvementslies.length > 0) {
           for (const mvt of mouvementslies) {
-            // Suppression du mouvement de sortie initial pour remettre le stock à niveau dans le dépôt
             const { error: errSuppMvt } = await supabase.from('mouvements_stock').delete().eq('id', mvt.id);
             if (errSuppMvt) {
               localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { id: mvt.id });
@@ -948,7 +941,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       }
 
-      // 3. Purger le cache local pour forcer le rafraîchissement immédiat de la vue sur tous les appareils
       if (typeof window !== 'undefined') {
         localStorage.removeItem(cacheKey);
       }
@@ -1645,15 +1637,16 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 items-center bg-slate-50 p-1 rounded-xl border border-slate-100">
               
-              <div>
-                <span className="text-[7px] font-extrabold text-slate-400 uppercase tracking-tighter block">
+              {/* MODIFICATION EFFECTUÉE ICI : Le libellé et le montant sont désormais alignés horizontalement */}
+              <div className="flex items-center justify-between sm:justify-start sm:gap-2">
+                <span className="text-[7px] font-extrabold text-slate-400 uppercase tracking-tighter">
                   {appliquerTva === 'OUI' ? 'NET (TTC)' : 'NET À PAYER'}
                 </span>
                 <span className="font-black text-emerald-700 font-mono text-[10.5px]">
                   {totalFinal.toLocaleString('fr-FR')} F
                 </span>
                 {appliquerTva === 'OUI' && (
-                  <div className="text-[7px] text-slate-500 font-mono">
+                  <div className="text-[7px] text-slate-500 font-mono hidden">
                     HT:{baseImposable.toLocaleString('fr-FR')}F | TVA:{montantTva.toLocaleString('fr-FR')}F
                   </div>
                 )}
@@ -1851,7 +1844,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 <div
                   onClick={() => setAppliquerTva('NON')}
                   className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                    appliquerTva === 'NON' ? 'bg-orange-50 border-orange-500 text-orange-800 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
+                    appliquerTva === 'NON' ? 'bg-orange-50 border-orange-500 text-orange-800 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   <div>
