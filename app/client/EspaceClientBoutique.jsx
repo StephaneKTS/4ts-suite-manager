@@ -34,6 +34,10 @@ export default function EspaceClientBoutique() {
   // État pour la liste des tables du restaurant
   const [listeTablesResto, setListeTablesResto] = useState([]);
 
+  // États pour les modales personnalisées (Table et Mode de Paiement)
+  const [afficherModalTable, setAfficherModalTable] = useState(false);
+  const [afficherModalPaiement, setAfficherModalPaiement] = useState(false);
+
   // État pour la PWA (installation de l'application)
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [afficherModalInstallation, setAfficherModalInstallation] = useState(false);
@@ -646,48 +650,36 @@ export default function EspaceClientBoutique() {
                         />
                       </div>
 
+                      {/* MODALE PERSONNALISÉE POUR LE CHOIX DE LA TABLE */}
                       <div>
                         <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Numéro de Table *</label>
-                        {/* Sélection automatique via QR Code ou choix dans la liste des tables */}
-                        {listeTablesResto.length > 0 ? (
-                          <select
-                            disabled={enTrainDeSauvegarder}
-                            value={client.table}
-                            onChange={(e) => setClient({ ...client, table: e.target.value })}
-                            className="w-full bg-orange-50 border border-orange-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
-                          >
-                            <option value="">-- Choisir une table --</option>
-                            {listeTablesResto.map((t) => (
-                              <option key={t.id} value={t.numero_table}>
-                                Table {t.numero_table} {t.description ? `(${t.description})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            disabled={enTrainDeSauvegarder}
-                            value={client.table}
-                            onChange={(e) => setClient({ ...client, table: e.target.value.toUpperCase() })}
-                            placeholder="Ex: TABLE 1"
-                            className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
-                          />
-                        )}
+                        <button
+                          type="button"
+                          disabled={enTrainDeSauvegarder}
+                          onClick={() => setAfficherModalTable(true)}
+                          className="w-full bg-orange-50 border border-orange-300 rounded-xl p-3 text-xs font-black uppercase text-slate-900 text-left flex justify-between items-center transition cursor-pointer"
+                        >
+                          <span className="truncate">{client.table ? `${client.table}` : '-- Choisir --'}</span>
+                          <span className="text-orange-600 font-bold ml-1">▼</span>
+                        </button>
                       </div>
                     </div>
 
+                    {/* MODALE PERSONNALISÉE POUR LE MODE DE PAIEMENT */}
                     <div>
                       <label className="block font-bold text-[9px] text-slate-600 uppercase mb-1">Mode de paiement *</label>
-                      <select
+                      <button
+                        type="button"
                         disabled={enTrainDeSauvegarder}
-                        value={client.modePaiement}
-                        onChange={(e) => setClient({ ...client, modePaiement: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-50"
+                        onClick={() => setAfficherModalPaiement(true)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-black text-slate-900 text-left flex justify-between items-center transition cursor-pointer"
                       >
-                        <option value="ESPECES">Espèces (À la caisse / Table)</option>
-                        <option value="MOBILE_MONEY">Mobile Money (Orange / MTN)</option>
-                        <option value="CARTE">Carte bancaire</option>
-                      </select>
+                        <span className="truncate">
+                          {client.modePaiement === 'ESPECES' ? 'Espèces (À la caisse / Table)' :
+                           client.modePaiement === 'MOBILE_MONEY' ? 'Mobile Money (Orange / MTN)' : 'Carte bancaire'}
+                        </span>
+                        <span className="text-slate-500 font-bold ml-1">▼</span>
+                      </button>
                     </div>
 
                     <button
@@ -703,6 +695,82 @@ export default function EspaceClientBoutique() {
             )}
           </div>
         </div>
+
+        {/* MODALE PERSONNALISÉE : CHOISIR LA TABLE */}
+        {afficherModalTable && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-5 space-y-4 max-h-[85vh]">
+              <div className="flex justify-between items-center border-b pb-3">
+                <h3 className="font-black text-slate-900 uppercase text-xs">-- Choisir une table --</h3>
+                <button type="button" onClick={() => setAfficherModalTable(false)} className="text-slate-400 hover:text-slate-600 font-bold text-base cursor-pointer">✕</button>
+              </div>
+
+              <div className="space-y-1.5 overflow-y-auto max-h-60 pr-1">
+                {listeTablesResto.length === 0 ? (
+                  <p className="text-center text-slate-400 py-4 text-xs font-bold">Aucune table enregistrée.</p>
+                ) : (
+                  listeTablesResto.map((t) => {
+                    const estSelectionne = client.table === t.numero_table;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setClient({ ...client, table: t.numero_table });
+                          setAfficherModalTable(false);
+                        }}
+                        className={`w-full text-left p-3 rounded-xl font-black text-xs uppercase transition flex items-center justify-between cursor-pointer ${
+                          estSelectionne ? 'bg-orange-600 text-white shadow-xs' : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                        }`}
+                      >
+                        <span>{t.numero_table} {t.description ? `(${t.description})` : ''}</span>
+                        {estSelectionne && <span>✓</span>}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODALE PERSONNALISÉE : MODE DE PAIEMENT */}
+        {afficherModalPaiement && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-5 space-y-4">
+              <div className="flex justify-between items-center border-b pb-3">
+                <h3 className="font-black text-slate-900 uppercase text-xs">Mode de paiement</h3>
+                <button type="button" onClick={() => setAfficherModalPaiement(false)} className="text-slate-400 hover:text-slate-600 font-bold text-base cursor-pointer">✕</button>
+              </div>
+
+              <div className="space-y-1.5">
+                {[
+                  { id: 'ESPECES', label: 'Espèces (À la caisse / Table)' },
+                  { id: 'MOBILE_MONEY', label: 'Mobile Money (Orange / MTN)' },
+                  { id: 'CARTE', label: 'Carte bancaire' }
+                ].map((mode) => {
+                  const estSelectionne = client.modePaiement === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => {
+                        setClient({ ...client, modePaiement: mode.id });
+                        setAfficherModalPaiement(false);
+                      }}
+                      className={`w-full text-left p-3 rounded-xl font-black text-xs uppercase transition flex items-center justify-between cursor-pointer ${
+                        estSelectionne ? 'bg-orange-600 text-white shadow-xs' : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200'
+                      }`}
+                    >
+                      <span>{mode.label}</span>
+                      {estSelectionne && <span>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {afficherModalConfirmation && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
