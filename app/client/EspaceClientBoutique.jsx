@@ -30,6 +30,10 @@ export default function EspaceClientBoutique() {
   const [mesCommandesClient, setMesCommandesClient] = useState([]);
   const [commandeEnCoursModification, setCommandeEnCoursModification] = useState(null);
 
+  // État pour la PWA (installation de l'application)
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [afficherModalInstallation, setAfficherModalInstallation] = useState(false);
+
   // État pour la modale de confirmation
   const [afficherModalConfirmation, setAfficherModalConfirmation] = useState(false);
 
@@ -42,6 +46,13 @@ export default function EspaceClientBoutique() {
 
   useEffect(() => {
     setEstMonte(true);
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     
     try {
       const clesAdmin = [
@@ -62,6 +73,7 @@ export default function EspaceClientBoutique() {
         setRestaurantsRecents(JSON.parse(stockFavoris));
       }
 
+      // CORRECTION ICI : Utilisation de parenthèses rondes () au lieu de crochets []
       const nomSauve = localStorage.getItem('4ts_client_nom') || '';
       const telSauve = localStorage.getItem('4ts_client_telephone') || '';
       const tableSauvee = localStorage.getItem('4ts_client_table') || '';
@@ -80,7 +92,23 @@ export default function EspaceClientBoutique() {
     } catch (e) {
       console.error("Erreur nettoyage session :", e);
     }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
+
+  const handleInstallerApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } else {
+      setAfficherModalInstallation(true);
+    }
+  };
 
   useEffect(() => {
     async function chargerDonneesBoutiqueOptimise() {
@@ -717,7 +745,7 @@ export default function EspaceClientBoutique() {
   return (
     <div className="max-w-md mx-auto p-3 font-sans text-xs bg-slate-50 h-screen flex flex-col justify-between overflow-hidden">
       
-      {/* 1. EN-TÊTE FIXE (NE SCROLLE PAS) */}
+      {/* 1. EN-TÊTE FIXE */}
       <div className="bg-white p-3 rounded-2xl border shadow-2xs text-center z-30 space-y-2 shrink-0">
         <div className="flex justify-between items-center px-1 mb-1">
           <h1 className="font-black text-slate-900 uppercase text-sm">🍽️ {nomEntreprise || 'RESTAURANT'}</h1>
@@ -795,7 +823,7 @@ export default function EspaceClientBoutique() {
         </div>
       </div>
 
-      {/* 2. CONTENU CENTRAL DÉFILANT (SCROLLABLE INTERNE) */}
+      {/* 2. CONTENU CENTRAL DÉFILANT */}
       <div className="flex-1 overflow-y-auto p-1 space-y-4 my-2">
         {ongletActif === 'SOUSCRIPTION' ? (
           <div className="space-y-4">
@@ -805,15 +833,25 @@ export default function EspaceClientBoutique() {
               </div>
               <h2 className="font-black text-slate-900 uppercase text-sm">Ouvrez votre propre espace 4TS</h2>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Vous souhaitez digitaliser votre propre structure, restaurant ou service de logistique ? Accédez à notre interface unifiée de souscription en 4 étapes pour activer votre module.
+                Vous souhaitez digitaliser votre propre structure, restaurant ou service de logistique ? Choisissez ci-dessous de lancer votre souscription ou d'installer l'application pour explorer les menus.
               </p>
               
-              <a
-                href="/souscription"
-                className="block w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition text-center"
-              >
-                Lancer l'interface de souscription ➔
-              </a>
+              <div className="space-y-2.5 pt-1">
+                <a
+                  href="/souscription"
+                  className="block w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition text-center cursor-pointer"
+                >
+                  🚀 Lancer l'interface de souscription ➔
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleInstallerApp}
+                  className="block w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3.5 rounded-xl text-xs uppercase shadow-md transition text-center cursor-pointer"
+                >
+                  📥 Installer l'application ➔
+                </button>
+              </div>
             </div>
           </div>
         ) : ongletActif === 'EXPLORER' ? (
@@ -1081,19 +1119,50 @@ export default function EspaceClientBoutique() {
         )}
       </div>
 
-      {/* 3. PIED DE PAGE FIXE EN BAS (TOUJOURS VISIBLE) */}
+      {/* 3. PIED DE PAGE FIXE EN BAS */}
       <footer className="bg-slate-900 text-white p-3 rounded-2xl text-center space-y-1.5 border border-slate-800 shadow-md shrink-0 z-30">
         <p className="text-[9px] font-black uppercase tracking-wider text-orange-400">
           📱 4TS Suite Manager — Application Officielle
         </p>
         <button
           type="button"
-          onClick={() => setOngletActif('SOUSCRIPTION')}
+          onClick={handleInstallerApp}
           className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2 rounded-xl text-[10px] uppercase shadow-md transition cursor-pointer"
         >
-          📥 INSTALLER / OUVRIR L'APPLICATION ➔
+          📥 INSTALLER L'APPLICATION ➔
         </button>
       </footer>
+
+      {/* MODALE D'INSTALLATION PERSONNALISÉE */}
+      {afficherModalInstallation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-4 text-center">
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold shadow-xs">
+              📲
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="font-black text-slate-900 uppercase text-sm">Installer l'application</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Pour installer rapidement 4TS Suite Manager sur votre appareil :
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-left space-y-2 text-[10px] text-slate-700">
+              <p><strong>📱 Sur Téléphone :</strong> Ouvrez le menu de votre navigateur (les 3 points <b>⋮</b> en haut à droite) et touchez <strong className="text-slate-900">"Installer l'application"</strong> ou <strong className="text-slate-900">"Ajouter à l'écran d'accueil"</strong>.</p>
+              <p><strong>💻 Sur Ordinateur :</strong> Cliquez sur l'icône d'installation située dans la barre d'adresse de votre navigateur.</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setAfficherModalInstallation(false)}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3 rounded-xl text-xs uppercase shadow-md transition cursor-pointer"
+            >
+              Compris 👍
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );
