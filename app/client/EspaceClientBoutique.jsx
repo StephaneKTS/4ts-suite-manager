@@ -73,7 +73,6 @@ export default function EspaceClientBoutique() {
         setRestaurantsRecents(JSON.parse(stockFavoris));
       }
 
-      // CORRECTION ICI : Utilisation de parenthèses rondes () au lieu de crochets []
       const nomSauve = localStorage.getItem('4ts_client_nom') || '';
       const telSauve = localStorage.getItem('4ts_client_telephone') || '';
       const tableSauvee = localStorage.getItem('4ts_client_table') || '';
@@ -98,16 +97,21 @@ export default function EspaceClientBoutique() {
     };
   }, []);
 
-  const handleInstallerApp = async () => {
+  // Déclenche l'affichage de notre jolie modale personnalisée au clic sur le bouton
+  const handleInstallerApp = () => {
+    setAfficherModalInstallation(true);
+  };
+
+  // Exécution réelle de l'installation native depuis notre modale
+  const procederInstallationNative = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
       }
-    } else {
-      setAfficherModalInstallation(true);
     }
+    setAfficherModalInstallation(false);
   };
 
   useEffect(() => {
@@ -1133,33 +1137,42 @@ export default function EspaceClientBoutique() {
         </button>
       </footer>
 
-      {/* MODALE D'INSTALLATION PERSONNALISÉE */}
+      {/* NOTRE UNIQUE JOLIE MODALE PERSONNALISÉE (Le message textuel brut a été totalement supprimé) */}
       {afficherModalInstallation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-4 text-center">
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold shadow-xs">
-              📲
-            </div>
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-slate-100 p-6 space-y-5 text-center">
             
-            <div className="space-y-1">
-              <h3 className="font-black text-slate-900 uppercase text-sm">Installer l'application</h3>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Pour installer rapidement 4TS Suite Manager sur votre appareil :
-              </p>
+            <div className="flex flex-col items-center space-y-3 pt-2">
+              <div className="w-16 h-16 bg-orange-50 border border-orange-100 rounded-2xl flex items-center justify-center shadow-md overflow-hidden p-2">
+                <span className="text-3xl font-black text-orange-600">4TS</span>
+              </div>
+              <div className="space-y-0.5">
+                <h3 className="font-black text-slate-900 uppercase text-sm">Installer l'application</h3>
+                <p className="text-[11px] font-mono text-slate-400">4ts-suite-manager.vercel.app</p>
+              </div>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-left space-y-2 text-[10px] text-slate-700">
-              <p><strong>📱 Sur Téléphone :</strong> Ouvrez le menu de votre navigateur (les 3 points <b>⋮</b> en haut à droite) et touchez <strong className="text-slate-900">"Installer l'application"</strong> ou <strong className="text-slate-900">"Ajouter à l'écran d'accueil"</strong>.</p>
-              <p><strong>💻 Sur Ordinateur :</strong> Cliquez sur l'icône d'installation située dans la barre d'adresse de votre navigateur.</p>
+            <p className="text-xs text-slate-600 font-medium px-2">
+              Voulez-vous installer <strong>4TS Suite Manager</strong> sur votre appareil pour un accès rapide et fluide ?
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setAfficherModalInstallation(false)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-3 rounded-xl text-xs uppercase transition shadow-2xs cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={procederInstallationNative}
+                className="bg-orange-600 hover:bg-orange-500 text-white font-black py-3 rounded-xl text-xs uppercase shadow-md transition cursor-pointer"
+              >
+                Installer ➔
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setAfficherModalInstallation(false)}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3 rounded-xl text-xs uppercase shadow-md transition cursor-pointer"
-            >
-              Compris 👍
-            </button>
           </div>
         </div>
       )}
