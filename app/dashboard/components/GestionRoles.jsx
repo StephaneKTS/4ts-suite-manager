@@ -35,11 +35,12 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
     onConfirmer: null
   });
   
-  // 🏪 Tables exclusives au module Boutique / Ventes
+  // 🏪 Tables exclusives au module Boutique / Ventes (avec Gestion des Tables)
   const modulesBoutique = [
     { id: 'commandes_clients_qr', nom: '📱 Commandes QR Code' },
     { id: 'caisse', nom: '🛒 Caisse & Vente' },
     { id: 'articles_stock', nom: '📦 Articles & Stock' },
+    { id: 'gestion_tables', nom: '🪑 Gestion des Tables' },
     { id: 'depots_stock', nom: '🏢 Dépôts & Magasins' },
     { id: 'emplacements_stock', nom: '📍 Emplacements & Zones' },
     { id: 'familles_articles', nom: '🏷️ Familles & Catégories' },
@@ -92,7 +93,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
   const estTontine = moduleActuel === 'TONTINE';
   const estLivraison = moduleActuel === 'LIVRAISON';
   
-  // 🎯 Sélection rigoureuse de la liste des tables selon le module actif
   const modulesApp = estTontine ? modulesTontine : (estLivraison ? modulesLivraison : modulesBoutique);
   const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
 
@@ -110,7 +110,6 @@ export default function GestionRoles({ entrepriseId = '4TS-TEST', isDarkMode = f
     permissions: initialiserPermissionsDefaut(),
   });
 
-  // Gestion de la connectivité et synchronisation hors ligne
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);

@@ -217,7 +217,15 @@ function DashboardContent() {
     }
 
     if (moduleActif === 'gestion_tables') {
-      return <GestionTables entrepriseId={entrepriseId} isDarkMode={isDarkMode} />;
+      return (
+        <GestionTables 
+          entrepriseId={entrepriseId} 
+          isDarkMode={isDarkMode}
+          autoriserCreation={verifierCreation('gestion_tables', estSuperAdmin)}
+          autoriserModification={verifierModification('gestion_tables', estSuperAdmin)}
+          autoriserSuppression={verifierSuppression('gestion_tables', estSuperAdmin)}
+        />
+      );
     }
 
     if (moduleActif === 'tontine_participants') {
@@ -754,14 +762,16 @@ function DashboardContent() {
                 </div>
               )}
 
-              {/* 🪑 GESTION DES TABLES PLACÉE JUSTE APRÈS STOCK ARTICLES */}
-              <div 
-                onClick={() => setModuleActif('gestion_tables')} 
-                className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-amber-500/50`}
-              >
-                <span className="text-2xl group-hover:scale-110 transition">🪑</span>
-                <span className="font-black text-[11px] sm:text-xs leading-tight text-amber-500">Gestion des Tables</span>
-              </div>
+              {/* 🪑 GESTION DES TABLES PROTÉGÉE PAR PERMISSION */}
+              {verifierPermission('gestion_tables', estSuperAdmin) && (
+                <div 
+                  onClick={() => tenterAccesModule('gestion_tables', 'Gestion des Tables')} 
+                  className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-amber-500/50`}
+                >
+                  <span className="text-2xl group-hover:scale-110 transition">🪑</span>
+                  <span className="font-black text-[11px] sm:text-xs leading-tight text-amber-500">Gestion des Tables</span>
+                </div>
+              )}
 
               {verifierPermission('approvisionnements', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>

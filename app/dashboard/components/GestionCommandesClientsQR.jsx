@@ -12,14 +12,14 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [audioActive, setAudioActive] = useState(true);
   const [pushActif, setPushActif] = useState(false);
 
-  // État pour la jolie modale de confirmation d'une commande servie non payée
+  // État pour la modale de confirmation d'une commande servie non payée
   const [modalConfirmation, setModalConfirmation] = useState({
     visible: false,
     idCommande: null,
     statutPaiement: null
   });
 
-  // État pour la jolie modale de confirmation du basculement de paiement
+  // État pour la modale de confirmation du basculement de paiement
   const [modalPaiement, setModalPaiement] = useState({
     visible: false,
     idCommande: null,
@@ -28,12 +28,16 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     numeroCmd: null
   });
 
+  // Nouveaux états pour les modales de confirmation Audio et Push (remplacement des alertes natives)
+  const [modalAudio, setModalAudio] = useState({ visible: false, actionVoulue: false });
+  const [modalPush, setModalPush] = useState({ visible: false, actionVoulue: false });
+  const [modalMessageInfo, setModalMessageInfo] = useState({ visible: false, titre: '', texte: '', type: 'info' });
+
   // File d'attente audio et vocale strictement séquentielle
   const fileDAbsolueAudio = useRef([]);
   const enTrainDeJouerAudio = useRef(false);
   const idsCommandesConnues = useRef(new Set());
 
-  // Fonction utilitaire pour formater un numéro de commande long/technique en affichage élégant
   const formaterNumeroElegant = (numeroBrut) => {
     if (!numeroBrut) return 'CMD-000';
     const parts = numeroBrut.split('-');
@@ -86,11 +90,23 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  const basculerPush = async () => {
+  // Intercepte le clic sur le bouton Push pour ouvrir la modale de confirmation
+  const demanderBasculementPush = () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert("Les notifications Push ne sont pas supportées par ce navigateur.");
+      setModalMessageInfo({
+        visible: true,
+        titre: 'Non supporté',
+        texte: "Les notifications Push ne sont pas supportées par ce navigateur.",
+        type: 'erreur'
+      });
       return;
     }
+    setModalPush({ visible: true, actionVoulue: !pushActif });
+  };
+
+  const executerBasculementPush = async () => {
+    const activer = modalPush.actionVoulue;
+    setModalPush({ visible: false, actionVoulue: false });
 
     try {
       const registration = await navigator.serviceWorker.register('/sw.js');
@@ -98,17 +114,27 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
       let subscription = await registration.pushManager.getSubscription().catch(() => null);
 
-      if (pushActif && subscription) {
+      if (!activer && subscription) {
         await subscription.unsubscribe();
         setPushActif(false);
-        alert("🔕 Notifications push désactivées.");
+        setModalMessageInfo({
+          visible: true,
+          titre: 'Notifications Désactivées',
+          texte: "🔕 Les notifications push ont été désactivées avec succès.",
+          type: 'succes'
+        });
         return;
       }
 
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         setPushActif(false);
-        alert("Permission de notification refusée. Veuillez l'autoriser dans les paramètres du téléphone.");
+        setModalMessageInfo({
+          visible: true,
+          titre: 'Permission Refusée',
+          texte: "Permission de notification refusée. Veuillez l'autoriser dans les paramètres du téléphone.",
+          type: 'erreur'
+        });
         return;
       }
 
@@ -116,7 +142,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       const convertedKey = urlBase64ToUint8Array(publicVapidKey);
 
       if (!convertedKey) {
-        alert("Erreur : La clé VAPID est invalide.");
+        setModalMessageInfo({ visible: true, titre: 'Erreur', texte: "Erreur : La clé VAPID est invalide.", type: 'erreur' });
         return;
       }
 
@@ -138,11 +164,16 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
       if (error) throw error;
       setPushActif(true);
-      alert("🔔 Notifications push activées ! Votre téléphone est configuré pour sonner même en veille.");
+      setModalMessageInfo({
+        visible: true,
+        titre: 'Notifications Activées',
+        texte: "🔔 Notifications push activées ! Votre téléphone est configuré pour sonner même en veille.",
+        type: 'succes'
+      });
     } catch (err) {
       console.error("Erreur détaillée push :", err);
       setPushActif(false);
-      alert("Erreur Push : " + (err.message || err.name || "Erreur inconnue"));
+      setModalMessageInfo({ visible: true, titre: 'Erreur Push', texte: err.message || "Erreur inconnue", type: 'erreur' });
     }
   };
 
@@ -238,8 +269,15 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     });
   };
 
-  const toggleAudio = async () => {
-    const nouvelEtat = !audioActive;
+  // Intercepte le clic sur le bouton Son pour ouvrir la modale de confirmation
+  const demanderBasculementAudio = () => {
+    setModalAudio({ visible: true, actionVoulue: !audioActive });
+  };
+
+  const executerBasculementAudio = async () => {
+    const nouvelEtat = modalAudio.actionVoulue;
+    setModalAudio({ visible: false, actionVoulue: false });
+
     setAudioActive(nouvelEtat);
     localStorage.setItem('4ts_audio_active', nouvelEtat);
 
@@ -399,13 +437,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
       if (error) throw error;
       if (data && !data.success) {
-        alert("Erreur de déstockage : " + data.message);
+        setModalMessageInfo({ visible: true, titre: 'Erreur', texte: "Erreur de déstockage : " + data.message, type: 'erreur' });
         return;
       }
 
       chargerCommandesQR();
     } catch (err) {
-      alert('Erreur lors de la mise à jour du statut : ' + err.message);
+      setModalMessageInfo({ visible: true, titre: 'Erreur', texte: 'Erreur lors de la mise à jour du statut : ' + err.message, type: 'erreur' });
     }
   };
 
@@ -434,7 +472,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
       chargerCommandesQR();
     } catch (err) {
-      alert('Erreur lors de la mise à jour du statut : ' + err.message);
+      setModalMessageInfo({ visible: true, titre: 'Erreur', texte: 'Erreur lors de la mise à jour du statut : ' + err.message, type: 'erreur' });
     }
   };
 
@@ -450,7 +488,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     setModalConfirmation({ visible: false, idCommande: null, statutPaiement: null });
   };
 
-  // Déclenche l'ouverture de la modale pour basculer le paiement
   const demanderBasculementPaiement = (idCommande, statutActuel, montantTotalCommande, numeroCmd) => {
     setModalPaiement({
       visible: true,
@@ -471,7 +508,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     });
   };
 
-  // Exécute réellement le basculement après confirmation dans la modale
   const confirmerBasculementPaiement = async () => {
     const { idCommande, statutActuel, montantTotal, numeroCmd } = modalPaiement;
     fermerModalPaiement();
@@ -501,7 +537,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
       chargerCommandesQR();
     } catch (err) {
-      alert('Erreur lors de la mise à jour du paiement : ' + err.message);
+      setModalMessageInfo({ visible: true, titre: 'Erreur', texte: 'Erreur lors de la mise à jour du paiement : ' + err.message, type: 'erreur' });
     }
   };
 
@@ -546,7 +582,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={basculerPush}
+              onClick={demanderBasculementPush}
               title={pushActif ? "Push Veille : Actif (Cliquer pour désactiver)" : "Push Veille : Inactif (Cliquer pour activer)"}
               className={`p-1.5 rounded-lg text-xs font-black transition shadow-xs flex items-center justify-center relative cursor-pointer ${
                 pushActif 
@@ -562,7 +598,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
             <button
               type="button"
-              onClick={toggleAudio}
+              onClick={demanderBasculementAudio}
               title={audioActive ? "Audio : Actif (Cliquer pour couper)" : "Audio : Coupé (Cliquer pour activer)"}
               className={`p-1.5 rounded-lg text-xs font-black transition shadow-xs flex items-center justify-center relative cursor-pointer ${
                 audioActive 
@@ -769,6 +805,134 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODALE DE CONFIRMATION POUR LE SON (AUDIO) */}
+      {modalAudio.visible && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 font-black shadow-inner ${
+                modalAudio.actionVoulue ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+              }`}>
+                {modalAudio.actionVoulue ? '🔊' : '🔇'}
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 uppercase text-xs">Gestion du Son & Voix</h3>
+                <p className="text-[10px] text-slate-500 font-bold">Alertes sonores et vocales</p>
+              </div>
+            </div>
+
+            <div className={`border rounded-xl p-3 space-y-1 ${
+              modalAudio.actionVoulue ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
+            }`}>
+              <p className={`font-black text-xs ${modalAudio.actionVoulue ? 'text-emerald-800' : 'text-red-800'}`}>
+                {modalAudio.actionVoulue ? "Voulez-vous vraiment réactiver le son ?" : "Voulez-vous vraiment couper le son ?"}
+              </p>
+              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
+                {modalAudio.actionVoulue 
+                  ? "Les alertes sonores et annonces vocales des nouvelles commandes seront de nouveau émises."
+                  : "Vous ne recevrez plus d'annonces vocales ni de bips sonores lors de l'arrivée de nouvelles commandes."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setModalAudio({ visible: false, actionVoulue: false })}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={executerBasculementAudio}
+                className={`flex-1 font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg transition cursor-pointer text-white ${
+                  modalAudio.actionVoulue 
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30' 
+                    : 'bg-red-600 hover:bg-red-500 shadow-red-600/30'
+                }`}
+              >
+                {modalAudio.actionVoulue ? 'Oui, activer 🔊' : 'Oui, couper 🔇'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE CONFIRMATION POUR LES NOTIFICATIONS PUSH */}
+      {modalPush.visible && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 font-black shadow-inner ${
+                modalPush.actionVoulue ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'
+              }`}>
+                🔔
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 uppercase text-xs">Notifications Push en Veille</h3>
+                <p className="text-[10px] text-slate-500 font-bold">Service Worker & Background</p>
+              </div>
+            </div>
+
+            <div className={`border rounded-xl p-3 space-y-1 ${
+              modalPush.actionVoulue ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
+            }`}>
+              <p className={`font-black text-xs ${modalPush.actionVoulue ? 'text-amber-800' : 'text-slate-800'}`}>
+                {modalPush.actionVoulue ? "Voulez-vous vraiment activer les notifications push ?" : "Voulez-vous vraiment désactiver les notifications push ?"}
+              </p>
+              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
+                {modalPush.actionVoulue 
+                  ? "Votre appareil pourra recevoir des alertes même lorsque l'application est en arrière-plan ou en veille."
+                  : "Vous ne recevrez plus de notifications push en arrière-plan."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setModalPush({ visible: false, actionVoulue: false })}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={executerBasculementPush}
+                className="flex-1 font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg transition cursor-pointer text-white bg-slate-900 hover:bg-slate-800 shadow-slate-900/30"
+              >
+                {modalPush.actionVoulue ? 'Oui, activer 🔔' : 'Oui, désactiver 🔕'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE MESSAGE D'INFORMATION / ERREUR / SUCCÈS GÉNÉRALE */}
+      {modalMessageInfo.visible && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100 text-center">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-2xl font-black shadow-sm ${
+              modalMessageInfo.type === 'succes' ? 'bg-emerald-100 text-emerald-600' : modalMessageInfo.type === 'erreur' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
+            }`}>
+              {modalMessageInfo.type === 'succes' ? '✅' : modalMessageInfo.type === 'erreur' ? '❌' : 'ℹ️'}
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="font-black text-slate-900 uppercase text-xs">{modalMessageInfo.titre}</h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">{modalMessageInfo.texte}</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setModalMessageInfo({ visible: false, titre: '', texte: '', type: 'info' })}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2.5 rounded-xl uppercase text-[10px] shadow-md transition cursor-pointer"
+            >
+              Compris 👍
+            </button>
+          </div>
         </div>
       )}
 
