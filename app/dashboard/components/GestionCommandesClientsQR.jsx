@@ -177,6 +177,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
+  // 🎯 GESTION INSTANTANÉE SANS TEMPS MORT
   const traiterFileDAbsolue = async () => {
     if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActive) {
       return;
@@ -186,26 +187,24 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     const tacheCourante = fileDAbsolueAudio.current.shift();
 
     try {
-      if (tacheCourante.type === 'ALERTE_SONORE') {
+      if (tacheCourante.type === 'ALERTE_ET_VOIX') {
+        // Exécute le son et lance la voix immédiatement à la fin exacte du bip
         await executerSonFort();
-      } else if (tacheCourante.type === 'ANNONCE_VOCALE') {
         await executerVoix(tacheCourante.texte);
       }
     } catch (e) {
       console.log("Erreur lecture audio :", e);
     } finally {
-      setTimeout(() => {
-        enTrainDeJouerAudio.current = false;
-        if (fileDAbsolueAudio.current.length > 0) {
-          traiterFileDAbsolue();
-        }
-      }, 4500);
+      enTrainDeJouerAudio.current = false;
+      if (fileDAbsolueAudio.current.length > 0) {
+        traiterFileDAbsolue();
+      }
     }
   };
 
-  const ajouterFichierAudioUnique = (type, texte = '') => {
+  const ajouterAlerteComplete = (texte) => {
     if (!audioActive) return;
-    fileDAbsolueAudio.current.push({ type, texte });
+    fileDAbsolueAudio.current.push({ type: 'ALERTE_ET_VOIX', texte });
     traiterFileDAbsolue();
   };
 
@@ -219,25 +218,24 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           await audioCtx.resume();
         }
         
-        const dureeTotaleMs = 1500;
-        [0, 0.4, 0.8].forEach((delay) => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(880, audioCtx.currentTime + delay);
-          
-          gain.gain.setValueAtTime(0.8, audioCtx.currentTime + delay);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + delay + 0.25);
-          
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          
-          osc.start(audioCtx.currentTime + delay);
-          osc.stop(audioCtx.currentTime + delay + 0.25);
-        });
+        // Bip court de 250ms pour enchaîner instantanément
+        const dureeBipMs = 250;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        
+        gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dureeBipMs / 1000);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + dureeBipMs / 1000);
 
-        setTimeout(resolve, dureeTotaleMs);
+        setTimeout(resolve, dureeBipMs);
       } catch (e) {
         resolve();
       }
@@ -252,7 +250,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           
           const utterance = new SpeechSynthesisUtterance(texte);
           utterance.lang = 'fr-FR';
-          utterance.rate = 0.90;
+          utterance.rate = 1.0; // Vitesse fluide
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
           
@@ -297,7 +295,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     if (!audioActive) return;
     if (typeof window !== 'undefined' && navigator.vibrate) {
       try {
-        navigator.vibrate([500, 200, 500, 200, 800]);
+        navigator.vibrate([400, 100, 400]);
       } catch (e) {}
     }
   };
@@ -310,7 +308,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             body: corps,
             icon: '/icon.png',
             badge: '/icon.png',
-            vibrate: [500, 200, 500],
+            vibrate: [400, 100, 400],
             tag: 'nouvelle-commande-qr',
             renotify: true,
             requireInteraction: true
@@ -331,8 +329,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
     if (audioActive) {
       declencherVibration();
-      ajouterFichierAudioUnique('ALERTE_SONORE');
-      ajouterFichierAudioUnique('ANNONCE_VOCALE', messageVocal);
+      ajouterAlerteComplete(messageVocal);
     }
   };
 
