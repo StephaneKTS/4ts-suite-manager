@@ -1045,7 +1045,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const napGlobal = parseFloat(montantSaisi) || 0;
 
-  const ouvrirCommandePourModification = async (cmd) => {
+  // --- OUVERTURE OPTIMISÉE RAPIDE DE LA COMMANDE ---
+  const ouvrirCommandePourModification = (cmd) => {
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
     const estVerrouille = dateCmdStr < dateDuJourStr;
 
@@ -1071,29 +1072,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (cmd.id_depot) setDepotId(cmd.id_depot);
     }
 
-    let lignesInit = [];
-    try {
-      const { data: lignesData, error } = await supabase
-        .from('commandes_livraison_lignes')
-        .select('*')
-        .eq('id_commande', cmd.id);
-
-      if (!error && lignesData) {
-        lignesInit = lignesData.map(l => ({
-          id_article: l.id_article,
-          designation: l.designation,
-          quantite: l.quantite,
-          prix_unitaire: l.prix_unitaire
-        }));
-      } else {
-        lignesInit = lignesCommandesMap[cmd.id] || [];
-      }
-    } catch (err) {
-      lignesInit = lignesCommandesMap[cmd.id] || [];
-    }
-
+    // Récupération instantanée depuis le cache local/mémoire des lignes (évite le temps d'attente réseau)
+    const lignesInit = lignesCommandesMap[cmd.id] || [];
     setLignesSaisies(lignesInit);
-    setLignesCommandesMap(prev => ({ ...prev, [cmd.id]: lignesInit }));
 
     const numClean = cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1';
     setSnapshotCommandeInitiale({
@@ -1112,6 +1093,30 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     });
 
     setVueActive('CREATION');
+
+    // Rafraîchissement éventuel en arrière-plan sans bloquer l'affichage instantané
+    supabase
+      .from('commandes_livraison_lignes')
+      .select('*')
+      .eq('id_commande', cmd.id)
+      .then(({ data: lignesData, error }) => {
+        if (!error && lignesData && lignesData.length > 0) {
+          const lignesFraiches = lignesData.map(l => ({
+            id_article: l.id_article,
+            designation: l.designation,
+            quantite: l.quantite,
+            prix_unitaire: l.prix_unitaire
+          }));
+          setLignesCommandesMap(prev => ({ ...prev, [cmd.id]: lignesFraiches }));
+          // Si l'utilisateur est toujours sur cette même commande, on met à jour les lignes s'il y a eu un delta
+          setLignesSaisies(actuelles => {
+            if (actuelles.length === 0 && lignesFraiches.length > 0) {
+              return lignesFraiches;
+            }
+            return actuelles;
+          });
+        }
+      }).catch(() => {});
   };
 
   const supprimerCommandeActuelle = async () => {
