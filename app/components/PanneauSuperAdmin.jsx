@@ -58,6 +58,9 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   const [chargementEntreprises, setChargementEntreprises] = useState(false);
   const [utilisateursParEntreprise, setUtilisateursParEntreprise] = useState({});
   
+  // État pour la modale de confirmation d'accès direct à une entreprise
+  const [entrepriseCibleAcces, setEntrepriseCibleAcces] = useState(null);
+  
   const [utilisateursEntrepriseSelectionnee, setUtilisateursEntrepriseSelectionnee] = useState([]);
   const [rolesEntrepriseSelectionnee, setRolesEntrepriseSelectionnee] = useState([]);
   const [chargementUtilisateursEnt, setChargementUtilisateursEnt] = useState(false);
@@ -428,9 +431,10 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     }
   };
 
-  // 🚀 FONCTION POUR ACCÉDER DIRECTEMENT À UNE ENTREPRISE DEPUIS LE PANNEAU SUPER ADMIN
-  const accederDirectementEntreprise = (ent) => {
-    if (typeof window === 'undefined') return;
+  // 🚀 FONCTION POUR ACCÉDER DIRECTEMENT À UNE ENTREPRISE (CONFIRMÉE)
+  const executerAccesEntreprise = () => {
+    if (!entrepriseCibleAcces || typeof window === 'undefined') return;
+    const ent = entrepriseCibleAcces;
     const idEnt = ent.id_entreprise || ent.id;
     if (!idEnt) return;
 
@@ -445,7 +449,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
       localStorage.setItem('module_actif', ent.module_actif);
     }
 
-    // Fermeture de la modale et rechargement de la page pour basculer dans l'environnement de l'entreprise
+    setEntrepriseCibleAcces(null);
     setModalActive(null);
     window.location.reload();
   };
@@ -794,7 +798,13 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         <button onClick={() => setModalActive('tarifs')} className={menuButtonClass}>
           <span>🏷️</span> Tarifs
         </button>
-        <button onClick={() => setModalActive('entreprises')} className={menuButtonClass}>
+        <button 
+          onClick={() => {
+            setModalActive('entreprises');
+            chargerListeEntreprises();
+          }} 
+          className={menuButtonClass}
+        >
           <span>🏢</span> Entreprises
         </button>
         <button onClick={() => setModalActive('notifications')} className={menuButtonClass}>
@@ -956,7 +966,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* 🏢 MODALE ENTREPRISES AVEC LE BOUTON ACCÉDER AJOUTÉ */}
+      {/* 🏢 MODALE ENTREPRISES AVEC LE BOUTON ACCÉDER ET DÉCLENCHEMENT DE CONFIRMATION */}
       {modalActive === 'entreprises' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-3xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
@@ -1008,12 +1018,12 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                           </span>
                         </div>
                         
-                        {/* 🚀 BOUTON ACCÉDER AJOUTÉ ICI */}
+                        {/* 🚀 BOUTON ACCÉDER AVEC OUVERTURE DE LA MODALE DE CONFIRMATION */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            accederDirectementEntreprise(ent);
+                            setEntrepriseCibleAcces(ent);
                           }}
                           className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] px-3 py-1.5 rounded-lg shadow-sm transition uppercase cursor-pointer flex items-center gap-1"
                           title="Accéder directement à cette entreprise"
@@ -1034,6 +1044,39 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                 })}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 🛡️ MODALE DE CONFIRMATION D'ACCÈS À UNE ENTREPRISE */}
+      {entrepriseCibleAcces && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className={`w-full max-w-sm rounded-2xl p-5 space-y-4 text-center shadow-2xl border ${cardBg}`}>
+            <div className="space-y-1.5">
+              <span className="text-2xl">🚀</span>
+              <h4 className="font-black text-xs sm:text-sm uppercase tracking-wide text-emerald-500">
+                Confirmation d'accès
+              </h4>
+              <p className="text-[11px] font-semibold leading-relaxed pt-1">
+                Voulez-vous vraiment accéder à l'entreprise <strong className="uppercase text-cyan-400">"{entrepriseCibleAcces.nom_entreprise || entrepriseCibleAcces.id_entreprise}"</strong> ?
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEntrepriseCibleAcces(null)}
+                className={`py-2 px-3 rounded-xl font-black text-xs uppercase ${secondaryBtnBg}`}
+              >
+                Annuler ✕
+              </button>
+              <button
+                type="button"
+                onClick={executerAccesEntreprise}
+                className="py-2 px-3 rounded-xl font-black text-xs uppercase bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition"
+              >
+                Confirmer ✓
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1208,7 +1251,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* 📋 MODALE TABLEAUX DYNAMIQUES AVEC DEUX BOUTONS PRINCIPAUX */}
+      {/* 📋 MODALE TABLEAUX DYNAMIQUES */}
       {modalActive === 'tableaux' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-4xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
@@ -1221,7 +1264,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               </button>
             </div>
 
-            {/* DEUX BOUTONS DE NAVIGATION INTERNE */}
             <div className="grid grid-cols-2 gap-2 pb-2 border-b border-slate-300/40">
               <button
                 type="button"
@@ -1252,7 +1294,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               </button>
             </div>
 
-            {/* CONTENU SELON LA SOUS-VUE SÉLECTIONNÉE */}
             {sousVueTableau === 'creer' ? (
               <div className={`p-4 rounded-xl border space-y-3 ${innerCardBg}`}>
                 <h4 className={`font-black uppercase text-xs ${titleColor}`}>
@@ -1260,7 +1301,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                 </h4>
                 
                 <div>
-                  <label className="block text-[9px] uppercase font-bold mb-1">Nom du tableau (ex: Liste des joueurs de la réunion)</label>
+                  <label className="block text-[9px] uppercase font-bold mb-1">Nom du tableau</label>
                   <input
                     type="text"
                     value={nouveauTableauTitre}
@@ -1354,7 +1395,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                         if (error) throw error;
 
                         setTableauEnEditionId(null);
-                        afficherMessageModal("Succès", "La structure du tableau a été mise à jour et synchronisée sur tous vos appareils !", "succes");
+                        afficherMessageModal("Succès", "La structure du tableau a été mise à jour et synchronisée !", "succes");
                       } else {
                         const nouveauTabPayload = {
                           titre: nouveauTableauTitre.trim(),
@@ -1368,7 +1409,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
 
                         if (error) throw error;
 
-                        afficherMessageModal("Succès", "Votre tableau a été créé et synchronisé sur tous vos appareils !", "succes");
+                        afficherMessageModal("Succès", "Votre tableau a été créé et synchronisé !", "succes");
                       }
 
                       setNouveauTableauTitre('');
@@ -1402,7 +1443,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                 {chargementTableaux ? (
                   <p className={`text-xs font-medium py-6 text-center ${subTitleColor}`}>Chargement des tableaux...</p>
                 ) : listeTableaux.length === 0 ? (
-                  <p className={`text-xs font-medium italic py-6 text-center ${subTitleColor}`}>Aucun tableau trouvé. Créez-en un pour commencer.</p>
+                  <p className={`text-xs font-medium italic py-6 text-center ${subTitleColor}`}>Aucun tableau trouvé.</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {listeTableaux.map((tab) => (
@@ -1410,7 +1451,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                         <div>
                           <h5 className="font-black text-xs uppercase tracking-wide">{tab.titre}</h5>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            {tab.colonnes.length} colonne(s) | {tab.lignes.length} ligne(s) enregistrée(s)
+                            {tab.colonnes.length} colonne(s) | {tab.lignes.length} ligne(s)
                           </p>
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -1474,12 +1515,11 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* MODALE DE REMPLISSAGE ET CONSULTATION DES DONNÉES DU TABLEAU AVEC EN-TÊTE 4TS SUITE MANAGER ET MASQUAGE IMPRESSION */}
+      {/* MODALE DE REMPLISSAGE */}
       {modalRemplissageOuverte && tableauEnCoursRemplissage && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className={`w-full max-w-4xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
             
-            {/* EN-TÊTE DE MARQUE 4TS SUITE MANAGER (VISIBLE ET IMPRIMÉ) */}
             <div className="flex items-center justify-between border-b pb-3 border-slate-300/40">
               <div className="flex items-center gap-2.5">
                 <span className="text-xl">📊</span>
@@ -1493,12 +1533,10 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                 </div>
               </div>
 
-              {/* BOUTONS ACTIONS SYSTÈME (MASQUÉS LORS DE L'IMPRESSION/CAPTURE) */}
               <div className="flex items-center gap-2 print:hidden">
                 <button
                   onClick={() => window.print()}
                   className={`font-bold px-3 py-1 rounded-lg text-xs cursor-pointer flex items-center gap-1.5 ${secondaryBtnBg}`}
-                  title="Imprimer ou exporter cette vue"
                 >
                   <span>🖨️</span> Imprimer / Exporter
                 </button>
@@ -1512,7 +1550,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
             </div>
 
             <div className="flex justify-between items-center print:hidden">
-              <span className="text-[10px] font-bold uppercase text-slate-400">Données enregistrées ({tableauEnCoursRemplissage.lignes.length} lignes) — Cliquez sur une ligne pour la modifier</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400">Données enregistrées ({tableauEnCoursRemplissage.lignes.length} lignes)</span>
               <button
                 onClick={() => {
                   const initialData = {};
@@ -1548,7 +1586,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                   {tableauEnCoursRemplissage.lignes.length === 0 ? (
                     <tr>
                       <td colSpan={tableauEnCoursRemplissage.colonnes.length} className="text-center py-8 text-slate-400 font-bold">
-                        Aucune donnée enregistrée dans ce tableau. Cliquez sur "Ajouter une ligne".
+                        Aucune donnée enregistrée.
                       </td>
                     </tr>
                   ) : (
@@ -1561,7 +1599,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                           setModalSaisieLigneOuverte(true);
                         }}
                         className={`border-b cursor-pointer transition ${isDarkMode ? 'border-slate-800 hover:bg-slate-800/80' : 'border-slate-200 hover:bg-blue-50/50'}`}
-                        title="Cliquez pour modifier ou supprimer cette ligne"
                       >
                         {tableauEnCoursRemplissage.colonnes.map((col, cIndex) => (
                           <td key={cIndex} className="p-2.5 font-medium">
@@ -1578,7 +1615,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* SOUS-MODALE DE SAISIE / MODIFICATION D'UNE LIGNE AVEC SYNCHRONISATION SUPABASE */}
+      {/* SOUS-MODALE DE SAISIE */}
       {modalSaisieLigneOuverte && tableauEnCoursRemplissage && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-start justify-center z-50 p-4 pt-10 sm:pt-16 overflow-y-auto">
           <div className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 space-y-4 ${cardBg}`}>
@@ -1635,9 +1672,9 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                       await chargerTableauxSupabase();
 
                       setModalSaisieLigneOuverte(false);
-                      afficherMessageModal("Succès", indexLigneEnEdition !== null ? "Ligne modifiée et synchronisée !" : "Ligne ajoutée et synchronisée !", "succes");
+                      afficherMessageModal("Succès", indexLigneEnEdition !== null ? "Ligne modifiée !" : "Ligne ajoutée !", "succes");
                     } catch (err) {
-                      afficherMessageModal("Erreur", "Impossible de synchroniser la ligne : " + err.message, "erreur");
+                      afficherMessageModal("Erreur", "Impossible de synchroniser : " + err.message, "erreur");
                     }
                   }}
                   className={`py-2 rounded-xl font-black text-xs uppercase ${accentBtnBg}`}
@@ -1675,9 +1712,9 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                         await chargerTableauxSupabase();
 
                         setModalSaisieLigneOuverte(false);
-                        afficherMessageModal("Supprimé", "La ligne a été supprimée et synchronisée.", "succes");
+                        afficherMessageModal("Supprimé", "La ligne a été supprimée.", "succes");
                       } catch (err) {
-                        afficherMessageModal("Erreur", "Impossible de supprimer la ligne : " + err.message, "erreur");
+                        afficherMessageModal("Erreur", "Impossible de supprimer : " + err.message, "erreur");
                       }
                     }
                   }}
@@ -1691,7 +1728,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* 🏢 MODALE SECONDAIRE : DÉTAILS ET MODIFICATION D'UNE ENTREPRISE */}
+      {/* 🏢 MODALE DÉTAILS ET MODIFICATION D'UNE ENTREPRISE */}
       {entrepriseSelectionnee && donneesEdition && (() => {
         const idEnt = donneesEdition.id_entreprise || donneesEdition.id;
         const nbConsommes = utilisateursParEntreprise[idEnt] || 0;
@@ -1883,7 +1920,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         );
       })()}
 
-      {/* 👥 MODALE DÉDIÉE : LISTE DU PERSONNEL AVEC AFFICHAGE DU RÔLE */}
+      {/* 👥 MODALE DÉDIÉE : LISTE DU PERSONNEL */}
       {modalPersonnelOuverte && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-2xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[85vh] overflow-y-auto ${cardBg}`}>
