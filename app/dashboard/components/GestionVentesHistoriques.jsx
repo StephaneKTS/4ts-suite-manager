@@ -57,6 +57,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   const [ongletActif, setOngletActif] = useState('vente');
 
+  // --- CONFIGURATION DE LA PAGINATION (Vagues de 20) ---
   const [limiteVentes, setLimiteVentes] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
 
@@ -378,6 +379,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     chargerDonneesEtPermissions();
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
+
+  // --- RÉINITIALISATION AUTOMATIQUE DE LA LIMITE LORS DES CHANGEMENTS DE FILTRES ---
+  useEffect(() => {
+    setLimiteVentes(20);
+  }, [recherche, filtreModePaiement, filtreDateDebut, filtreDateFin]);
+
+  // --- CHARGEMENT PROGRESSIF PAR VAGUES DE 20 ÉLÉMENTS ---
+  const chargerPlusVentes = () => {
+    if (enTrainDeSauvegarder) return;
+    setLimiteVentes(prev => prev + 20);
+  };
 
   useEffect(() => {
     if (clientSelectionneObj) {
@@ -1040,6 +1052,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return 0;
   });
 
+  // --- APPLICATION DE LA LIMITE SUR LES DONNÉES FILTRÉES ---
   const ventesAffichees = ventesFiltrees.slice(0, limiteVentes);
 
   const gererTriJournal = (colonne) => {
@@ -1080,11 +1093,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   let totalMargeJournalGlobal = 0;
 
   ventesJournalFiltrees.forEach((v) => {
-    // CORRECTION : Si la commande est servie mais non payée (ex: impayé / reste dû total sans règlement effectif validé en caisse), on n'incorpore pas son montant dans le chiffre d'affaires encaissé du journal.
     const totalMontantVente = Number(v.total_montant || 0);
     const montantRegleVente = Number(v.montant_regle ?? totalMontantVente);
     
-    // Si la commande n'a reçu aucun encaissement effectif (ex: non payée ou crédit pur), on exclut du CA encaissé ou on comptabilise uniquement l'avance versée.
     if (montantRegleVente <= 0 && v.type_reglement === 'CREDIT') {
       return; 
     }
@@ -1163,8 +1174,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   });
 
   const totalFactureCloture = ventesClotureFiltrees.reduce((acc, v) => acc + Number(v.total_montant || 0), 0);
-  
-  // CORRECTION CLÔTURE : Seul le montant réellement réglé (montant_regle) est pris en compte pour l'attendu en caisse
   const totalEncaisseCloture = ventesClotureFiltrees.reduce((acc, v) => acc + Number(v.montant_regle ?? 0), 0);
   const montantAttenduCloture = totalEncaisseCloture;
   const montantReelClotureNum = Number(montantReelVerseCloture || 0);
@@ -2034,7 +2043,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   <button
                     type="button"
                     disabled={enTrainDeSauvegarder}
-                    onClick={() => setLimiteVentes(prev => prev + 20)}
+                    onClick={chargerPlusVentes}
                     className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
                   >
                     📥 Charger 20 tickets de plus ({ventesFiltrees.length - limiteVentes} restants)

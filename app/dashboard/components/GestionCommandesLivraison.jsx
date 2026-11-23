@@ -3311,7 +3311,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 return (
                   <div
                     key={cmd.id}
-                    onClick={() => ouvrirCommandeForModification(cmd)}
+                    onClick={() => ouvrirCommandePourModification(cmd)}
                     className="bg-white border border-slate-200 p-2 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1"
                   >
                     <div className="flex justify-between items-center gap-1 border-b border-slate-100 pb-0.5">
