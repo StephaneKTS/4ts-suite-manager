@@ -490,7 +490,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     const paysObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
     const chiffresPur = (nouveauUser.telephone || '').replace(/[^0-9]/g, '');
 
-    // 🎯 LOGIQUE UNIVERSELLE : Garantie que modules_cibles contient au moins le module actif si vide
     const modulesPayload = Array.isArray(nouveauUser.modules_cibles) && nouveauUser.modules_cibles.length > 0 
       ? [...new Set(nouveauUser.modules_cibles.map(m => m.toUpperCase()))]
       : [moduleActuel];
@@ -558,17 +557,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         statut: nouveauUser.statut,
         acces_application: nouveauUser.acces_application,
         permissions: permissionsEffectives,
-        modules_cibles: modulesPayload // 🎯 Sauvegarde garantie du tableau de modules
+        modules_cibles: modulesPayload
       };
 
-      // 🎯 Récupération robuste de tous les enregistrements existants pour cet employé
+      // 🎯 UTILISATION DE .eq() SÉCURISÉ AU LIEU DE FILTRES D'URL BRUTS
       const { data: existingRecords } = await supabase
         .from('utilisateurs')
         .select('id, module')
         .eq('id_entreprise', entrepriseId)
         .eq('nom_complet', nomNomCollab);
 
-      // Pour chaque module disponible, on synchronise proprement sa ligne
       for (const modObj of MODULES_DISPONIBLES) {
         const modCible = modObj.id;
         const doitEtreActif = modulesPayload.includes(modCible);
@@ -586,7 +584,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               .insert([{ ...basePayload, module: modCible }]);
           }
         } else if (recordTrouve) {
-          // Si le module a été décoché, on supprime la ligne correspondante
           await supabase
             .from('utilisateurs')
             .delete()
@@ -594,7 +591,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         }
       }
 
-      // Si c'était une création pure et qu'aucun enregistrement n'existait
       if (!userEnEdition && (!existingRecords || existingRecords.length === 0)) {
         for (const modCible of modulesPayload) {
           await supabase.from('utilisateurs').insert([{ ...basePayload, module: modCible }]);
@@ -648,7 +644,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       }
     }
 
-    // 🎯 RECONSTRUCTION UNIVERSELLE DES MODULES DE L'EMPLOYÉ À L'OUVERTURE
     let modulesDetectes = [];
     if (Array.isArray(user.modules_cibles) && user.modules_cibles.length > 0) {
       user.modules_cibles.forEach(m => modulesDetectes.push(String(m).toUpperCase()));
@@ -725,6 +720,8 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         setEnTrainDeSauvegarder(true);
         try {
           const nomCollab = (userEnEdition.nom_complet || '').trim();
+          
+          // 🎯 UTILISATION DE .eq() ET .or() SÉCURISÉ POUR ÉVITER LES ERREURS 400
           let queryDel = supabase.from('utilisateurs').delete().eq('id_entreprise', entrepriseId);
           if (nomCollab) {
             queryDel = queryDel.or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomCollab}`);

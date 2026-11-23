@@ -464,7 +464,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     let totalEntrees = stockBaseDirect;
     let totalSorties = 0;
 
-    // 1. Traitement des mouvements de stock
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
       
@@ -518,7 +517,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       }
     });
 
-    // 2. Traitement rigoureux des approvisionnements au même titre que les mouvements (support dépôt & emplacement)
     approvisionnements.forEach(app => {
       const appDepotDest = String(app.id_depot_destination || app.id_depot || '');
       const appEmpDest = String(app.id_emplacement_destination || app.id_emplacement || '');
@@ -868,7 +866,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
   const clotureLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheClotureLivreurInput.toLowerCase()));
 
-  // 🎯 FILTRAGE STRICT DES ARTICLES PAR PARTENAIRE
   const articlesFiltres = articles.filter((a) => {
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
     const matchNom = designation.includes(rechercheArticleInput.toUpperCase());
@@ -2989,7 +2986,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <input
                     type="text"
                     value={recherchePartenaireInput}
-                    onChange={(e) => setSearchPartenaireInput(e.target.value)}
+                    onChange={(e) => setRecherchePartenaireInput(e.target.value)}
                     placeholder=""
                     autoFocus
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"

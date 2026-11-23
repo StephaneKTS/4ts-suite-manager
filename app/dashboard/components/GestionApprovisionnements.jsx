@@ -158,7 +158,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     return `${prefix}${String(index + 1).padStart(3, '0')}`;
   };
 
-  // 🛡️ Synchronisation atomique blindée anti-doublon absolu (Version mise à jour)
+  // 🛡️ Synchronisation atomique blindée anti-doublon absolu (Version corrigée et sécurisée)
   const synchroniserMouvementsStockAppro = async ({
     numeroBonArrierePlan,
     ancienNumeroBonArrierePlan = null,
@@ -208,7 +208,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     const refTexte = `APPRO - ${(refFournisseur || numeroDoc || 'ACHAT').trim().toUpperCase()}`;
     const nouveauxMouvements = [];
 
-    // 3. Double vérification en base : s'assure qu'aucun mouvement n'existe déjà pour ce motif exact
+    // 3. Double vérification en base : s'assure qu'aucun mouvement résiduel ne subsiste
     const { data: mvtExistants } = await supabase
       .from('mouvements_stock')
       .select('id')
@@ -217,10 +217,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
       .eq('motif_remarque', numeroBonArrierePlan);
 
     if (mvtExistants && mvtExistants.length > 0) {
-      return;
+      await supabase
+        .from('mouvements_stock')
+        .delete()
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .eq('motif_remarque', numeroBonArrierePlan);
     }
 
-    // 4. Insertion unique et propre
+    // 4. Insertion unique, propre et consolidée
     for (const [artId, qteTotale] of Object.entries(lignesUniquesMap)) {
       const payloadMvt = {
         id_entreprise: entrepriseId,
