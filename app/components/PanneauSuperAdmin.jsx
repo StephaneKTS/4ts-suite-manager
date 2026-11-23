@@ -180,7 +180,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     const canalRealtime = supabase
       .channel('public:tableaux_dynamiques')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tableaux_dynamiques' }, (payload) => {
-        // Rechargement automatique de la liste dès qu'un changement survient sur un autre appareil
         chargerTableauxSupabase();
       })
       .subscribe();
@@ -224,7 +223,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         }));
         setListeTableaux(tableauxFormates);
 
-        // Si une modale de remplissage est ouverte, mettre à jour le tableau actif en temps réel
         setTableauEnCoursRemplissage(prev => {
           if (!prev) return null;
           const trouve = tableauxFormates.find(t => t.id === prev.id);
@@ -428,6 +426,28 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     } finally {
       setChargementEntreprises(false);
     }
+  };
+
+  // 🚀 FONCTION POUR ACCÉDER DIRECTEMENT À UNE ENTREPRISE DEPUIS LE PANNEAU SUPER ADMIN
+  const accederDirectementEntreprise = (ent) => {
+    if (typeof window === 'undefined') return;
+    const idEnt = ent.id_entreprise || ent.id;
+    if (!idEnt) return;
+
+    // Enregistrement de l'entreprise active dans le stockage local
+    localStorage.setItem('entreprise_id', idEnt);
+    localStorage.setItem('entrepriseId', idEnt);
+    localStorage.setItem('id_entreprise', idEnt);
+    if (ent.nom_entreprise) {
+      localStorage.setItem('nom_entreprise', ent.nom_entreprise);
+    }
+    if (ent.module_actif) {
+      localStorage.setItem('module_actif', ent.module_actif);
+    }
+
+    // Fermeture de la modale et rechargement de la page pour basculer dans l'environnement de l'entreprise
+    setModalActive(null);
+    window.location.reload();
   };
 
   const ouvrirDetailsEntreprise = async (ent) => {
@@ -936,7 +956,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* 🏢 MODALE ENTREPRISES */}
+      {/* 🏢 MODALE ENTREPRISES AVEC LE BOUTON ACCÉDER AJOUTÉ */}
       {modalActive === 'entreprises' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-3xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
@@ -963,10 +983,9 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                   return (
                     <div 
                       key={idEnt}
-                      onClick={() => ouvrirDetailsEntreprise(ent)}
-                      className={`p-3 rounded-xl border transition cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${isDarkMode ? 'bg-slate-950 border-slate-800 hover:border-slate-600' : 'bg-slate-50 border-slate-300 hover:border-[#0d2347]'}`}
+                      className={`p-3 rounded-xl border transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-300'}`}
                     >
-                      <div className="space-y-1">
+                      <div className="space-y-1 cursor-pointer flex-1" onClick={() => ouvrirDetailsEntreprise(ent)}>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`font-mono text-[10px] font-bold px-2 py-0.5 rounded border ${isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-[#0d2347]/10 text-[#0d2347] border-[#0d2347]/30'}`}>
                             {idEnt}
@@ -981,14 +1000,32 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-300/40">
-                        <div className="text-right">
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-300/40">
+                        <div className="text-right mr-2 hidden sm:block">
                           <span className={`text-[9px] block uppercase font-bold ${subTitleColor}`}>Licences / Users</span>
                           <span className="text-xs font-mono font-black text-emerald-500">
                             {nbConsommes} / {limiteMax} actifs
                           </span>
                         </div>
-                        <button type="button" className={`font-black text-[10px] px-3 py-1.5 rounded-lg shadow-sm transition uppercase ${accentBtnBg}`}>
+                        
+                        {/* 🚀 BOUTON ACCÉDER AJOUTÉ ICI */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            accederDirectementEntreprise(ent);
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] px-3 py-1.5 rounded-lg shadow-sm transition uppercase cursor-pointer flex items-center gap-1"
+                          title="Accéder directement à cette entreprise"
+                        >
+                          <span>🚀</span> Accéder
+                        </button>
+
+                        <button 
+                          type="button" 
+                          onClick={() => ouvrirDetailsEntreprise(ent)}
+                          className={`font-black text-[10px] px-3 py-1.5 rounded-lg shadow-sm transition uppercase cursor-pointer ${accentBtnBg}`}
+                        >
                           Voir détails 🔍
                         </button>
                       </div>

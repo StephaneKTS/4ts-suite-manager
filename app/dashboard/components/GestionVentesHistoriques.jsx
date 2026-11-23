@@ -730,6 +730,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     montantCreditRestant = Math.max(0, totalFinal - montantRegleEffectif);
   }
 
+  // --- FONCTION DE VALIDATION ULTRA RAPIDE ET NON BLOQUANTE ---
   const validerEtEnregistrerVente = async () => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.creation) {
@@ -752,31 +753,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       return;
     }
 
-    for (const item of panier) {
-      const artRef = articlesStock.find(a => (a.id_article || a.id) === item.id);
-      const estSuivi = artRef ? articleEstSuiviEnStock(artRef) : true;
-      if (estSuivi) {
-        const stockActuelReel = artRef ? getStockReelArticle(artRef) : 0;
-        if (item.quantite > stockActuelReel) {
-          alert(`❌ Vente bloquée : L'article "${item.designation}" dépasse le stock réel du dépôt (${stockActuelReel}).`);
-          return;
-        }
-      }
-    }
-
     setEnTrainDeSauvegarder(true);
     try {
-      const { count: countCaisse, error: errCount } = await supabase
-        .from('ventes_historiques')
-        .select('*', { count: 'exact', head: true })
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .eq('id_caisse', caisseId);
-
-      const nbTicketsCaisse = (errCount || countCaisse === null) 
-        ? ventes.filter(v => String(v.id_caisse) === String(caisseId)).length 
-        : countCaisse;
-      
+      const nbTicketsCaisse = ventes.filter(v => String(v.id_caisse) === String(caisseId)).length;
       const numeroTicketSecurise = `${codeCaisseActif || 'C01'}-${String(nbTicketsCaisse + 1).padStart(2, '0')}`;
 
       let nomClientFacture = (
@@ -811,36 +790,53 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         created_at: dateJour ? `${dateJour}T${new Date().toTimeString().split(' ')[0]}` : new Date().toISOString()
       };
 
-      const { error: errVente, data: dataVenteInsert } = await supabase.from('ventes_historiques').insert([payloadVente]).select().single();
+      let ticketValideFinal = { ...payloadVente, id: idLocalTemp };
 
-      let ticketValideFinal = dataVenteInsert || { ...payloadVente, id: idLocalTemp };
+      // Enregistrement instantané local en premier (Zéro attente UI)
+      setVentes(prev => {
+        const listeMaj = fusionnerParId(prev, [ticketValideFinal]);
+        sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
+        return listeMaj;
+      });
+      setVentesHistoriques(prev => fusionnerParId(prev, [ticketValideFinal]));
 
-      if (errVente) {
-        localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
-        setVentes(prev => {
-          const listeMaj = fusionnerParId(prev, [ticketValideFinal]);
-          sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
-          return listeMaj;
-        });
-        setVentesHistoriques(prev => fusionnerParId(prev, [ticketValideFinal]));
-      } else if (dataVenteInsert) {
-        setVentes(prev => {
-          const listeMaj = fusionnerParId(prev, [dataVenteInsert]);
-          sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
-          return listeMaj;
-        });
-        setVentesHistoriques(prev => fusionnerParId(prev, [dataVenteInsert]));
+      // Vidage instantané du panier pour enchaîner le client suivant sans délai
+      setPanier([]);
+      setNomClientLibre('');
+      setValeurRemise(0);
+      setAppliquerTva('NON');
+      setTypeReglementVente('COMPTANT');
+      setMontantAvance(0);
+
+      const clientDefaut = clientsList.find(c => c.est_par_defaut || (c.nom_client || c.nom || '').toLowerCase().includes('divers'));
+      if (clientDefaut) {
+        setClientId(clientDefaut.id);
+        setClientSelectionneObj(clientDefaut);
+        setClientNomSelectionne((clientDefaut.nom_client || clientDefaut.nom || clientDefaut.libelle || 'CLIENTS DIVERS').toUpperCase());
+      } else {
+        setClientNomSelectionne('CLIENTS DIVERS');
       }
+
+      setTicketDernierValide(ticketValideFinal);
+      setAfficherModalSuccesTicket(true);
+
+      // Synchronisation Supabase en arrière-plan (Non bloquante)
+      supabase.from('ventes_historiques').insert([payloadVente]).select().single().then(({ error: errVente, data: dataVenteInsert }) => {
+        if (errVente) {
+          localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
+        } else if (dataVenteInsert) {
+          setVentes(prev => fusionnerParId(prev, [dataVenteInsert]));
+        }
+      });
 
       if (montantCreditRestant > 0 && clientIdFinal) {
         const clientRef = clientsList.find(c => String(c.id) === String(clientIdFinal));
         if (clientRef) {
           const creditActuel = Number(clientRef.solde_credit || clientRef.credit || 0);
           const nouveauCredit = creditActuel + montantCreditRestant;
-          const { error: errCli } = await supabase.from('clients').update({ solde_credit: nouveauCredit }).eq('id', clientIdFinal);
-          if (errCli) {
-            localSync.ajouterFileAttente('UPDATE', 'clients', { id: clientIdFinal, solde_credit: nouveauCredit });
-          }
+          supabase.from('clients').update({ solde_credit: nouveauCredit }).eq('id', clientIdFinal).then(({ error: errCli }) => {
+            if (errCli) localSync.ajouterFileAttente('UPDATE', 'clients', { id: clientIdFinal, solde_credit: nouveauCredit });
+          });
         }
       }
 
@@ -860,33 +856,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             motif_remarque: `VENTE TICKET ${numeroTicketSecurise} (${nomClientFacture}) - ${typeReglementVente}`
           };
 
-          const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-          if (errMvt) {
-            localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-          }
+          supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
+            if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+          });
         }
       }
-
-      setPanier([]);
-      setNomClientLibre('');
-      setValeurRemise(0);
-      setAppliquerTva('NON');
-      setTypeReglementVente('COMPTANT');
-      setMontantAvance(0);
-
-      const clientDefaut = clientsList.find(c => c.est_par_defaut || (c.nom_client || c.nom || '').toLowerCase().includes('divers'));
-      if (clientDefaut) {
-        setClientId(clientDefaut.id);
-        setClientSelectionneObj(clientDefaut);
-        setClientNomSelectionne((clientDefaut.nom_client || clientDefaut.nom || clientDefaut.libelle || 'CLIENTS DIVERS').toUpperCase());
-      } else {
-        setClientNomSelectionne('CLIENTS DIVERS');
-      }
-
-      await chargerDonneesEtPermissions();
-
-      setTicketDernierValide(ticketValideFinal);
-      setAfficherModalSuccesTicket(true);
 
     } catch (err) {
       alert('Erreur enregistrement : ' + err.message);
@@ -2523,7 +2497,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 autoFocus
                 disabled={enTrainDeSauvegarder}
                 value={rechercheClientInput}
-                onChange={(e) => setRechercheClientInput(e.target.value.toUpperCase())}
+                onChange={(e) => setSearchClientInput ? setRechercheClientInput(e.target.value.toUpperCase()) : setRechercheClientInput(e.target.value.toUpperCase())}
                 placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER UN LIVREUR..." : "RECHERCHER UN CLIENT..."}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
               />

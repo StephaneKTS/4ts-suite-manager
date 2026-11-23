@@ -118,6 +118,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
   const [enTrainDInsertion, setEnTrainDInsertion] = useState(false);
 
+  // État pour les modales personnalisées de message et de confirmation
+  const [modalMessage, setModalMessage] = useState(null); // { titre, texte, type: 'succes' | 'erreur' | 'info' }
+  const [modalConfirmation, setModalConfirmation] = useState(null); // { titre, texte, onConfirm }
+
   const [roleNom, setRoleNom] = useState('');
   const [emailConnecteUser, setEmailConnecteUser] = useState('');
   const [nomUtilisateurConnecte, setNomUtilisateurConnecte] = useState(obtenirNomOperateurConnecte);
@@ -173,6 +177,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [quantiteSaisie, setQuantiteSaisie] = useState(1);
   const [lignesPanier, setLignesPanier] = useState([]);
   const [mouvementEnEditionId, setMouvementEnEditionId] = useState(null);
+  const [numeroDocOriginal, setNumeroDocOriginal] = useState(null);
   const [documentEnLectureSeule, setDocumentEnLectureSeule] = useState(false);
 
   const [etatInitialEdition, setEtatInitialEdition] = useState(null);
@@ -182,6 +187,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const inputQuantiteRef = useRef(null);
   const boutonSelectionArticleRef = useRef(null);
+
+  const afficherMessage = (texte, type = 'info', titre = 'Notification') => {
+    setModalMessage({ texte, type, titre });
+  };
 
   const libellesTypesMouvement = {
     TRANSFERT: 'TRANSFERT ENTRE DÉPÔTS (TR)',
@@ -366,6 +375,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setTypeOperation('ENTREE');
     setModeAffichage('SAISIE');
     setMouvementEnEditionId(null);
+    setNumeroDocOriginal(null);
     setDocumentEnLectureSeule(false);
     setEtatInitialEdition(null);
     setLignesPanier([]);
@@ -387,6 +397,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setTypeOperation(typeParDefaut);
     setModeAffichage('SAISIE');
     setMouvementEnEditionId(null);
+    setNumeroDocOriginal(null);
     setDocumentEnLectureSeule(false);
     setEtatInitialEdition(null);
     setLignesPanier([]);
@@ -473,7 +484,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const calculerStockPourEmplacement = (articleId, emplacementId) => {
     let stockEmp = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, mouvementEnEditionId ? enTeteDoc.numeroDoc : null);
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, numeroDocOriginal || (mouvementEnEditionId ? enTeteDoc.numeroDoc : null));
     
     fluxArticle.forEach((m) => {
       const qte = m.quantite;
@@ -513,7 +524,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       return parseInt(artObj?.Quantite_Stock || artObj?.quantite_stock || 0);
     }
     let stockDepot = 0;
-    const fluxArticle = obtenirTousLesFluxArticle(articleId, mouvementEnEditionId ? enTeteDoc.numeroDoc : null);
+    const fluxArticle = obtenirTousLesFluxArticle(articleId, numeroDocOriginal || (mouvementEnEditionId ? enTeteDoc.numeroDoc : null));
     fluxArticle.forEach((m) => {
       const matchDepotSource = correspondAuDepot(m.depot_source, depotCibleId);
       const matchDepotDest = correspondAuDepot(m.depot_destination, depotCibleId);
@@ -668,33 +679,33 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const verifierEnTeteAvantSaisie = () => {
     if (documentEnLectureSeule) {
-      alert('🔒 Ce document est en lecture seule (journée clôturée).');
+      afficherMessage('Ce document est en lecture seule (journée clôturée).', 'erreur', 'Accès restreint');
       return false;
     }
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (enTeteDoc.dateDoc < dateDuJour) {
-      alert(`❌ Modification interdite : le document est daté du ${enTeteDoc.dateDoc} (journée clôturée et verrouillée).`);
+      afficherMessage(`Modification interdite : le document est daté du ${enTeteDoc.dateDoc} (journée clôturée et verrouillée).`, 'erreur', 'Journée clôturée');
       return false;
     }
 
     if (!enTeteDoc.referenceDoc || String(enTeteDoc.referenceDoc).trim() === '') {
-      alert(ongletPrincipal === 'ACHATS' ? '⚠️ La référence / N° Facture ou Motif est obligatoire.' : '⚠️ La zone Motif est obligatoire pour pouvoir ajouter des articles.');
+      afficherMessage(ongletPrincipal === 'ACHATS' ? 'La référence / N° Facture ou Motif est obligatoire.' : 'La zone Motif est obligatoire pour pouvoir ajouter des articles.', 'erreur', 'Champ manquant');
       return false;
     }
 
     if (typeOperation === 'TRANSFERT') {
       if (!enTeteDoc.id_depot_source) { 
-        alert('⚠️ Sélectionnez le dépôt source (origine).'); 
+        afficherMessage('Sélectionnez le dépôt source (origine).', 'erreur', 'Dépôt manquant'); 
         return false; 
       }
       if (!enTeteDoc.id_depot_destination) { 
-        alert('⚠️ Sélectionnez le dépôt destination.'); 
+        afficherMessage('Sélectionnez le dépôt destination.', 'erreur', 'Dépôt manquant'); 
         return false; 
       }
     } else {
       if (!enTeteDoc.id_depot_source) { 
-        alert('⚠️ Sélectionnez le dépôt.'); 
+        afficherMessage('Sélectionnez le dépôt.', 'erreur', 'Dépôt manquant'); 
         return false; 
       }
     }
@@ -714,7 +725,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (enTeteDoc.dateDoc < dateDuJour) {
-      alert(`❌ Modification interdite : ce document appartient à une journée clôturée (${enTeteDoc.dateDoc}).`);
+      afficherMessage(`Modification interdite : ce document appartient à une journée clôturée (${enTeteDoc.dateDoc}).`, 'erreur', 'Journée clôturée');
       return;
     }
     const artObj = articles.find(a => String(a.id_article || a.id) === String(ligne.id_article)) || { id_article: ligne.id_article, Designation: ligne.designation };
@@ -728,17 +739,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (enTrainDeSauvegarder || documentEnLectureSeule || enTrainDInsertion) return;
     
     if (!permissions.peut_creer && !mouvementEnEditionId) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.');
+      afficherMessage('Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.', 'erreur', 'Permission refusée');
       return;
     }
     if (!verifierEnTeteAvantSaisie() || !articleSelectionneTemp) { 
-      if (!articleSelectionneTemp) alert('Sélectionnez un article.'); 
+      if (!articleSelectionneTemp) afficherMessage('Sélectionnez un article.', 'erreur', 'Article manquant'); 
       return; 
     }
     
     const qte = parseInt(quantiteSaisie);
     if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { 
-      alert('Quantité invalide.'); 
+      afficherMessage('Quantité invalide.', 'erreur', 'Erreur de saisie'); 
       return; 
     }
 
@@ -748,7 +759,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const stockActuelDepot = calculerStockPourDepotActuel(artId);
     
     if ((typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') && qte > stockActuelDepot) {
-      alert(`⛔ Stock insuffisant (${stockActuelDepot} disp.).`);
+      afficherMessage(`Stock insuffisant (${stockActuelDepot} disponible(s)).`, 'erreur', 'Stock insuffisant');
       setEnTrainDInsertion(false);
       return;
     }
@@ -823,58 +834,66 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (enTeteDoc.dateDoc < dateDuJour) {
-      alert(`❌ Suppression interdite : ce document appartient à une journée clôturée (${enTeteDoc.dateDoc}).`);
+      afficherMessage(`Suppression interdite : ce document appartient à une journée clôturée (${enTeteDoc.dateDoc}).`, 'erreur', 'Journée clôturée');
       return;
     }
 
     if (!verifierDroitSuppressionEffectif()) {
-      alert('⛔ Action non autorisée : Seuls l’Administrateur et le Super Administrateur peuvent supprimer une opération.');
+      afficherMessage('Action non autorisée : Seuls l’Administrateur et le Super Administrateur peuvent supprimer une opération.', 'erreur', 'Permission refusée');
       return;
     }
 
     if (lignesPanier.length === 0 && !mouvementEnEditionId) {
-      alert('Aucune opération active ou document en cours à supprimer.');
+      afficherMessage('Aucune opération active ou document en cours à supprimer.', 'info', 'Information');
       return;
     }
 
-    if (!confirm(`Voulez-vous vraiment supprimer définitivement ce document (${enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}) ?`)) return;
+    const motifSuppr = (mouvementEnEditionId && numeroDocOriginal) ? numeroDocOriginal : enTeteDoc.numeroDoc;
 
-    setEnTrainDeSauvegarder(true);
-    try {
-      if (mouvementEnEditionId) {
-        const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
-        if (error) {
-          localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: enTeteDoc.numeroDoc });
+    setModalConfirmation({
+      titre: 'Confirmation de suppression',
+      texte: `Voulez-vous vraiment supprimer définitivement ce document (${enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}) ?`,
+      onConfirm: async () => {
+        setModalConfirmation(null);
+        setEnTrainDeSauvegarder(true);
+        try {
+          if (motifSuppr) {
+            const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', motifSuppr);
+            if (error) {
+              localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: motifSuppr });
+            }
+
+            const listeMaj = mouvements.filter(m => m.motif_remarque !== motifSuppr);
+            setMouvements(listeMaj);
+            localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+            localStorage.removeItem(cleCacheMouvements);
+          }
+
+          afficherMessage('Document supprimé avec succès.', 'succès', 'Suppression réussie');
+          setLignesPanier([]);
+          setMouvementEnEditionId(null);
+          setNumeroDocOriginal(null);
+          setDocumentEnLectureSeule(false);
+          setEtatInitialEdition(null);
+          setArticleSelectionneTemp(null);
+          setQuantiteSaisie(1);
+          setEnTeteDoc(prev => ({
+            ...prev,
+            id_fournisseur: '',
+            referenceDoc: '',
+            numeroDoc: genererNumeroDocSecurise(typeOperation),
+            numeroAffichage: '',
+            operateur: obtenirNomOperateurConnecte()
+          }));
+          await chargerDonnees(true);
+          setModeAffichage('LISTE_DOCS');
+        } catch (err) { 
+          afficherMessage('Erreur : ' + err.message, 'erreur', 'Erreur système'); 
+        } finally {
+          setEnTrainDeSauvegarder(false);
         }
-
-        const listeMaj = mouvements.filter(m => m.motif_remarque !== enTeteDoc.numeroDoc);
-        setMouvements(listeMaj);
-        localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
-        localStorage.removeItem(cleCacheMouvements);
       }
-
-      alert('Document supprimé avec succès.');
-      setLignesPanier([]);
-      setMouvementEnEditionId(null);
-      setDocumentEnLectureSeule(false);
-      setEtatInitialEdition(null);
-      setArticleSelectionneTemp(null);
-      setQuantiteSaisie(1);
-      setEnTeteDoc(prev => ({
-        ...prev,
-        id_fournisseur: '',
-        referenceDoc: '',
-        numeroDoc: genererNumeroDocSecurise(typeOperation),
-        numeroAffichage: '',
-        operateur: obtenirNomOperateurConnecte()
-      }));
-      await chargerDonnees(true);
-      setModeAffichage('LISTE_DOCS');
-    } catch (err) { 
-      alert('Erreur : ' + err.message); 
-    } finally {
-      setEnTrainDeSauvegarder(false);
-    }
+    });
   };
 
   const validerDocumentMouvement = async () => {
@@ -882,28 +901,38 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (enTeteDoc.dateDoc < dateDuJour) {
-      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${enTeteDoc.dateDoc} car cette journée est clôturée.`);
+      afficherMessage(`Modification interdite : impossible d'enregistrer sur la date du ${enTeteDoc.dateDoc} car cette journée est clôturée.`, 'erreur', 'Journée clôturée');
       return;
     }
 
     if (mouvementEnEditionId && !permissions.peut_modifier) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de modifier les mouvements.');
+      afficherMessage('Action non autorisée : Votre profil n’a pas le droit de modifier les mouvements.', 'erreur', 'Permission refusée');
       return;
     }
     if (!mouvementEnEditionId && !permissions.peut_creer) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.');
+      afficherMessage('Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.', 'erreur', 'Permission refusée');
       return;
     }
     if (!permissions.peut_valider) {
-      alert('⛔ Action non autorisée : Votre profil n’a pas le droit de valider des documents.');
+      afficherMessage('Action non autorisée : Votre profil n’a pas le droit de valider des documents.', 'erreur', 'Permission refusée');
       return;
     }
 
-    if (!verifierEnTeteAvantSaisie() || lignesPanier.length === 0) { if (lignesPanier.length === 0) alert('Ajoutez des articles.'); return; }
+    if (!verifierEnTeteAvantSaisie() || lignesPanier.length === 0) { 
+      if (lignesPanier.length === 0) afficherMessage('Ajoutez des articles.', 'erreur', 'Panier vide'); 
+      return; 
+    }
 
     setEnTrainDeSauvegarder(true);
     try {
-      await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
+      const motifDocumentFinal = (mouvementEnEditionId && numeroDocOriginal) ? numeroDocOriginal : enTeteDoc.numeroDoc;
+
+      if (motifDocumentFinal) {
+        await supabase.from('mouvements_stock').delete().eq('motif_remarque', motifDocumentFinal);
+      }
+      if (mouvementEnEditionId && enTeteDoc.numeroDoc && enTeteDoc.numeroDoc !== motifDocumentFinal) {
+        await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
+      }
       
       const operateurActuel = obtenirNomOperateurConnecte();
       const referenceSaisie = (enTeteDoc.referenceDoc || '').trim().toUpperCase();
@@ -942,7 +971,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           id_emplacement_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_emplacement_destination || null) : null,
           id_article: parseInt(artId),
           quantite: dataLigne.quantite,
-          motif_remarque: enTeteDoc.numeroDoc,
+          motif_remarque: motifDocumentFinal,
           reference: referenceSaisie,
           operateur: operateurActuel,
           created_at: dateMvtIso,
@@ -958,15 +987,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         }
       }
 
-      const mouvementsFiltres = mouvements.filter(m => m.motif_remarque !== enTeteDoc.numeroDoc);
+      const mouvementsFiltres = mouvements.filter(m => m.motif_remarque !== motifDocumentFinal && m.motif_remarque !== enTeteDoc.numeroDoc);
       const listeMaj = [...nouveauxMouvementsAjoutes, ...mouvementsFiltres];
       setMouvements(listeMaj);
       localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
       localStorage.removeItem(cleCacheMouvements);
 
-      alert(`${ongletPrincipal === 'ACHATS' ? 'Achat / Approvisionnement' : 'Document'} validé avec succès par ${operateurActuel} !`);
+      afficherMessage(`${ongletPrincipal === 'ACHATS' ? 'Achat / Approvisionnement' : 'Document'} validé avec succès par ${operateurActuel} !`, 'succès', 'Validation réussie');
       setLignesPanier([]);
       setMouvementEnEditionId(null);
+      setNumeroDocOriginal(null);
       setDocumentEnLectureSeule(false);
       setEtatInitialEdition(null);
       const typeReset = ongletPrincipal === 'ACHATS' ? 'ENTREE' : typeOperation;
@@ -981,7 +1011,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       await chargerDonnees(true);
       setModeAffichage('LISTE_DOCS');
     } catch (err) { 
-      alert('Erreur : ' + err.message); 
+      afficherMessage('Erreur : ' + err.message, 'erreur', 'Erreur système'); 
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -1033,6 +1063,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       return { id_article: String(mvt.id_article), designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, quantite: Number(mvt.quantite), stockActuel: calculerStockPourDepotActuel(mvt.id_article), stockReel: Number(mvt.quantite) };
     });
 
+    setNumeroDocOriginal(numeroDocUnique);
     setEnTeteDoc(nouvelEnTete);
     setLignesPanier(nouvellesLignes);
     setMouvementEnEditionId(premier.id);
@@ -1127,7 +1158,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
-      {/* Barre supérieure regroupée en 2 boutons principaux : ACHATS vs MOUVEMENTS STOCK */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="font-extrabold uppercase text-slate-900">
@@ -1169,7 +1199,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         </div>
       </div>
 
-      {/* Sous-barre de navigation : Créer / Liste */}
       <div className="flex justify-between items-center gap-2">
         <div className="flex items-center gap-1.5 w-full">
           <button 
@@ -1181,6 +1210,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               setTypeOperation(typeCible);
               setModeAffichage('SAISIE'); 
               setMouvementEnEditionId(null); 
+              setNumeroDocOriginal(null);
               setDocumentEnLectureSeule(false);
               setEtatInitialEdition(null);
               setLignesPanier([]); 
@@ -1217,18 +1247,31 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          {/* Barre contextuelle : Retour liste + Sélecteur de type via modale (uniquement en mode Mouvement Stock) */}
           <div className={`grid ${ongletPrincipal === 'MOUVEMENTS' ? 'grid-cols-2' : 'grid-cols-1'} gap-2 items-center`}>
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => {
                 if (enTrainDeSauvegarder) return;
-                if (!documentEnLectureSeule && lignesPanier.length > 0 && !confirm('Voulez-vous quitter sans enregistrer ? Vos articles non validés seront ignorés.')) {
+                if (!documentEnLectureSeule && lignesPanier.length > 0) {
+                  setModalConfirmation({
+                    titre: 'Quitter sans enregistrer',
+                    texte: 'Voulez-vous quitter sans enregistrer ? Vos articles non validés seront ignorés.',
+                    onConfirm: () => {
+                      setModalConfirmation(null);
+                      setModeAffichage('LISTE_DOCS');
+                      setMouvementEnEditionId(null);
+                      setNumeroDocOriginal(null);
+                      setDocumentEnLectureSeule(false);
+                      setEtatInitialEdition(null);
+                      setLignesPanier([]);
+                    }
+                  });
                   return;
                 }
                 setModeAffichage('LISTE_DOCS');
                 setMouvementEnEditionId(null);
+                setNumeroDocOriginal(null);
                 setDocumentEnLectureSeule(false);
                 setEtatInitialEdition(null);
                 setLignesPanier([]);
@@ -1254,7 +1297,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             )}
           </div>
 
-          {/* MODALE TYPE DE MOUVEMENT */}
           {modalTypeMouvementOuvert && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -1919,6 +1961,59 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE NOTIFICATION / MESSAGE PERSONNALISÉE */}
+      {modalMessage && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 text-orange-600 text-xl font-black">
+              {modalMessage.type === 'erreur' ? '⚠️' : modalMessage.type === 'succès' ? '✅' : 'ℹ️'}
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-black text-slate-900 text-sm uppercase">{modalMessage.titre}</h3>
+              <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalMessage.texte}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalMessage(null)}
+              className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE CONFIRMATION PERSONNALISÉE */}
+      {modalConfirmation && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 text-red-600 text-xl font-black">
+              ❓
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-black text-slate-900 text-sm uppercase">{modalConfirmation.titre}</h3>
+              <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalConfirmation.texte}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalConfirmation(null)}
+                className="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xs uppercase rounded-xl transition"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={modalConfirmation.onConfirm}
+                className="py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
+              >
+                Confirmer
+              </button>
             </div>
           </div>
         </div>

@@ -49,7 +49,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [limiteCommandes, setLimiteCommandes] = useState(20);
   const [commandesAppelees, setCommandesAppelees] = useState({});
 
-  const [menuStatutOuvertId, setMenuStatutOuvertId] = useState(null);
+  // ÉTAT POUR LA MODALE DE CHANGEMENT DE STATUT (LISTE)
+  const [commandeSelectionneeStatut, setCommandeSelectionneeStatut] = useState(null);
+
+  // ÉTAT POUR LA MODALE DE STATUT DANS LE FORMULAIRE DE CRÉATION / MODIFICATION
+  const [modalStatutCreationOuverte, setModalStatutCreationOuverte] = useState(false);
 
   const [vueActive, setVueActive] = useState('LISTE');
   const [sousOngletCloture, setSousOngletCloture] = useState('nouveau');
@@ -453,7 +457,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (String(e.id_entreprise || '').trim() !== String(currentEntId || '').trim()) return false;
       const nomEmp = (e.nom_emplacement || e.libelle || e.nom || '').trim().toUpperCase();
       const respEmp = (e.responsable_emplacement || '').trim().toUpperCase();
-      return nomEmp === nomLivreurNorm || respEmp === nomLivreurNorm || nomEmp.includes(nomLivreurNorm) || nomLivreurNorm.includes(nomEmp);
+      return nomEmp === nomLivreurNorm || respEmp === nomLivreurNorm || nomEmp.includes(nomLivreurNorm);
     });
     return empObj ? empObj.id : null;
   };
@@ -582,9 +586,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const empIdCible = estSuperviseurActuel ? null : trouverIdEmplacementLivreur(livreurActuel);
     const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
     
-    const depotCibleEffectif = (estSuperviseurActuel || !livreurActuel)
-      ? (depotId && depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || depotId))
-      : (depotId && depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || depotId));
+    const depotCibleEffectif = depotId && depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || depotId);
 
     const stockLocal = calculerStockStrictLivreurMagasin(articleId, depotCibleEffectif, empIdCible);
 
@@ -623,7 +625,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   };
 
   const changerStatutRapide = async (cmd, nouveauStatut) => {
-    setMenuStatutOuvertId(null);
+    setCommandeSelectionneeStatut(null);
 
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
     if (dateCmdStr < dateDuJourStr) {
@@ -668,17 +670,16 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       }
 
-      const { error: errUp } = await supabase
+      // Mise à jour optimisée en arrière-plan
+      supabase
         .from('commandes_livraison_en_tete')
-        .update({
-          statut: nouveauStatut,
-          statut_commande: nouveauStatut
-        })
-        .eq('id', cmd.id);
-
-      if (errUp) {
-        localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { id: cmd.id, id_entreprise: currentEntId, statut: nouveauStatut, statut_commande: nouveauStatut });
-      }
+        .update({ statut: nouveauStatut, statut_commande: nouveauStatut })
+        .eq('id', cmd.id)
+        .then(({ error: errUp }) => {
+          if (errUp) {
+            localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { id: cmd.id, id_entreprise: currentEntId, statut: nouveauStatut, statut_commande: nouveauStatut });
+          }
+        });
 
       const commandesMaj = commandes.map(c => c.id === cmd.id ? { ...c, statut: nouveauStatut, statut_commande: nouveauStatut } : c);
       setCommandes(commandesMaj);
@@ -689,7 +690,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(cmd.vendeur_livreur);
         const depotRestitution = cmd.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || null));
 
-        for (const item of lignesCmd) {
+        lignesCmd.forEach(item => {
           const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
           const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
 
@@ -707,12 +708,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               motif_remarque: `RESTITUTION STOCK CHANGEMENT STATUT ${cmd.numero_commande}`,
               created_at: `${cmd.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
             };
-            const { error: errRestit } = await supabase.from('mouvements_stock').insert([payloadRestitution]);
-            if (errRestit) {
-              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
-            }
+            supabase.from('mouvements_stock').insert([payloadRestitution]).then(({ error: errRestit }) => {
+              if (errRestit) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
+            });
           }
-        }
+        });
       }
 
       if (!estSansStockage && estLivreVerif && !etaitDejaLivre) {
@@ -720,7 +720,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(cmd.vendeur_livreur);
         const depotSourceMvt = cmd.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || (depots[0]?.id || null)));
 
-        for (const item of lignesCmd) {
+        lignesCmd.forEach(item => {
           const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
           const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
 
@@ -737,15 +737,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               motif_remarque: `LIVRAISON EFFECTIVE ${cmd.numero_commande} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
               created_at: `${cmd.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
             };
-            const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-            if (errMvt) {
-              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-            }
+            supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
+              if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+            });
           }
-        }
+        });
       }
-
-      await chargerDonnees();
     } catch (err) {
       setModalDoublonMessage('Erreur lors du changement de statut : ' + err.message);
     } finally {
@@ -1045,7 +1042,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const napGlobal = parseFloat(montantSaisi) || 0;
 
-  // --- OUVERTURE OPTIMISÉE RAPIDE DE LA COMMANDE ---
   const ouvrirCommandePourModification = (cmd) => {
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
     const estVerrouille = dateCmdStr < dateDuJourStr;
@@ -1072,7 +1068,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (cmd.id_depot) setDepotId(cmd.id_depot);
     }
 
-    // Récupération instantanée depuis le cache local/mémoire des lignes (évite le temps d'attente réseau)
     const lignesInit = lignesCommandesMap[cmd.id] || [];
     setLignesSaisies(lignesInit);
 
@@ -1094,7 +1089,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     setVueActive('CREATION');
 
-    // Rafraîchissement éventuel en arrière-plan sans bloquer l'affichage instantané
     supabase
       .from('commandes_livraison_lignes')
       .select('*')
@@ -1108,7 +1102,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             prix_unitaire: l.prix_unitaire
           }));
           setLignesCommandesMap(prev => ({ ...prev, [cmd.id]: lignesFraiches }));
-          // Si l'utilisateur est toujours sur cette même commande, on met à jour les lignes s'il y a eu un delta
           setLignesSaisies(actuelles => {
             if (actuelles.length === 0 && lignesFraiches.length > 0) {
               return lignesFraiches;
@@ -1147,10 +1140,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         const estSuperviseurCmd = estUnSuperviseur(commandeEnEdition.vendeur_livreur);
         const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(commandeEnEdition.vendeur_livreur);
         const lignesCmd = lignesCommandesMap[commandeEnEdition.id] || [];
-        
         const depotRestitution = commandeEnEdition.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || null));
 
-        for (const item of lignesCmd) {
+        lignesCmd.forEach(item => {
           const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
           const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
 
@@ -1168,23 +1160,20 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               motif_remarque: `RESTITUTION STOCK SUPPRESSION ${commandeEnEdition.numero_commande}`,
               created_at: `${commandeEnEdition.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
             };
-            const { error: errRestit } = await supabase.from('mouvements_stock').insert([payloadRestitution]);
-            if (errRestit) {
-              localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
-            }
+            supabase.from('mouvements_stock').insert([payloadRestitution]).then(({ error: errRestit }) => {
+              if (errRestit) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
+            });
           }
-        }
+        });
       }
 
-      const { error: errLignes } = await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
-      if (errLignes) {
-        localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
-      }
+      supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id).then(({ error: errLignes }) => {
+        if (errLignes) localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
+      });
       
-      const { error } = await supabase.from('commandes_livraison_en_tete').delete().eq('id', commandeEnEdition.id);
-      if (error) {
-        localSync.ajouterFileAttente('DELETE', 'commandes_livraison_en_tete', { id: commandeEnEdition.id });
-      }
+      supabase.from('commandes_livraison_en_tete').delete().eq('id', commandeEnEdition.id).then(({ error }) => {
+        if (error) localSync.ajouterFileAttente('DELETE', 'commandes_livraison_en_tete', { id: commandeEnEdition.id });
+      });
 
       const commandesMaj = commandes.filter(c => c.id !== commandeEnEdition.id);
       setCommandes(commandesMaj);
@@ -1218,6 +1207,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   };
 
+  // --- FONCTION DE SAUVEGARDE ULTRA RAPIDE ET OPTIMISÉE ---
   const sauvegarderCommande = async (e) => {
     if (e) e.preventDefault();
     if (sauvegardeEnCours || documentEnLectureSeule) return;
@@ -1307,22 +1297,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       const statutNormVerif = (statutCommandeSaisi || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const estLivreVerif = statutNormVerif === 'LIVRE' || statutNormVerif === 'LIVRÉ';
 
-      if (!partenaireSansStockage && estLivreVerif) {
-        for (const item of lignesSaisies) {
-          const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
-          const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
-
-          if (estSuiviArticle !== false && estSuiviArticle !== 0) {
-            const stockEmp = await recupererStockReelRPC(item.id_article, livreurAssigne);
-            if (stockEmp < item.quantite) {
-              setModalDoublonMessage(`ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`);
-              setSauvegardeEnCours(false);
-              return;
-            }
-          }
-        }
-      }
-
       const depotSourceMvt = depotSourceEffectif;
 
       let payload = {
@@ -1346,33 +1320,25 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         utilisateur_saisie: nomUtilisateurConnecteReel
       };
 
-      let idCmdCourante = null;
+      let idCmdCourante = commandeEnEdition ? commandeEnEdition.id : `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
       if (commandeEnEdition) {
         const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'LIVRÉ';
         const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const etaitDejaLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
-        idCmdCourante = commandeEnEdition.id;
 
-        const { error: errUp } = await supabase
-          .from('commandes_livraison_en_tete')
-          .update(payload)
-          .eq('id', commandeEnEdition.id);
+        // Requêtes non bloquantes en arrière-plan pour la modification
+        supabase.from('commandes_livraison_en_tete').update(payload).eq('id', commandeEnEdition.id).then(({ error: errUp }) => {
+          if (errUp) localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { ...payload, id: commandeEnEdition.id });
+        });
 
-        if (errUp) {
-          localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { ...payload, id: commandeEnEdition.id });
-        }
-
-        const { error: errDel } = await supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id);
-        if (errDel) {
-          localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
-        }
+        supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id).then(({ error: errDel }) => {
+          if (errDel) localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
+        });
 
         if (!partenaireSansStockage && etaitDejaLivre && !estLivreVerif) {
           const lignesCmdPrecedentes = lignesCommandesMap[commandeEnEdition.id] || [];
-          const depotRestitution = depotSourceMvt;
-
-          for (const item of lignesCmdPrecedentes) {
+          lignesCmdPrecedentes.forEach(item => {
             const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
             const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
 
@@ -1383,23 +1349,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 type_mouvement: 'ENTREE',
                 id_depot_source: null,
                 id_emplacement_source: null,
-                id_depot_destination: depotRestitution,
+                id_depot_destination: depotSourceMvt,
                 id_emplacement_destination: empIdTrouve,
                 id_article: parseInt(item.id_article),
                 quantite: item.quantite,
                 motif_remarque: `RESTITUTION STOCK MODIFICATION ${numeroComplet}`,
                 created_at: `${dateNormalisee}T12:00:00`,
               };
-              const { error: errRestit } = await supabase.from('mouvements_stock').insert([payloadRestitution]);
-              if (errRestit) {
-                localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
-              }
+              supabase.from('mouvements_stock').insert([payloadRestitution]).then(({ error: errRestit }) => {
+                if (errRestit) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
+              });
             }
-          }
+          });
         }
 
         if (!partenaireSansStockage && estLivreVerif && !etaitDejaLivre) {
-          for (const item of lignesSaisies) {
+          lignesSaisies.forEach(item => {
             const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
             const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
 
@@ -1416,36 +1381,27 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
                 created_at: `${dateNormalisee}T12:00:00`,
               };
-              const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-              if (errMvt) {
-                localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-              }
+              supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
+                if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+              });
             }
-          }
+          });
         }
 
       } else {
-        const idLocal = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const cmdLocale = { ...payload, id: idCmdCourante, created_at: new Date().toISOString() };
+        const nouvelleListeCmd = [cmdLocale, ...commandes];
+        setCommandes(nouvelleListeCmd);
+        localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
 
-        const { data: cmdInseree, error: errCmd } = await supabase
-          .from('commandes_livraison_en_tete')
-          .insert([payload])
-          .select()
-          .single();
-
-        if (errCmd) {
-          idCmdCourante = idLocal;
-          const cmdLocale = { ...payload, id: idLocal, created_at: new Date().toISOString() };
-          const nouvelleListeCmd = [cmdLocale, ...commandes];
-          setCommandes(nouvelleListeCmd);
-          localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
-          localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', payload);
-        } else if (cmdInseree) {
-          idCmdCourante = cmdInseree.id;
-        }
+        supabase.from('commandes_livraison_en_tete').insert([payload]).then(({ error: errCmd }) => {
+          if (errCmd) {
+            localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', payload);
+          }
+        });
 
         if (!partenaireSansStockage && estLivreVerif) {
-          for (const item of lignesSaisies) {
+          lignesSaisies.forEach(item => {
             const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
             const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
 
@@ -1462,12 +1418,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
                 created_at: `${dateNormalisee}T12:00:00`,
               };
-              const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
-              if (errMvt) {
-                localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-              }
+              supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
+                if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+              });
             }
-          }
+          });
         }
       }
 
@@ -1480,13 +1435,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           prix_unitaire: l.prix_unitaire,
         }));
 
-        const { error: errLignes } = await supabase
-          .from('commandes_livraison_lignes')
-          .insert(payloadLignes);
-
-        if (errLignes) {
-          localSync.ajouterFileAttente('INSERT', 'commandes_livraison_lignes', payloadLignes);
-        }
+        supabase.from('commandes_livraison_lignes').insert(payloadLignes).then(({ error: errLignes }) => {
+          if (errLignes) localSync.ajouterFileAttente('INSERT', 'commandes_livraison_lignes', payloadLignes);
+        });
 
         const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
         setLignesCommandesMap(mapLignesMaj);
@@ -1495,7 +1446,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       setModalConfirmationOuverte(false);
       setModalPostSuccesOuverte(true);
-      await chargerDonnees();
+      
+      // Rafraîchissement asynchrone des données en arrière-plan
+      chargerDonnees();
     } catch (err) {
       setModalDoublonMessage('Erreur technique : ' + (err.message || err));
     } finally {
@@ -1710,10 +1663,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         created_at: new Date().toISOString()
       };
 
-      const { error: errCloture } = await supabase.from('clotures_caisses').insert([payloadCloture]);
-      if (errCloture) {
-        localSync.ajouterFileAttente('INSERT', 'clotures_caisses', payloadCloture);
-      }
+      supabase.from('clotures_caisses').insert([payloadCloture]).then(({ error: errCloture }) => {
+        if (errCloture) localSync.ajouterFileAttente('INSERT', 'clotures_caisses', payloadCloture);
+      });
 
       const payloadMvt = {
         id_entreprise: currentEntId,
@@ -1726,10 +1678,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         created_at: new Date().toISOString()
       };
 
-      const { error } = await supabase.from('mouvements_caisse').insert([payloadMvt]);
-      if (error) {
-        localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payloadMvt);
-      }
+      supabase.from('mouvements_caisse').insert([payloadMvt]).then(({ error }) => {
+        if (error) localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payloadMvt);
+      });
 
       setModalDoublonMessage(`Clôture enregistrée sous le numéro ${codePieceCloture}.`);
       
@@ -2696,17 +2647,15 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
               <div>
                 <label className="block font-black mb-0.5 text-[8px] text-blue-900 uppercase truncate">Statut *</label>
-                <select
-                  value={statutCommandeSaisi}
+                <button
+                  type="button"
                   disabled={documentEnLectureSeule}
-                  onChange={(e) => setStatutCommandeSaisi(e.target.value)}
-                  className="w-full bg-white border border-blue-300 rounded p-1 font-extrabold text-blue-900 text-[9px] shadow-xs cursor-pointer disabled:opacity-70"
+                  onClick={() => { if (documentEnLectureSeule) return; setModalStatutCreationOuverte(true); }}
+                  className="w-full bg-white border border-blue-300 rounded p-1 font-extrabold text-blue-900 text-[9px] shadow-xs uppercase text-left flex justify-between items-center truncate disabled:opacity-70"
                 >
-                  <option value="EN ATTENTE">EN ATTENTE</option>
-                  <option value="LIVRÉ">LIVRÉ</option>
-                  <option value="REPORTÉ">REPORTÉ</option>
-                  <option value="ANNULÉ">ANNULÉ</option>
-                </select>
+                  <span className="truncate">{statutCommandeSaisi}</span>
+                  <span className="text-slate-400 shrink-0 text-[7px]">▼</span>
+                </button>
               </div>
             </div>
           </div>
@@ -3343,7 +3292,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                                 setModalDoublonMessage(`Modification interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
                                 return;
                               }
-                              setMenuStatutOuvertId(menuStatutOuvertId === cmd.id ? null : cmd.id);
+                              setCommandeSelectionneeStatut(cmd);
                             }}
                             className={`text-[7px] font-black px-1.5 py-0.2 rounded-full border truncate whitespace-nowrap flex items-center gap-0.5 shadow-2xs cursor-pointer hover:opacity-80 transition ${badgeColor}`}
                             title="Changer le statut"
@@ -3351,27 +3300,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             <span>{statut}</span>
                             <span className="text-[5px]">▼</span>
                           </button>
-
-                          {menuStatutOuvertId === cmd.id && (
-                            <div className="absolute right-0 mt-1 w-32 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden py-1 text-[8.5px]">
-                              <div className="px-2 py-1 text-[7.5px] font-bold text-slate-400 uppercase border-b border-slate-100">
-                                Changer le statut
-                              </div>
-                              {['EN ATTENTE', 'LIVRÉ', 'REPORTÉ', 'ANNULÉ'].map((st) => (
-                                <button
-                                  key={st}
-                                  type="button"
-                                  onClick={() => changerStatutRapide(cmd, st)}
-                                  className={`w-full text-left px-3 py-1 font-black uppercase hover:bg-slate-100 transition flex items-center justify-between ${
-                                    (statut === st || (statut === 'LIVRE' && st === 'LIVRÉ')) ? 'text-orange-600 bg-orange-50/50' : 'text-slate-700'
-                                  }`}
-                                >
-                                  <span>{st}</span>
-                                  {(statut === st || (statut === 'LIVRE' && st === 'LIVRÉ')) && <span>✓</span>}
-                                </button>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -3472,6 +3400,120 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODALE JOLIE POUR LE CHANGEMENT DE STATUT DES COMMANDES (LISTE) */}
+      {commandeSelectionneeStatut && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xs overflow-hidden p-4 space-y-3">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <div>
+                <h4 className="font-black text-slate-900 uppercase text-xs">CHANGER LE STATUT</h4>
+                <p className="text-[9px] font-mono font-bold text-orange-600">{commandeSelectionneeStatut.numero_commande} - {commandeSelectionneeStatut.nom_partenaire}</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setCommandeSelectionneeStatut(null)} 
+                className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              {['EN ATTENTE', 'LIVRÉ', 'REPORTÉ', 'ANNULÉ'].map((st) => {
+                const statutActuel = (commandeSelectionneeStatut.statut || commandeSelectionneeStatut.statut_commande || 'LIVRÉ').trim().toUpperCase();
+                const estActif = statutActuel === st || (statutActuel === 'LIVRE' && st === 'LIVRÉ');
+                
+                let badgeStyle = 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200';
+                if (st === 'EN ATTENTE') badgeStyle = estActif ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200';
+                if (st === 'LIVRÉ') badgeStyle = estActif ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200';
+                if (st === 'REPORTÉ') badgeStyle = estActif ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-200';
+                if (st === 'ANNULÉ') badgeStyle = estActif ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200';
+
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => changerStatutRapide(commandeSelectionneeStatut, st)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl font-black uppercase text-[10px] transition flex items-center justify-between border shadow-2xs ${badgeStyle}`}
+                  >
+                    <span>{st}</span>
+                    {estActif && <span className="text-xs">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setCommandeSelectionneeStatut(null)}
+                className="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2 rounded-xl text-[9px] uppercase transition"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE POUR LE STATUT DU FORMULAIRE DE CRÉATION / MODIFICATION */}
+      {modalStatutCreationOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xs overflow-hidden p-4 space-y-3">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <div>
+                <h4 className="font-black text-slate-900 uppercase text-xs">SÉLECTIONNER LE STATUT</h4>
+                <p className="text-[9px] font-mono font-bold text-blue-700">Statut de la commande</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setModalStatutCreationOuverte(false)} 
+                className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              {['EN ATTENTE', 'LIVRÉ', 'REPORTÉ', 'ANNULÉ'].map((st) => {
+                const estActif = statutCommandeSaisi.trim().toUpperCase() === st || (statutCommandeSaisi.trim().toUpperCase() === 'LIVRE' && st === 'LIVRÉ');
+                
+                let badgeStyle = 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200';
+                if (st === 'EN ATTENTE') badgeStyle = estActif ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200';
+                if (st === 'LIVRÉ') badgeStyle = estActif ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200';
+                if (st === 'REPORTÉ') badgeStyle = estActif ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-200';
+                if (st === 'ANNULÉ') badgeStyle = estActif ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200';
+
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => {
+                      setStatutCommandeSaisi(st);
+                      setModalStatutCreationOuverte(false);
+                    }}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl font-black uppercase text-[10px] transition flex items-center justify-between border shadow-2xs ${badgeStyle}`}
+                  >
+                    <span>{st}</span>
+                    {estActif && <span className="text-xs">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setModalStatutCreationOuverte(false)}
+                className="w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2 rounded-xl text-[9px] uppercase transition"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
