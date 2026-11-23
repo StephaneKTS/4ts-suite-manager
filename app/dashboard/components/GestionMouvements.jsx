@@ -23,9 +23,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const cleCacheMouvements = `mouvements_stock_${entrepriseId}_${moduleActuel}`;
   const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
-  const cleCacheAppro = `approvisionnements_${entrepriseId}_${moduleActuel}`;
   const cleCacheDepots = `depots_${entrepriseId}_${moduleActuel}`;
   const cleCacheEmplacements = `emplacements_${entrepriseId}_${moduleActuel}`;
+  const cleCacheFournisseurs = `fournisseurs_${entrepriseId}_${moduleActuel}`;
 
   const obtenirNomOperateurConnecte = () => {
     if (typeof window === 'undefined') return 'DC KTS';
@@ -89,14 +89,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return [];
   });
 
-  const [approvisionnements, setApprovisionnements] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const data = localSync.recupererDonneesLocales(cleCacheAppro);
-      return Array.isArray(data) ? data : [];
-    }
-    return [];
-  });
-
   const [depots, setDepots] = useState(() => {
     if (typeof window !== 'undefined') {
       const data = localSync.recupererDonneesLocales(cleCacheDepots);
@@ -108,6 +100,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [emplacements, setEmplacements] = useState(() => {
     if (typeof window !== 'undefined') {
       const data = localSync.recupererDonneesLocales(cleCacheEmplacements);
+      return Array.isArray(data) ? data : [];
+    }
+    return [];
+  });
+
+  const [fournisseurs, setFournisseurs] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const data = localSync.recupererDonneesLocales(cleCacheFournisseurs);
       return Array.isArray(data) ? data : [];
     }
     return [];
@@ -129,6 +129,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const [limiteDocuments, setLimiteDocuments] = useState(20);
+  
+  const [ongletPrincipal, setOngletPrincipal] = useState('MOUVEMENTS');
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
@@ -149,6 +151,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     id_emplacement_source: '',
     id_depot_destination: '',
     id_emplacement_destination: '',
+    id_fournisseur: '',
     referenceDoc: '',
     motif: '',
     famille_filtre: 'TOUTES',
@@ -163,6 +166,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [modalDepotDestOuvert, setModalDepotDestOuvert] = useState(false);
   const [modalLivreurSourceOuvert, setModalLivreurSourceOuvert] = useState(false);
   const [modalLivreurDestOuvert, setModalLivreurDestOuvert] = useState(false);
+  const [modalFournisseurOuvert, setModalFournisseurOuvert] = useState(false);
+  const [modalTypeMouvementOuvert, setModalTypeMouvementOuvert] = useState(false);
   const [rechercheModalPopup, setRechercheModalPopup] = useState('');
 
   const [quantiteSaisie, setQuantiteSaisie] = useState(1);
@@ -180,14 +185,23 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const libellesTypesMouvement = {
     TRANSFERT: 'TRANSFERT ENTRE DÉPÔTS (TR)',
-    ENTREE: 'ENTRÉE DE STOCK (ME)',
+    ENTREE: 'ACHAT / APPROVISIONNEMENT (APP)',
+    ENTREE_STOCK: 'ENTRÉE EN STOCK (ES)',
     SORTIE: 'SORTIE DE STOCK (MS)',
     AVARIES: 'AVARIES & PERTES (AV)',
     INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
   };
 
+  const descriptionsTypesMouvement = {
+    TRANSFERT: 'Transférer des articles d’un dépôt ou emplacement vers un autre.',
+    ENTREE_STOCK: 'Ajouter directement du stock en interne (ex: régularisation, don, etc.).',
+    SORTIE: 'Enregistrer une sortie de stock interne ou une consommation.',
+    AVARIES: 'Déclarer des articles perdus, endommagés ou périmés.',
+    INVENTAIRE: 'Réajuster l’inventaire physique réel d’un dépôt.',
+  };
+
   const genererNumeroDocSecurise = (type) => {
-    const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+    const prefixes = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
     const prefix = prefixes[type] || 'TR';
     const timestampAleatoire = Date.now().toString().slice(-6);
     const suffixeAleatoire = Math.floor(Math.random() * 900 + 100);
@@ -282,6 +296,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       setEmplacements(emplacementsList);
       localSync.sauvegarderDonneesLocales(cleCacheEmplacements, emplacementsList);
 
+      const { data: dataFournisseurs } = await supabase
+        .from('fournisseurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel);
+      const fournisseursList = Array.isArray(dataFournisseurs) ? dataFournisseurs : [];
+      setFournisseurs(fournisseursList);
+      localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, fournisseursList);
+
       const { data: dataArticles } = await supabase
         .from('articles_stock')
         .select('*')
@@ -322,16 +345,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       setMouvements(mouvementsList);
       localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsList);
 
-      const { data: dataAppro } = await supabase
-        .from('approvisionnements')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      if (Array.isArray(dataAppro)) {
-        setApprovisionnements(dataAppro);
-        localSync.sauvegarderDonneesLocales(cleCacheAppro, dataAppro);
-      }
-
       if (!mouvementEnEditionId) {
         setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: nomConnecteEffectif }));
       }
@@ -345,7 +358,48 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   useEffect(() => { 
     chargerDonnees(); 
     localSync.synchroniserVersCloud(supabase);
-  }, [entrepriseId, typeOperation, moduleActuel]);
+  }, [entrepriseId, moduleActuel]);
+
+  const basculerVersAchats = () => {
+    if (enTrainDeSauvegarder) return;
+    setOngletPrincipal('ACHATS');
+    setTypeOperation('ENTREE');
+    setModeAffichage('SAISIE');
+    setMouvementEnEditionId(null);
+    setDocumentEnLectureSeule(false);
+    setEtatInitialEdition(null);
+    setLignesPanier([]);
+    setArticleSelectionneTemp(null);
+    setEnTeteDoc(prev => ({
+      ...prev,
+      id_fournisseur: '',
+      referenceDoc: '',
+      numeroDoc: genererNumeroDocSecurise('ENTREE'),
+      numeroAffichage: '',
+      operateur: obtenirNomOperateurConnecte()
+    }));
+  };
+
+  const basculerVersMouvements = () => {
+    if (enTrainDeSauvegarder) return;
+    setOngletPrincipal('MOUVEMENTS');
+    const typeParDefaut = typeOperation === 'ENTREE' ? 'TRANSFERT' : typeOperation;
+    setTypeOperation(typeParDefaut);
+    setModeAffichage('SAISIE');
+    setMouvementEnEditionId(null);
+    setDocumentEnLectureSeule(false);
+    setEtatInitialEdition(null);
+    setLignesPanier([]);
+    setArticleSelectionneTemp(null);
+    setEnTeteDoc(prev => ({
+      ...prev,
+      id_fournisseur: '',
+      referenceDoc: '',
+      numeroDoc: genererNumeroDocSecurise(typeParDefaut),
+      numeroAffichage: '',
+      operateur: obtenirNomOperateurConnecte()
+    }));
+  };
 
   const emplacementsSourceFiltres = Array.isArray(emplacements) ? emplacements : [];
   const emplacementsDestinationFiltres = Array.isArray(emplacements) ? emplacements : [];
@@ -363,6 +417,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const depotTrouve = depots.find(d => String(d.id) === String(depotId));
     if (depotTrouve) return depotTrouve.nom_depot || depotTrouve.nom || depotId;
     return depotId;
+  };
+
+  const obtenirNomFournisseurParId = (fournId) => {
+    if (!fournId) return '';
+    const fObj = fournisseurs.find(f => String(f.id) === String(fournId));
+    return fObj ? (fObj.nom_fournisseur || fObj.nom || '') : '';
   };
 
   const obtenirNomEmplacementParId = (empId) => {
@@ -430,6 +490,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         if (matchSource) stockEmp -= qte;
         return;
       }
+      if (typeMvt === 'ENTREE_STOCK' && matchSource) {
+        stockEmp += qte;
+        return;
+      }
       if (matchDest) stockEmp += qte;
       if (matchSource) stockEmp -= qte;
     });
@@ -468,6 +532,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         if (matchDepotSource) stockDepot -= qte; 
         return; 
       }
+      if (typeMvt === 'ENTREE_STOCK' && matchDepotSource) {
+        stockDepot += qte;
+        return;
+      }
       if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || typeMvt.includes('ACHAT') || typeMvt.includes('APPRO') || typeMvt.includes('FACTURE')) {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
       } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
@@ -484,13 +552,22 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       mouvements
         .filter((mvt) => {
           const motif = (mvt.motif_remarque || '').trim().toUpperCase();
-          return (
-            !motif.includes('CMD-') && 
-            !motif.includes('LIVRAISON') && 
-            !motif.includes('RESTITUTION') &&
-            !motif.includes('VENTE') &&
-            !motif.includes('VENTE TICKET')
+          const typeMvt = (mvt.type_mouvement || 'TRANSFERT').toUpperCase();
+          
+          const estSystemeAuto = (
+            motif.includes('CMD-') || 
+            motif.includes('LIVRAISON') || 
+            motif.includes('RESTITUTION') ||
+            motif.includes('VENTE') ||
+            motif.includes('VENTE TICKET')
           );
+          if (estSystemeAuto) return false;
+
+          if (ongletPrincipal === 'ACHATS') {
+            return typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT';
+          } else {
+            return typeMvt !== 'ENTREE' && typeMvt !== 'APPROVISIONNEMENT';
+          }
         })
         .reduce((acc, mvt) => {
           const numDocBrut = mvt.motif_remarque || 'SANS-REF';
@@ -529,7 +606,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const compteursParType = {};
     return documentsBruts.map((doc) => {
       const typeMvt = doc.type;
-      const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+      const prefixes = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
       const prefix = prefixes[typeMvt] || 'TR';
 
       if (!compteursParType[prefix]) {
@@ -543,7 +620,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         numeroDoc: numeroSequentiel
       };
     });
-  }, [mouvements, depots, emplacements]);
+  }, [mouvements, depots, emplacements, ongletPrincipal]);
 
   const articlesPopupFiltres = articles.filter((art) => {
     const designation = (art.Designation || art.designation || '').toLowerCase();
@@ -565,6 +642,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         if (empPartenaire && artPartenaire && empPartenaire !== artPartenaire) {
           return false;
         }
+      }
+    }
+
+    if (ongletPrincipal === 'ACHATS' && enTeteDoc.id_fournisseur) {
+      const fournNom = obtenirNomFournisseurParId(enTeteDoc.id_fournisseur).toUpperCase();
+      if (artPartenaire && artPartenaire !== String(enTeteDoc.id_fournisseur).toUpperCase() && artPartenaire !== fournNom) {
+        return false;
       }
     }
 
@@ -595,7 +679,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
 
     if (!enTeteDoc.referenceDoc || String(enTeteDoc.referenceDoc).trim() === '') {
-      alert('⚠️ La zone Motif est obligatoire pour pouvoir ajouter des articles.');
+      alert(ongletPrincipal === 'ACHATS' ? '⚠️ La référence / N° Facture ou Motif est obligatoire.' : '⚠️ La zone Motif est obligatoire pour pouvoir ajouter des articles.');
       return false;
     }
 
@@ -670,7 +754,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
 
     let stockReelPrevisionnel = stockActuelDepot;
-    if (typeOperation === 'ENTREE') stockReelPrevisionnel = stockActuelDepot + qte;
+    if (typeOperation === 'ENTREE' || typeOperation === 'ENTREE_STOCK') stockReelPrevisionnel = stockActuelDepot + qte;
     else if (typeOperation === 'SORTIE' || typeOperation === 'AVARIES' || typeOperation === 'TRANSFERT') stockReelPrevisionnel = Math.max(0, stockActuelDepot - qte);
     else if (typeOperation === 'INVENTAIRE') stockReelPrevisionnel = qte;
 
@@ -778,6 +862,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       setQuantiteSaisie(1);
       setEnTeteDoc(prev => ({
         ...prev,
+        id_fournisseur: '',
         referenceDoc: '',
         numeroDoc: genererNumeroDocSecurise(typeOperation),
         numeroAffichage: '',
@@ -818,8 +903,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
-      // 🛡️ SYNCHRONISATION ATOMIQUE ET BLINDÉE ANTI-DOUBLON ABSOLU
-      // Suppression préalable de tous les mouvements existants liés au même motif_remarque
       await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
       
       const operateurActuel = obtenirNomOperateurConnecte();
@@ -848,10 +931,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
       let nouveauxMouvementsAjoutes = [];
       for (const [artId, dataLigne] of Object.entries(lignesUniquesMap)) {
+        const typeMvEff = ongletPrincipal === 'ACHATS' ? 'ENTREE' : typeOperation;
         const payload = {
           id_entreprise: entrepriseId,
           module: moduleActuel,
-          type_mouvement: typeOperation,
+          type_mouvement: typeMvEff,
           id_depot_source: enTeteDoc.id_depot_source || null,
           id_emplacement_source: enTeteDoc.id_emplacement_source || null,
           id_depot_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_depot_destination || null) : null,
@@ -880,15 +964,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
       localStorage.removeItem(cleCacheMouvements);
 
-      alert(`Document validé avec succès par ${operateurActuel} dans le module ${moduleActuel} !`);
+      alert(`${ongletPrincipal === 'ACHATS' ? 'Achat / Approvisionnement' : 'Document'} validé avec succès par ${operateurActuel} !`);
       setLignesPanier([]);
       setMouvementEnEditionId(null);
       setDocumentEnLectureSeule(false);
       setEtatInitialEdition(null);
+      const typeReset = ongletPrincipal === 'ACHATS' ? 'ENTREE' : typeOperation;
       setEnTeteDoc((prev) => ({ 
         ...prev, 
+        id_fournisseur: '',
         referenceDoc: '', 
-        numeroDoc: genererNumeroDocSecurise(typeOperation),
+        numeroDoc: genererNumeroDocSecurise(typeReset),
         numeroAffichage: '',
         operateur: obtenirNomOperateurConnecte() 
       }));
@@ -915,8 +1001,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const dateDuJour = new Date().toISOString().split('T')[0];
     const estVerrouille = dateDocStr < dateDuJour;
 
+    const typeDoc = (premier.type_mouvement || 'TRANSFERT').toUpperCase();
+    const estAchat = typeDoc === 'ENTREE' || typeDoc === 'APPROVISIONNEMENT';
+
+    setOngletPrincipal(estAchat ? 'ACHATS' : 'MOUVEMENTS');
     setDocumentEnLectureSeule(estVerrouille);
-    setTypeOperation(premier.type_mouvement || 'TRANSFERT');
+    setTypeOperation(typeDoc);
     
     const operateurDoc = premier.operateur && String(premier.operateur).trim() !== '' && String(premier.operateur).trim().toLowerCase() !== 'utilisateur' && String(premier.operateur).trim() !== 'Utilisateur Inconnu' 
       ? String(premier.operateur).trim().toUpperCase() 
@@ -933,6 +1023,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
       id_emplacement_destination: premier.id_emplacement_destination || '',
+      id_fournisseur: '',
       referenceDoc: refEnregistree,
       operateur: operateurDoc
     };
@@ -949,7 +1040,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setEtatInitialEdition({
       enTete: JSON.parse(JSON.stringify(nouvelEnTete)),
       lignes: JSON.parse(JSON.stringify(nouvellesLignes)),
-      typeOp: premier.type_mouvement || 'TRANSFERT'
+      typeOp: typeDoc
     });
 
     setModeAffichage('SAISIE');
@@ -964,6 +1055,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const enTeteModifie = 
       norm(enTeteDoc.dateDoc) !== norm(initEnTete.dateDoc) ||
       norm(enTeteDoc.referenceDoc) !== norm(initEnTete.referenceDoc) ||
+      norm(enTeteDoc.id_fournisseur) !== norm(initEnTete.id_fournisseur) ||
       norm(enTeteDoc.id_depot_source) !== norm(initEnTete.id_depot_source) ||
       norm(enTeteDoc.id_emplacement_source) !== norm(initEnTete.id_emplacement_source) ||
       norm(enTeteDoc.id_depot_destination) !== norm(initEnTete.id_depot_destination) ||
@@ -1035,40 +1127,84 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
+      {/* Barre supérieure regroupée en 2 boutons principaux : ACHATS vs MOUVEMENTS STOCK */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="font-extrabold uppercase text-slate-900">MOUVEMENTS DE STOCK</span>
+          <span className="font-extrabold uppercase text-slate-900">
+            {ongletPrincipal === 'ACHATS' ? '📥 ACHATS & APPROVISIONNEMENTS' : '🔀 MOUVEMENTS DE STOCK'}
+          </span>
           {roleNom && (
             <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              Rôle : {roleNom}
+              {roleNom}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="grid grid-cols-2 gap-1.5 w-full sm:w-auto">
+          <button 
+            type="button" 
+            disabled={enTrainDeSauvegarder} 
+            onClick={basculerVersAchats} 
+            className={`py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border ${
+              ongletPrincipal === 'ACHATS' 
+                ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' 
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+            }`}
+          >
+            <span>🛒</span> Achats
+          </button>
+
+          <button 
+            type="button" 
+            disabled={enTrainDeSauvegarder} 
+            onClick={basculerVersMouvements} 
+            className={`py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border ${
+              ongletPrincipal === 'MOUVEMENTS' 
+                ? 'bg-orange-600 text-white border-orange-700 shadow-xs' 
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+            }`}
+          >
+            <span>🔀</span> Mouvement Stock
+          </button>
+        </div>
+      </div>
+
+      {/* Sous-barre de navigation : Créer / Liste */}
+      <div className="flex justify-between items-center gap-2">
+        <div className="flex items-center gap-1.5 w-full">
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
             onClick={() => { 
               if (enTrainDeSauvegarder) return;
+              const typeCible = ongletPrincipal === 'ACHATS' ? 'ENTREE' : (typeOperation === 'ENTREE' ? 'TRANSFERT' : typeOperation);
+              setTypeOperation(typeCible);
               setModeAffichage('SAISIE'); 
               setMouvementEnEditionId(null); 
               setDocumentEnLectureSeule(false);
               setEtatInitialEdition(null);
               setLignesPanier([]); 
-              setEnTeteDoc(prev => ({ ...prev, referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeOperation), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
+              setEnTeteDoc(prev => ({ ...prev, id_fournisseur: '', referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeCible), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
             }} 
-            className={`py-1 px-3 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'SAISIE' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-800'}`}
+            className={`flex-1 py-1.5 px-3 rounded-xl font-black transition text-center text-[9.5px] uppercase border ${
+              modeAffichage === 'SAISIE' 
+                ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
+                : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
+            }`}
           >
-            ✍️ {mouvementEnEditionId ? 'Modifier' : 'Créer'}
+            ✍️ {mouvementEnEditionId ? 'Modifier' : (ongletPrincipal === 'ACHATS' ? 'Nouvel Achat' : 'Créer Mouvement')}
           </button>
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
             onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
-            className={`py-1 px-3 rounded-lg font-bold transition text-center text-[10px] ${modeAffichage === 'LISTE_DOCS' ? 'bg-orange-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-800'}`}
+            className={`flex-1 py-1.5 px-3 rounded-xl font-black transition text-center text-[9.5px] uppercase border ${
+              modeAffichage === 'LISTE_DOCS' 
+                ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
+                : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
+            }`}
           >
-            📋 Liste ({documentsFiltresParCriteres.length})
+            📋 Liste {ongletPrincipal === 'ACHATS' ? 'Achats' : 'Mouvements'} ({documentsFiltresParCriteres.length})
           </button>
         </div>
       </div>
@@ -1081,7 +1217,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2 items-center">
+          {/* Barre contextuelle : Retour liste + Sélecteur de type via modale (uniquement en mode Mouvement Stock) */}
+          <div className={`grid ${ongletPrincipal === 'MOUVEMENTS' ? 'grid-cols-2' : 'grid-cols-1'} gap-2 items-center`}>
             <button
               type="button"
               disabled={enTrainDeSauvegarder}
@@ -1101,39 +1238,79 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <span>←</span> Retour liste
             </button>
 
-            <div className="bg-white border border-slate-200 px-2 py-1 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
-              <span className="font-extrabold text-[8px] text-slate-700 uppercase shrink-0">Type</span>
-              <select 
-                disabled={enTeteVerrouille || !!mouvementEnEditionId} 
-                value={typeOperation} 
-                onChange={(e) => { 
-                  if (mouvementEnEditionId) return;
-                  const nt = e.target.value; 
-                  setTypeOperation(nt); 
-                  if (!mouvementEnEditionId) setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(nt), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
-                }} 
-                className="bg-slate-50 border rounded px-1.5 py-0.5 font-extrabold text-orange-600 text-[9px] truncate w-full"
-              >
-                <option value="TRANSFERT">🔀 Transfert (TR)</option>
-                <option value="ENTREE">📥 Entrée (ME)</option>
-                <option value="SORTIE">📤 Sortie (MS)</option>
-                <option value="AVARIES">⚠️ Avaries (AV)</option>
-                <option value="INVENTAIRE">📊 Inventaire (INV)</option>
-              </select>
-            </div>
+            {ongletPrincipal === 'MOUVEMENTS' && (
+              <div className="bg-white border border-slate-200 px-2 py-1 rounded-xl flex items-center justify-between gap-1 shadow-2xs">
+                <span className="font-extrabold text-[8px] text-slate-700 uppercase shrink-0">Type</span>
+                <button
+                  type="button"
+                  disabled={enTeteVerrouille || !!mouvementEnEditionId}
+                  onClick={() => setModalTypeMouvementOuvert(true)}
+                  className="bg-slate-50 border rounded px-2 py-1 font-extrabold text-orange-600 text-[9px] truncate w-full flex justify-between items-center disabled:opacity-70"
+                >
+                  <span className="truncate">{libellesTypesMouvement[typeOperation]}</span>
+                  <span>🔍</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className={`bg-white border-2 border-orange-500/50 p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
+          {/* MODALE TYPE DE MOUVEMENT */}
+          {modalTypeMouvementOuvert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                    <span>🔀</span> SÉLECTIONNER LE TYPE DE MOUVEMENT
+                  </h4>
+                  <button type="button" onClick={() => setModalTypeMouvementOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                
+                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                  {[
+                    { id: 'TRANSFERT', libelle: 'TRANSFERT ENTRE DÉPÔTS (TR)', icone: '🔀' },
+                    { id: 'ENTREE_STOCK', libelle: 'ENTRÉE EN STOCK (ES)', icone: '📥' },
+                    { id: 'SORTIE', libelle: 'SORTIE DE STOCK (MS)', icone: '📤' },
+                    { id: 'AVARIES', libelle: 'AVARIES & PERTES (AV)', icone: '⚠️' },
+                    { id: 'INVENTAIRE', libelle: 'SAISIE D’INVENTAIRE (INV)', icone: '📊' }
+                  ].map((item) => (
+                    <div 
+                      key={item.id} 
+                      onClick={() => {
+                        if (mouvementEnEditionId) return;
+                        setTypeOperation(item.id);
+                        setEnTeteDoc(prev => ({ ...prev, numeroDoc: genererNumeroDocSecurise(item.id), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() }));
+                        setModalTypeMouvementOuvert(false);
+                      }} 
+                      className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between shadow-2xs ${
+                        typeOperation === item.id ? 'bg-orange-50 border-orange-500 text-orange-900' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 text-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{item.icone}</span>
+                        <div>
+                          <span className="font-black text-xs uppercase block">{item.libelle}</span>
+                          <span className="text-[8.5px] text-slate-500 font-bold">{descriptionsTypesMouvement[item.id]}</span>
+                        </div>
+                      </div>
+                      {typeOperation === item.id && <span className="text-orange-600 font-bold text-xs">✓</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className={`bg-white border-2 ${ongletPrincipal === 'ACHATS' ? 'border-emerald-500/50' : 'border-orange-500/50'} p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
             <div className="flex justify-between items-center pb-1 border-b">
               <div className="flex flex-col">
-                <span className="font-extrabold text-[10px] text-orange-600 uppercase">
+                <span className={`font-extrabold text-[10px] uppercase ${ongletPrincipal === 'ACHATS' ? 'text-emerald-700' : 'text-orange-600'}`}>
                   {libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}
                 </span>
                 <span className="text-[8px] text-slate-500 font-bold uppercase mt-0.5">
                   OPÉRATEUR CONNECTÉ : <strong className="text-slate-800">{mouvementEnEditionId ? enTeteDoc.operateur : obtenirNomOperateurConnecte()}</strong>
                 </span>
               </div>
-              <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-mono font-bold text-[9px]">
+              <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-1.5 py-0.5 rounded font-mono font-bold text-[9px]`}>
                 {enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}
               </span>
             </div>
@@ -1145,12 +1322,55 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   <input type="date" disabled={documentEnLectureSeule} value={enTeteDoc.dateDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900 disabled:opacity-70" />
                 </div>
                 <div>
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Motif * (Obligatoire)</label>
+                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">
+                    {ongletPrincipal === 'ACHATS' ? 'N° Facture / Motif *' : 'Motif * (Obligatoire)'}
+                  </label>
                   <input type="text" disabled={documentEnLectureSeule} value={enTeteDoc.referenceDoc} onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900 disabled:opacity-70" />
                 </div>
               </div>
 
-              {typeOperation === 'TRANSFERT' ? (
+              {ongletPrincipal === 'ACHATS' ? (
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <div className="space-y-1 bg-emerald-50/40 p-1.5 rounded-lg border border-emerald-200">
+                    <label className="block font-black text-[8px] text-emerald-800 uppercase">🤝 Fournisseur</label>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalFournisseurOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-emerald-700 text-[9px] flex justify-between items-center disabled:opacity-70"
+                    >
+                      <span className="truncate">{obtenirNomFournisseurParId(enTeteDoc.id_fournisseur) || '-- Tous / Libre --'}</span>
+                      <span>🔍</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">🏢 Dépôt Réception *</label>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-600 text-[9px] flex justify-between items-center disabled:opacity-70"
+                    >
+                      <span className="truncate">{obtenirNomDepotParId(enTeteDoc.id_depot_source) || '-- Dépôt --'}</span>
+                      <span>🔍</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                    <label className="block font-black text-[8px] text-slate-700 uppercase">📍 {libelleLivreur}</label>
+                    <button 
+                      type="button"
+                      disabled={enTeteVerrouille}
+                      onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
+                      className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center disabled:opacity-70"
+                    >
+                      <span className="truncate">{obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : '-- Aucun --'}</span>
+                      <span>🔍</span>
+                    </button>
+                  </div>
+                </div>
+              ) : typeOperation === 'TRANSFERT' ? (
                 <div className="grid grid-cols-2 gap-1.5 pt-1">
                   <div className="space-y-1 bg-orange-50/40 p-1.5 rounded-lg border border-orange-200">
                     <label className="block font-black text-[8px] text-orange-800 uppercase">🏢 Origine (Source) *</label>
@@ -1226,6 +1446,39 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               )}
             </div>
           </div>
+
+          {modalFournisseurOuvert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🤝</span> SÉLECTIONNER UN FOURNISSEUR / PARTENAIRE</h4>
+                  <button type="button" onClick={() => setModalFournisseurOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                </div>
+                <div>
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN FOURNISSEUR..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_fournisseur: '' })); setModalFournisseurOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition cursor-pointer font-bold text-slate-500 text-xs text-center bg-slate-50">
+                    -- Tous les articles / Fournisseur libre --
+                  </div>
+                  {fournisseurs.filter(f => (f.nom_fournisseur || f.nom || '').toUpperCase().includes(rechercheModalPopup)).map((f) => (
+                    <div key={f.id} onClick={() => { 
+                      const nomF = (f.nom_fournisseur || f.nom || '').trim().toUpperCase();
+                      const depotAssocie = depots.find(d => (d.nom_depot || '').trim().toUpperCase() === nomF || String(d.id) === String(f.id_depot));
+                      setEnTeteDoc(prev => ({ 
+                        ...prev, 
+                        id_fournisseur: f.id,
+                        id_depot_source: depotAssocie ? depotAssocie.id : prev.id_depot_source
+                      })); 
+                      setModalFournisseurOuvert(false); 
+                    }} className="p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{f.nom_fournisseur || f.nom}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {modalDepotSourceOuvert && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
@@ -1367,7 +1620,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     type="button" 
                     disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
                     onClick={ajouterArticleAuPanier} 
-                    className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" 
+                    className={`w-full ${ongletPrincipal === 'ACHATS' ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400' : 'bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400'} text-white font-black p-1 rounded text-center text-[9px] shadow-2xs`} 
                     title="Valider l'article (ou Entrée)"
                   >
                     {enTrainDInsertion ? '...' : 'OK'}
@@ -1402,7 +1655,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       articlesPopupFiltres.map((art) => {
                         const artId = art.id_article || art.id;
                         const stockActuel = calculerStockPourDepotActuel(artId);
-                        const estEpuise = stockActuel <= 0;
+                        const estEpuise = stockActuel <= 0 && ongletPrincipal !== 'ACHATS';
                         return (
                           <div 
                             key={artId} 
@@ -1413,7 +1666,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           >
                             <span className="font-black text-xs text-slate-900 uppercase truncate">{art.Designation || art.designation}</span>
                             <span className="font-black text-[10px] mt-1 text-slate-700">
-                              Stock : <strong className={estEpuise ? 'text-rose-600' : 'text-emerald-700'}>{stockActuel}</strong>
+                              Stock : <strong className={stockActuel <= 0 ? 'text-rose-600' : 'text-emerald-700'}>{stockActuel}</strong>
                             </span>
                           </div>
                         );
@@ -1492,14 +1745,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       {modeAffichage === 'LISTE_DOCS' && (
         <div className="bg-white border rounded-xl overflow-hidden shadow-2xs space-y-2">
           <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]">
-            <span className="font-extrabold uppercase text-slate-800">Documents Enregistrés [{moduleActuel}] ({documentsAffiches.length} / {documentsTries.length})</span>
-            <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span>
+            <span className="font-extrabold uppercase text-slate-800">
+              {ongletPrincipal === 'ACHATS' ? 'Achats & Entrées Enregistrés' : 'Mouvements Internes Enregistrés'} [{moduleActuel}] ({documentsAffiches.length} / {documentsTries.length})
+            </span>
+            <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-1.5 py-0.5 rounded font-bold`}>{documentsTries.length}</span>
           </div>
 
           <div className="px-2 pt-1">
             <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200 space-y-1.5">
               <div className="flex justify-between items-center">
-                <span className="font-black text-[8.5px] text-slate-700 uppercase">🔍 FILTRER LES MOUVEMENTS</span>
+                <span className="font-black text-[8.5px] text-slate-700 uppercase">🔍 FILTRER LES DOCUMENTS</span>
                 {(filtreDateDebut || filtreDateFin || filtrePartenaire || filtreLivreur) && (
                   <button 
                     type="button" 
@@ -1565,7 +1820,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 <tr>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° DOC</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('referenceDoc')} className="p-1.5 cursor-pointer">MOTIF</th>
+                  <th onClick={() => !enTrainDeSauvegarder && gererTri('referenceDoc')} className="p-1.5 cursor-pointer">MOTIF / RÉF</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('depotNom')} className="p-1.5 cursor-pointer">DÉPÔT</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('depotDestNom')} className="p-1.5 cursor-pointer">DESTINATION</th>
                   <th onClick={() => !enTrainDeSauvegarder && gererTri('operateur')} className="p-1.5 cursor-pointer">OPÉRATEUR</th>
@@ -1580,7 +1835,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   documentsAffiches.map((doc, idx) => (
                     <tr key={idx} onClick={() => !enTrainDeSauvegarder && ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
                       <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
-                      <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{doc.numeroDoc}</td>
+                      <td className={`p-1.5 font-mono font-black whitespace-nowrap ${ongletPrincipal === 'ACHATS' ? 'text-emerald-700' : 'text-orange-600'}`}>{doc.numeroDoc}</td>
                       <td className="p-1.5 font-bold text-slate-700 uppercase truncate max-w-[90px]" title={doc.referenceDoc}>{doc.referenceDoc || '-'}</td>
                       <td className="p-1.5 font-bold text-slate-700 truncate max-w-[90px]" title={doc.depotNom}>{doc.depotNom}</td>
                       <td className="p-1.5 font-bold text-blue-700 truncate max-w-[90px]" title={doc.depotDestNom}>{doc.depotDestNom}</td>

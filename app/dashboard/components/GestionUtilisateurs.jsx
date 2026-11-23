@@ -560,7 +560,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         modules_cibles: modulesPayload
       };
 
-      // 🎯 UTILISATION DE .eq() SÉCURISÉ AU LIEU DE FILTRES D'URL BRUTS
       const { data: existingRecords } = await supabase
         .from('utilisateurs')
         .select('id, module')
@@ -721,7 +720,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         try {
           const nomCollab = (userEnEdition.nom_complet || '').trim();
           
-          // 🎯 UTILISATION DE .eq() ET .or() SÉCURISÉ POUR ÉVITER LES ERREURS 400
           let queryDel = supabase.from('utilisateurs').delete().eq('id_entreprise', entrepriseId);
           if (nomCollab) {
             queryDel = queryDel.or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomCollab}`);
@@ -826,25 +824,23 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
 
-  const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-[#0a1931]';
-  const headerCardBg = isDarkMode ? 'bg-[#0b1329] border border-slate-800 text-slate-100 shadow-sm' : 'bg-white border border-slate-200 text-[#0a1931] shadow-sm';
-  const subTextColor = isDarkMode ? 'text-slate-400' : 'text-slate-600 font-medium';
-  const inputBg = isDarkMode ? 'bg-slate-900 border border-slate-800 text-slate-100 placeholder:text-slate-600' : 'bg-white border border-slate-200 text-black font-medium placeholder:text-slate-400';
-  const tableHeaderBg = isDarkMode ? 'bg-slate-900/80 text-slate-300 border-b border-slate-800' : 'bg-[#0a1931] text-white border-b border-blue-900';
-  const rowHoverBg = isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-blue-50/50';
+  // 🎨 STYLING HARMONISÉ (Cartes blanches, bordures fines, accents Orange-600 & Slate-900)
+  const cardStyle = 'bg-white rounded-xl border border-slate-200 shadow-2xs';
+  const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
+  const tableHeaderStyle = 'bg-slate-50 text-slate-700 uppercase text-[8.5px] font-extrabold border-b border-slate-200';
 
   return (
-    <div className={`space-y-3 text-[11px] font-sans ${containerBg} p-2 rounded-xl transition-colors`}>
+    <div className="space-y-2 font-sans text-[10px]">
       
-      {/* EN-TÊTE */}
-      <div className={`flex justify-between items-center p-3 rounded-xl ${headerCardBg}`}>
-        <div>
-          <h3 className={`font-black uppercase text-xs sm:text-sm flex items-center gap-1.5 ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
-            <span>👥</span> GESTION DU PERSONNEL & PERMISSIONS ({moduleActuel})
-          </h3>
-          <p className={`text-[10px] mt-0.5 ${subTextColor}`}>
-            Licences app : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-500' : (isDarkMode ? 'text-emerald-400' : 'text-emerald-700 font-extrabold')}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax} utilisées
-          </p>
+      {/* EN-TÊTE PRINCIPAL */}
+      <div className={`flex justify-between items-center p-2 gap-2 flex-wrap ${cardStyle}`}>
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+          <span className="font-extrabold uppercase text-slate-900 text-[10.5px] truncate">
+            👥 GESTION DU PERSONNEL & PERMISSIONS ({moduleActuel})
+          </span>
+          <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200 shrink-0">
+            Licences : <strong className={nbLicencesUtilisees > limiteLicenceMax ? 'text-red-600' : 'text-emerald-700 font-black'}>{nbLicencesUtilisees}</strong> / {limiteLicenceMax}
+          </span>
         </div>
         <button
           type="button"
@@ -866,13 +862,9 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               setAfficherForm(true);
             }
           }}
-          className={`font-black px-3.5 py-2 rounded-lg transition shadow-xs text-xs cursor-pointer ${
-            isDarkMode 
-              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700' 
-              : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border border-[#0a1931]'
-          }`}
+          className="py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-orange-600 hover:bg-orange-700 text-white border-orange-700 shadow-xs cursor-pointer"
         >
-          {afficherForm ? '✖ Fermer' : '＋ Nouveau'}
+          <span>{afficherForm ? '✖' : '＋'}</span> {afficherForm ? 'Fermer' : 'Nouveau'}
         </button>
       </div>
 
@@ -881,53 +873,53 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
           type="button"
           disabled={enTrainDeSauvegarder}
           onClick={() => { if (!enTrainDeSauvegarder) annulerForm(); }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap shadow-xs cursor-pointer ${
+          className={`py-1.5 px-3 rounded-xl font-black transition text-center text-[9.5px] uppercase border cursor-pointer truncate ${
             !afficherForm 
-              ? (isDarkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-[#0a1931] text-white border border-[#0a1931]') 
-              : (isDarkMode ? 'bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800' : 'bg-white text-[#0a1931] border border-slate-200 hover:bg-slate-50')
+              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
           }`}
         >
           📋 Liste du personnel ({utilisateurs.length})
         </button>
       </div>
 
-      {/* FORMULAIRE D'EDITION / CREATION AVEC NAVIGATION PAR ONGLETS */}
+      {/* FORMULAIRE D'EDITION / CREATION */}
       {afficherForm && (
-        <div className={`border p-3.5 rounded-xl space-y-3.5 shadow-md max-h-[80vh] overflow-y-auto pr-2 pb-24 ${isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
-          <div className="flex justify-between items-center border-b pb-2 border-slate-700/20">
+        <div className={`p-3 space-y-3 shadow-md max-h-[85vh] overflow-y-auto ${cardStyle}`}>
+          <div className="flex justify-between items-center border-b border-slate-100 pb-2">
             <div>
-              <h4 className={`font-black uppercase text-xs ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
-                {userEnEdition ? '✏️ Fiche du collaborateur' : '➕ Nouveau collaborateur'}
+              <h4 className="font-black uppercase text-xs text-slate-900 flex items-center gap-1.5">
+                <span>{userEnEdition ? '✏️' : '➕'}</span> {userEnEdition ? 'Fiche du collaborateur' : 'Nouveau collaborateur'}
               </h4>
               {userEnEdition && userEnEdition.id && (
-                <p className="text-[10px] font-mono font-bold text-amber-500 mt-0.5">
+                <p className="text-[9px] font-mono font-bold text-orange-600 mt-0.5">
                   ID Unique : {userEnEdition.id}
                 </p>
               )}
             </div>
-            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-white font-bold text-xs p-0.5 cursor-pointer">✖</button>
+            <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
           </div>
 
-          {/* 🎛️ BARRE DE NAVIGATION ÉPURÉE DE LA FICHE UTILISATEUR */}
-          <div className={`grid grid-cols-3 gap-1.5 p-1 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+          {/* BARRE DE NAVIGATION DES ONGLETS DE LA FICHE */}
+          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-100 border border-slate-200">
             <button
               type="button"
               onClick={() => setOngletFicheActif('infos')}
-              className={`py-2 px-2 rounded-lg font-black text-[11px] transition text-center cursor-pointer ${
+              className={`py-1.5 px-2 rounded-lg font-black text-[9.5px] transition text-center cursor-pointer uppercase ${
                 ongletFicheActif === 'infos'
-                  ? (isDarkMode ? 'bg-slate-800 text-white shadow-xs border border-slate-700' : 'bg-[#0a1931] text-white shadow-xs')
-                  : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-700 hover:text-slate-900 bg-white border border-slate-200'
               }`}
             >
-              👤 Informations
+              👤 Infos
             </button>
             <button
               type="button"
               onClick={() => setOngletFicheActif('modules')}
-              className={`py-2 px-2 rounded-lg font-black text-[11px] transition text-center cursor-pointer ${
+              className={`py-1.5 px-2 rounded-lg font-black text-[9.5px] transition text-center cursor-pointer uppercase ${
                 ongletFicheActif === 'modules'
-                  ? (isDarkMode ? 'bg-slate-800 text-white shadow-xs border border-slate-700' : 'bg-[#0a1931] text-white shadow-xs')
-                  : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-700 hover:text-slate-900 bg-white border border-slate-200'
               }`}
             >
               💳 Modules ({nouveauUser.modules_cibles.length})
@@ -935,77 +927,78 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
             <button
               type="button"
               onClick={() => setOngletFicheActif('permissions')}
-              className={`py-2 px-2 rounded-lg font-black text-[11px] transition text-center cursor-pointer ${
+              className={`py-1.5 px-2 rounded-lg font-black text-[9.5px] transition text-center cursor-pointer uppercase ${
                 ongletFicheActif === 'permissions'
-                  ? (isDarkMode ? 'bg-slate-800 text-white shadow-xs border border-slate-700' : 'bg-[#0a1931] text-white shadow-xs')
-                  : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-700 hover:text-slate-900 bg-white border border-slate-200'
               }`}
             >
-              🔑 Permissions
+              🔑 Droits
             </button>
           </div>
 
           <form onSubmit={preparerEnregistrement} className="space-y-3">
             
-            {/* 👤 ONGLET 1 : INFORMATIONS PERSONNELLES */}
+            {/* ONGLET 1 : INFORMATIONS */}
             {ongletFicheActif === 'infos' && (
-              <div className="space-y-3 animate-fadeIn">
-                <div className={`p-3 rounded-xl space-y-1 border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-blue-50/50 border-blue-200 text-[#0a1931]'}`}>
-                  <label className="flex items-center gap-2 cursor-pointer">
+              <div className="space-y-2.5 animate-fadeIn">
+                <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                  <span className="font-black text-[9.5px] uppercase text-slate-900">
+                    Accès application (Licence / Connexion)
+                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       disabled={enTrainDeSauvegarder}
                       checked={nouveauUser.acces_application}
                       onChange={(e) => setNouveauUser({ ...nouveauUser, acces_application: e.target.checked })}
-                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                      className="sr-only peer cursor-pointer"
                     />
-                    <span className="font-black text-[11px]">
-                      Accès à l'application (Consomme une licence / Connexion active)
-                    </span>
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
                   </label>
                 </div>
 
                 <input type="file" ref={fileInputRef} onChange={gererSelectionImage} accept="image/*" className="hidden" />
 
-                <div className={`flex items-center gap-3 p-3 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                <div className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 bg-slate-50">
                   <div 
                     onClick={() => !enTrainDeSauvegarder && fileInputRef.current && fileInputRef.current.click()}
-                    className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-xs cursor-pointer hover:opacity-80 transition relative group"
+                    className="w-12 h-12 rounded-full bg-slate-800 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-2xs cursor-pointer hover:opacity-80 transition"
                   >
                     {nouveauUser.photo ? (
                       <img src={nouveauUser.photo} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-slate-300 text-lg font-black">📷</span>
+                      <span className="text-white text-xs font-black">📷</span>
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className={`font-black text-[10px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>Photo de profil du collaborateur</p>
-                    <p className={`text-[9.5px] font-medium mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Cliquez sur l'icône pour ajouter une photo.</p>
+                    <p className="font-black text-[9px] uppercase text-slate-900">Photo de profil</p>
+                    <p className="text-[8.5px] font-semibold text-slate-500">Cliquez pour ajouter.</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Nom *</label>
-                    <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
+                    <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Nom *</label>
+                    <input type="text" required disabled={enTrainDeSauvegarder} value={nouveauUser.nom_complet} onChange={(e) => setNouveauUser({ ...nouveauUser, nom_complet: e.target.value.toUpperCase() })} placeholder="EX: MBOA" className={inputStyle} />
                   </div>
                   <div>
-                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Prénom</label>
-                    <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`} />
+                    <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Prénom</label>
+                    <input type="text" disabled={enTrainDeSauvegarder} value={nouveauUser.prenom} onChange={(e) => setNouveauUser({ ...nouveauUser, prenom: e.target.value.toUpperCase() })} placeholder="EX: JEAN" className={inputStyle} />
                   </div>
                 </div>
 
                 <div>
-                  <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Rôle / Fonction ({moduleActuel}) *</label>
-                  <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={changerRoleUtilisateur} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
+                  <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Rôle / Fonction ({moduleActuel}) *</label>
+                  <select required disabled={enTrainDeSauvegarder} value={nouveauUser.id_role} onChange={changerRoleUtilisateur} className={inputStyle}>
                     <option value="">-- Sélectionner un Rôle --</option>
                     {roles.map((r) => (<option key={r.id} value={String(r.id)}>{r.nom_role}</option>))}
                   </select>
                 </div>
 
                 <div>
-                  <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Type Collaborateur</label>
-                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className={`w-full rounded p-2 font-extrabold text-xs shadow-xs ${inputBg}`}>
+                  <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Type Collaborateur</label>
+                  <select disabled={enTrainDeSauvegarder} value={nouveauUser.type_collaborateur} onChange={(e) => setNouveauUser({ ...nouveauUser, type_collaborateur: e.target.value })} className={inputStyle}>
                     <option value="EMPLOYE">Employé standard</option>
                     <option value="LIVREUR">Livreur</option>
                     <option value="CHAUFFEUR">Chauffeur</option>
@@ -1014,7 +1007,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
                 {nouveauUser.acces_application && (
                   <div>
-                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Mot de Passe de Connexion *</label>
+                    <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Mot de Passe de Connexion *</label>
                     <div className="relative flex items-center">
                       <input 
                         type={afficherMotDePasse ? "text" : "password"} 
@@ -1023,46 +1016,46 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                         value={nouveauUser.mot_de_passe} 
                         onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
                         placeholder="••••••••" 
-                        className={`w-full rounded p-2 pr-8 font-mono font-extrabold text-xs shadow-xs ${inputBg}`} 
+                        className={`${inputStyle} font-mono pr-7`} 
                       />
-                      <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2.5 text-slate-400 hover:text-white text-xs cursor-pointer">
+                      <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer">
                         {afficherMotDePasse ? '🙈' : '👁️'}
                       </button>
                     </div>
                   </div>
                 )}
 
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700/20">
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100">
                   <div>
-                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Pays</label>
-                    <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className={`w-full rounded p-2 font-extrabold text-[11px] shadow-xs ${inputBg}`}>
+                    <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Pays</label>
+                    <select disabled={enTrainDeSauvegarder} value={nouveauUser.pays} onChange={(e) => setNouveauUser({ ...nouveauUser, pays: e.target.value })} className={inputStyle}>
                       {LISTE_PAYS.map((p) => (<option key={p.code} value={p.code}>{p.code.toUpperCase()}</option>))}
                     </select>
                   </div>
                   <div className="col-span-2">
-                    <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Téléphone ({paysActuelObj.longueur} chiffres)</label>
-                    <div className={`flex items-center rounded overflow-hidden shadow-xs border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-                      <span className={`px-2.5 py-2 text-[11px] font-bold border-r shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-800' : 'bg-slate-100 text-[#0a1931] border-slate-200'}`}>{paysActuelObj.indicatif}</span>
-                      <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className={`w-full p-2 font-mono text-[11px] font-extrabold focus:outline-none ${inputBg} border-0`} />
+                    <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Téléphone ({paysActuelObj.longueur} chiffres)</label>
+                    <div className="flex items-center rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                      <span className="px-2 py-1.5 text-[9.5px] font-extrabold border-r border-slate-200 bg-slate-100 text-slate-700 shrink-0">{paysActuelObj.indicatif}</span>
+                      <input type="text" disabled={enTrainDeSauvegarder} maxLength={paysActuelObj.longueur} value={nouveauUser.telephone} onChange={gererSaisieTelephone} placeholder="6XXXXXXXX" className="w-full p-1.5 font-mono text-[10px] font-bold bg-slate-50 text-slate-900 focus:outline-none" />
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <label className={`block font-black mb-1 text-[9.5px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>Email (minuscules)</label>
-                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className={`w-full rounded p-2 font-bold lowercase text-[11px] shadow-xs ${inputBg}`} />
+                  <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Email</label>
+                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className={inputStyle} />
                 </div>
               </div>
             )}
 
-            {/* 💳 ONGLET 2 : MODULES AUTORISÉS */}
+            {/* ONGLET 2 : MODULES */}
             {ongletFicheActif === 'modules' && (
-              <div className="space-y-3 animate-fadeIn">
-                <div className={`p-3.5 rounded-xl space-y-2.5 border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                  <span className={`font-black text-[11px] uppercase block tracking-wide ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
-                    💳 Cochez les modules autorisés pour ce collaborateur :
+              <div className="space-y-2 animate-fadeIn">
+                <div className="p-2.5 rounded-xl space-y-1.5 border border-slate-200 bg-slate-50">
+                  <span className="font-black text-[9.5px] uppercase block text-slate-900">
+                    💳 Modules autorisés :
                   </span>
-                  <div className="grid grid-cols-1 gap-2 pt-1">
+                  <div className="grid grid-cols-1 gap-1.5 pt-1">
                     {MODULES_DISPONIBLES.map((mod) => {
                       const estSouscrit = modulesSouscrits.includes(mod.id);
                       const estCoche = nouveauUser.modules_cibles.includes(mod.id);
@@ -1071,25 +1064,25 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                         <div 
                           key={mod.id} 
                           onClick={() => estSouscrit && basculerModuleCible(mod.id)}
-                          className={`flex items-center justify-between p-3 rounded-lg border transition select-none ${
+                          className={`flex items-center justify-between p-2 rounded-lg border transition select-none ${
                             !estSouscrit 
-                              ? (isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-600 opacity-60 cursor-not-allowed' : 'bg-slate-100 border-slate-200 text-slate-400 opacity-70 cursor-not-allowed font-medium') 
+                              ? 'bg-slate-100 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed' 
                               : estCoche 
-                                ? (isDarkMode ? 'bg-slate-800 border-slate-700 text-white font-black cursor-pointer shadow-xs' : 'bg-blue-50 border-blue-400 text-[#0a1931] font-black cursor-pointer shadow-xs') 
-                                : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 cursor-pointer hover:bg-slate-800/80 font-medium' : 'bg-white border-slate-200 text-slate-800 cursor-pointer hover:bg-slate-50 font-medium')
+                                ? 'bg-orange-50 border-orange-300 text-slate-900 font-black cursor-pointer shadow-2xs' 
+                                : 'bg-white border-slate-200 text-slate-800 cursor-pointer hover:bg-slate-50 font-bold'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 truncate">
+                          <div className="flex items-center gap-2 truncate">
                             <input
                               type="checkbox"
                               disabled={!estSouscrit}
                               checked={estCoche}
                               onChange={() => {}}
-                              className="w-4 h-4 accent-amber-500 rounded cursor-pointer disabled:cursor-not-allowed"
+                              className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer disabled:cursor-not-allowed"
                             />
-                            <span className="text-xs truncate">{mod.label}</span>
+                            <span className="text-[9.5px] truncate">{mod.label}</span>
                           </div>
-                          {!estSouscrit && <span className={`text-[9px] px-2 py-0.5 rounded font-bold shrink-0 ${isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-600'}`}>Non souscrit</span>}
+                          {!estSouscrit && <span className="text-[8px] px-1.5 py-0.5 rounded font-bold bg-slate-200 text-slate-600 shrink-0">Non souscrit</span>}
                         </div>
                       );
                     })}
@@ -1098,47 +1091,43 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </div>
             )}
 
-            {/* 🔑 ONGLET 3 : PERMISSIONS SPÉCIFIQUES */}
+            {/* ONGLET 3 : PERMISSIONS */}
             {ongletFicheActif === 'permissions' && (
-              <div className="space-y-3 animate-fadeIn">
+              <div className="space-y-2 animate-fadeIn">
                 <div className="flex justify-between items-center">
-                  <span className={`font-black text-[11px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>
+                  <span className="font-black text-[9.5px] uppercase text-slate-900">
                     🔑 Droits & Permissions ({moduleActuel})
                   </span>
                   <button
                     type="button"
                     onClick={() => setAfficherModalePermissions(true)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer border ${
-                      isDarkMode 
-                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700' 
-                        : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'
-                    }`}
+                    className="px-2.5 py-1 rounded-lg text-[9px] font-black transition cursor-pointer border bg-slate-800 hover:bg-slate-700 text-white border-slate-800"
                   >
-                    🛠️ Ouvrir la matrice complète
+                    🛠️ Matrice complète
                   </button>
                 </div>
 
-                <div className={`overflow-x-auto border rounded-xl shadow-inner max-h-[50vh] ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                  <table className="w-full text-left text-xs">
-                    <thead className={`border-b text-[10px] uppercase font-black sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900'}`}>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl max-h-[40vh] bg-white">
+                  <table className="w-full text-left text-[9.5px]">
+                    <thead className={tableHeaderStyle}>
                       <tr>
-                        <th className="p-2.5">Module / Table</th>
-                        <th className="p-2.5 text-center">👁️ Lecture</th>
-                        <th className="p-2.5 text-center">➕ Création</th>
-                        <th className="p-2.5 text-center">✏️ Modif.</th>
-                        <th className="p-2.5 text-center">🗑️ Suppr.</th>
+                        <th className="p-2">Module / Table</th>
+                        <th className="p-2 text-center">Lecture</th>
+                        <th className="p-2 text-center">Création</th>
+                        <th className="p-2 text-center">Modif.</th>
+                        <th className="p-2 text-center">Suppr.</th>
                       </tr>
                     </thead>
-                    <tbody className={`divide-y text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
+                    <tbody className="divide-y divide-slate-100 text-[9.5px] text-slate-900 bg-white">
                       {modulesApp.map((m) => {
                         const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
                         return (
-                          <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/50' : 'hover:bg-blue-50/50 font-medium'}>
-                            <td className={`p-2.5 font-bold ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>{m.nom}</td>
-                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-4 h-4 accent-amber-500 rounded cursor-pointer" /></td>
-                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-4 h-4 accent-emerald-500 rounded cursor-pointer" /></td>
-                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-4 h-4 accent-blue-500 rounded cursor-pointer" /></td>
-                            <td className="p-2.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-4 h-4 accent-red-500 rounded cursor-pointer" /></td>
+                          <tr key={m.id} className="hover:bg-orange-50/70 transition">
+                            <td className="p-2 font-extrabold text-slate-900">{m.nom}</td>
+                            <td className="p-2 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer" /></td>
+                            <td className="p-2 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer" /></td>
+                            <td className="p-2 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-3.5 h-3.5 accent-blue-600 rounded cursor-pointer" /></td>
+                            <td className="p-2 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-3.5 h-3.5 accent-rose-600 rounded cursor-pointer" /></td>
                           </tr>
                         );
                       })}
@@ -1148,18 +1137,18 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </div>
             )}
 
-            <div className="pt-3 border-t border-slate-700/20 flex justify-between items-center">
-              {userEnEdition && (
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-black px-3.5 py-2 rounded-lg text-xs shadow-xs transition cursor-pointer">
+            <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+              {userEnEdition ? (
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerUtilisateur} className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] shadow-2xs transition cursor-pointer">
                   🗑️ Supprimer
                 </button>
-              )}
-              <div className="flex items-center gap-2 ml-auto">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className={`font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-300 hover:bg-slate-300'}`}>
+              ) : <div />}
+              <div className="flex items-center gap-1.5 ml-auto">
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-3.5 py-1.5 rounded-lg text-[10px] transition cursor-pointer">
                   Annuler
                 </button>
-                <button type="submit" disabled={enTrainDeSauvegarder} className={`font-black px-5 py-2 rounded-lg text-xs shadow-xs transition cursor-pointer border ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}>
-                  {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : 'Valider & Enregistrer')}
+                <button type="submit" disabled={enTrainDeSauvegarder} className="font-black px-4 py-1.5 rounded-lg text-[10px] shadow-2xs transition cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white">
+                  {enTrainDeSauvegarder ? 'Enregistrement...' : (userEnEdition ? 'Mettre à jour' : '✅ Enregistrer')}
                 </button>
               </div>
             </div>
@@ -1167,55 +1156,50 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         </div>
       )}
 
-      {/* 🪟 MODALE DE CONFIGURATION DES PERMISSIONS EN PLEIN ÉCRAN */}
+      {/* MODALE DE CONFIGURATION DES PERMISSIONS EN PLEIN ÉCRAN */}
       {afficherModalePermissions && (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-6 animate-fadeIn">
-          <div className={`border rounded-2xl w-full h-full max-w-7xl max-h-[96vh] p-4 sm:p-6 flex flex-col space-y-4 shadow-2xl ${isDarkMode ? 'bg-[#0b1329] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] p-4 flex flex-col space-y-3">
             
-            <div className="flex justify-between items-center border-b pb-3 border-slate-700/25 shrink-0">
-              <div>
-                <h4 className={`font-black text-sm sm:text-base uppercase tracking-wider flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
-                  <span>🔑</span> Matrice complète des Droits par Module ({moduleActuel})
-                </h4>
-                <p className={`text-[11px] mt-0.5 font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Cochez ou décochez les actions autorisées pour ce collaborateur sur chaque module du système.
-                </p>
-              </div>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2 shrink-0">
+              <h4 className="font-black uppercase text-xs text-slate-900 flex items-center gap-1.5">
+                <span>🔑</span> Matrice complète des Droits ({moduleActuel})
+              </h4>
               <button
                 type="button"
                 onClick={() => setAfficherModalePermissions(false)}
-                className="text-slate-400 hover:text-white font-bold text-base p-2 bg-slate-800/50 rounded-xl cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer"
               >
-                ✕ Fermer
+                ✕
               </button>
             </div>
 
-            <div className={`flex-1 overflow-y-auto border rounded-2xl shadow-inner ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-              <table className="w-full text-left text-xs">
-                <thead className={`border-b text-[11px] uppercase font-black sticky top-0 z-10 ${isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-800' : 'bg-[#0a1931] text-white border-blue-900'}`}>
+            <div className="flex-1 overflow-y-auto border border-slate-200 rounded-xl bg-white">
+              <table className="w-full text-left text-[9.5px]">
+                <thead className={tableHeaderStyle}>
                   <tr>
-                    <th className="p-3.5">Module / Table</th>
-                    <th className="p-3.5 text-center">👁️ Lecture</th>
-                    <th className="p-3.5 text-center">➕ Création</th>
-                    <th className="p-3.5 text-center">✏️ Modif.</th>
-                    <th className="p-3.5 text-center">🗑️ Suppr.</th>
-                    <th className="p-3.5 text-center">Action Rapide</th>
+                    <th className="p-2">Module / Table</th>
+                    <th className="p-2 text-center">Lecture</th>
+                    <th className="p-2 text-center">Création</th>
+                    <th className="p-2 text-center">Modif.</th>
+                    <th className="p-2 text-center">Suppr.</th>
+                    <th className="p-2 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className={`divide-y text-xs ${isDarkMode ? 'divide-slate-800/80' : 'divide-slate-200'}`}>
+                <tbody className="divide-y divide-slate-100 text-[9.5px] text-slate-900 bg-white">
                   {modulesApp.map((m) => {
                     const p = nouveauUser.permissions[m.id] || { lecture: false, creation: false, modification: false, suppression: false };
                     const estToutAccorde = p.lecture && p.creation && p.modification && p.suppression;
                     return (
-                      <tr key={m.id} className={isDarkMode ? 'hover:bg-slate-900/60' : 'hover:bg-blue-50/60 font-medium'}>
-                        <td className={`p-3.5 font-bold ${isDarkMode ? 'text-slate-100' : 'text-[#0a1931]'}`}>{m.nom}</td>
-                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-5 h-5 accent-amber-500 rounded cursor-pointer" /></td>
-                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-5 h-5 accent-emerald-500 rounded cursor-pointer" /></td>
-                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-5 h-5 accent-blue-500 rounded cursor-pointer" /></td>
-                        <td className="p-3.5 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-5 h-5 accent-red-500 rounded cursor-pointer" /></td>
-                        <td className="p-3.5 text-center">
-                          <button type="button" onClick={() => accorderToutModuleUser(m.id, !estToutAccorde)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black cursor-pointer ${estToutAccorde ? 'bg-red-950 text-red-300 border border-red-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}`}>
-                            {estToutAccorde ? 'Tout retirer' : 'Tout accorder'}
+                      <tr key={m.id} className="hover:bg-orange-50/70 transition">
+                        <td className="p-2 font-extrabold text-slate-900">{m.nom}</td>
+                        <td className="p-2 text-center"><input type="checkbox" checked={p.lecture} onChange={() => togglePermissionUser(m.id, 'lecture')} className="w-3.5 h-3.5 accent-orange-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center"><input type="checkbox" checked={p.creation} onChange={() => togglePermissionUser(m.id, 'creation')} className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center"><input type="checkbox" checked={p.modification} onChange={() => togglePermissionUser(m.id, 'modification')} className="w-3.5 h-3.5 accent-blue-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center"><input type="checkbox" checked={p.suppression} onChange={() => togglePermissionUser(m.id, 'suppression')} className="w-3.5 h-3.5 accent-rose-600 rounded cursor-pointer" /></td>
+                        <td className="p-2 text-center">
+                          <button type="button" onClick={() => accorderToutModuleUser(m.id, !estToutAccorde)} className={`px-2 py-0.5 rounded font-black text-[8.5px] cursor-pointer ${estToutAccorde ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                            {estToutAccorde ? 'Retirer tout' : 'Tout accorder'}
                           </button>
                         </td>
                       </tr>
@@ -1225,13 +1209,13 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </table>
             </div>
 
-            <div className="pt-2 flex justify-end shrink-0 border-t border-slate-700/25">
+            <div className="pt-2 flex justify-end shrink-0 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setAfficherModalePermissions(false)}
-                className={`font-black px-8 py-3 rounded-xl text-xs shadow-md transition cursor-pointer border ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                className="bg-orange-600 hover:bg-orange-700 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-2xs transition cursor-pointer"
               >
-                Valider & Fermer 👍
+                Valider 👍
               </button>
             </div>
 
@@ -1241,22 +1225,22 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
       {/* 🔔 MODALE UNIFIÉE DE CONFIRMATION / SUCCÈS / ERREUR */}
       {etatModale.ouverte && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className={`border rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-[#0a1931]'}`}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl text-slate-900">
             
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
-              etatModale.type === 'confirmation' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-              etatModale.type === 'succes' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black border ${
+              etatModale.type === 'confirmation' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+              etatModale.type === 'succes' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'
             }`}>
               {etatModale.type === 'confirmation' ? '❓' :
                etatModale.type === 'succes' ? '✓' : '⚠️'}
             </div>
 
             <div className="space-y-1">
-              <h4 className={`font-black text-sm uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
+              <h4 className="font-black text-xs uppercase tracking-wider text-slate-900">
                 {etatModale.titre}
               </h4>
-              <p className={`text-xs font-medium leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+              <p className="text-[11px] font-semibold leading-relaxed text-slate-600">
                 {etatModale.message}
               </p>
             </div>
@@ -1267,7 +1251,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                   <button
                     type="button"
                     onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                    className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-300 hover:bg-slate-300'}`}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold py-2 rounded-xl text-[10px] transition cursor-pointer"
                   >
                     Annuler
                   </button>
@@ -1278,7 +1262,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                       setEtatModale({ ...etatModale, ouverte: false });
                       if (action) action();
                     }}
-                    className={`flex-1 font-black py-2.5 rounded-xl text-xs shadow-xs transition cursor-pointer border ${isDarkMode ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                    className="flex-1 font-black py-2 rounded-xl text-[10px] shadow-2xs transition cursor-pointer bg-orange-600 hover:bg-orange-700 text-white"
                   >
                     Confirmer
                   </button>
@@ -1287,7 +1271,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                 <button
                   type="button"
                   onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                  className={`w-full font-black py-2.5 rounded-xl text-xs transition shadow-xs cursor-pointer border ${isDarkMode ? 'bg-slate-800 text-slate-100 border-slate-700' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                  className="w-full font-black py-2 rounded-xl text-[10px] transition shadow-2xs cursor-pointer bg-orange-600 hover:bg-orange-700 text-white"
                 >
                   Compris 👍
                 </button>
@@ -1301,72 +1285,71 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       {/* LISTE DES UTILISATEURS */}
       {!afficherForm && (
         <>
-          <div className={`p-2.5 rounded-xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-            <input type="text" disabled={enTrainDeSauvegarder} value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className={`w-full rounded-lg px-3 py-2 font-extrabold uppercase text-xs focus:outline-none shadow-xs ${inputBg}`} />
+          <div className={`p-2 ${cardStyle}`}>
+            <input type="text" disabled={enTrainDeSauvegarder} value={recherche} onChange={(e) => setRecherche(e.target.value.toUpperCase())} placeholder="RECHERCHER PAR NOM OU EMAIL..." className={inputStyle} />
           </div>
 
-          <div className={`flex justify-between items-center text-[10.5px] px-1 font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+          <div className="flex justify-between items-center text-[9.5px] px-1 font-bold text-slate-600">
             <span>Total répertorié : <strong>{usersFiltres.length}</strong> personne(s)</span>
           </div>
 
           {chargement ? (
             <div className="p-4 text-center text-slate-400 font-bold">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
-            <div className={`p-4 text-center border rounded-xl font-medium ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}>Aucun enregistrement trouvé.</div>
+            <div className={`p-4 text-center font-bold text-slate-500 ${cardStyle}`}>Aucun enregistrement trouvé.</div>
           ) : (
-            <div className={`overflow-x-auto border rounded-xl shadow-xs ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-              <table className="w-full text-left text-xs">
-                <thead className={`border-b uppercase text-[9.5px] font-black select-none ${tableHeaderBg}`}>
+            <div className={`overflow-x-auto ${cardStyle}`}>
+              <table className="w-full text-left text-[9.5px]">
+                <thead className={tableHeaderStyle}>
                   <tr>
-                    <th className="p-2.5 w-10 text-center">Avatar</th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('id')} className="p-2.5 text-center font-mono cursor-pointer hover:opacity-80 whitespace-nowrap">
+                    <th className="p-2 w-8 text-center">Avatar</th>
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('id')} className="p-2 text-center font-mono cursor-pointer hover:text-orange-600 whitespace-nowrap">
                       ID Unique {rendreFlecheTri('id')}
                     </th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2.5 cursor-pointer hover:opacity-80">
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('nom_complet')} className="p-2 cursor-pointer hover:text-orange-600">
                       Nom & Prénom {rendreFlecheTri('nom_complet')}
                     </th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2.5 cursor-pointer hover:opacity-80">
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('role')} className="p-2 cursor-pointer hover:text-orange-600">
                       Rôle {rendreFlecheTri('role')}
                     </th>
-                    <th onClick={() => !enTrainDeSauvegarder && gererTri('acces')} className="p-2.5 text-center cursor-pointer hover:opacity-80">
+                    <th onClick={() => !enTrainDeSauvegarder && gererTri('acces')} className="p-2 text-center cursor-pointer hover:text-orange-600">
                       Type d'accès {rendreFlecheTri('acces')}
                     </th>
                   </tr>
                 </thead>
-                <tbody className={`divide-y text-[10.5px] ${isDarkMode ? 'divide-slate-800/80' : 'divide-slate-100'}`}>
+                <tbody className="divide-y divide-slate-100 text-[9.5px] text-slate-900 bg-white">
                   {usersFiltres.map((u) => {
                     const roleTrouve = roles.find((r) => String(r.id) === String(u.id_role));
                     const libelleRole = (roleTrouve ? roleTrouve.nom_role : u.nom_role) || 'NON DÉFINI';
                     const aAcces = u.acces_application ?? true;
-
                     const idAffichageLisible = mapIdStables.get(u.id) || `${entrepriseId}-01`;
 
                     return (
-                      <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className={`cursor-pointer transition select-none ${rowHoverBg}`}>
-                        <td className="p-2.5 text-center">
-                          <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 mx-auto overflow-hidden flex items-center justify-center">
+                      <tr key={u.id} onClick={() => !enTrainDeSauvegarder && ouvrirEdition(u)} className="cursor-pointer transition select-none hover:bg-orange-50/70">
+                        <td className="p-2 text-center">
+                          <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-200 mx-auto overflow-hidden flex items-center justify-center">
                             {u.photo ? (
                               <img src={u.photo} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
                             ) : (
-                              <span className="text-[9px] font-bold text-slate-300">👤</span>
+                              <span className="text-[8px] font-bold text-white">👤</span>
                             )}
                           </div>
                         </td>
-                        <td className="p-2.5 text-center font-mono font-bold text-[9.5px] whitespace-nowrap" title={`ID Technique (Back-office) : ${u.id}`}>
-                          <span className={`px-2 py-0.5 rounded border inline-block whitespace-nowrap ${isDarkMode ? 'bg-slate-800/80 text-cyan-400 border-slate-700/60' : 'bg-blue-50 text-blue-900 border-blue-200'}`}>
+                        <td className="p-2 text-center font-mono font-bold text-[9px] whitespace-nowrap" title={`ID Technique : ${u.id}`}>
+                          <span className="px-1.5 py-0.5 rounded border inline-block whitespace-nowrap bg-slate-100 text-slate-800 border-slate-200">
                             {idAffichageLisible}
                           </span>
                         </td>
-                        <td className={`p-2.5 font-black uppercase ${isDarkMode ? 'text-slate-100' : 'text-[#0a1931]'}`}>
+                        <td className="p-2 font-black uppercase text-slate-900">
                           {u.nom_complet} {u.prenom ? u.prenom : ''}
                         </td>
-                        <td className="p-2.5">
-                          <span className={`inline-block border px-2 py-0.5 rounded font-black text-[9.5px] whitespace-nowrap ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-700' : 'bg-blue-50 text-[#0a1931] border-blue-200'}`}>
+                        <td className="p-2">
+                          <span className="inline-block border px-1.5 py-0.5 rounded font-black text-[9px] whitespace-nowrap bg-slate-100 text-slate-800 border-slate-200">
                             🛡️ {libelleRole}
                           </span>
                         </td>
-                        <td className="p-2.5 text-center">
-                          <span className={`inline-block px-2.5 py-0.5 rounded font-black text-[9.5px] border whitespace-nowrap ${aAcces ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60' : 'bg-slate-800/60 text-slate-300 border-slate-700/60'}`}>
+                        <td className="p-2 text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded font-black text-[9px] border whitespace-nowrap ${aAcces ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                             {aAcces ? '🟢 Utilisateur' : '👤 Terrain'}
                           </span>
                         </td>

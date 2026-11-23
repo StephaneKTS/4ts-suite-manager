@@ -80,6 +80,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   // MODALES
   const [modalPanierOuverte, setModalPanierOuverte] = useState(false);
   const [modalConfirmationOuverte, setModalConfirmationOuverte] = useState(false);
+  const [modalPostSuccesOuverte, setModalPostSuccesOuverte] = useState(false);
+  const [modalDoublonMessage, setModalDoublonMessage] = useState(null);
 
   const [modalPartenaireOuverte, setModalPartenaireOuverte] = useState(false);
   const [recherchePartenaireInput, setRecherchePartenaireInput] = useState('');
@@ -380,10 +382,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     let maxNum = 0;
     cmdsJourPart.forEach(c => {
       if (c.numero_commande) {
-        const netNum = c.numero_commande.replace('CMD-', '');
-        const parsed = parseInt(netNum, 10);
-        if (!isNaN(parsed) && parsed > maxNum) {
-          maxNum = parsed;
+        const match = c.numero_commande.match(/\d+/);
+        if (match) {
+          const parsed = parseInt(match[0], 10);
+          if (!isNaN(parsed) && parsed > maxNum) {
+            maxNum = parsed;
+          }
         }
       }
     });
@@ -623,7 +627,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
     if (dateCmdStr < dateDuJourStr) {
-      alert(`❌ Action interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
+      setModalDoublonMessage(`Action interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
       return;
     }
 
@@ -635,7 +639,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     if (statutActuelNorm === nouveauStatutNorm) return;
 
     if (!permissions.peut_modifier) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      setModalDoublonMessage('Accès refusé : Votre profil ne dispose pas des droits de modification.');
       return;
     }
 
@@ -656,9 +660,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           if (estSuiviArticle !== false && estSuiviArticle !== 0) {
             const stockEmp = await recupererStockReelRPC(item.id_article, cmd.vendeur_livreur);
             if (stockEmp < item.quantite) {
-              alert(
-                `🚫 ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`
-              );
+              setModalDoublonMessage(`ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`);
               setSauvegardeEnCours(false);
               return;
             }
@@ -745,7 +747,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       await chargerDonnees();
     } catch (err) {
-      alert('Erreur lors du changement de statut : ' + err.message);
+      setModalDoublonMessage('Erreur lors du changement de statut : ' + err.message);
     } finally {
       setSauvegardeEnCours(false);
     }
@@ -959,7 +961,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const ajouterArticleAuPanier = async (artObj) => {
     if (documentEnLectureSeule) return;
     if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
-      alert('⚠️ Veuillez saisir un numéro de client valide à exactement 9 chiffres.');
+      setModalDoublonMessage('Veuillez saisir un numéro de client valide à exactement 9 chiffres.');
       if (inputNumeroClientRef.current) {
         inputNumeroClientRef.current.focus();
         inputNumeroClientRef.current.select();
@@ -968,7 +970,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     if (!enteteValide) {
-      alert('⚠️ Veuillez d\'abord remplir tous les champs obligatoires avant d\'ajouter des articles.');
+      setModalDoublonMessage("Veuillez d'abord remplir tous les champs obligatoires avant d'ajouter des articles.");
       return;
     }
 
@@ -979,7 +981,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     if (estSuivi !== false && estSuivi !== 0) {
       stockDisp = await recupererStockReelRPC(idArt, livreurAssigne);
       if (stockDisp <= 0) {
-        alert(`❌ Cet article est épuisé ou indisponible pour ce dépôt/livreur.`);
+        setModalDoublonMessage('Cet article est épuisé ou indisponible pour ce dépôt/livreur.');
         return;
       }
     }
@@ -990,7 +992,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const ligneExistante = lignesSaisies.find(l => String(l.id_article) === String(idArt));
     if (ligneExistante) {
       if (estSuivi !== false && estSuivi !== 0 && (ligneExistante.quantite + 1 > stockDisp)) {
-        alert(`❌ Quantité supérieure au stock disponible (${stockDisp}) !`);
+        setModalDoublonMessage(`Quantité supérieure au stock disponible (${stockDisp}) !`);
         return;
       }
       setLignesSaisies(lignesSaisies.map(l => 
@@ -1026,7 +1028,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (estSuivi !== false && estSuivi !== 0) {
         const stockDisp = await recupererStockReelRPC(artId, livreurAssigne);
         if (nouvelleQte > stockDisp) {
-          alert(`❌ Quantité supérieure au stock disponible (${stockDisp}) !`);
+          setModalDoublonMessage(`Quantité supérieure au stock disponible (${stockDisp}) !`);
           return;
         }
       }
@@ -1117,13 +1119,13 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     const dateCmdStr = commandeEnEdition.date_commande || dateDuJourStr;
     if (dateCmdStr < dateDuJourStr) {
-      alert(`❌ Suppression interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
+      setModalDoublonMessage(`Suppression interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
       return;
     }
 
     const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     if (!permissions.peut_supprimer) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de suppression.');
+      setModalDoublonMessage('Accès refusé : Votre profil ne dispose pas des droits de suppression.');
       return;
     }
     if (!confirm(`Voulez-vous vraiment supprimer la commande ${commandeEnEdition.numero_commande} ?`)) return;
@@ -1183,7 +1185,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setCommandes(commandesMaj);
       localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
 
-      alert('Commande supprimée avec succès.');
+      setModalDoublonMessage('Commande supprimée avec succès.');
       setNumeroCommande('1');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
@@ -1205,7 +1207,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setVueActive('LISTE');
       chargerDonnees();
     } catch (err) {
-      alert('Erreur lors de la suppression : ' + err.message);
+      setModalDoublonMessage('Erreur lors de la suppression : ' + err.message);
     } finally {
       setSauvegardeEnCours(false);
     }
@@ -1230,21 +1232,21 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     if (dateNormalisee < dateDuJourStr) {
-      alert(`❌ Modification interdite : impossible d'enregistrer sur la date du ${dateNormalisee} car cette journée est clôturée.`);
+      setModalDoublonMessage(`Modification interdite : impossible d'enregistrer sur la date du ${dateNormalisee} car cette journée est clôturée.`);
       return;
     }
 
     if (commandeEnEdition && !permissions.peut_modifier) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de modification.');
+      setModalDoublonMessage('Accès refusé : Votre profil ne dispose pas des droits de modification.');
       return;
     }
     if (!commandeEnEdition && !permissions.peut_creer) {
-      alert('⛔ Accès refusé : Votre profil ne dispose pas des droits de création.');
+      setModalDoublonMessage('Accès refusé : Votre profil ne dispose pas des droits de création.');
       return;
     }
 
     if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
-      alert('⚠️ Le numéro du client est obligatoire et doit comporter exactement 9 caractères.');
+      setModalDoublonMessage('Le numéro du client est obligatoire et doit comporter exactement 9 caractères.');
       if (inputNumeroClientRef.current) {
         inputNumeroClientRef.current.focus();
         inputNumeroClientRef.current.select();
@@ -1253,7 +1255,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
 
     if (!numeroCommande.trim() || !idPartenaire || montantSaisi === '' || !adresseLivraison.trim()) {
-      alert('⚠️ Veuillez remplir tous les champs obligatoires.');
+      setModalDoublonMessage('Veuillez remplir tous les champs obligatoires.');
       return;
     }
 
@@ -1261,18 +1263,18 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const depotSourceEffectif = (depotId && depotId !== 'AUCUN_DEPOT') ? depotId : (partObj?.id_depot || null);
 
     if (!partenaireSansStockage && !depotSourceEffectif) {
-      alert('🚫 ACTION BLOQUÉE : Veuillez sélectionner obligatoirement un dépôt d’origine ou associer un dépôt au partenaire.');
+      setModalDoublonMessage('ACTION BLOQUÉE : Veuillez sélectionner obligatoirement un dépôt d’origine ou associer un dépôt au partenaire.');
       setSauvegardeEnCours(false);
       return;
     }
 
     if (partenaireSansStockage && !pointADepart.trim()) {
-      alert('⚠️ Pour un partenaire sans stockage, veuillez préciser le Point A.');
+      setModalDoublonMessage('Pour un partenaire sans stockage, veuillez préciser le Point A.');
       return;
     }
     
     if (!partenaireSansStockage && lignesSaisies.length === 0) {
-      alert('⚠️ Le panier est vide. Veuillez ajouter au moins un article.');
+      setModalDoublonMessage('Le panier est vide. Veuillez ajouter au moins un article.');
       return;
     }
 
@@ -1288,7 +1290,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         );
 
         if (doublonTrouve) {
-          alert(`❌ Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
+          setModalDoublonMessage(`Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
           setSauvegardeEnCours(false);
           return;
         }
@@ -1308,9 +1310,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           if (estSuiviArticle !== false && estSuiviArticle !== 0) {
             const stockEmp = await recupererStockReelRPC(item.id_article, livreurAssigne);
             if (stockEmp < item.quantite) {
-              alert(
-                `🚫 ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`
-              );
+              setModalDoublonMessage(`ACTION BLOQUÉE (RUPTURE DE STOCK) :\n\nStock insuffisant pour l'article "${item.designation}".\n(Stock disponible : ${stockEmp} | Quantité commandée : ${item.quantite})`);
               setSauvegardeEnCours(false);
               return;
             }
@@ -1338,7 +1338,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         vendeur_livreur: livreurAssigne,
         statut: statutCommandeSaisi,
         statut_commande: statutCommandeSaisi,
-        utilisateur_saisie: commandeEnEdition ? (commandeEnEdition.utilisateur_saisie || nomUtilisateurConnecteReel) : nomUtilisateurConnecteReel
+        utilisateur_saisie: nomUtilisateurConnecteReel
       };
 
       let idCmdCourante = null;
@@ -1488,30 +1488,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignesMaj);
       }
 
-      alert(commandeEnEdition ? 'Commande mise à jour avec succès !' : 'Commande enregistrée avec succès !');
-      setNumeroCommande('1');
-      setIdPartenaire('');
-      setDepotId('AUCUN_DEPOT');
-      setPartenaireSansStockage(false);
-      setPointADepart('');
-      setNumeroClient('');
-      setNatureColis('');
-      setLignesSaisies([]);
-      setMontantSaisi('');
-      setAdresseLivraison('');
-      setZoneGrilleSelectionnee('');
-      setFraisLivraisonSaisi('');
-      setLivreurAssigne('');
-      setStatutCommandeSaisi('LIVRÉ');
-      setCommandeEnEdition(null);
-      setSnapshotCommandeInitiale(null);
-      setDocumentEnLectureSeule(false);
-      setStocksArticlesCache({});
       setModalConfirmationOuverte(false);
-      setVueActive('LISTE');
+      setModalPostSuccesOuverte(true);
       await chargerDonnees();
     } catch (err) {
-      alert('Erreur technique : ' + (err.message || err));
+      setModalDoublonMessage('Erreur technique : ' + (err.message || err));
     } finally {
       setSauvegardeEnCours(false);
     }
@@ -1679,11 +1660,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
     const montantFraisVerséNum = parseFloat(totalVerseFraisLivraison) || 0;
     if (montantFraisVerséNum <= 0 && totalVerseRecetteGlobal === '') {
-      alert('⚠️ Veuillez renseigner au moins un montant versé.');
+      setModalDoublonMessage('Veuillez renseigner au moins un montant versé.');
       return;
     }
     if (!caisseId) {
-      alert('⚠️ Veuillez sélectionner une caisse de destination.');
+      setModalDoublonMessage('Veuillez sélectionner une caisse de destination.');
       return;
     }
 
@@ -1745,7 +1726,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payloadMvt);
       }
 
-      alert(`✅ Clôture enregistrée sous le numéro ${codePieceCloture}.`);
+      setModalDoublonMessage(`Clôture enregistrée sous le numéro ${codePieceCloture}.`);
       
       setCaisseSelectionneeCloture(caisseId);
       setModalCaisseClotureOuverte(false);
@@ -1753,7 +1734,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setTotalVerseFraisLivraison('');
       await chargerDonnees();
     } catch (err) {
-      alert('Erreur lors du versement : ' + err.message);
+      setModalDoublonMessage('Erreur lors du versement : ' + err.message);
     } finally {
       setSauvegardeEnCours(false);
     }
@@ -2532,6 +2513,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <input
                     ref={inputNumeroCmdRef}
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     disabled={documentEnLectureSeule}
                     value={numeroCommande}
                     onChange={(e) => setNumeroCommande(e.target.value.replace(/[^0-9]/g, ''))}
@@ -2566,6 +2549,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <input
                   ref={inputNumeroClientRef}
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   required
                   maxLength={9}
                   disabled={documentEnLectureSeule}
@@ -2575,7 +2560,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       if (numeroClient.trim().length !== 9) {
-                        alert('⚠️ Le numéro du client doit comporter exactement 9 chiffres.');
+                        setModalDoublonMessage('Le numéro du client doit comporter exactement 9 chiffres.');
                         return;
                       }
                       if (inputAdresseRef.current) {
@@ -2620,6 +2605,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <input
                   ref={inputMontantRef}
                   type="number"
+                  inputMode="numeric"
                   step="0.01"
                   required
                   disabled={documentEnLectureSeule}
@@ -2679,6 +2665,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <label className="block font-black mb-0.5 text-[8px] text-blue-900 uppercase truncate">Frais</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   step="0.01"
                   disabled={documentEnLectureSeule}
                   value={fraisLivraisonSaisi}
@@ -2967,6 +2954,64 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     className="flex-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 rounded-xl text-[9px] uppercase transition shadow-md"
                   >
                     {sauvegardeEnCours ? 'Enregistrement...' : 'Confirmer et Enregistrer ✓'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {modalPostSuccesOuverte && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden space-y-3 p-4 text-center">
+                <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto text-lg font-black">
+                  ✓
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-900 uppercase text-xs">COMMANDE ENREGISTRÉE !</h4>
+                  <p className="text-[9px] text-slate-600 font-bold mt-1">Que souhaitez-vous faire maintenant ?</p>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalPostSuccesOuverte(false);
+                      setCommandeEnEdition(null);
+                      setSnapshotCommandeInitiale(null);
+                      setDocumentEnLectureSeule(false);
+                      setNumeroCommande('1');
+                      setIdPartenaire('');
+                      setDepotId('AUCUN_DEPOT');
+                      setPartenaireSansStockage(false);
+                      setPointADepart('');
+                      setNumeroClient('');
+                      setNatureColis('');
+                      setMontantSaisi('');
+                      setAdresseLivraison('');
+                      setZoneGrilleSelectionnee('');
+                      setFraisLivraisonSaisi('');
+                      setLivreurAssigne('');
+                      setStatutCommandeSaisi('LIVRÉ');
+                      setLignesSaisies([]);
+                      setStocksArticlesCache({});
+                      calculerNumeroAutomatique(commandes, '', dateCommande);
+                    }}
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black py-2 rounded-xl text-[9px] uppercase transition shadow-md"
+                  >
+                    ➕ Saisir une nouvelle commande
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalPostSuccesOuverte(false);
+                      setVueActive('LISTE');
+                      setCommandeEnEdition(null);
+                      setSnapshotCommandeInitiale(null);
+                      setDocumentEnLectureSeule(false);
+                    }}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2 rounded-xl text-[9px] uppercase transition shadow-md"
+                  >
+                    📂 Aller dans la liste
                   </button>
                 </div>
               </div>
@@ -3266,22 +3311,23 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 return (
                   <div
                     key={cmd.id}
-                    onClick={() => ouvrirCommandePourModification(cmd)}
+                    onClick={() => ouvrirCommandeForModification(cmd)}
                     className="bg-white border border-slate-200 p-2 rounded-xl shadow-2xs hover:border-orange-500 cursor-pointer transition flex flex-col space-y-1"
                   >
-                    <div className="flex justify-between items-center gap-1">
+                    <div className="flex justify-between items-center gap-1 border-b border-slate-100 pb-0.5">
                       <div className="flex items-center gap-1 min-w-0 shrink-0">
                         <span className="font-mono font-black text-orange-600 text-[9.5px] shrink-0">{cmd.numero_commande}</span>
                         <span className="text-slate-300 text-[8px]">•</span>
                         <span className="font-extrabold text-slate-900 text-[8.5px] uppercase truncate max-w-[75px]">{cmd.nom_partenaire}</span>
-                        <span className="text-slate-300 text-[8px]">•</span>
-                        <span className="text-slate-600 text-[8.5px] font-bold whitespace-nowrap">{formaterDateCourte(cmd.date_commande)}</span>
                       </div>
                       
                       <div className="flex items-center gap-1 shrink-0">
-                        <span className="font-extrabold text-blue-700 uppercase text-[8.5px] truncate max-w-[75px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
-                          🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
-                        </span>
+                        <span className="text-slate-600 text-[8px] font-bold whitespace-nowrap">{formaterDateCourte(cmd.date_commande)}</span>
+                        {cmd.utilisateur_saisie && (
+                          <span className="text-[7.5px] bg-blue-50 text-blue-800 px-1 py-0.2 rounded font-mono font-bold border border-blue-200 uppercase truncate max-w-[90px]" title={`Saisi par ${cmd.utilisateur_saisie}`}>
+                            👤 {cmd.utilisateur_saisie}
+                          </span>
+                        )}
 
                         <div className="relative" onClick={(e) => e.stopPropagation()}>
                           <button
@@ -3289,7 +3335,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             onClick={() => {
                               const dateCmdStr = cmd.date_commande || dateDuJourStr;
                               if (dateCmdStr < dateDuJourStr) {
-                                alert(`❌ Modification interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
+                                setModalDoublonMessage(`Modification interdite : ce document appartient à une journée clôturée (${dateCmdStr}).`);
                                 return;
                               }
                               setMenuStatutOuvertId(menuStatutOuvertId === cmd.id ? null : cmd.id);
@@ -3325,7 +3371,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    <div className="border-t border-slate-100 pt-1 flex justify-between items-center gap-1.5 text-[9px]">
+                    <div className="pt-0.5 flex justify-between items-center gap-1.5 text-[9px]">
                       <div className="text-slate-800 font-bold truncate">
                         {cmd.point_a ? (
                           <span className="truncate">
@@ -3343,6 +3389,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
 
                       <div className="text-right shrink-0 flex items-baseline gap-1">
+                        <span className="font-extrabold text-blue-700 uppercase text-[8.5px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
+                          🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
+                        </span>
                         {Number(cmd.frais_livraison || 0) > 0 && (
                           <span className="font-bold text-slate-400 text-[8px] font-mono">
                             Frais:{Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')}F
@@ -3418,6 +3467,30 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODALE PERSONNALISÉE POUR LES ALERTES / DOUBLONS */}
+      {modalDoublonMessage && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden space-y-3 p-4 text-center">
+            <div className="w-10 h-10 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto text-lg font-black">
+              ⚠️
+            </div>
+            <div>
+              <h4 className="font-black text-slate-900 uppercase text-xs">NOTIFICATION</h4>
+              <p className="text-[10px] text-slate-700 font-bold mt-1.5 whitespace-pre-line">{modalDoublonMessage}</p>
+            </div>
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setModalDoublonMessage(null)}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2 rounded-xl text-[9px] uppercase transition shadow-md"
+              >
+                OK
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

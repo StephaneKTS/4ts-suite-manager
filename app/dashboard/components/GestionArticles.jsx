@@ -478,13 +478,17 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       mouvements
         .filter((mvt) => {
           const motif = (mvt.motif_remarque || '').trim().toUpperCase();
-          return (
-            !motif.includes('CMD-') && 
-            !motif.includes('LIVRAISON') && 
-            !motif.includes('RESTITUTION') &&
-            !motif.includes('VENTE') &&
-            !motif.includes('VENTE TICKET')
+          
+          const estSystemeAuto = (
+            motif.includes('CMD-') || 
+            motif.includes('LIVRAISON') || 
+            motif.includes('RESTITUTION') ||
+            motif.includes('VENTE') ||
+            motif.includes('VENTE TICKET')
           );
+          if (estSystemeAuto) return false;
+
+          return true;
         })
         .reduce((acc, mvt) => {
           const numDocBrut = mvt.motif_remarque || 'SANS-REF';
@@ -504,7 +508,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     const compteursParType = {};
     for (const doc of documentsBruts) {
       const typeMvt = doc.type;
-      const prefixes = { ENTREE: 'ME', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+      const prefixes = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
       const prefix = prefixes[typeMvt] || 'TR';
 
       if (!compteursParType[prefix]) {
@@ -518,13 +522,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       }
     }
 
-    const typeMvt = (mvtCible.type_mouvement || '').toUpperCase();
-    if (typeMvt === 'ENTREE') return 'ME';
-    if (typeMvt === 'SORTIE') return 'MS';
-    if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') return 'TR';
-    if (typeMvt === 'AVARIES') return 'AV';
-    if (typeMvt === 'INVENTAIRE') return 'INV';
-    return typeMvt.substring(0, 3) || 'TR';
+    const typeMvtFallback = (mvtCible.type_mouvement || '').toUpperCase();
+    const prefixesFallback = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+    return prefixesFallback[typeMvtFallback] || 'TR';
   };
 
   const obtenirHistoriqueChronologiqueStat = (articleId) => {
@@ -1360,14 +1360,14 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
           <title>${titreDocument}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 25px; color: #0f172a; background: #fff; }
-            .header-box { border-bottom: 3px solid #64748b; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .header-box { border-bottom: 3px solid #ea580c; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
             .company-title { font-size: 18px; font-weight: 900; color: #0f172a; text-transform: uppercase; margin: 0; }
-            .doc-subtitle { font-size: 11px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 4px; }
+            .doc-subtitle { font-size: 11px; font-weight: bold; color: #ea580c; text-transform: uppercase; margin-top: 4px; }
             .print-date { font-size: 11px; font-weight: bold; color: #475569; text-align: right; }
             .meta-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 20px; font-size: 11px; }
             table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
             th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: left; }
-            th { background-color: #334155; text-transform: uppercase; font-weight: 900; font-size: 10px; color: #ffffff; }
+            th { background-color: #f8fafc; text-transform: uppercase; font-weight: 900; font-size: 10px; color: #334155; }
           </style>
         </head>
         <body>
@@ -1391,25 +1391,26 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     }, 500);
   };
 
-  // 🎨 CONFIGURATION GRIS SOURIS ET ORANGE VIF
-  const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-slate-900';
-  const headerCardBg = isDarkMode ? 'bg-[#0b1329] border-2 border-slate-600 text-slate-100 shadow-md' : 'bg-white border-2 border-slate-400 text-slate-900 shadow-md';
-  const inputBg = isDarkMode ? 'bg-slate-800 border-2 border-slate-600 text-slate-100 placeholder:text-slate-400 [color-scheme:dark]' : 'bg-white border-2 border-slate-400 text-slate-900 font-semibold placeholder:text-slate-400 [color-scheme:light]';
-  
-  // En-têtes de tableaux en fond gris, texte noir en mode jour et blanc en mode nuit
-  const tableHeaderBg = isDarkMode ? 'bg-slate-700 text-white font-black border-slate-600' : 'bg-slate-300 text-black font-black border-slate-400';
-  const rowHoverBg = isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-slate-100';
+  // 🎨 HARMONISATION IDENTIQUE À GestionMouvements_7.jsx (Cartes blanches, accents Orange-600 & Slate-900)
+  const cardStyle = 'bg-white rounded-xl border border-slate-200 shadow-2xs';
+  const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
+  const selectTriggerStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-[10px] font-extrabold text-slate-900 cursor-pointer flex justify-between items-center hover:border-orange-400 transition';
+  const tableHeaderStyle = 'bg-slate-50 text-slate-700 uppercase text-[8.5px] font-extrabold border-b border-slate-200';
 
   return (
-    <div className={`space-y-2.5 font-sans text-xs ${containerBg} p-2 rounded-xl transition-colors`}>
+    <div className="space-y-2 font-sans text-[10px]">
       
-      <div className={`flex justify-between items-center p-3 rounded-xl ${headerCardBg} gap-2`}>
-        <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-sm shrink-0">📦</span>
-          <h3 className={`font-black uppercase text-[11px] truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-            GESTION DES ARTICLES ({articlesAffiches.length} / {articlesFiltres.length})
-          </h3>
-          {isGestionPerissablesActive() && <span className="text-[8px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-300 shrink-0 font-bold">Périssables</span>}
+      {/* Barre supérieure identique à GestionMouvements_7.jsx */}
+      <div className={`flex justify-between items-center p-2 gap-2 flex-wrap ${cardStyle}`}>
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+          <span className="font-extrabold uppercase text-slate-900 text-[10.5px] truncate">
+            📦 GESTION DES ARTICLES ({articlesAffiches.length} / {articlesFiltres.length})
+          </span>
+          {isGestionPerissablesActive() && (
+            <span className="text-[8.5px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full font-bold border border-amber-200 shrink-0">
+              Périssables
+            </span>
+          )}
         </div>
         
         {permissions.creation && (
@@ -1435,13 +1436,14 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 }
               }, 50);
             }}
-            className="font-black px-3 py-1.5 rounded-lg transition shadow-md text-xs cursor-pointer bg-orange-600 hover:bg-orange-700 text-white border-2 border-orange-700"
+            className="py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-orange-600 hover:bg-orange-700 text-white border-orange-700 shadow-xs cursor-pointer"
           >
-            ＋ Nouveau
+            <span>＋</span> Nouveau
           </button>
         )}
       </div>
 
+      {/* Sous-barre de navigation identique aux boutons Créer / Liste de GestionMouvements_7.jsx */}
       <div className="grid grid-cols-3 gap-1.5 w-full">
         <button
           type="button"
@@ -1450,13 +1452,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             setModeVue('catalogue');
             annulerForm();
           }}
-          className={`px-1 py-2 rounded-lg font-black text-[10px] transition text-center border-2 shadow-xs whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer ${
+          className={`py-1.5 px-2 rounded-xl font-black transition text-center text-[9.5px] uppercase border cursor-pointer truncate ${
             modeVue === 'catalogue' 
-              ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
-              : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50')
+              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
           }`}
         >
-          Article ({articles.length})
+          📦 Article ({articles.length})
         </button>
 
         <button
@@ -1466,13 +1468,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             setModeVue('statistiques');
             annulerForm();
           }}
-          className={`px-1 py-2 rounded-lg font-black text-[10px] transition text-center border-2 shadow-xs whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer ${
+          className={`py-1.5 px-2 rounded-xl font-black transition text-center text-[9.5px] uppercase border cursor-pointer truncate ${
             modeVue === 'statistiques' 
-              ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
-              : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50')
+              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
           }`}
         >
-          Stat
+          📈 Stat
         </button>
 
         <button
@@ -1482,21 +1484,42 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             setModeVue('rapport');
             annulerForm();
           }}
-          className={`px-1 py-2 rounded-lg font-black text-[10px] transition text-center border-2 shadow-xs whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer ${
+          className={`py-1.5 px-2 rounded-xl font-black transition text-center text-[9.5px] uppercase border cursor-pointer truncate ${
             modeVue === 'rapport' 
-              ? 'bg-orange-600 text-white border-orange-700 shadow-sm'
-              : (isDarkMode ? 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800' : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50')
+              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
+              : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
           }`}
         >
-          Rapport Stock
+          📊 Rapport Stock
         </button>
       </div>
 
       {modeVue === 'catalogue' && (
-        <div className="space-y-2.5">
-          <div className={`p-3 rounded-xl border-2 space-y-2 shadow-md ${isDarkMode ? 'bg-[#0b1329] border-slate-600' : 'bg-white border-slate-400'}`}>
+        <div className="space-y-2">
+          {/* Bloc Filtres identique au cadre formulaire de GestionMouvements_7.jsx */}
+          <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
+            <div className="flex justify-between items-center pb-1 border-b border-slate-100">
+              <span className="font-extrabold text-[9.5px] uppercase text-orange-600">
+                🔍 FILTRES & RECHERCHE [{moduleActuel}]
+              </span>
+              {(rechercheArticleInput || familleFiltre !== 'TOUTES' || depotFiltre !== 'TOUS' || emplacementFiltre !== 'TOUS') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRechercheArticleInput('');
+                    setFamilleFiltre('TOUTES');
+                    setDepotFiltre('TOUS');
+                    setEmplacementFiltre('TOUS');
+                  }}
+                  className="text-[8.5px] text-orange-600 font-bold underline hover:text-orange-700 cursor-pointer"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+
             <div>
-              <label className={`block font-black text-[9px] uppercase mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Rechercher un article</label>
+              <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Rechercher un article</label>
               <div className="relative">
                 <input
                   type="text"
@@ -1504,16 +1527,15 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   value={rechercheArticleInput}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setRechercheArticleInput(e.target.value)}
-                  placeholder=""
-                  style={{ textTransform: 'uppercase' }}
-                  className={`w-full rounded-lg p-2 pl-7 font-extrabold text-xs shadow-xs uppercase focus:ring-2 focus:ring-orange-500 focus:outline-none ${inputBg}`}
+                  placeholder="SAISIR UNE DÉSIGNATION..."
+                  className={`${inputStyle} pl-7`}
                 />
-                <span className="absolute left-2.5 top-2 text-slate-400 text-xs">🔍</span>
+                <span className="absolute left-2 top-1.5 text-slate-400 text-[10px]">🔍</span>
                 {rechercheArticleInput && (
                   <button
                     type="button"
                     onClick={() => setRechercheArticleInput('')}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 font-black text-xs"
+                    className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 font-black text-[10px]"
                   >
                     ✕
                   </button>
@@ -1523,22 +1545,22 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
             <div className="grid grid-cols-3 gap-1.5">
               <div>
-                <label className={`block font-black text-[9px] uppercase mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Famille</label>
+                <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5 truncate">Famille</label>
                 <div
                   onClick={() => {
                     if (enTrainDeSauvegarder) return;
                     setRechercheModalFamilleCat('');
                     setAfficherModalFamilleCat(true);
                   }}
-                  className={`w-full rounded-lg p-2 text-xs font-black shadow-xs cursor-pointer flex justify-between items-center border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-200' : 'bg-white border-slate-400 text-slate-900'}`}
+                  className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase">{obtenirNomFamilleParId(familleFiltre)}</span>
-                  <span className="text-xs text-slate-400">🔍</span>
+                  <span className="truncate uppercase text-orange-600">{obtenirNomFamilleParId(familleFiltre)}</span>
+                  <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
                 </div>
               </div>
 
               <div>
-                <label className={`block font-black text-[9px] uppercase mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5 truncate">
                   {libelleDepotPartenaire}
                 </label>
                 <div
@@ -1547,15 +1569,15 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     setRechercheModalDepotCat('');
                     setAfficherModalDepotCat(true);
                   }}
-                  className={`w-full rounded-lg p-2 text-xs font-black shadow-xs cursor-pointer flex justify-between items-center border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-200' : 'bg-white border-slate-400 text-slate-900'}`}
+                  className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase">{obtenirNomDepotParId(depotFiltre)}</span>
-                  <span className="text-xs text-slate-400">🔍</span>
+                  <span className="truncate uppercase text-orange-600">{obtenirNomDepotParId(depotFiltre)}</span>
+                  <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
                 </div>
               </div>
 
               <div>
-                <label className={`block font-black text-[9px] uppercase mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5 truncate">
                   {libelleLivreurOuEmplacement}
                 </label>
                 <div
@@ -1564,158 +1586,164 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     setRechercheModalEmpCat('');
                     setAfficherModalEmpCat(true);
                   }}
-                  className={`w-full rounded-lg p-2 text-xs font-black shadow-xs cursor-pointer flex justify-between items-center border-2 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-200' : 'bg-white border-slate-400 text-slate-900'}`}
+                  className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase">{obtenirNomEmplacementParId(emplacementFiltre)}</span>
-                  <span className="text-xs text-slate-400">🔍</span>
+                  <span className="truncate uppercase text-slate-800">{obtenirNomEmplacementParId(emplacementFiltre)}</span>
+                  <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-between items-center bg-slate-600 text-white px-3 py-2 rounded-xl shadow-md border-2 border-slate-500">
-            <h4 className="font-black uppercase text-[10px]">📦 Stock des Articles [{moduleActuel}] ({articlesAffiches.length} / {articlesFiltres.length})</h4>
-            <button
-              type="button"
-              disabled={enTrainDeSauvegarder}
-              onClick={() => imprimerOngletActif('STOCK DES ARTICLES')}
-              className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-black px-2.5 py-1 rounded-lg text-[10px] border border-orange-700 flex items-center gap-1 shadow-xs cursor-pointer"
-            >
-              <span>🖨️ Imprimer</span>
-            </button>
-          </div>
-
-          <div id="section-impression-catalogue" className={`rounded-xl border-2 overflow-x-auto shadow-md ${isDarkMode ? 'bg-slate-100 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className={`border-b-2 uppercase text-[9.5px] font-black tracking-wider ${tableHeaderBg}`}>
-                  <th 
-                    onClick={() => !enTrainDeSauvegarder && gererTri('Designation')} 
-                    className={`p-3 cursor-pointer hover:bg-slate-400/40 select-none whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-black'}`}
-                  >
-                    Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th className={`p-3 text-center whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-black'}`}>STOCK</th>
-
-                  {emplacementsTableau.map((emp) => (
-                    <th key={emp.id} className={`p-3 text-center whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-black'}`}>
-                      📍 {emp.nom_emplacement || emp.code_emplacement}
-                    </th>
-                  ))}
-
-                  {moduleActuel !== 'LIVRAISON' && (
-                    <th 
-                      onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Achat')} 
-                      className={`p-3 text-right cursor-pointer hover:bg-slate-400/40 select-none whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-black'}`}
-                    >
-                      PA {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
-                    </th>
-                  )}
-
-                  <th 
-                    onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Vente')} 
-                    className={`p-3 text-right cursor-pointer hover:bg-slate-400/40 select-none whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-black'}`}
-                  >
-                    PV {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="text-slate-900 bg-white">
-                {chargement && articles.length === 0 ? (
-                  <tr>
-                    <td colSpan={colSpanTotal} className="p-6 text-center text-slate-500 font-bold">Chargement instantané...</td>
-                  </tr>
-                ) : articlesAffiches.length === 0 ? (
-                  <tr>
-                    <td colSpan={colSpanTotal} className="p-6 text-center font-bold text-slate-600">Aucun article enregistré pour le module {moduleActuel}.</td>
-                  </tr>
-                ) : (
-                  articlesAffiches.map((art) => {
-                    const artId = art.id_article || art.id;
-                    const stockCalculé = calculerStockReelDirect(artId, depotFiltre, emplacementFiltre);
-                    const prixAchatValeur = art.Prix_Achat || art.prix_achat || 0;
-                    const suiviStockActif = art.suivi_stock ?? true;
-
-                    return (
-                      <tr 
-                        key={artId}
-                        onClick={() => {
-                          if (enTrainDeSauvegarder) return;
-                          if (!permissions.modification) {
-                            setEtatModale({ ouverte: true, titre: 'Action non autorisée', message: 'Vous n’avez pas le droit de modifier les articles.', type: 'erreur', onConfirmer: null });
-                            return;
-                          }
-                          ouvrirEdition(art);
-                        }}
-                        className={`transition select-none ${permissions.modification ? 'hover:bg-slate-100 cursor-pointer' : 'cursor-default'}`}
-                      >
-                        <td className="p-3 font-black text-xs whitespace-nowrap uppercase flex items-center gap-1.5 text-slate-900">
-                          <span>{art.Designation || art.designation}</span>
-                          {!suiviStockActif && (
-                            <span className="bg-slate-200 text-slate-700 text-[8.5px] font-bold px-1.5 py-0.5 rounded border border-slate-300">
-                              Non suivi
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-center whitespace-nowrap">
-                          {suiviStockActif ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              {stockCalculé}
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[9.5px] font-bold bg-slate-200 text-slate-600 italic">
-                              Libre
-                            </span>
-                          )}
-                        </td>
-
-                        {emplacementsTableau.map((emp) => {
-                          const stockEmp = calculerStockReelDirect(artId, depotFiltre, emp.id);
-                          return (
-                            <td key={emp.id} className="p-3 text-center whitespace-nowrap">
-                              {suiviStockActif ? (
-                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${stockEmp > 0 ? 'bg-slate-100 text-slate-900 border border-slate-300' : 'text-slate-500 font-bold'}`}>
-                                  {stockEmp}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 text-[9.5px]">-</span>
-                              )}
-                            </td>
-                          );
-                        })}
-
-                        {moduleActuel !== 'LIVRAISON' && (
-                          <td className="p-3 text-right font-black text-xs whitespace-nowrap text-slate-900">
-                            {prixAchatValeur}
-                          </td>
-                        )}
-                        <td className="p-3 text-right font-black text-emerald-700 text-xs whitespace-nowrap">
-                          {art.Prix_Vente || art.prix_vente || 0}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {limiteArticles < articlesFiltres.length && (
-            <div className="text-center pt-1 pb-2">
+          {/* Carte Tableau Catalogue identique à LISTE_DOCS de GestionMouvements_7.jsx */}
+          <div className={`overflow-hidden ${cardStyle}`}>
+            <div className="p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold uppercase text-slate-800 text-[9.5px]">
+                  📦 Stock des Articles [{moduleActuel}]
+                </span>
+                <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold text-[9px]">
+                  {articlesAffiches.length} / {articlesFiltres.length}
+                </span>
+              </div>
               <button
                 type="button"
                 disabled={enTrainDeSauvegarder}
-                onClick={() => setLimiteArticles(prev => prev + 20)}
-                className={`font-black px-4 py-2 rounded-xl text-xs transition shadow-md border-2 w-full cursor-pointer ${
-                  isDarkMode 
-                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600' 
-                    : 'bg-white hover:bg-slate-100 text-slate-900 border-slate-400'
-                }`}
+                onClick={() => imprimerOngletActif('STOCK DES ARTICLES')}
+                className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-bold px-2 py-1 rounded text-[8.5px] flex items-center gap-1 cursor-pointer"
               >
-                📥 Charger 20 articles de plus ({articlesFiltres.length - limiteArticles} restants)
+                <span>🖨️ Imp.</span>
               </button>
             </div>
-          )}
+
+            <div id="section-impression-catalogue" className="overflow-x-auto">
+              <table className="w-full text-left text-[9.5px] border-collapse">
+                <thead>
+                  <tr className={tableHeaderStyle}>
+                    <th 
+                      onClick={() => !enTrainDeSauvegarder && gererTri('Designation')} 
+                      className="p-2 cursor-pointer hover:text-orange-600 select-none whitespace-nowrap"
+                    >
+                      Désignation {colonneTri === 'Designation' && (ordreTri === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="p-2 text-center whitespace-nowrap">STOCK</th>
+
+                    {emplacementsTableau.map((emp) => (
+                      <th key={emp.id} className="p-2 text-center whitespace-nowrap">
+                        📍 {emp.nom_emplacement || emp.code_emplacement}
+                      </th>
+                    ))}
+
+                    {moduleActuel !== 'LIVRAISON' && (
+                      <th 
+                        onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Achat')} 
+                        className="p-2 text-right cursor-pointer hover:text-orange-600 select-none whitespace-nowrap"
+                      >
+                        PA {colonneTri === 'Prix_Achat' && (ordreTri === 'asc' ? '▲' : '▼')}
+                      </th>
+                    )}
+
+                    <th 
+                      onClick={() => !enTrainDeSauvegarder && gererTri('Prix_Vente')} 
+                      className="p-2 text-right cursor-pointer hover:text-orange-600 select-none whitespace-nowrap"
+                    >
+                      PV {colonneTri === 'Prix_Vente' && (ordreTri === 'asc' ? '▲' : '▼')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-900 bg-white">
+                  {chargement && articles.length === 0 ? (
+                    <tr>
+                      <td colSpan={colSpanTotal} className="p-4 text-center text-slate-400 italic font-bold">Chargement instantané...</td>
+                    </tr>
+                  ) : articlesAffiches.length === 0 ? (
+                    <tr>
+                      <td colSpan={colSpanTotal} className="p-4 text-center text-slate-400 italic font-bold">Aucun article enregistré pour le module {moduleActuel}.</td>
+                    </tr>
+                  ) : (
+                    articlesAffiches.map((art) => {
+                      const artId = art.id_article || art.id;
+                      const stockCalculé = calculerStockReelDirect(artId, depotFiltre, emplacementFiltre);
+                      const prixAchatValeur = art.Prix_Achat || art.prix_achat || 0;
+                      const suiviStockActif = art.suivi_stock ?? true;
+
+                      return (
+                        <tr 
+                          key={artId}
+                          onClick={() => {
+                            if (enTrainDeSauvegarder) return;
+                            if (!permissions.modification) {
+                              setEtatModale({ ouverte: true, titre: 'Action non autorisée', message: 'Vous n’avez pas le droit de modifier les articles.', type: 'erreur', onConfirmer: null });
+                              return;
+                            }
+                            ouvrirEdition(art);
+                          }}
+                          className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
+                        >
+                          <td className="p-2 font-extrabold text-[9.5px] whitespace-nowrap uppercase flex items-center gap-1.5 text-slate-900">
+                            <span>{art.Designation || art.designation}</span>
+                            {!suiviStockActif && (
+                              <span className="bg-slate-100 text-slate-600 text-[8px] font-bold px-1.5 py-0.5 rounded border border-slate-200">
+                                Non suivi
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center whitespace-nowrap">
+                            {suiviStockActif ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {stockCalculé}
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-slate-100 text-slate-500 italic">
+                                Libre
+                              </span>
+                            )}
+                          </td>
+
+                          {emplacementsTableau.map((emp) => {
+                            const stockEmp = calculerStockReelDirect(artId, depotFiltre, emp.id);
+                            return (
+                              <td key={emp.id} className="p-2 text-center whitespace-nowrap">
+                                {suiviStockActif ? (
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${stockEmp > 0 ? 'bg-slate-100 text-slate-800 border border-slate-200' : 'text-slate-400 font-bold'}`}>
+                                    {stockEmp}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 text-[8.5px]">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+
+                          {moduleActuel !== 'LIVRAISON' && (
+                            <td className="p-2 text-right font-bold text-[9.5px] whitespace-nowrap text-slate-700">
+                              {prixAchatValeur}
+                            </td>
+                          )}
+                          <td className="p-2 text-right font-black text-emerald-600 text-[9.5px] whitespace-nowrap">
+                            {art.Prix_Vente || art.prix_vente || 0}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {limiteArticles < articlesFiltres.length && (
+              <div className="p-2 bg-slate-50 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={() => setLimiteArticles(prev => prev + 20)}
+                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-1.5 rounded-xl text-[9.5px] transition shadow-2xs border border-slate-300 w-full cursor-pointer"
+                >
+                  📥 Charger 20 articles de plus ({articlesFiltres.length - limiteArticles} restants)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1728,136 +1756,144 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         const nomEmpActuel = obtenirNomEmplacementParId(emplacementStatFiltre);
 
         return (
-          <div className={`p-3 rounded-xl border-2 shadow-md space-y-3 ${isDarkMode ? 'bg-[#0b1329] border-slate-600' : 'bg-white border-slate-400'}`}>
-            <div className={`p-3 rounded-xl border-2 space-y-2.5 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'}`}>
-              <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
+            <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
+              <div className="pb-1 border-b border-slate-100">
+                <span className="font-extrabold text-[9.5px] uppercase text-orange-600">
+                  📈 PARAMÈTRES D'ANALYSE FICHE ARTICLE
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className={`block font-black uppercase text-[9px] mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Date début</label>
+                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">Date début</label>
                   <input
                     type="date"
                     disabled={enTrainDeSauvegarder}
                     value={dateDebutStat}
                     onChange={(e) => setDateDebutStat(e.target.value)}
-                    className={`w-full rounded-lg p-2 text-xs font-mono font-bold shadow-xs ${inputBg}`}
+                    className={`${inputStyle} font-mono`}
                   />
                 </div>
 
                 <div>
-                  <label className={`block font-black uppercase text-[9px] mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Date fin</label>
+                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">Date fin</label>
                   <input
                     type="date"
                     disabled={enTrainDeSauvegarder}
                     value={dateFinStat}
                     onChange={(e) => setDateFinStat(e.target.value)}
-                    className={`w-full rounded-lg p-2 text-xs font-mono font-bold shadow-xs ${inputBg}`}
+                    className={`${inputStyle} font-mono`}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 <div>
-                  <label className={`block font-black uppercase text-[9px] mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>{libelleDepotPartenaire}</label>
+                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">{libelleDepotPartenaire}</label>
                   <div
                     onClick={() => {
                       if (enTrainDeSauvegarder) return;
                       setRechercheModalDepot('');
                       setAfficherModalSelectionDepot(true);
                     }}
-                    className={`w-full rounded-lg p-2 text-xs font-black shadow-xs cursor-pointer flex justify-between items-center border-2 ${isDarkMode ? 'bg-slate-800 border-slate-600 text-slate-200' : 'bg-white border-slate-400 text-slate-900'}`}
+                    className={selectTriggerStyle}
                   >
-                    <span className="truncate uppercase">{nomDepotActuel}</span>
-                    <span className="text-xs text-slate-400">🔍</span>
+                    <span className="truncate uppercase text-orange-600">{nomDepotActuel}</span>
+                    <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className={`block font-black uppercase text-[9px] mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>{libelleLivreurOuEmplacement}</label>
+                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">{libelleLivreurOuEmplacement}</label>
                   <div
                     onClick={() => {
                       if (enTrainDeSauvegarder) return;
                       setRechercheModalEmp('');
                       setAfficherModalSelectionEmp(true);
                     }}
-                    className={`w-full rounded-lg p-2 text-xs font-black shadow-xs cursor-pointer flex justify-between items-center border-2 ${isDarkMode ? 'bg-slate-800 border-slate-600 text-slate-200' : 'bg-white border-slate-400 text-slate-900'}`}
+                    className={selectTriggerStyle}
                   >
-                    <span className="truncate uppercase">{nomEmpActuel}</span>
-                    <span className="text-xs text-slate-400">🔍</span>
+                    <span className="truncate uppercase text-slate-800">{nomEmpActuel}</span>
+                    <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className={`block font-black uppercase text-[9px] mb-0.5 truncate ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Article</label>
+                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">Article *</label>
                   <div
                     onClick={() => {
                       if (enTrainDeSauvegarder) return;
                       setRechercheModalArticle('');
                       setAfficherModalSelectionArticle(true);
                     }}
-                    className={`w-full rounded-lg p-2 text-xs font-black shadow-xs cursor-pointer flex justify-between items-center border-2 ${isDarkMode ? 'bg-slate-800 border-slate-600 text-slate-200' : 'bg-white border-slate-400 text-slate-900'}`}
+                    className={selectTriggerStyle}
                   >
-                    <span className="truncate uppercase">
+                    <span className="truncate uppercase text-orange-600">
                       {artObj ? nomArticle : '-- Choisir --'}
                     </span>
-                    <span className="text-xs text-slate-400">🔍</span>
+                    <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
                   </div>
                 </div>
               </div>
             </div>
 
             {artObj ? (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center bg-slate-600 text-white px-3 py-2 rounded-xl shadow-md border-2 border-slate-500">
-                  <h4 className="font-black uppercase text-[10px]">📈 STATISTIQUES & MOUVEMENTS : {nomArticle}</h4>
+              <div className={`overflow-hidden ${cardStyle}`}>
+                <div className="p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                  <span className="font-extrabold uppercase text-slate-800 text-[9.5px] truncate">
+                    📈 MOUVEMENTS : <strong className="text-orange-600">{nomArticle}</strong>
+                  </span>
                   <button
                     type="button"
                     disabled={enTrainDeSauvegarder}
                     onClick={() => imprimerOngletActif('STATISTIQUES ARTICLE')}
-                    className="bg-orange-600 hover:bg-orange-700 text-white font-black px-2.5 py-1 rounded-lg text-[10px] border border-orange-700 flex items-center gap-1 shadow-xs cursor-pointer"
+                    className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2 py-1 rounded text-[8.5px] flex items-center gap-1 cursor-pointer shrink-0"
                   >
-                    <span>🖨️ Imprimer</span>
+                    <span>🖨️ Imp.</span>
                   </button>
                 </div>
 
-                <div id="section-impression-statistiques" className={`rounded-xl border-2 overflow-x-auto shadow-md ${isDarkMode ? 'bg-slate-100 border-slate-600 text-slate-900' : 'bg-slate-50 border-slate-400 text-slate-900'}`}>
-                  <table className="w-full text-left text-xs border-collapse">
+                <div id="section-impression-statistiques" className="overflow-x-auto">
+                  <table className="w-full text-left text-[9.5px] border-collapse">
                     <thead>
-                      <tr className={`border-b-2 uppercase text-[9.5px] font-black ${tableHeaderBg}`}>
-                        <th className={`p-3 ${isDarkMode ? 'text-white' : 'text-black'}`}>Date</th>
-                        <th className={`p-3 ${isDarkMode ? 'text-white' : 'text-black'}`}>Motif</th>
-                        <th className={`p-3 text-center ${isDarkMode ? 'text-white' : 'text-black'}`}>Type Mvt</th>
-                        <th className={`p-3 text-center ${isDarkMode ? 'text-white' : 'text-black'}`}>Livreur</th>
-                        <th className={`p-3 text-center ${isDarkMode ? 'text-white' : 'text-black'}`}>Quantité</th>
-                        <th className={`p-3 text-center ${isDarkMode ? 'text-white' : 'text-black'}`}>Cumul</th>
+                      <tr className={tableHeaderStyle}>
+                        <th className="p-2">Date</th>
+                        <th className="p-2">Motif</th>
+                        <th className="p-2 text-center">Type Mvt</th>
+                        <th className="p-2 text-center">Livreur</th>
+                        <th className="p-2 text-center">Quantité</th>
+                        <th className="p-2 text-center">Cumul</th>
                       </tr>
                     </thead>
-                    <tbody className="text-xs text-slate-900 bg-white">
+                    <tbody className="divide-y divide-slate-100 text-[9.5px] text-slate-900 bg-white">
                       {stats.lignes.length === 0 ? (
                         <tr>
-                          <td colSpan="6" className="p-6 text-center font-bold text-slate-500">Aucun mouvement enregistré sur cette période.</td>
+                          <td colSpan="6" className="p-4 text-center italic font-bold text-slate-400">Aucun mouvement enregistré sur cette période.</td>
                         </tr>
                       ) : (
                         stats.lignes.map((ligne, idx) => (
-                          <tr key={idx} className="transition hover:bg-slate-100">
-                            <td className="p-3 font-mono font-bold text-slate-700 whitespace-nowrap">
+                          <tr key={idx} className="transition hover:bg-orange-50/70">
+                            <td className="p-2 font-mono font-bold text-slate-800 whitespace-nowrap">
                               {ligne.date ? new Date(ligne.date).toLocaleDateString('fr-FR') : '-'}
                             </td>
-                            <td className="p-3 font-black uppercase text-slate-900">{ligne.motifLigne || '-'}</td>
-                            <td className="p-3 text-center">
-                              <span className={`px-2 py-0.5 rounded-full font-black text-[9.5px] border ${
-                                ligne.typeAbr === 'APP' ? 'bg-purple-100 text-purple-800 border-purple-300' :
-                                ligne.typeAbr.startsWith('ME') ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                ligne.typeAbr.startsWith('MS') ? 'bg-rose-100 text-rose-800 border-rose-300' :
-                                ligne.typeAbr.startsWith('TR') ? 'bg-amber-100 text-amber-800 border-amber-300' :
-                                'bg-blue-100 text-blue-800 border-blue-300'
+                            <td className="p-2 font-extrabold uppercase text-slate-900">{ligne.motifLigne || '-'}</td>
+                            <td className="p-2 text-center">
+                              <span className={`px-1.5 py-0.5 rounded-full font-black text-[8.5px] border ${
+                                ligne.typeAbr === 'APP' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                ligne.typeAbr.startsWith('ES') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                ligne.typeAbr.startsWith('MS') ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                ligne.typeAbr.startsWith('TR') ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                'bg-blue-50 text-blue-700 border-blue-200'
                               }`}>
                                 {ligne.typeAbr}
                               </span>
                             </td>
-                            <td className="p-3 text-center font-bold text-slate-700 uppercase">{ligne.emplacementDest || '-'}</td>
-                            <td className={`p-3 text-center font-black ${ligne.impactStock < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            <td className="p-2 text-center font-bold text-blue-700 uppercase">{ligne.emplacementDest || '-'}</td>
+                            <td className={`p-2 text-center font-black ${ligne.impactStock < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {ligne.impactStock > 0 ? `+${ligne.quantiteMouvementee}` : ligne.impactStock < 0 ? `-${ligne.quantiteMouvementee}` : ligne.quantiteMouvementee}
                             </td>
-                            <td className="p-3 text-center font-black text-slate-900 bg-slate-200">
+                            <td className="p-2 text-center font-black text-slate-900 bg-slate-50">
                               {ligne.stockProgressif}
                             </td>
                           </tr>
@@ -1868,7 +1904,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 </div>
               </div>
             ) : (
-              <div className="p-8 text-center text-slate-400 font-bold italic text-xs">
+              <div className={`p-6 text-center text-slate-400 font-bold italic text-[9.5px] ${cardStyle}`}>
                 👆 Veuillez cliquer sur le champ "Article" ci-dessus pour sélectionner un article et afficher ses statistiques.
               </div>
             )}
@@ -1877,40 +1913,46 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       })()}
 
       {modeVue === 'rapport' && (
-        <div className={`p-3 rounded-xl border-2 shadow-md space-y-3 ${isDarkMode ? 'bg-[#0b1329] border-slate-600' : 'bg-white border-slate-400'}`}>
-          <div className={`p-3 rounded-xl border-2 space-y-2.5 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-300'}`}>
-            <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-2">
+          <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
+            <div className="pb-1 border-b border-slate-100">
+              <span className="font-extrabold text-[9.5px] uppercase text-orange-600">
+                📊 PÉRIODE & FILTRES DU RAPPORT DE STOCK
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
               <div>
-                <label className={`block font-black uppercase text-[9px] mb-0.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Du</label>
+                <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">Du</label>
                 <input
                   type="date"
                   disabled={enTrainDeSauvegarder}
                   value={dateDebutRapport}
                   onChange={(e) => setDateDebutRapport(e.target.value)}
-                  className={`w-full rounded-lg p-2 text-xs font-mono font-bold shadow-xs ${inputBg}`}
+                  className={`${inputStyle} font-mono`}
                 />
               </div>
 
               <div>
-                <label className={`block font-black uppercase text-[9px] mb-0.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Au</label>
+                <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">Au</label>
                 <input
                   type="date"
                   disabled={enTrainDeSauvegarder}
                   value={dateFinRapport}
                   onChange={(e) => setDateFinRapport(e.target.value)}
-                  className={`w-full rounded-lg p-2 text-xs font-mono font-bold shadow-xs ${inputBg}`}
+                  className={`${inputStyle} font-mono`}
                 />
               </div>
 
               <div>
-                <label className={`block font-black uppercase text-[9px] mb-0.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">
                   {libelleDepotPartenaire}
                 </label>
                 <select
                   disabled={enTrainDeSauvegarder}
                   value={depotRapportFiltre}
                   onChange={(e) => setDepotRapportFiltre(e.target.value)}
-                  className={`w-full rounded-lg p-2 text-xs font-black shadow-xs ${inputBg}`}
+                  className={`${inputStyle} text-orange-600 font-extrabold`}
                 >
                   <option value="TOUS">{moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts'}</option>
                   {depots.map((dep) => (
@@ -1923,7 +1965,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             </div>
 
             <div>
-              <label className={`block font-black uppercase text-[9px] mb-0.5 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Rechercher un article</label>
+              <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">Rechercher un article</label>
               <div className="relative">
                 <input
                   type="text"
@@ -1931,16 +1973,15 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   value={rechercheRapportInput}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setRechercheRapportInput(e.target.value)}
-                  placeholder=""
-                  style={{ textTransform: 'uppercase' }}
-                  className={`w-full rounded-lg p-2 pl-7 font-extrabold text-xs shadow-xs uppercase focus:ring-2 focus:ring-orange-500 focus:outline-none ${inputBg}`}
+                  placeholder="SAISIR UNE DÉSIGNATION..."
+                  className={`${inputStyle} pl-7`}
                 />
-                <span className="absolute left-2.5 top-2 text-slate-400 text-xs">🔍</span>
+                <span className="absolute left-2 top-1.5 text-slate-400 text-[10px]">🔍</span>
                 {rechercheRapportInput && (
                   <button
                     type="button"
                     onClick={() => setRechercheRapportInput('')}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 font-black text-xs"
+                    className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 font-black text-[10px]"
                   >
                     ✕
                   </button>
@@ -1949,77 +1990,84 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             </div>
           </div>
 
-          <div className="flex justify-between items-center bg-slate-600 text-white px-3 py-2 rounded-xl shadow-md border-2 border-slate-500">
-            <h4 className="font-black uppercase text-[10px]">📊 RAPPORT DE STOCK PAR ARTICLE</h4>
-            <button
-              type="button"
-              disabled={enTrainDeSauvegarder}
-              onClick={() => imprimerOngletActif('RAPPORT DE STOCK')}
-              className="bg-orange-600 hover:bg-orange-700 text-white font-black px-2.5 py-1 rounded-lg text-[10px] border border-orange-700 flex items-center gap-1 shadow-xs cursor-pointer"
-            >
-              <span>🖨️ Imprimer</span>
-            </button>
-          </div>
+          <div className={`overflow-hidden ${cardStyle}`}>
+            <div className="p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold uppercase text-slate-800 text-[9.5px]">📊 RAPPORT DE STOCK PAR ARTICLE</span>
+                <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold text-[9px]">{articlesRapportTries.length}</span>
+              </div>
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => imprimerOngletActif('RAPPORT DE STOCK')}
+                className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-2 py-1 rounded text-[8.5px] flex items-center gap-1 cursor-pointer"
+              >
+                <span>🖨️ Imp.</span>
+              </button>
+            </div>
 
-          <div id="section-impression-rapport" className={`rounded-xl border-2 overflow-x-auto shadow-md ${isDarkMode ? 'bg-slate-100 border-slate-600 text-slate-900' : 'bg-slate-50 border-slate-400 text-slate-900'}`}>
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className={`border-b-2 uppercase text-[9.5px] font-black ${tableHeaderBg}`}>
-                  <th 
-                    onClick={() => !enTrainDeSauvegarder && gererTriRapport('Designation')}
-                    className={`p-3 cursor-pointer hover:bg-slate-400/40 select-none whitespace-nowrap ${isDarkMode ? 'text-white' : 'text-black'}`}
-                  >
-                    Désignation {colonneTriRapport === 'Designation' && (ordreTriRapport === 'asc' ? '▲' : '▼')}
-                  </th>
-                  <th className={`p-3 text-center ${isDarkMode ? 'text-white' : 'text-black'}`}>Stock Initial</th>
-                  <th className="p-3 text-center text-emerald-700">Entrées</th>
-                  <th className={`p-3 text-center ${isDarkMode ? 'text-white' : 'text-black'}`}>Stock Total</th>
-                  <th className="p-3 text-center text-rose-700">Sorties</th>
-                  <th className={`p-3 text-center ${isDarkMode ? 'text-white' : 'text-black'}`}>Stock Réel</th>
-                </tr>
-              </thead>
-              <tbody className="text-xs text-slate-900 bg-white">
-                {articlesRapportTries.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="p-6 text-center font-bold text-slate-500">Aucun article ne correspond à votre recherche.</td>
+            <div id="section-impression-rapport" className="overflow-x-auto">
+              <table className="w-full text-left text-[9.5px] border-collapse">
+                <thead>
+                  <tr className={tableHeaderStyle}>
+                    <th 
+                      onClick={() => !enTrainDeSauvegarder && gererTriRapport('Designation')}
+                      className="p-2 cursor-pointer hover:text-orange-600 select-none whitespace-nowrap"
+                    >
+                      Désignation {colonneTriRapport === 'Designation' && (ordreTriRapport === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="p-2 text-center">Stock Initial</th>
+                    <th className="p-2 text-center text-emerald-700">Entrées</th>
+                    <th className="p-2 text-center">Stock Total</th>
+                    <th className="p-2 text-center text-rose-700">Sorties</th>
+                    <th className="p-2 text-center">Stock Réel</th>
                   </tr>
-                ) : (
-                  articlesRapportTries.map((art) => {
-                    const artId = art.id_article || art.id;
-                    const rep = calculerLigneRapportStock(artId);
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[9.5px] text-slate-900 bg-white">
+                  {articlesRapportTries.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="p-4 text-center italic font-bold text-slate-400">Aucun article ne correspond à votre recherche.</td>
+                    </tr>
+                  ) : (
+                    articlesRapportTries.map((art) => {
+                      const artId = art.id_article || art.id;
+                      const rep = calculerLigneRapportStock(artId);
 
-                    return (
-                      <tr key={artId} className="transition hover:bg-slate-100">
-                        <td className="p-3 font-black uppercase text-slate-900">{art.Designation || art.designation}</td>
-                        <td className="p-3 text-center font-bold text-slate-700">{rep.stockInitial}</td>
-                        <td className="p-3 text-center font-black text-emerald-700">+{rep.entrees}</td>
-                        <td className="p-3 text-center font-bold text-slate-900">{rep.stockTotal}</td>
-                        <td className="p-3 text-center font-black text-rose-700">-{rep.sorties}</td>
-                        <td className="p-3 text-center font-black text-slate-900 bg-slate-200">{rep.stockReel}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                      return (
+                        <tr key={artId} className="transition hover:bg-orange-50/70">
+                          <td className="p-2 font-extrabold uppercase text-slate-900">{art.Designation || art.designation}</td>
+                          <td className="p-2 text-center font-bold text-slate-700">{rep.stockInitial}</td>
+                          <td className="p-2 text-center font-black text-emerald-600">+{rep.entrees}</td>
+                          <td className="p-2 text-center font-bold text-slate-900">{rep.stockTotal}</td>
+                          <td className="p-2 text-center font-black text-rose-600">-{rep.sorties}</td>
+                          <td className="p-2 text-center font-black text-slate-900 bg-slate-50">{rep.stockReel}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* 🪟 MODALE DE SAISIE / CRÉATION / MODIFICATION D'ARTICLE */}
+      {/* 🪟 MODALE DE SAISIE / CRÉATION / MODIFICATION D'ARTICLE (Style identique aux modales de GestionMouvements_7.jsx) */}
       {afficherModalForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-xs p-3 animate-fadeIn">
-          <div className={`w-full max-w-lg rounded-2xl shadow-2xl border-3 overflow-hidden flex flex-col max-h-[90vh] ${isDarkMode ? 'bg-[#0b1329] border-slate-500 text-slate-100' : 'bg-white border-2 border-slate-700 text-slate-900'}`}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
             
-            <div className="p-3.5 flex justify-between items-center text-xs font-black border-b-2 bg-slate-600 text-white border-slate-500">
-              <span>{articleEnEdition ? `MODIFIER UN ARTICLE [${moduleActuel}]` : `CRÉER UN ARTICLE [${moduleActuel}]`}</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => { annulerForm(); setAfficherModalForm(false); }} className="text-slate-200 hover:text-white font-black text-sm cursor-pointer p-1">✕</button>
+            <div className="p-3.5 border-b border-slate-100 flex justify-between items-center">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>📦</span> {articleEnEdition ? `MODIFIER UN ARTICLE [${moduleActuel}]` : `CRÉER UN ARTICLE [${moduleActuel}]`}
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => { annulerForm(); setAfficherModalForm(false); }} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <form onSubmit={preparerEnregistrementArticle} className="p-4 space-y-3.5 overflow-y-auto">
+            <form onSubmit={preparerEnregistrementArticle} className="p-4 space-y-3 overflow-y-auto text-[10px]">
               <div className="grid grid-cols-[4fr_7fr] gap-2">
                 <div>
-                  <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Famille *</label>
+                  <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">Famille *</label>
                   <select
                     required
                     disabled={enTrainDeSauvegarder}
@@ -2039,7 +2087,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                         }
                       }, 50);
                     }}
-                    className={`w-full rounded-lg p-2 text-xs font-black shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none ${inputBg}`}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
                   >
                     <option value="">-- Choisir --</option>
                     {familles.map((fam) => (
@@ -2051,7 +2099,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 </div>
 
                 <div>
-                  <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Désignation *</label>
+                  <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">Désignation *</label>
                   <input
                     ref={designationInputRef}
                     autoFocus
@@ -2063,8 +2111,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Designation: e.target.value.toUpperCase() })}
                     placeholder="EX: JUS 250ML"
-                    style={{ textTransform: 'uppercase' }}
-                    className={`w-full rounded-lg p-2 text-xs font-black shadow-xs focus:ring-2 focus:ring-orange-500 focus:outline-none uppercase ${inputBg}`}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-black text-slate-900 uppercase focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                   <datalist id="liste-suggestions-articles">
                     {toutesLesSuggestionsArticles.map((nomArt, index) => (
@@ -2077,19 +2124,19 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
               {moduleActuel !== 'LIVRAISON' ? (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>PA</label>
+                    <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">PA</label>
                     <input
                       type="number"
                       disabled={enTrainDeSauvegarder}
                       value={nouveauArticle.Prix_Achat}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Achat: e.target.value })}
-                      className={`w-full rounded-lg p-2 text-xs font-black shadow-xs ${inputBg}`}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-black text-slate-900"
                     />
                   </div>
 
                   <div>
-                    <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>PV *</label>
+                    <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">PV *</label>
                     <input
                       type="number"
                       required
@@ -2097,13 +2144,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                       value={nouveauArticle.Prix_Vente}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
-                      className={`w-full rounded-lg p-2 text-xs font-black text-emerald-700 shadow-xs ${inputBg}`}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-black text-emerald-600"
                     />
                   </div>
                 </div>
               ) : (
                 <div>
-                  <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>PV *</label>
+                  <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">PV *</label>
                   <input
                     type="number"
                     required
@@ -2111,26 +2158,26 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     value={nouveauArticle.Prix_Vente}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Prix_Vente: e.target.value })}
-                    className={`w-full rounded-lg p-2 text-xs font-black text-emerald-700 shadow-xs ${inputBg}`}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-black text-emerald-600"
                   />
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>S.ALERTE</label>
+                  <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">S.ALERTE</label>
                   <input
                     type="number"
                     disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.Seuil_Alerte}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Seuil_Alerte: e.target.value })}
-                    className={`w-full rounded-lg p-2 text-xs font-black shadow-xs ${inputBg}`}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-black text-slate-900"
                   />
                 </div>
 
                 <div>
-                  <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>CODE-BARRES</label>
+                  <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">CODE-BARRES</label>
                   <input
                     type="text"
                     disabled={enTrainDeSauvegarder}
@@ -2138,29 +2185,28 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, Code_Barre: e.target.value.toUpperCase() })}
                     placeholder="600123"
-                    style={{ textTransform: 'uppercase' }}
-                    className={`w-full rounded-lg p-2 text-xs font-bold font-mono shadow-xs uppercase ${inputBg}`}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-bold font-mono text-slate-900 uppercase"
                   />
                 </div>
               </div>
 
               {isGestionPerissablesActive() && (
                 <div>
-                  <label className={`block font-black text-[9px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Date Péremption</label>
+                  <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">Date Péremption</label>
                   <input
                     type="date"
                     disabled={enTrainDeSauvegarder}
                     value={nouveauArticle.date_peremption}
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, date_peremption: e.target.value })}
-                    className={`w-full rounded-lg p-2 text-xs font-mono font-bold shadow-xs ${inputBg}`}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-mono font-bold text-slate-900"
                   />
                 </div>
               )}
 
-              <div className={`p-3 rounded-xl border-2 flex items-center justify-between ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
                 <div>
-                  <span className={`block font-black text-[10px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-slate-900'}`}>Suivi de stock (Article)</span>
-                  <span className={`text-[9px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Hérité de la famille, modifiable pour cet article.</span>
+                  <span className="block font-black text-[9.5px] uppercase text-slate-900">Suivi de stock (Article)</span>
+                  <span className="text-[8.5px] font-semibold text-slate-500">Hérité de la famille, modifiable pour cet article.</span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -2170,26 +2216,26 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     onChange={(e) => setNouveauArticle({ ...nouveauArticle, suivi_stock: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
                 </label>
               </div>
 
-              <div className="space-y-1 pt-1">
-                <label className={`block font-black text-[9px] uppercase ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>Photo de l'article</label>
+              <div className="space-y-1">
+                <label className="block font-bold text-[8px] text-slate-600 uppercase">Photo de l'article</label>
                 
                 {nouveauArticle.Photo ? (
-                  <div className={`p-3 rounded-xl border-2 flex items-center justify-between gap-3 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
+                  <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
                     <div className="shrink-0">
                       <img
                         src={nouveauArticle.Photo}
                         alt="Photo de l'article"
-                        className="w-16 h-16 object-cover rounded-xl border-2 border-slate-500 shadow-xs"
+                        className="w-14 h-14 object-cover rounded-xl border border-slate-200 shadow-2xs"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     </div>
 
-                    <div className="flex flex-col gap-2 shrink-0">
-                      <label className="bg-slate-700 hover:bg-slate-600 text-white border border-slate-500 px-3 py-1.5 rounded-lg font-black text-xs cursor-pointer flex items-center justify-center gap-1 transition shadow-xs">
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <label className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg font-black text-[10px] cursor-pointer flex items-center justify-center gap-1 transition">
                         <span>📷 {uploadingPhoto ? 'Envoi...' : 'Modifier'}</span>
                         <input
                           type="file"
@@ -2204,7 +2250,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                         type="button"
                         disabled={enTrainDeSauvegarder}
                         onClick={() => setNouveauArticle({ ...nouveauArticle, Photo: '' })}
-                        className="text-rose-600 hover:text-rose-700 font-bold text-[10px] text-center underline cursor-pointer"
+                        className="text-rose-600 hover:text-rose-700 font-bold text-[9px] text-center underline cursor-pointer"
                       >
                         Retirer la photo
                       </button>
@@ -2219,10 +2265,10 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setNouveauArticle({ ...nouveauArticle, Photo: e.target.value })}
                       placeholder="https://lien-image.com/photo.jpg"
-                      className={`flex-1 rounded-lg p-2 text-xs font-bold shadow-xs truncate ${inputBg}`}
+                      className="flex-1 bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-900 truncate"
                     />
 
-                    <label className="bg-slate-700 hover:bg-slate-600 text-white border-2 border-slate-500 px-3 py-2 rounded-lg font-black text-xs cursor-pointer flex items-center justify-center transition shrink-0 shadow-xs">
+                    <label className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-xl font-black text-[10px] cursor-pointer flex items-center justify-center transition shrink-0">
                       <span>📷 Filmer</span>
                       <input
                         type="file"
@@ -2237,27 +2283,27 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 )}
               </div>
 
-              <div className={`p-2.5 rounded-xl border-2 flex items-center space-x-2 ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-100 border-slate-300'}`}>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center space-x-2">
                 <input
                   type="checkbox"
                   id="qrCheck"
                   disabled={enTrainDeSauvegarder}
                   checked={nouveauArticle.Disponible_Menu_QR}
                   onChange={(e) => setNouveauArticle({ ...nouveauArticle, Disponible_Menu_QR: e.target.checked })}
-                  className="w-4 h-4 text-orange-600 rounded border-slate-500 focus:ring-orange-500 cursor-pointer"
+                  className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
                 />
-                <label htmlFor="qrCheck" className={`text-xs font-black cursor-pointer select-none leading-tight ${isDarkMode ? 'text-slate-200' : 'text-slate-900'}`}>
+                <label htmlFor="qrCheck" className="text-[10px] font-black cursor-pointer select-none leading-tight text-slate-900">
                   📱 Visible au Scan Code QR par les clients
                 </label>
               </div>
 
-              <div className="pt-2 border-t-2 border-slate-400/40 flex justify-between items-center">
+              <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
                 {articleEnEdition && permissions.suppression ? (
                   <button 
                     type="button" 
                     disabled={enTrainDeSauvegarder}
                     onClick={supprimerArticleDepuisFormulaire} 
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3.5 py-2 rounded-lg text-xs shadow-md cursor-pointer transition"
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] shadow-2xs cursor-pointer transition"
                   >
                     {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
                   </button>
@@ -2268,7 +2314,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     type="button" 
                     disabled={enTrainDeSauvegarder} 
                     onClick={() => { annulerForm(); setAfficherModalForm(false); }} 
-                    className={`font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-3.5 py-1.5 rounded-lg text-[10px] transition cursor-pointer"
                   >
                     Annuler
                   </button>
@@ -2277,7 +2323,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     <button 
                       type="submit" 
                       disabled={enTrainDeSauvegarder}
-                      className="font-black px-5 py-2 rounded-lg text-xs shadow-md transition cursor-pointer border-2 bg-orange-600 hover:bg-orange-700 text-white border-orange-700"
+                      className="font-black px-4 py-1.5 rounded-lg text-[10px] shadow-2xs transition cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white"
                     >
                       {enTrainDeSauvegarder ? 'Enregistrement...' : '✅ Enregistrer'}
                     </button>
@@ -2291,22 +2337,22 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {/* 🔔 MODALE UNIFIÉE (CONFIRMATION -> SUCCÈS -> ERREUR) */}
       {etatModale.ouverte && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className={`border-3 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-500 text-slate-100' : 'bg-white border-2 border-slate-700 text-slate-900'}`}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl text-slate-900">
             
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
-              etatModale.type === 'confirmation' ? 'bg-amber-500/20 text-amber-400 border-2 border-amber-500/40' :
-              etatModale.type === 'succes' ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border-2 border-rose-500/40'
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black border ${
+              etatModale.type === 'confirmation' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+              etatModale.type === 'succes' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'
             }`}>
               {etatModale.type === 'confirmation' ? '❓' :
                etatModale.type === 'succes' ? '✓' : '⚠️'}
             </div>
 
             <div className="space-y-1">
-              <h4 className={`font-black text-sm uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+              <h4 className="font-black text-xs uppercase tracking-wider text-slate-900">
                 {etatModale.titre}
               </h4>
-              <p className={`text-xs font-semibold leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+              <p className="text-[11px] font-semibold leading-relaxed text-slate-600">
                 {etatModale.message}
               </p>
             </div>
@@ -2317,7 +2363,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   <button
                     type="button"
                     onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                    className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold py-2 rounded-xl text-[10px] transition cursor-pointer"
                   >
                     Annuler
                   </button>
@@ -2328,7 +2374,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                       setEtatModale({ ...etatModale, ouverte: false });
                       if (action) action();
                     }}
-                    className="flex-1 font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer border-2 bg-orange-600 hover:bg-orange-700 text-white border-orange-700"
+                    className="flex-1 font-black py-2 rounded-xl text-[10px] shadow-2xs transition cursor-pointer bg-orange-600 hover:bg-orange-700 text-white"
                   >
                     Confirmer
                   </button>
@@ -2337,7 +2383,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 <button
                   type="button"
                   onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                  className="w-full font-black py-2.5 rounded-xl text-xs transition shadow-md cursor-pointer border-2 bg-orange-600 hover:bg-orange-700 text-white border-orange-700"
+                  className="w-full font-black py-2 rounded-xl text-[10px] transition shadow-2xs cursor-pointer bg-orange-600 hover:bg-orange-700 text-white"
                 >
                   Compris 👍
                 </button>
@@ -2348,52 +2394,51 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION D'ARTICLE */}
+      {/* MODALE DE SÉLECTION D'ARTICLE (Grille 2 colonnes identique à GestionMouvements_7.jsx) */}
       {afficherModalSelectionArticle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border-3 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
-            <div className="p-3 bg-slate-600 text-white flex justify-between items-center">
-              <span className="font-black text-xs uppercase">SÉLECTIONNER UN ARTICLE [{moduleActuel}]</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalSelectionArticle(false)} className="text-slate-200 hover:text-white font-black text-xs p-1">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UN ARTICLE [{moduleActuel}]
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalSelectionArticle(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <div className="p-3 space-y-2 overflow-y-auto">
-              <input
-                type="text"
-                autoFocus
-                disabled={enTrainDeSauvegarder}
-                value={rechercheModalArticle}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setRechercheModalArticle(e.target.value.toUpperCase())}
-                placeholder="RECHERCHER..."
-                style={{ textTransform: 'uppercase' }}
-                className={`w-full rounded-lg p-2.5 text-xs font-black shadow-xs uppercase ${inputBg}`}
-              />
+            <input
+              type="text"
+              autoFocus
+              disabled={enTrainDeSauvegarder}
+              value={rechercheModalArticle}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setRechercheModalArticle(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
 
-              <div className="space-y-1.5 pt-1">
-                {articlesModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun article trouvé.</p>
-                ) : (
-                  articlesModalFiltres.map((art) => {
-                    const idA = String(art.id_article || art.id);
-                    const nomArt = art.Designation || art.designation || '';
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {articlesModalFiltres.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+              ) : (
+                articlesModalFiltres.map((art) => {
+                  const idA = String(art.id_article || art.id);
+                  const nomArt = art.Designation || art.designation || '';
 
-                    return (
-                      <div
-                        key={idA}
-                        onClick={() => {
-                          if (enTrainDeSauvegarder) return;
-                          setArticleSelectionneStatId(idA);
-                          setAfficherModalSelectionArticle(false);
-                        }}
-                        className={`border-2 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100'}`}
-                      >
-                        <span className="font-black text-xs truncate uppercase">{nomArt}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                  return (
+                    <div
+                      key={idA}
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setArticleSelectionneStatId(idA);
+                        setAfficherModalSelectionArticle(false);
+                      }}
+                      className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-white"
+                    >
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{nomArt}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -2401,51 +2446,50 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {/* MODALE DE SÉLECTION DE PARTENAIRE / DÉPÔT */}
       {afficherModalSelectionDepot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border-3 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
-            <div className="p-3 bg-slate-600 text-white flex justify-between items-center">
-              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleDepotPartenaire}</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalSelectionDepot(false)} className="text-slate-200 hover:text-white font-black text-xs p-1">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UN {libelleDepotPartenaire.toUpperCase()}
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalSelectionDepot(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <div className="p-3 space-y-2 overflow-y-auto">
-              <input
-                type="text"
-                autoFocus
-                disabled={enTrainDeSauvegarder}
-                value={rechercheModalDepot}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setRechercheModalDepot(e.target.value.toUpperCase())}
-                placeholder="RECHERCHER..."
-                style={{ textTransform: 'uppercase' }}
-                className={`w-full rounded-lg p-2.5 text-xs font-black shadow-xs uppercase ${inputBg}`}
-              />
+            <input
+              type="text"
+              autoFocus
+              disabled={enTrainDeSauvegarder}
+              value={rechercheModalDepot}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setRechercheModalDepot(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
 
-              <div className="space-y-1.5 pt-1">
-                {depotsModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
-                ) : (
-                  depotsModalFiltres.map((dep) => {
-                    const idD = String(dep.id);
-                    const nomD = dep.nom_depot || dep.Nom_Depot || '';
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {depotsModalFiltres.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun résultat.</div>
+              ) : (
+                depotsModalFiltres.map((dep) => {
+                  const idD = String(dep.id);
+                  const nomD = dep.nom_depot || dep.Nom_Depot || '';
 
-                    return (
-                      <div
-                        key={idD}
-                        onClick={() => {
-                          if (enTrainDeSauvegarder) return;
-                          setDepotStatFiltre(idD);
-                          setEmplacementStatFiltre('TOUS');
-                          setAfficherModalSelectionDepot(false);
-                        }}
-                        className={`border-2 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100'}`}
-                      >
-                        <span className="font-black text-xs truncate uppercase">{nomD}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                  return (
+                    <div
+                      key={idD}
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setDepotStatFiltre(idD);
+                        setEmplacementStatFiltre('TOUS');
+                        setAfficherModalSelectionDepot(false);
+                      }}
+                      className={`p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs ${idD === 'TOUS' ? 'col-span-2 bg-slate-50 text-center' : 'bg-white'}`}
+                    >
+                      <span className={`font-black text-xs uppercase truncate ${idD === 'TOUS' ? 'text-slate-500' : 'text-slate-900'}`}>{nomD}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -2453,50 +2497,49 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {/* MODALE DE SÉLECTION D'EMPLACEMENT / LIVREUR */}
       {afficherModalSelectionEmp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border-3 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
-            <div className="p-3 bg-slate-600 text-white flex justify-between items-center">
-              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleLivreurOuEmplacement}</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalSelectionEmp(false)} className="text-slate-200 hover:text-white font-black text-xs p-1">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UN {libelleLivreurOuEmplacement.toUpperCase()}
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalSelectionEmp(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <div className="p-3 space-y-2 overflow-y-auto">
-              <input
-                type="text"
-                autoFocus
-                disabled={enTrainDeSauvegarder}
-                value={rechercheModalEmp}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setRechercheModalEmp(e.target.value.toUpperCase())}
-                placeholder="RECHERCHER..."
-                style={{ textTransform: 'uppercase' }}
-                className={`w-full rounded-lg p-2.5 text-xs font-black shadow-xs uppercase ${inputBg}`}
-              />
+            <input
+              type="text"
+              autoFocus
+              disabled={enTrainDeSauvegarder}
+              value={rechercheModalEmp}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setRechercheModalEmp(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
 
-              <div className="space-y-1.5 pt-1">
-                {emplacementsModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
-                ) : (
-                  emplacementsModalFiltres.map((emp) => {
-                    const idE = String(emp.id);
-                    const nomE = emp.nom_emplacement || '';
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {emplacementsModalFiltres.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun résultat.</div>
+              ) : (
+                emplacementsModalFiltres.map((emp) => {
+                  const idE = String(emp.id);
+                  const nomE = emp.nom_emplacement || '';
 
-                    return (
-                      <div
-                        key={idE}
-                        onClick={() => {
-                          if (enTrainDeSauvegarder) return;
-                          setEmplacementStatFiltre(idE);
-                          setAfficherModalSelectionEmp(false);
-                        }}
-                        className={`border-2 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100'}`}
-                      >
-                        <span className="font-black text-xs truncate uppercase">{nomE}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                  return (
+                    <div
+                      key={idE}
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setEmplacementStatFiltre(idE);
+                        setAfficherModalSelectionEmp(false);
+                      }}
+                      className={`p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs ${idE === 'TOUS' ? 'col-span-2 bg-slate-50 text-center' : 'bg-white'}`}
+                    >
+                      <span className={`font-black text-xs uppercase truncate ${idE === 'TOUS' ? 'text-slate-500' : 'text-slate-900'}`}>{nomE}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -2504,50 +2547,49 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {/* MODALE DE SÉLECTION DE FAMILLE (CATALOGUE) */}
       {afficherModalFamilleCat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border-3 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
-            <div className="p-3 bg-slate-600 text-white flex justify-between items-center">
-              <span className="font-black text-xs uppercase">SÉLECTIONNER UNE FAMILLE</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalFamilleCat(false)} className="text-slate-200 hover:text-white font-black text-xs p-1">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UNE FAMILLE
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalFamilleCat(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <div className="p-3 space-y-2 overflow-y-auto">
-              <input
-                type="text"
-                autoFocus
-                disabled={enTrainDeSauvegarder}
-                value={rechercheModalFamilleCat}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setRechercheModalFamilleCat(e.target.value.toUpperCase())}
-                placeholder="RECHERCHER..."
-                style={{ textTransform: 'uppercase' }}
-                className={`w-full rounded-lg p-2.5 text-xs font-black shadow-xs uppercase ${inputBg}`}
-              />
+            <input
+              type="text"
+              autoFocus
+              disabled={enTrainDeSauvegarder}
+              value={rechercheModalFamilleCat}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setRechercheModalFamilleCat(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
 
-              <div className="space-y-1.5 pt-1">
-                {famillesCatModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
-                ) : (
-                  famillesCatModalFiltres.map((fam) => {
-                    const idF = String(fam.id);
-                    const nomF = fam.nom_famille || fam.Nom_Famille || 'Toutes';
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {famillesCatModalFiltres.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun résultat.</div>
+              ) : (
+                famillesCatModalFiltres.map((fam) => {
+                  const idF = String(fam.id);
+                  const nomF = fam.nom_famille || fam.Nom_Famille || 'Toutes';
 
-                    return (
-                      <div
-                        key={idF}
-                        onClick={() => {
-                          if (enTrainDeSauvegarder) return;
-                          setFamilleFiltre(idF);
-                          setAfficherModalFamilleCat(false);
-                        }}
-                        className={`border-2 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100'}`}
-                      >
-                        <span className="font-black text-xs truncate uppercase">{nomF}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                  return (
+                    <div
+                      key={idF}
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setFamilleFiltre(idF);
+                        setAfficherModalFamilleCat(false);
+                      }}
+                      className={`p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs ${idF === 'TOUTES' ? 'col-span-2 bg-slate-50 text-center' : 'bg-white'}`}
+                    >
+                      <span className={`font-black text-xs uppercase truncate ${idF === 'TOUTES' ? 'text-slate-500' : 'text-slate-900'}`}>{nomF}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -2555,51 +2597,50 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {/* MODALE DE SÉLECTION DE DÉPÔT / PARTENAIRE (CATALOGUE) */}
       {afficherModalDepotCat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border-3 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
-            <div className="p-3 bg-slate-600 text-white flex justify-between items-center">
-              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleDepotPartenaire}</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalDepotCat(false)} className="text-slate-200 hover:text-white font-black text-xs p-1">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UN {libelleDepotPartenaire.toUpperCase()}
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalDepotCat(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <div className="p-3 space-y-2 overflow-y-auto">
-              <input
-                type="text"
-                autoFocus
-                disabled={enTrainDeSauvegarder}
-                value={rechercheModalDepotCat}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setRechercheModalDepotCat(e.target.value.toUpperCase())}
-                placeholder="RECHERCHER..."
-                style={{ textTransform: 'uppercase' }}
-                className={`w-full rounded-lg p-2.5 text-xs font-black shadow-xs uppercase ${inputBg}`}
-              />
+            <input
+              type="text"
+              autoFocus
+              disabled={enTrainDeSauvegarder}
+              value={rechercheModalDepotCat}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setRechercheModalDepotCat(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
 
-              <div className="space-y-1.5 pt-1">
-                {depotsCatModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
-                ) : (
-                  depotsCatModalFiltres.map((dep) => {
-                    const idD = String(dep.id);
-                    const nomD = dep.nom_depot || dep.Nom_Depot || '';
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {depotsCatModalFiltres.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun résultat.</div>
+              ) : (
+                depotsCatModalFiltres.map((dep) => {
+                  const idD = String(dep.id);
+                  const nomD = dep.nom_depot || dep.Nom_Depot || '';
 
-                    return (
-                      <div
-                        key={idD}
-                        onClick={() => {
-                          if (enTrainDeSauvegarder) return;
-                          setDepotFiltre(idD);
-                          setEmplacementFiltre('TOUS');
-                          setAfficherModalDepotCat(false);
-                        }}
-                        className={`border-2 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100'}`}
-                      >
-                        <span className="font-black text-xs truncate uppercase">{nomD}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                  return (
+                    <div
+                      key={idD}
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setDepotFiltre(idD);
+                        setEmplacementFiltre('TOUS');
+                        setAfficherModalDepotCat(false);
+                      }}
+                      className={`p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs ${idD === 'TOUS' ? 'col-span-2 bg-slate-50 text-center' : 'bg-white'}`}
+                    >
+                      <span className={`font-black text-xs uppercase truncate ${idD === 'TOUS' ? 'text-slate-500' : 'text-slate-900'}`}>{nomD}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -2607,50 +2648,49 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {/* MODALE DE SÉLECTION D'EMPLACEMENT / LIVREUR (CATALOGUE) */}
       {afficherModalEmpCat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border-3 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-slate-400 text-slate-900'}`}>
-            <div className="p-3 bg-slate-600 text-white flex justify-between items-center">
-              <span className="font-black text-xs uppercase">SÉLECTIONNER UN {libelleLivreurOuEmplacement}</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalEmpCat(false)} className="text-slate-200 hover:text-white font-black text-xs p-1">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UN {libelleLivreurOuEmplacement.toUpperCase()}
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalEmpCat(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <div className="p-3 space-y-2 overflow-y-auto">
-              <input
-                type="text"
-                autoFocus
-                disabled={enTrainDeSauvegarder}
-                value={rechercheModalEmpCat}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setRechercheModalEmpCat(e.target.value.toUpperCase())}
-                placeholder="RECHERCHER..."
-                style={{ textTransform: 'uppercase' }}
-                className={`w-full rounded-lg p-2.5 text-xs font-black shadow-xs uppercase ${inputBg}`}
-              />
+            <input
+              type="text"
+              autoFocus
+              disabled={enTrainDeSauvegarder}
+              value={rechercheModalEmpCat}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setRechercheModalEmpCat(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
 
-              <div className="space-y-1.5 pt-1">
-                {emplacementsCatModalFiltres.length === 0 ? (
-                  <p className="text-center text-slate-400 py-8 text-xs font-bold">Aucun résultat.</p>
-                ) : (
-                  emplacementsCatModalFiltres.map((emp) => {
-                    const idE = String(emp.id);
-                    const nomE = emp.nom_emplacement || '';
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {emplacementsCatModalFiltres.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun résultat.</div>
+              ) : (
+                emplacementsCatModalFiltres.map((emp) => {
+                  const idE = String(emp.id);
+                  const nomE = emp.nom_emplacement || '';
 
-                    return (
-                      <div
-                        key={idE}
-                        onClick={() => {
-                          if (enTrainDeSauvegarder) return;
-                          setEmplacementFiltre(idE);
-                          setAfficherModalEmpCat(false);
-                        }}
-                        className={`border-2 rounded-xl p-3 flex justify-between items-center cursor-pointer transition shadow-xs ${isDarkMode ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100'}`}
-                      >
-                        <span className="font-black text-xs truncate uppercase">{nomE}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                  return (
+                    <div
+                      key={idE}
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setEmplacementFiltre(idE);
+                        setAfficherModalEmpCat(false);
+                      }}
+                      className={`p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs ${idE === 'TOUS' ? 'col-span-2 bg-slate-50 text-center' : 'bg-white'}`}
+                    >
+                      <span className={`font-black text-xs uppercase truncate ${idE === 'TOUS' ? 'text-slate-500' : 'text-slate-900'}`}>{nomE}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

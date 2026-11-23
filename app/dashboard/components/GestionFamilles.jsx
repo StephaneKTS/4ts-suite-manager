@@ -200,7 +200,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
     }
   }, [entrepriseId, moduleActuel]);
 
-  // 🚀 ÉTAPE 1 : INTERCEPTION DU CLIC SUR ENREGISTRER POUR AFFICHER LA MODALE DE CONFIRMATION
   const preparerEnregistrement = (e) => {
     if (e) e.preventDefault();
     
@@ -218,7 +217,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
       return;
     }
 
-    // Affichage de la modale de confirmation demandée
     setEtatModale({
       ouverte: true,
       titre: 'Confirmation requise',
@@ -228,7 +226,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
     });
   };
 
-  // 🚀 ÉTAPE 2 : EXÉCUTION RÉELLE DE L'ENREGISTREMENT APRÈS VALIDATION DANS LA MODALE
   const executerEnregistrementFamille = async () => {
     if (enTrainDeSauvegarder) return;
 
@@ -285,7 +282,6 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
       await chargerFamilles();
       setAfficherModalForm(false);
 
-      // 🚀 ÉTAPE 3 : MODALE DE SUCCÈS AFFICHÉE INSTANTANÉMENT APRÈS LA VALIDATION
       setEtatModale({
         ouverte: true,
         titre: 'Opération réussie',
@@ -423,19 +419,16 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
 
   const famillesAffichees = familles.slice(0, limiteFamilles);
 
-  // 🎨 CONFIGURATION DES COULEURS ET BORDURES RENFORCÉES (MODE JOUR vs MODE NUIT)
-  const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-[#0a1931]';
-  const headerCardBg = isDarkMode ? 'bg-[#0b1329] border-2 border-slate-600 text-slate-100 shadow-md' : 'bg-white border-2 border-[#0a1931]/60 text-[#0a1931] shadow-md';
-  const subTextColor = isDarkMode ? 'text-slate-300' : 'text-slate-900 font-bold';
-  const inputBg = isDarkMode ? 'bg-slate-900 border-2 border-slate-600 text-slate-100 placeholder:text-slate-500' : 'bg-white border-2 border-slate-400 text-black font-semibold placeholder:text-slate-400';
-  const tableHeaderBg = isDarkMode ? 'bg-slate-900 text-slate-200 border-slate-700' : 'bg-[#0a1931] text-white border-blue-900';
-  const rowHoverBg = isDarkMode ? 'hover:bg-slate-800/60' : 'hover:bg-blue-50';
+  // 🎨 STYLING HARMONISÉ AVEC GestionMouvements & GestionArticles (Cartes blanches, Orange Vif & Slate-900)
+  const cardStyle = 'bg-white rounded-xl border border-slate-200 shadow-2xs';
+  const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
+  const tableHeaderStyle = 'bg-slate-50 text-slate-700 uppercase text-[8.5px] font-extrabold border-b border-slate-200';
 
   return (
-    <div className={`space-y-3 font-sans text-xs ${containerBg} p-2 rounded-xl transition-colors`}>
+    <div className="space-y-2 font-sans text-[10px]">
       
       {/* BANDEAU DE STATUT CONNEXION */}
-      <div className={`flex justify-between items-center px-3 py-1 rounded-lg text-[10px] font-bold ${isOnline ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'}`}>
+      <div className={`flex justify-between items-center px-3 py-1 rounded-xl text-[9.5px] font-bold border ${isOnline ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-800 border-rose-200'}`}>
         <div className="flex items-center gap-1.5">
           <span>{isOnline ? '🟢' : '🔴'}</span>
           <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
@@ -444,22 +437,22 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
           <button 
             type="button" 
             onClick={verifierEtSynchroniserFileAttente}
-            className="bg-amber-600 hover:bg-amber-500 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
+            className="bg-orange-600 hover:bg-orange-700 text-white px-2 py-0.5 rounded font-black uppercase text-[9px] cursor-pointer flex items-center gap-1"
           >
             <span>🔄</span> <span>({pendingActionsCount})</span>
           </button>
         )}
       </div>
 
-      {/* EN-TÊTE PRINCIPAL */}
-      <div className={`flex justify-between items-center p-3 rounded-xl ${headerCardBg}`}>
-        <div className="flex items-center gap-2">
-          <h3 className={`font-black uppercase text-xs sm:text-sm flex items-center gap-1.5 ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
-            <span>🏷️</span> GESTION DES FAMILLES D'ARTICLES ({famillesAffichees.length} / {familles.length})
-          </h3>
+      {/* EN-TÊTE PRINCIPAL IDENTIQUE AUX AUTRES MODULES */}
+      <div className={`flex justify-between items-center p-2 gap-2 flex-wrap ${cardStyle}`}>
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+          <span className="font-extrabold uppercase text-slate-900 text-[10.5px] truncate">
+            🏷️ GESTION DES FAMILLES D'ARTICLES ({famillesAffichees.length} / {familles.length})
+          </span>
           {utilisateurConnecte && (
-            <span className={`text-[9.5px] px-2 py-0.5 rounded-full font-bold border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600' : 'bg-blue-100 text-[#0a1931] border-blue-300'}`}>
-              Utilisateur : {utilisateurConnecte}
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200 shrink-0">
+              {utilisateurConnecte}
             </span>
           )}
         </div>
@@ -471,13 +464,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
               reinitialiser();
               setAfficherModalForm(true);
             }}
-            className={`font-black px-3.5 py-2 rounded-lg transition shadow-md text-xs cursor-pointer ${
-              isDarkMode 
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-2 border-slate-600' 
-                : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-2 border-[#0a1931]'
-            }`}
+            className="py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-orange-600 hover:bg-orange-700 text-white border-orange-700 shadow-xs cursor-pointer"
           >
-            ＋ Nouveau
+            <span>＋</span> Nouveau
           </button>
         )}
       </div>
@@ -487,50 +476,48 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
           type="button"
           disabled={enTrainDeSauvegarder}
           onClick={() => { reinitialiser(); }}
-          className={`px-3 py-1.5 rounded-lg font-black text-[11px] transition whitespace-nowrap border-2 shadow-xs cursor-pointer ${
-            isDarkMode ? 'bg-slate-800 text-white border-slate-500' : 'bg-[#0a1931] text-white border-[#0a1931]'
-          }`}
+          className="py-1.5 px-3 rounded-xl font-black transition text-center text-[9.5px] uppercase border bg-slate-900 text-white border-slate-900 shadow-2xs cursor-pointer"
         >
           📋 Liste des familles ({familles.length})
         </button>
       </div>
 
-      {/* TABLEAU DE LA LISTE AVEC BORDURES RENFORCÉES */}
+      {/* TABLEAU DE LA LISTE HARMONISÉ */}
       <div className="space-y-2">
-        <div className={`overflow-x-auto border-2 rounded-xl shadow-md ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-400'}`}>
-          <table className="w-full text-left text-xs">
+        <div className={`overflow-x-auto ${cardStyle}`}>
+          <table className="w-full text-left text-[9.5px]">
             <thead>
-              <tr className={`border-b-2 uppercase text-[9.5px] font-black tracking-wider ${tableHeaderBg}`}>
-                <th className="p-2.5">Famille</th>
-                <th className="p-2.5 text-center">Suivi de stock</th>
+              <tr className={tableHeaderStyle}>
+                <th className="p-2">Famille</th>
+                <th className="p-2 text-center">Suivi de stock</th>
               </tr>
             </thead>
-            <tbody className={`divide-y-2 text-[10.5px] ${isDarkMode ? 'divide-slate-800' : 'divide-slate-200'}`}>
+            <tbody className="divide-y divide-slate-100 text-[9.5px] text-slate-900 bg-white">
               {chargement && familles.length === 0 ? (
                 <tr>
                   <td colSpan="2" className="p-4 text-center text-slate-400 font-bold">Chargement...</td>
                 </tr>
               ) : famillesAffichees.length === 0 ? (
                 <tr>
-                  <td colSpan="2" className={`p-4 text-center font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Aucune famille d'articles enregistrée.</td>
+                  <td colSpan="2" className="p-4 text-center font-bold text-slate-500">Aucune famille d'articles enregistrée.</td>
                 </tr>
               ) : (
                 famillesAffichees.map((fam) => (
                   <tr
                     key={fam.id}
                     onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirFicheDetail(fam)}
-                    className={`transition select-none ${permissions.modification ? `${rowHoverBg} cursor-pointer` : 'cursor-default'}`}
+                    className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
                   >
-                    <td className={`p-2.5 font-black uppercase truncate ${isDarkMode ? 'text-slate-100' : 'text-[#0a1931]'}`}>
+                    <td className="p-2 font-extrabold uppercase text-slate-900 truncate">
                       🏷️ {fam.nom_famille}
                     </td>
-                    <td className="p-2.5 text-center">
+                    <td className="p-2 text-center">
                       {fam.suivi_stock !== false ? (
-                        <span className="bg-emerald-950 text-emerald-300 font-bold px-2.5 py-0.5 rounded-full text-[9.5px] border border-emerald-700">
+                        <span className="bg-emerald-50 text-emerald-700 font-black px-2 py-0.5 rounded-full text-[9px] border border-emerald-200">
                           Oui (Suivi)
                         </span>
                       ) : (
-                        <span className={`font-bold px-2.5 py-0.5 rounded-full text-[9.5px] border ${isDarkMode ? 'bg-slate-800 text-slate-300 border-slate-600' : 'bg-slate-200 text-slate-800 border-slate-400'}`}>
+                        <span className="font-bold px-2 py-0.5 rounded-full text-[9px] bg-slate-100 text-slate-600 border border-slate-200">
                           Non (Libre)
                         </span>
                       )}
@@ -548,11 +535,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
               type="button"
               disabled={enTrainDeSauvegarder}
               onClick={() => setLimiteFamilles(prev => prev + 20)}
-              className={`font-extrabold px-3 py-2 rounded-xl text-[10.5px] transition shadow-xs border-2 w-full cursor-pointer ${
-                isDarkMode 
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600' 
-                  : 'bg-white hover:bg-slate-100 text-[#0a1931] border-slate-400'
-              }`}
+              className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-1.5 rounded-xl text-[9.5px] transition shadow-2xs border border-slate-300 w-full cursor-pointer"
             >
               📥 Charger 20 familles de plus ({familles.length - limiteFamilles} restantes)
             </button>
@@ -560,19 +543,21 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
         )}
       </div>
 
-      {/* 🪟 MODALE DE SAISIE / CRÉATION / MODIFICATION (OUVERTE EN MODALE) */}
+      {/* 🪟 MODALE DE SAISIE / CRÉATION / MODIFICATION */}
       {afficherModalForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-xs p-3 animate-fadeIn">
-          <div className={`w-full max-w-md rounded-2xl shadow-2xl border-3 overflow-hidden flex flex-col ${isDarkMode ? 'bg-[#0b1329] border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col">
             
-            <div className={`p-3.5 flex justify-between items-center text-xs font-black border-b-2 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-100' : 'bg-[#0a1931] text-white border-blue-900'}`}>
-              <span>{familleSelectionnee ? '🏷️ MODIFIER LA FAMILLE' : '➕ NOUVELLE FAMILLE D\'ARTICLES'}</span>
-              <button disabled={enTrainDeSauvegarder} onClick={() => { reinitialiser(); setAfficherModalForm(false); }} className="text-slate-300 hover:text-white font-black text-sm cursor-pointer p-1">✕</button>
+            <div className="p-3.5 border-b border-slate-100 flex justify-between items-center">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🏷️</span> {familleSelectionnee ? 'MODIFIER LA FAMILLE' : 'NOUVELLE FAMILLE D\'ARTICLES'}
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => { reinitialiser(); setAfficherModalForm(false); }} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
-            <form onSubmit={preparerEnregistrement} className="p-4 space-y-3.5">
+            <form onSubmit={preparerEnregistrement} className="p-4 space-y-3 text-[10px]">
               <div>
-                <label className={`block font-black text-[9.5px] uppercase mb-1 ${isDarkMode ? 'text-slate-300' : 'text-[#0a1931]'}`}>
+                <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">
                   Nom de la famille *
                 </label>
                 <input
@@ -582,14 +567,14 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
                   value={nouveauFamille.nom_famille}
                   onChange={(e) => setNouveauFamille({ ...nouveauFamille, nom_famille: e.target.value.toUpperCase() })}
                   placeholder="EX: BOISSONS, REPAS, SERVICES..."
-                  className={`w-full rounded p-2 font-extrabold uppercase text-xs shadow-xs ${inputBg}`}
+                  className={inputStyle}
                 />
               </div>
 
-              <div className={`p-3 rounded-xl border-2 flex items-center justify-between ${isDarkMode ? 'bg-slate-900 border-slate-600' : 'bg-slate-50 border-slate-400'}`}>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
                 <div>
-                  <span className={`block font-black text-[10px] uppercase ${isDarkMode ? 'text-slate-200' : 'text-[#0a1931]'}`}>Articles suivis en stock par défaut</span>
-                  <span className={`text-[9px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Décochez pour les repas ou services (pas de contrôle de stock).</span>
+                  <span className="block font-black text-[9.5px] uppercase text-slate-900">Articles suivis en stock par défaut</span>
+                  <span className="text-[8.5px] font-semibold text-slate-500">Décochez pour les repas ou services (pas de contrôle de stock).</span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -599,17 +584,17 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
                     onChange={(e) => setNouveauFamille({ ...nouveauFamille, suivi_stock: e.target.checked })}
                     className="sr-only peer cursor-pointer"
                   />
-                  <div className="w-9 h-5 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
                 </label>
               </div>
 
-              <div className="pt-2 border-t-2 border-slate-400/40 flex items-center justify-between">
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                 {familleSelectionnee && permissions.suppression ? (
                   <button
                     type="button"
                     disabled={enTrainDeSauvegarder}
                     onClick={supprimerFamille}
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3.5 py-2 rounded-lg text-xs shadow-md cursor-pointer transition"
+                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-3 py-1.5 rounded-lg text-[10px] shadow-2xs cursor-pointer transition"
                   >
                     🗑️ Supprimer
                   </button>
@@ -620,14 +605,14 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
                     type="button"
                     disabled={enTrainDeSauvegarder}
                     onClick={() => { reinitialiser(); setAfficherModalForm(false); }}
-                    className={`font-bold px-4 py-2 rounded-lg text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-3.5 py-1.5 rounded-lg text-[10px] transition cursor-pointer"
                   >
                     Annuler
                   </button>
                   <button
                     type="submit"
                     disabled={enTrainDeSauvegarder}
-                    className={`font-black px-5 py-2 rounded-lg text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                    className="font-black px-4 py-1.5 rounded-lg text-[10px] shadow-2xs transition cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white"
                   >
                     {enTrainDeSauvegarder ? 'Enregistrement...' : '✅ Enregistrer'}
                   </button>
@@ -640,22 +625,22 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
 
       {/* 🔔 MODALE UNIFIÉE (CONFIRMATION -> SUCCÈS -> ERREUR) */}
       {etatModale.ouverte && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className={`border-3 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-500 text-slate-100' : 'bg-white border-2 border-[#0a1931] text-[#0a1931]'}`}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl text-slate-900">
             
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black ${
-              etatModale.type === 'confirmation' ? 'bg-amber-500/20 text-amber-400 border-2 border-amber-500/40' :
-              etatModale.type === 'succes' ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500/40' : 'bg-rose-500/20 text-rose-400 border-2 border-rose-500/40'
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-xl font-black border ${
+              etatModale.type === 'confirmation' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+              etatModale.type === 'succes' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'
             }`}>
               {etatModale.type === 'confirmation' ? '❓' :
                etatModale.type === 'succes' ? '✓' : '⚠️'}
             </div>
 
             <div className="space-y-1">
-              <h4 className={`font-black text-sm uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-[#0a1931]'}`}>
+              <h4 className="font-black text-xs uppercase tracking-wider text-slate-900">
                 {etatModale.titre}
               </h4>
-              <p className={`text-xs font-semibold leading-relaxed ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+              <p className="text-[11px] font-semibold leading-relaxed text-slate-600">
                 {etatModale.message}
               </p>
             </div>
@@ -666,7 +651,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
                   <button
                     type="button"
                     onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                    className={`flex-1 font-bold py-2.5 rounded-xl text-xs transition cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700' : 'bg-slate-200 text-slate-900 border-slate-400 hover:bg-slate-300'}`}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold py-2 rounded-xl text-[10px] transition cursor-pointer"
                   >
                     Annuler
                   </button>
@@ -677,7 +662,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
                       setEtatModale({ ...etatModale, ouverte: false });
                       if (action) action();
                     }}
-                    className={`flex-1 font-black py-2.5 rounded-xl text-xs shadow-md transition cursor-pointer border-2 ${isDarkMode ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                    className="flex-1 font-black py-2 rounded-xl text-[10px] shadow-2xs transition cursor-pointer bg-orange-600 hover:bg-orange-700 text-white"
                   >
                     Confirmer
                   </button>
@@ -686,7 +671,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
                 <button
                   type="button"
                   onClick={() => setEtatModale({ ...etatModale, ouverte: false })}
-                  className={`w-full font-black py-2.5 rounded-xl text-xs transition shadow-md cursor-pointer border-2 ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600' : 'bg-[#0a1931] hover:bg-[#132d5c] text-white border-[#0a1931]'}`}
+                  className="w-full font-black py-2 rounded-xl text-[10px] transition shadow-2xs cursor-pointer bg-orange-600 hover:bg-orange-700 text-white"
                 >
                   Compris 👍
                 </button>

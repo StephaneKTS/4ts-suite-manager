@@ -88,12 +88,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
 
-  // 🔔 État pour la modale unifiée de confirmation et de succès
   const [etatModale, setEtatModale] = useState({
     ouverte: false,
     titre: '',
     message: '',
-    type: 'info', // 'confirmation', 'succes', 'erreur'
+    type: 'info',
     onConfirmer: null
   });
 
@@ -156,106 +155,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
   const formaterNumeroAffichageIndex = (index, type) => {
     const prefix = type === 'APPRO' ? 'APP-' : 'BC-';
     return `${prefix}${String(index + 1).padStart(3, '0')}`;
-  };
-
-  // 🛡️ Synchronisation atomique blindée anti-doublon absolu (Version corrigée et sécurisée)
-  const synchroniserMouvementsStockAppro = async ({
-    numeroBonArrierePlan,
-    ancienNumeroBonArrierePlan = null,
-    depotId,
-    lignes,
-    refFournisseur,
-    dateDocument,
-    estSuppression = false
-  }) => {
-    const clesASupprimer = [numeroBonArrierePlan];
-    if (ancienNumeroBonArrierePlan && ancienNumeroBonArrierePlan !== numeroBonArrierePlan) {
-      clesASupprimer.push(ancienNumeroBonArrierePlan);
-    }
-
-    // 1. Nettoyage radical et préalable de tous les mouvements existants pour ce bon
-    for (const cle of clesASupprimer) {
-      if (!cle) continue;
-      await supabase
-        .from('mouvements_stock')
-        .delete()
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .eq('motif_remarque', cle);
-    }
-
-    if (estSuppression || !depotId || !Array.isArray(lignes) || lignes.length === 0) {
-      const mouvementsNettoyes = mouvements.filter((m) => !clesASupprimer.includes(String(m.motif_remarque)));
-      setMouvements(mouvementsNettoyes);
-      localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsNettoyes);
-      return;
-    }
-
-    // 2. Regroupement unique par article (bloque le multi-compte d'une même ligne)
-    const lignesUniquesMap = {};
-    for (const ligne of lignes) {
-      const artId = String(ligne.id_article);
-      const qte = Number(ligne.quantite || 0);
-      if (qte <= 0) continue;
-      
-      if (!lignesUniquesMap[artId]) {
-        lignesUniquesMap[artId] = 0;
-      }
-      lignesUniquesMap[artId] += qte;
-    }
-
-    const operateurActuel = obtenirNomOperateurConnecte();
-    const refTexte = `APPRO - ${(refFournisseur || numeroDoc || 'ACHAT').trim().toUpperCase()}`;
-    const nouveauxMouvements = [];
-
-    // 3. Double vérification en base : s'assure qu'aucun mouvement résiduel ne subsiste
-    const { data: mvtExistants } = await supabase
-      .from('mouvements_stock')
-      .select('id')
-      .eq('id_entreprise', entrepriseId)
-      .eq('module', moduleActuel)
-      .eq('motif_remarque', numeroBonArrierePlan);
-
-    if (mvtExistants && mvtExistants.length > 0) {
-      await supabase
-        .from('mouvements_stock')
-        .delete()
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .eq('motif_remarque', numeroBonArrierePlan);
-    }
-
-    // 4. Insertion unique, propre et consolidée
-    for (const [artId, qteTotale] of Object.entries(lignesUniquesMap)) {
-      const payloadMvt = {
-        id_entreprise: entrepriseId,
-        module: moduleActuel,
-        type_mouvement: 'ENTREE',
-        id_depot_source: depotId,
-        id_emplacement_source: null,
-        id_depot_destination: depotId,
-        id_emplacement_destination: null,
-        id_article: parseInt(artId),
-        quantite: qteTotale,
-        motif_remarque: numeroBonArrierePlan,
-        reference: refTexte,
-        operateur: operateurActuel,
-        created_at: `${dateDocument}T12:00:00`
-      };
-
-      const { error: errIns } = await supabase.from('mouvements_stock').insert([payloadMvt]);
-      if (!errIns) {
-        nouveauxMouvements.push({
-          ...payloadMvt,
-          id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
-        });
-      }
-    }
-
-    const mouvementsNettoyes = mouvements.filter((m) => !clesASupprimer.includes(String(m.motif_remarque)));
-    const mouvementsFinaux = [...nouveauxMouvements, ...mouvementsNettoyes];
-    setMouvements(mouvementsFinaux);
-    localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsFinaux);
   };
 
   const chargerDroitsUtilisateur = async () => {
@@ -406,56 +305,67 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     return false;
   };
 
-  // 🛡️ Lecture unique et exclusive depuis mouvements_stock pour éviter le double comptage
-  const obtenirTousLesFluxArticle = (articleId) => {
-    let flux = [];
-    mouvements
-      .filter((m) => String(m.id_article) === String(articleId))
-      .forEach((m) => {
-        flux.push({
-          date: m.created_at || '',
-          depot_source: m.id_depot_source,
-          depot_destination: m.id_depot_destination,
-          quantite: parseInt(m.quantite || 0),
-          type: (m.type_mouvement || '').toUpperCase()
-        });
-      });
-    flux.sort((a, b) => new Date(a.date) - new Date(b.date));
-    return flux;
-  };
-
+  // 🎯 CALCUL ROBUSTE DU STOCK RÉEL (Mouvements + Approvisionnements) IDENTIQUE À LA FICHE ARTICLE
   const calculerStockPourDepotActuel = (articleId) => {
-    const depotCibleId = idDepotDestination;
-    let stockDepot = 0;
-    if (!depotCibleId) {
-      const artObj = articles.find(a => String(a.id_article || a.id) === String(articleId));
-      stockDepot = parseInt(artObj?.Quantite_Stock || artObj?.quantite_stock || 0);
-    }
-    const fluxArticle = obtenirTousLesFluxArticle(articleId);
-    fluxArticle.forEach((m) => {
-      const matchDepotSource = correspondAuDepot(m.depot_source, depotCibleId);
-      const matchDepotDest = correspondAuDepot(m.depot_destination, depotCibleId);
-      const qte = m.quantite;
-      const typeMvt = m.type;
-      if (!depotCibleId) {
-        if (typeMvt.includes('ENTREE') || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
-          stockDepot += qte;
-        } else if (typeMvt.includes('SORTIE') || typeMvt.includes('VENTE') || typeMvt.includes('AVARIES')) {
-          stockDepot -= qte;
-        }
+    const depotCibleId = idDepotDestination || 'TOUS';
+    let stockInitial = 0;
+    let entrees = 0;
+    let sorties = 0;
+
+    mouvements.forEach((m) => {
+      if (String(m.id_article) !== String(articleId)) return;
+      const qte = parseInt(m.quantite || 0);
+      const typeMvt = (m.type_mouvement || '').toUpperCase();
+
+      const estSource = correspondAuDepot(m.depot_source, depotCibleId);
+      const estDestination = correspondAuDepot(m.depot_destination, depotCibleId);
+      const memeDepotInterne = m.id_depot_source && m.id_depot_destination && correspondAuDepot(m.id_depot_source, depotCibleId) && correspondAuDepot(m.id_depot_destination, depotCibleId);
+
+      if (depotCibleId !== 'TOUS' && !estSource && !estDestination) return;
+
+      if (typeMvt === 'INVENTAIRE') {
+        stockInitial = qte;
       } else {
-        if (typeMvt === 'INVENTAIRE' && matchDepotSource) { stockDepot = qte; return; }
-        if (typeMvt === 'TRANSFERT') { if (matchDepotDest) stockDepot += qte; if (matchDepotSource) stockDepot -= qte; return; }
-        if (typeMvt.includes('ENTREE') || typeMvt.includes('ACHAT') || typeMvt.includes('APPROVISIONNEMENT') || typeMvt.includes('FACTURE')) {
-          if (matchDepotSource || matchDepotDest) stockDepot += qte;
-        } else if (typeMvt.includes('SORTIE') || typeMvt.includes('VENTE') || typeMvt.includes('AVARIES')) {
-          if (matchDepotSource) stockDepot -= qte;
+        if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+          if (depotCibleId === 'TOUS' || estSource) sorties += qte;
+        } else if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT') {
+          entrees += qte;
+        } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
+          if (memeDepotInterne) {
+            // Neutre
+          } else if (depotCibleId !== 'TOUS') {
+            if (estSource) sorties += qte;
+            if (estDestination) entrees += qte;
+          }
         } else {
-          if (matchDepotSource || matchDepotDest) stockDepot += qte;
+          entrees += qte;
         }
       }
     });
-    return Math.max(0, stockDepot);
+
+    approvisionnements.forEach((app) => {
+      const matchDepot = depotCibleId === 'TOUS' || correspondAuDepot(app.id_depot_destination || app.id_depot, depotCibleId);
+      if (!matchDepot) return;
+
+      let listArt = [];
+      if (typeof app.details_articles === 'string') {
+        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = app.details_articles;
+      }
+
+      listArt.forEach((item) => {
+        if (String(item.id_article || item.article_id) !== String(articleId)) return;
+        const qte = parseInt(item.quantite || 0);
+        entrees += qte;
+      });
+    });
+
+    stockInitial = Math.max(0, stockInitial);
+    const stockTotal = stockInitial + entrees;
+    const stockReel = Math.max(0, stockTotal - sorties);
+
+    return stockReel;
   };
 
   const idsArticlesPresents = lignesValidees.map(l => String(l.id_article));
@@ -685,6 +595,10 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
         const listeMaj = approvisionnements.map(a => a.id === approEnEditionId ? { ...a, ...payload } : a);
         setApprovisionnements(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
+
+        if (depotCibleEffectif) {
+          await supabase.from('mouvements_stock').delete().eq('reference_piece', numeroUniqueArrierePlan).eq('id_entreprise', entrepriseId);
+        }
       } else { 
         const idTemp = 'temp_' + Date.now();
         const nouvelObjet = { ...payload, id: idTemp };
@@ -698,24 +612,34 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
         localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
       }
 
-      // ✅ Synchronisation atomique et sans doublon dans mouvements_stock
-      await synchroniserMouvementsStockAppro({
-        numeroBonArrierePlan: numeroUniqueArrierePlan,
-        ancienNumeroBonArrierePlan: ancienNumeroBon,
-        depotId: depotCibleEffectif,
-        lignes: lignesValidees,
-        refFournisseur: referenceFournisseur,
-        dateDocument: dateDoc,
-        estSuppression: false
-      });
+      if (depotCibleEffectif && lignesValidees.length > 0) {
+        const mouvementsPayloads = lignesValidees.map(l => ({
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          id_article: l.id_article,
+          id_depot_destination: depotCibleEffectif,
+          id_depot_source: null,
+          quantite: Number(l.quantite),
+          type_mouvement: 'APPROVISIONNEMENT',
+          reference_piece: numeroUniqueArrierePlan,
+          auteur: obtenirNomOperateurConnecte(),
+          created_at: `${dateDoc}T12:00:00`
+        }));
+
+        const { error: errMvt } = await supabase.from('mouvements_stock').insert(mouvementsPayloads);
+        if (errMvt) {
+          mouvementsPayloads.forEach(mvt => localSync.ajouterFileAttente('INSERT', 'mouvements_stock', mvt));
+        }
+      }
 
       localStorage.removeItem(cleCacheAppro);
+      localStorage.removeItem(cleCacheMouvements);
       setEtatInitialEdition(null);
       
       setEtatModale({
         ouverte: true,
         titre: 'Opération réussie',
-        message: `Approvisionnement ${numeroAffichageFinal} enregistré avec succès !`,
+        message: `Approvisionnement ${numeroAffichageFinal} enregistré et mouvements de stock mis à jour avec succès !`,
         type: 'succes',
         onConfirmer: null
       });
@@ -851,7 +775,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     setEtatModale({
       ouverte: true,
       titre: 'Confirmation de transformation',
-      message: 'Voulez-vous transformer ce bon de commande en approvisionnement (ce qui va incrémenter le stock) ?',
+      message: 'Voulez-vous transformer ce bon de commande en approvisionnement (ce qui va l\'intégrer dans les entrées en stock) ?',
       type: 'confirmation',
       onConfirmer: () => executerTransformationEnFacture(doc)
     });
@@ -871,7 +795,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
         prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
         sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
       }));
-      const dateDocEffectif = doc.created_at ? doc.created_at.split('T')[0] : dateDoc;
       
       const payloadFacture = {
         id_entreprise: entrepriseId,
@@ -887,37 +810,31 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
         created_at: doc.created_at || `${dateDoc}T12:00:00`
       };
 
-      const { error: rpcError } = await supabase.rpc('transformer_commande_en_appro', {
-        p_entreprise_id: entrepriseId,
-        p_module: moduleActuel,
-        p_commande_id: doc.id,
-        p_nouveau_num_bon: nouveauNumApproArrierePlan,
-        p_payload_facture: payloadFacture
-      });
-
-      if (rpcError) {
-        const { error: errInsert } = await supabase.from('approvisionnements').insert([payloadFacture]);
-        if (errInsert) {
-          localSync.ajouterFileAttente('INSERT', 'approvisionnements', payloadFacture);
-        }
-
-        if (doc.id) {
-          const { error: errDel } = await supabase.from('bons_commande_fournisseurs').delete().eq('id', doc.id).eq('id_entreprise', entrepriseId);
-          if (errDel) {
-            localSync.ajouterFileAttente('DELETE', 'bons_commande_fournisseurs', { id: doc.id });
-          }
-        }
+      const { error: errInsert } = await supabase.from('approvisionnements').insert([payloadFacture]);
+      if (errInsert) {
+        localSync.ajouterFileAttente('INSERT', 'approvisionnements', payloadFacture);
       }
 
-      // ✅ Écriture propre et sans doublon dans mouvements_stock lors de la transformation
-      await synchroniserMouvementsStockAppro({
-        numeroBonArrierePlan: nouveauNumApproArrierePlan,
-        depotId: depotCibleEffectif,
-        lignes: lignesNormalisees,
-        refFournisseur: doc.numero_commande || referenceFournisseur,
-        dateDocument: dateDocEffectif,
-        estSuppression: false
-      });
+      if (depotCibleEffectif && lignesNormalisees.length > 0) {
+        const mouvementsPayloads = lignesNormalisees.map(l => ({
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          id_article: l.id_article,
+          id_depot_destination: depotCibleEffectif,
+          id_depot_source: null,
+          quantite: Number(l.quantite),
+          type_mouvement: 'APPROVISIONNEMENT',
+          reference_piece: nouveauNumApproArrierePlan,
+          auteur: obtenirNomOperateurConnecte(),
+          created_at: doc.created_at || `${dateDoc}T12:00:00`
+        }));
+
+        await supabase.from('mouvements_stock').insert(mouvementsPayloads);
+      }
+
+      if (doc.id) {
+        await supabase.from('bons_commande_fournisseurs').delete().eq('id', doc.id).eq('id_entreprise', entrepriseId);
+      }
 
       localStorage.removeItem(cleCacheAppro);
       localStorage.removeItem(cleCacheCommandes);
@@ -1005,7 +922,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     setEtatModale({
       ouverte: true,
       titre: 'Confirmation de suppression',
-      message: 'Voulez-vous véritablement supprimer ce document ?',
+      message: 'Voulez-vous véritablement supprimer ce document et ses mouvements de stock associés ?',
       type: 'confirmation',
       onConfirmer: () => executerSuppressionDoc(id, type)
     });
@@ -1015,7 +932,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     setEnTrainDeSauvegarder(true);
     try {
       const table = type === 'APPRO' ? 'approvisionnements' : 'bons_commande_fournisseurs';
-      const docASupprimer = type === 'APPRO' ? approvisionnements.find(a => a.id === id) : null;
+      const docCible = (type === 'APPRO' ? approvisionnements : bonsCommandes).find(d => d.id === id);
+
+      if (docCible && docCible.numero_bon) {
+        await supabase.from('mouvements_stock').delete().eq('reference_piece', docCible.numero_bon).eq('id_entreprise', entrepriseId);
+      }
 
       const { error } = await supabase.from(table).delete().eq('id', id).eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       if (error) {
@@ -1023,12 +944,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
       }
 
       if (type === 'APPRO') {
-        if (docASupprimer?.numero_bon) {
-          await synchroniserMouvementsStockAppro({
-            numeroBonArrierePlan: docASupprimer.numero_bon,
-            estSuppression: true
-          });
-        }
         const listeMaj = approvisionnements.filter(a => a.id !== id);
         setApprovisionnements(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
@@ -1041,7 +956,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
       }
 
       setEtatInitialEdition(null);
-      setEtatModale({ ouverte: true, titre: 'Supprimé', message: 'Le document a été supprimé avec succès.', type: 'succes', onConfirmer: null });
+      setEtatModale({ ouverte: true, titre: 'Supprimé', message: 'Le document et son mouvement de stock ont été supprimés avec succès.', type: 'succes', onConfirmer: null });
       setDocumentEnLectureSeule(false);
       setVueActive('liste');
       await chargerDonnees(true);
@@ -1966,7 +1881,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
           </div>
         )}
 
-        {/* 🔔 MODALE UNIFIÉE DE CONFIRMATION / SUCCÈS / ERREUR */}
+        {/* MODALE UNIFIÉE DE CONFIRMATION / SUCCÈS / ERREUR */}
         {etatModale.ouverte && (
           <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
             <div className={`border-2 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-600 text-slate-100' : 'bg-white border-[#0a1931] text-[#0a1931]'}`}>

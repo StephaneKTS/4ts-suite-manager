@@ -16,7 +16,6 @@ import GestionClients from './components/GestionClients';
 import GestionCategoriesClients from './components/GestionCategoriesClients';
 import GestionChallengesCommerciaux from './components/GestionChallengesCommerciaux';
 import GestionFournisseurs from './components/GestionFournisseurs';
-import GestionApprovisionnements from './components/GestionApprovisionnements';
 import GestionFamilles from './components/GestionFamilles';
 import GestionMouvements from './components/GestionMouvements';
 import GestionJournalCaisse from './components/GestionJournalCaisse';
@@ -410,17 +409,6 @@ function DashboardContent() {
           />
         );
 
-      case 'approvisionnements': 
-        return (
-          <GestionApprovisionnements 
-            entrepriseId={entrepriseId} 
-            isDarkMode={isDarkMode}
-            autoriserCreation={verifierCreation('approvisionnements', estSuperAdmin)}
-            autoriserModification={verifierModification('approvisionnements', estSuperAdmin)}
-            autoriserSuppression={verifierSuppression('approvisionnements', estSuperAdmin)}
-          />
-        );
-
       case 'familles': 
         return (
           <GestionFamilles 
@@ -746,12 +734,6 @@ function DashboardContent() {
                   <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
                 </div>
               )}
-              {verifierPermission('approvisionnements', estSuperAdmin) && (
-                <div onClick={() => tenterAccesModule('approvisionnements', 'Achats & Approvisionnement')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
-                </div>
-              )}
               {verifierPermission('roles_utilisateurs', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('roles', 'Gestion des Rôles')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🛡️</span>
@@ -819,12 +801,6 @@ function DashboardContent() {
                 </div>
               )}
 
-              {verifierPermission('approvisionnements', estSuperAdmin) && (
-                <div onClick={() => tenterAccesModule('approvisionnements', 'Approvisionnements')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
-                  <span className="text-2xl group-hover:scale-110 transition">📥</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Achats & Approvisionnement</span>
-                </div>
-              )}
               {verifierPermission('mouvements_stock', estSuperAdmin) && (
                 <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🔄</span>
