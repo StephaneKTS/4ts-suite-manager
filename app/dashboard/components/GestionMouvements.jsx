@@ -132,13 +132,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
-  // États pour les filtres de la liste
   const [filtreDateDebut, setFiltreDateDebut] = useState('');
   const [filtreDateFin, setFiltreDateFin] = useState('');
   const [filtrePartenaire, setFiltrePartenaire] = useState('');
   const [filtreLivreur, setFiltreLivreur] = useState('');
 
-  // Modales de filtres
   const [modalFiltrePartenaireOuvert, setModalFiltrePartenaireOuvert] = useState(false);
   const [modalFiltreLivreurOuvert, setModalFiltreLivreurOuvert] = useState(false);
   const [rechercheFiltreModal, setRechercheFiltreModal] = useState('');
@@ -307,7 +305,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         p_module: moduleActuel
       });
 
-      if (rpcError) {
+      if (rpcError || !mouvementsRpc) {
         const { data: dataMouvements, error: errMouv } = await supabase
           .from('mouvements_stock')
           .select('*')
@@ -408,31 +406,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           type: (m.type_mouvement || '').toUpperCase() 
         });
       });
-
-    approvisionnements.forEach((app) => {
-      let articlesAppro = [];
-      if (app.details_articles) {
-        if (typeof app.details_articles === 'string') { 
-          try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} 
-        } else if (Array.isArray(app.details_articles)) { 
-          articlesAppro = app.details_articles; 
-        }
-      }
-      articlesAppro.forEach((ligne) => {
-        const idArtLigne = ligne.id_article || ligne.article_id;
-        if (String(idArtLigne) === String(articleId)) {
-          flux.push({ 
-            date: app.created_at || app.date_approvisionnement || '', 
-            depot_source: null, 
-            depot_destination: app.id_depot_destination || app.id_depot,
-            emplacement_source: null,
-            emplacement_destination: null,
-            quantite: parseInt(ligne.quantite || 0), 
-            type: 'APPROVISIONNEMENT' 
-          });
-        }
-      });
-    });
 
     flux.sort((a, b) => new Date(a.date) - new Date(b.date));
     return flux;
@@ -845,9 +818,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
     setEnTrainDeSauvegarder(true);
     try {
-      if (mouvementEnEditionId) {
-        await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
-      }
+      // 🛡️ SYNCHRONISATION ATOMIQUE ET BLINDÉE ANTI-DOUBLON ABSOLU
+      // Suppression préalable de tous les mouvements existants liés au même motif_remarque
+      await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
       
       const operateurActuel = obtenirNomOperateurConnecte();
       const referenceSaisie = (enTeteDoc.referenceDoc || '').trim().toUpperCase();
@@ -862,8 +835,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         }
       }
 
-      let nouveauxMouvementsAjoutes = [];
+      const lignesUniquesMap = {};
       for (const ligne of lignesPanier) {
+        const artId = String(ligne.id_article);
+        const qte = Number(ligne.quantite || 0);
+        if (qte <= 0) continue;
+        if (!lignesUniquesMap[artId]) {
+          lignesUniquesMap[artId] = { designation: ligne.designation, quantite: 0 };
+        }
+        lignesUniquesMap[artId].quantite += qte;
+      }
+
+      let nouveauxMouvementsAjoutes = [];
+      for (const [artId, dataLigne] of Object.entries(lignesUniquesMap)) {
         const payload = {
           id_entreprise: entrepriseId,
           module: moduleActuel,
@@ -872,8 +856,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           id_emplacement_source: enTeteDoc.id_emplacement_source || null,
           id_depot_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_depot_destination || null) : null,
           id_emplacement_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_emplacement_destination || null) : null,
-          id_article: parseInt(ligne.id_article),
-          quantite: ligne.quantite,
+          id_article: parseInt(artId),
+          quantite: dataLigne.quantite,
           motif_remarque: enTeteDoc.numeroDoc,
           reference: referenceSaisie,
           operateur: operateurActuel,
@@ -971,7 +955,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setModeAffichage('SAISIE');
   };
 
-  // 🛡️ COMPARAISON RIGOUREUSE : Vérifie si une information primaire a réellement changé
   const documentModifie = useMemo(() => {
     if (!mouvementEnEditionId || !etatInitialEdition) return false;
 
@@ -1007,22 +990,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return enTeteModifie || typeModifie || lignesModifiees;
   }, [mouvementEnEditionId, etatInitialEdition, enTeteDoc, typeOperation, lignesPanier]);
 
-  // Filtrage avancé des documents par date, partenaire et livreur sur une seule ligne
   const documentsFiltresParCriteres = documentsGroupes.filter((doc) => {
-    // 1. Plage de dates
     if (doc.date) {
       const dateDocStr = doc.date.split('T')[0];
       if (filtreDateDebut && dateDocStr < filtreDateDebut) return false;
       if (filtreDateFin && dateDocStr > filtreDateFin) return false;
     }
-    // 2. Partenaire / Dépôt source
     if (filtrePartenaire) {
       const depotNomDoc = (doc.depotNom || '').toUpperCase();
       const depotCibleObj = depots.find(d => String(d.id) === String(filtrePartenaire));
       const depotCibleNom = depotCibleObj ? (depotCibleObj.nom_depot || depotCibleObj.nom || '').toUpperCase() : filtrePartenaire.toUpperCase();
       if (!depotNomDoc.includes(depotCibleNom)) return false;
     }
-    // 3. Livreur / Emplacement
     if (filtreLivreur) {
       const empCibleObj = emplacements.find(e => String(e.id) === String(filtreLivreur));
       const empCibleNom = empCibleObj ? (empCibleObj.nom_emplacement || empCibleObj.code_emplacement || '').toUpperCase() : filtreLivreur.toUpperCase();
@@ -1517,7 +1496,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold">{documentsTries.length}</span>
           </div>
 
-          {/* Ligne de filtres compacte : Date, Partenaire, Livreur */}
           <div className="px-2 pt-1">
             <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200 space-y-1.5">
               <div className="flex justify-between items-center">
@@ -1629,7 +1607,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* Modale Filtre Partenaire */}
       {modalFiltrePartenaireOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -1659,7 +1636,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         </div>
       )}
 
-      {/* Modale Filtre Livreur / Emplacement */}
       {modalFiltreLivreurOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">

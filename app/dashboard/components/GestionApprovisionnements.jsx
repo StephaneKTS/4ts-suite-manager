@@ -21,6 +21,21 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
   const cleCacheMouvements = `mouvements_stock_${entrepriseId}_${moduleActuel}`;
   const cleCacheArticles = `articles_${entrepriseId}_${moduleActuel}`;
 
+  const obtenirNomOperateurConnecte = () => {
+    if (typeof window === 'undefined') return 'STÉPHANE KTS';
+    try {
+      const strVal = localStorage.getItem('utilisateur_connecte') || localStorage.getItem('utilisateurConnecte');
+      if (strVal) {
+        const userObj = JSON.parse(strVal);
+        const nom = userObj.nom_complet || userObj.nom_utilisateur || userObj.nom || userObj.prenom || userObj.name;
+        if (nom && String(nom).trim()) return String(nom).trim().toUpperCase();
+      }
+      const direct = localStorage.getItem('nom_complet') || localStorage.getItem('nom_utilisateur');
+      if (direct && direct.trim()) return direct.trim().toUpperCase();
+    } catch (e) {}
+    return 'STÉPHANE KTS';
+  };
+
   const obtenirPremierJourDuMois = () => {
     const d = new Date();
     const annee = d.getFullYear();
@@ -141,6 +156,101 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
   const formaterNumeroAffichageIndex = (index, type) => {
     const prefix = type === 'APPRO' ? 'APP-' : 'BC-';
     return `${prefix}${String(index + 1).padStart(3, '0')}`;
+  };
+
+  // 🛡️ Synchronisation atomique blindée anti-doublon absolu (Version mise à jour)
+  const synchroniserMouvementsStockAppro = async ({
+    numeroBonArrierePlan,
+    ancienNumeroBonArrierePlan = null,
+    depotId,
+    lignes,
+    refFournisseur,
+    dateDocument,
+    estSuppression = false
+  }) => {
+    const clesASupprimer = [numeroBonArrierePlan];
+    if (ancienNumeroBonArrierePlan && ancienNumeroBonArrierePlan !== numeroBonArrierePlan) {
+      clesASupprimer.push(ancienNumeroBonArrierePlan);
+    }
+
+    // 1. Nettoyage radical et préalable de tous les mouvements existants pour ce bon
+    for (const cle of clesASupprimer) {
+      if (!cle) continue;
+      await supabase
+        .from('mouvements_stock')
+        .delete()
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .eq('motif_remarque', cle);
+    }
+
+    if (estSuppression || !depotId || !Array.isArray(lignes) || lignes.length === 0) {
+      const mouvementsNettoyes = mouvements.filter((m) => !clesASupprimer.includes(String(m.motif_remarque)));
+      setMouvements(mouvementsNettoyes);
+      localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsNettoyes);
+      return;
+    }
+
+    // 2. Regroupement unique par article (bloque le multi-compte d'une même ligne)
+    const lignesUniquesMap = {};
+    for (const ligne of lignes) {
+      const artId = String(ligne.id_article);
+      const qte = Number(ligne.quantite || 0);
+      if (qte <= 0) continue;
+      
+      if (!lignesUniquesMap[artId]) {
+        lignesUniquesMap[artId] = 0;
+      }
+      lignesUniquesMap[artId] += qte;
+    }
+
+    const operateurActuel = obtenirNomOperateurConnecte();
+    const refTexte = `APPRO - ${(refFournisseur || numeroDoc || 'ACHAT').trim().toUpperCase()}`;
+    const nouveauxMouvements = [];
+
+    // 3. Double vérification en base : s'assure qu'aucun mouvement n'existe déjà pour ce motif exact
+    const { data: mvtExistants } = await supabase
+      .from('mouvements_stock')
+      .select('id')
+      .eq('id_entreprise', entrepriseId)
+      .eq('module', moduleActuel)
+      .eq('motif_remarque', numeroBonArrierePlan);
+
+    if (mvtExistants && mvtExistants.length > 0) {
+      return;
+    }
+
+    // 4. Insertion unique et propre
+    for (const [artId, qteTotale] of Object.entries(lignesUniquesMap)) {
+      const payloadMvt = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+        type_mouvement: 'ENTREE',
+        id_depot_source: depotId,
+        id_emplacement_source: null,
+        id_depot_destination: depotId,
+        id_emplacement_destination: null,
+        id_article: parseInt(artId),
+        quantite: qteTotale,
+        motif_remarque: numeroBonArrierePlan,
+        reference: refTexte,
+        operateur: operateurActuel,
+        created_at: `${dateDocument}T12:00:00`
+      };
+
+      const { error: errIns } = await supabase.from('mouvements_stock').insert([payloadMvt]);
+      if (!errIns) {
+        nouveauxMouvements.push({
+          ...payloadMvt,
+          id: `temp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+        });
+      }
+    }
+
+    const mouvementsNettoyes = mouvements.filter((m) => !clesASupprimer.includes(String(m.motif_remarque)));
+    const mouvementsFinaux = [...nouveauxMouvements, ...mouvementsNettoyes];
+    setMouvements(mouvementsFinaux);
+    localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsFinaux);
   };
 
   const chargerDroitsUtilisateur = async () => {
@@ -291,24 +401,20 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     return false;
   };
 
+  // 🛡️ Lecture unique et exclusive depuis mouvements_stock pour éviter le double comptage
   const obtenirTousLesFluxArticle = (articleId) => {
     let flux = [];
-    mouvements.filter((m) => String(m.id_article) === String(articleId)).forEach((m) => {
-      flux.push({ date: m.created_at || '', depot_source: m.id_depot_source, depot_destination: m.id_depot_destination, quantite: parseInt(m.quantite || 0), type: (m.type_mouvement || '').toUpperCase() });
-    });
-    
-    approvisionnements.forEach((app) => {
-      let articlesAppro = [];
-      if (app.details_articles) {
-        if (typeof app.details_articles === 'string') { try { articlesAppro = JSON.parse(app.details_articles); } catch (e) {} }
-        else if (Array.isArray(app.details_articles)) { articlesAppro = app.details_articles; }
-      }
-      articlesAppro.forEach((ligne) => {
-        if (String(ligne.id_article || ligne.article_id) === String(articleId)) {
-          flux.push({ date: app.created_at || '', depot_source: app.id_depot_destination, depot_destination: null, quantite: parseInt(ligne.quantite || 0), type: 'APPROVISIONNEMENT' });
-        }
+    mouvements
+      .filter((m) => String(m.id_article) === String(articleId))
+      .forEach((m) => {
+        flux.push({
+          date: m.created_at || '',
+          depot_source: m.id_depot_source,
+          depot_destination: m.id_depot_destination,
+          quantite: parseInt(m.quantite || 0),
+          type: (m.type_mouvement || '').toUpperCase()
+        });
       });
-    });
     flux.sort((a, b) => new Date(a.date) - new Date(b.date));
     return flux;
   };
@@ -537,8 +643,12 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     setEnTrainDeSauvegarder(true);
     try {
       const timestampUnique = Date.now().toString().slice(-6);
-      const numeroUniqueArrierePlan = `APP-${entrepriseId}-${timestampUnique}-${String(approvisionnements.length + 1).padStart(3, '0')}`;
+      const ancienNumeroBon = docEnEditionObjet?.numero_bon || null;
+      const numeroUniqueArrierePlan = (approEnEditionId && ancienNumeroBon)
+        ? ancienNumeroBon
+        : `APP-${entrepriseId}-${timestampUnique}-${String(approvisionnements.length + 1).padStart(3, '0')}`;
       const numeroAffichageFinal = numeroDoc;
+      const depotCibleEffectif = estPartenaireSansStockage ? null : idDepotDestination;
 
       const payload = {
         id_entreprise: entrepriseId,
@@ -546,7 +656,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
         numero_bon: numeroUniqueArrierePlan,
         id_fournisseur: idFournisseur,
         numero_commande: (referenceFournisseur || '').trim().toUpperCase(),
-        id_depot_destination: estPartenaireSansStockage ? null : idDepotDestination,
+        id_depot_destination: depotCibleEffectif,
         montant_total: estModeLivraison ? 0 : montantTotalGlobal,
         montant_paye: estModeLivraison ? 0 : (statutPaiement === 'SOLDE' ? montantTotalGlobal : statutPaiement === 'CREDIT' ? 0 : parseFloat(montantPaye) || 0),
         statut_paiement: estModeLivraison ? 'SOLDE' : statutPaiement,
@@ -582,6 +692,17 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
         setApprovisionnements(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
       }
+
+      // ✅ Synchronisation atomique et sans doublon dans mouvements_stock
+      await synchroniserMouvementsStockAppro({
+        numeroBonArrierePlan: numeroUniqueArrierePlan,
+        ancienNumeroBonArrierePlan: ancienNumeroBon,
+        depotId: depotCibleEffectif,
+        lignes: lignesValidees,
+        refFournisseur: referenceFournisseur,
+        dateDocument: dateDoc,
+        estSuppression: false
+      });
 
       localStorage.removeItem(cleCacheAppro);
       setEtatInitialEdition(null);
@@ -737,6 +858,15 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
       const timestampUnique = Date.now().toString().slice(-6);
       const nouveauNumApproArrierePlan = `APP-${entrepriseId}-${timestampUnique}-${String(approvisionnements.length + 1).padStart(3, '0')}`;
       const nouveauNumAffichage = genererNumeroDoc('APPRO', approvisionnements);
+      const depotCibleEffectif = estPartenaireSansStockage ? null : (doc.id_depot_destination || idDepotDestination);
+      const lignesNormalisees = (Array.isArray(doc.details_articles) ? doc.details_articles : lignesValidees).map(l => ({ 
+        id_article: l.id_article, 
+        designation: (l.designation || '').toUpperCase(), 
+        quantite: Number(l.quantite), 
+        prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
+        sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
+      }));
+      const dateDocEffectif = doc.created_at ? doc.created_at.split('T')[0] : dateDoc;
       
       const payloadFacture = {
         id_entreprise: entrepriseId,
@@ -744,17 +874,11 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
         numero_bon: nouveauNumApproArrierePlan,
         id_fournisseur: doc.id_fournisseur || idFournisseur,
         numero_commande: (doc.numero_commande || referenceFournisseur || '').trim().toUpperCase(),
-        id_depot_destination: estPartenaireSansStockage ? null : (doc.id_depot_destination || idDepotDestination),
+        id_depot_destination: depotCibleEffectif,
         montant_total: estModeLivraison ? 0 : (doc.montant_total || montantTotalGlobal),
         montant_paye: estModeLivraison ? 0 : (doc.montant_total || montantTotalGlobal),
         statut_paiement: 'SOLDE',
-        details_articles: doc.details_articles || lignesValidees.map(l => ({ 
-          id_article: l.id_article, 
-          designation: (l.designation || '').toUpperCase(), 
-          quantite: Number(l.quantite), 
-          prix_achat: estModeLivraison ? 0 : Number(l.prix_achat), 
-          sous_total: estModeLivraison ? 0 : Number(l.quantite) * Number(l.prix_achat) 
-        })),
+        details_articles: lignesNormalisees,
         created_at: doc.created_at || `${dateDoc}T12:00:00`
       };
 
@@ -779,6 +903,16 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
           }
         }
       }
+
+      // ✅ Écriture propre et sans doublon dans mouvements_stock lors de la transformation
+      await synchroniserMouvementsStockAppro({
+        numeroBonArrierePlan: nouveauNumApproArrierePlan,
+        depotId: depotCibleEffectif,
+        lignes: lignesNormalisees,
+        refFournisseur: doc.numero_commande || referenceFournisseur,
+        dateDocument: dateDocEffectif,
+        estSuppression: false
+      });
 
       localStorage.removeItem(cleCacheAppro);
       localStorage.removeItem(cleCacheCommandes);
@@ -876,12 +1010,20 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
     setEnTrainDeSauvegarder(true);
     try {
       const table = type === 'APPRO' ? 'approvisionnements' : 'bons_commande_fournisseurs';
+      const docASupprimer = type === 'APPRO' ? approvisionnements.find(a => a.id === id) : null;
+
       const { error } = await supabase.from(table).delete().eq('id', id).eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       if (error) {
         localSync.ajouterFileAttente('DELETE', table, { id });
       }
 
       if (type === 'APPRO') {
+        if (docASupprimer?.numero_bon) {
+          await synchroniserMouvementsStockAppro({
+            numeroBonArrierePlan: docASupprimer.numero_bon,
+            estSuppression: true
+          });
+        }
         const listeMaj = approvisionnements.filter(a => a.id !== id);
         setApprovisionnements(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheAppro, listeMaj);
@@ -896,6 +1038,7 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
       setEtatInitialEdition(null);
       setEtatModale({ ouverte: true, titre: 'Supprimé', message: 'Le document a été supprimé avec succès.', type: 'succes', onConfirmer: null });
       setDocumentEnLectureSeule(false);
+      setVueActive('liste');
       await chargerDonnees(true);
     } catch (err) { 
       setEtatModale({ ouverte: true, titre: 'Erreur', message: 'Erreur : ' + err.message, type: 'erreur', onConfirmer: null });
@@ -967,7 +1110,6 @@ export default function GestionApprovisionnements({ entrepriseId = '4TS-234321',
   const nomPartenaireCourant = obtenirNomFournisseur(idFournisseur);
   const nomDepotCourant = estPartenaireSansStockage ? '-- SANS STOCK / AUCUN DÉPÔT --' : (nomDepotObjEffectif ? (nomDepotObjEffectif.nom_depot || nomDepotObjEffectif.nom || nomDepotObjEffectif.libelle || '') : '');
 
-  // 🌟 CHARTE VISUELLE DYNAMIQUE (Mode Nuit vs Mode Jour)
   const containerBg = isDarkMode ? 'bg-[#050b18] text-slate-100' : 'bg-slate-100 text-[#0a1931]';
   const cardBg = isDarkMode ? 'bg-[#0b1329] border-2 border-slate-700 text-slate-100 shadow-md' : 'bg-white border-2 border-[#0a1931]/60 text-[#0a1931] shadow-md';
   const inputBg = isDarkMode ? 'bg-slate-900 border-2 border-slate-600 text-slate-100 placeholder:text-slate-500' : 'bg-white border-2 border-slate-400 text-black font-semibold placeholder:text-slate-400';

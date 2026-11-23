@@ -44,6 +44,11 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
   const [pendingActionsCount, setPendingActionsCount] = useState(0);
 
+  // 🎯 États pour les jolies modales interactives
+  const [modalConfirmationOuverte, setModalConfirmationOuverte] = useState(false);
+  const [modalSuppressionOuverte, setModalSuppressionOuverte] = useState(false);
+  const [modalSuccesMessage, setModalSuccesMessage] = useState(null); // Modale pour les messages de succès
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const userLocal = localStorage.getItem('utilisateurConnecte') || localStorage.getItem('utilisateur_connecte');
@@ -189,7 +194,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   };
 
   const chargerPermissionsEtDonnees = async (silencieux = false) => {
-    // ⚡ Chargement instantané depuis le cache local (zéro latence perçue)
     const donneesLocales = localSync.recupererDonneesLocales(cleCacheFournisseurs);
     if (donneesLocales && donneesLocales.length > 0) {
       setPartenaires(donneesLocales);
@@ -281,7 +285,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  const enregistrerPartenaire = async (e) => {
+  // 1️⃣ Soumission du formulaire -> Déclenche la modale de confirmation d'enregistrement
+  const gererSoumissionFormulaire = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
 
@@ -302,6 +307,16 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       return;
     }
 
+    setModalConfirmationOuverte(true);
+  };
+
+  // 2️⃣ Exécution effective de l'enregistrement après confirmation dans la modale
+  const confirmerEnregistrement = async () => {
+    setModalConfirmationOuverte(false);
+    if (enTrainDeSauvegarder) return;
+
+    const paysObj = LISTE_PAYS.find(p => p.code === nouveauPartenaire.pays) || LISTE_PAYS[0];
+    const chiffresPur = (nouveauPartenaire.telephone || '').replace(/[^0-9]/g, '');
     const numeroComplet = chiffresPur ? `${paysObj.indicatif}${chiffresPur}` : '';
     const nomPartenaireClean = (nouveauPartenaire.nom_fournisseur || '').trim().toUpperCase();
 
@@ -369,7 +384,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           const listeMaj = partenaires.map(p => p.id === partenaireEnEdition.id ? { ...p, ...payload } : p);
           setPartenaires(listeMaj);
           localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
-          alert('📴 Mode Hors Ligne : Fournisseur mis à jour localement.');
+          setModalSuccesMessage('📴 Mode Hors Ligne : Fournisseur mis à jour localement.');
           annulerForm();
           setEnTrainDeSauvegarder(false);
           return;
@@ -386,7 +401,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         setPartenaires(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
-        alert('✅ Mise à jour réussie !');
+        setModalSuccesMessage('✅ Mise à jour réussie !');
       } else {
         const idTemp = 'temp_' + Date.now();
         const nouvelObjet = { ...payload, id: idTemp, created_at: new Date().toISOString() };
@@ -396,7 +411,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           const listeMaj = [nouvelObjet, ...partenaires];
           setPartenaires(listeMaj);
           localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
-          alert('📴 Mode Hors Ligne : Fournisseur enregistré localement.');
+          setModalSuccesMessage('📴 Mode Hors Ligne : Fournisseur enregistré localement.');
           annulerForm();
           setEnTrainDeSauvegarder(false);
           return;
@@ -409,7 +424,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         setPartenaires(listeMaj);
         localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
-        alert('✅ Enregistrement réussi avec création du dépôt de stockage associé !');
+        setModalSuccesMessage('✅ Enregistrement réussi avec création du dépôt de stockage associé !');
       }
 
       localStorage.removeItem(cleCacheFournisseurs);
@@ -470,7 +485,8 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     setAfficherForm(false);
   };
 
-  const supprimerPartenaire = async () => {
+  // 1️⃣ Clic sur Supprimer -> Vérifications et ouverture de la modale de suppression
+  const verifierAvantSuppression = async () => {
     if (enTrainDeSauvegarder || !partenaireEnEdition) return;
     if (!permissions.suppression) {
       alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
@@ -515,11 +531,21 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
         return;
       }
 
-      if (!confirm(`Voulez-vous vraiment supprimer définitivement "${partenaireNomStr}" ?`)) {
-        setEnTrainDeSauvegarder(false);
-        return;
-      }
+      setEnTrainDeSauvegarder(false);
+      setModalSuppressionOuverte(true);
+    } catch (err) {
+      alert('❌ Erreur : ' + err.message);
+      setEnTrainDeSauvegarder(false);
+    }
+  };
 
+  // 2️⃣ Exécution effective de la suppression après validation dans la modale
+  const confirmerSuppression = async () => {
+    setModalSuppressionOuverte(false);
+    if (enTrainDeSauvegarder || !partenaireEnEdition) return;
+
+    setEnTrainDeSauvegarder(true);
+    try {
       if (partenaireEnEdition.id_depot) {
         await supabase.from('depots_stock').delete().eq('id', partenaireEnEdition.id_depot);
       }
@@ -532,7 +558,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, listeMaj);
 
       localStorage.removeItem(cleCacheFournisseurs);
-      alert('✅ Suppression effectuée avec succès.');
+      setModalSuccesMessage('✅ Suppression effectuée avec succès.');
       annulerForm();
       await chargerPermissionsEtDonnees(true);
     } catch (err) {
@@ -643,7 +669,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       {ongletActif === 'repertoire' && (
         <>
           {afficherForm && permissions.creation ? (
-            <form onSubmit={enregistrerPartenaire} className="bg-white border-2 border-orange-500/50 p-3 sm:p-5 rounded-2xl space-y-4 shadow-md">
+            <form onSubmit={gererSoumissionFormulaire} className="bg-white border-2 border-orange-500/50 p-3 sm:p-5 rounded-2xl space-y-4 shadow-md">
               <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                 <h4 className="font-extrabold text-orange-600 uppercase text-xs">
                   {partenaireEnEdition ? `✏️ Fiche du ${estModeLivraison ? 'partenaire' : 'fournisseur'}` : `➕ Nouveau ${estModeLivraison ? 'partenaire' : 'fournisseur'}`}
@@ -770,7 +796,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
               <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
                 {partenaireEnEdition && permissions.suppression && (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerPartenaire} className="bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white font-black px-3 py-2 rounded-xl text-xs transition border border-rose-200 cursor-pointer">
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={verifierAvantSuppression} className="bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white font-black px-3 py-2 rounded-xl text-xs transition border border-rose-200 cursor-pointer">
                     🗑️ Supprimer
                   </button>
                 )}
@@ -778,7 +804,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
                   <button type="button" disabled={enTrainDeSauvegarder} onClick={annulerForm} className="bg-slate-200 text-slate-800 font-black px-4 py-2 rounded-xl text-xs cursor-pointer">Annuler</button>
                   {permissions.modification && (
                     <button type="submit" disabled={enTrainDeSauvegarder} className="bg-orange-600 hover:bg-orange-500 text-white font-black px-5 py-2 rounded-xl text-xs shadow-xs uppercase tracking-wide cursor-pointer">
-                      {enTrainDeSauvegarder ? 'Enregistrement...' : (partenaireEnEdition ? 'Mettre à jour' : 'Enregistrer')}
+                      {enTrainDeSauvegarder ? 'Enregistrement...' : 'Enregistrer'}
                     </button>
                   )}
                 </div>
@@ -866,6 +892,122 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
           )}
         </>
       )}
+
+      {/* 🎯 JOLIE MODALE DE CONFIRMATION DE CRÉATION */}
+      {modalConfirmationOuverte && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2">
+                <span>⚠️</span> CONFIRMATION DE LA CRÉATION
+              </h4>
+              <button 
+                type="button" 
+                onClick={() => setModalConfirmationOuverte(false)} 
+                className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-slate-700 font-medium">
+              <p className="font-extrabold text-slate-900">Voulez-vous effectivement valider la création de ce partenaire ?</p>
+              <div className="pt-2 border-t border-slate-200 space-y-1">
+                <p><strong>Nom :</strong> <span className="text-orange-600 uppercase font-black">{nouveauPartenaire.nom_fournisseur}</span></p>
+                <p><strong>Téléphone :</strong> <span className="font-mono">{paysActuelObj.indicatif} {nouveauPartenaire.telephone}</span></p>
+                {estModeLivraison && (
+                  <p><strong>Stockage :</strong> {nouveauPartenaire.statut_stockage === 'AVEC_STOCKAGE' ? '📦 Avec Dépôt Attitré' : '🚫 Sans Stockage'}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalConfirmationOuverte(false)}
+                className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2.5 rounded-xl text-xs uppercase transition cursor-pointer"
+              >
+                Non, Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmerEnregistrement}
+                className="flex-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2.5 rounded-xl text-xs uppercase transition shadow-md cursor-pointer"
+              >
+                Oui, Valider ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🎯 JOLIE MODALE DE CONFIRMATION DE SUPPRESSION */}
+      {modalSuppressionOuverte && partenaireEnEdition && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h4 className="font-black text-rose-600 uppercase text-xs flex items-center gap-2">
+                <span>🗑️</span> CONFIRMATION DE LA SUPPRESSION
+              </h4>
+              <button 
+                type="button" 
+                onClick={() => setModalSuppressionOuverte(false)} 
+                className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs bg-rose-50/50 p-3.5 rounded-xl border border-rose-200 text-slate-700 font-medium">
+              <p className="font-extrabold text-slate-900">Voulez-vous vraiment supprimer définitivement ce partenaire ?</p>
+              <div className="pt-2 border-t border-rose-200 space-y-1">
+                <p><strong>Nom :</strong> <span className="text-rose-600 uppercase font-black">{partenaireEnEdition.nom_fournisseur || partenaireEnEdition.nom}</span></p>
+                <p><strong>Téléphone :</strong> <span className="font-mono">{partenaireEnEdition.telephone || '-'}</span></p>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalSuppressionOuverte(false)}
+                className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black py-2.5 rounded-xl text-xs uppercase transition cursor-pointer"
+              >
+                Non, Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmerSuppression}
+                className="flex-2 bg-rose-600 hover:bg-rose-500 text-white font-black py-2.5 rounded-xl text-xs uppercase transition shadow-md cursor-pointer"
+              >
+                Oui, Supprimer 🗑️
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ JOLIE MODALE DE NOTIFICATION DE SUCCÈS */}
+      {modalSuccesMessage && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden space-y-4 p-5 animate-in fade-in zoom-in-95 duration-150 text-center">
+            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-xl font-black">
+              ✓
+            </div>
+            <div className="space-y-1">
+              <h4 className="font-black text-slate-900 uppercase text-xs">SUCCÈS</h4>
+              <p className="text-xs font-bold text-slate-700">{modalSuccesMessage}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalSuccesMessage(null)}
+              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2.5 rounded-xl text-xs uppercase transition shadow-md cursor-pointer"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

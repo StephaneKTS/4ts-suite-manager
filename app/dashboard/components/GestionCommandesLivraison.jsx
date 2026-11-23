@@ -43,6 +43,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     peut_valider: true
   });
 
+  const [nomUtilisateurConnecteReel, setNomUtilisateurConnecteReel] = useState('KENMOE THÉODORE STÉPHANE');
+
   const [stocksArticlesCache, setStocksArticlesCache] = useState({});
   const [limiteCommandes, setLimiteCommandes] = useState(20);
   const [commandesAppelees, setCommandesAppelees] = useState({});
@@ -75,7 +77,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [livreurAssigne, setLivreurAssigne] = useState('');
   const [statutCommandeSaisi, setStatutCommandeSaisi] = useState('LIVRÉ');
 
-  // NOUVELLES MODALES DEMANDÉES
+  // MODALES
   const [modalPanierOuverte, setModalPanierOuverte] = useState(false);
   const [modalConfirmationOuverte, setModalConfirmationOuverte] = useState(false);
 
@@ -196,31 +198,49 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const chargerDroitsUtilisateur = async () => {
     try {
       const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
-      const emailConnecte = localStorage.getItem('utilisateur_email') || '';
-      if (!emailConnecte) return;
+      const emailConnecte = typeof window !== 'undefined' ? (localStorage.getItem('emailConnecte') || localStorage.getItem('utilisateur_email') || '') : '';
+      const nomConnecteLocalStorage = typeof window !== 'undefined' ? localStorage.getItem('utilisateurConnecte') : '';
 
-      const { data: userRecord } = await supabase
-        .from('utilisateurs')
-        .select('*')
-        .eq('id_entreprise', currentEntId)
-        .eq('email', emailConnecte)
-        .single();
-
-      if (userRecord && userRecord.id_role) {
-        const { data: roleRecord } = await supabase
-          .from('roles')
+      if (emailConnecte || nomConnecteLocalStorage) {
+        let queryUser = supabase
+          .from('utilisateurs')
           .select('*')
-          .eq('id', userRecord.id_role)
-          .single();
+          .eq('id_entreprise', currentEntId);
 
-        if (roleRecord) {
-          setRoleUtilisateur(roleRecord);
-          setPermissions({
-            peut_creer: roleRecord.peut_creer ?? true,
-            peut_modifier: roleRecord.peut_modifier ?? true,
-            peut_supprimer: roleRecord.peut_supprimer ?? true,
-            peut_valider: roleRecord.peut_valider ?? true
-          });
+        if (emailConnecte) {
+          queryUser = queryUser.or(`email.eq.${emailConnecte},nom_complet.eq.${nomConnecteLocalStorage}`);
+        } else {
+          queryUser = queryUser.eq('nom_complet', nomConnecteLocalStorage);
+        }
+
+        const { data: userRecords, error: errUser } = await queryUser;
+
+        if (!errUser && userRecords && userRecords.length > 0) {
+          const userRecord = userRecords[0];
+          const nomTrouve = (userRecord.nom_complet || userRecord.nom_utilisateur || userRecord.nom || '').trim().toUpperCase();
+          if (nomTrouve) {
+            setNomUtilisateurConnecteReel(nomTrouve);
+          }
+
+          if (userRecord.id_role) {
+            const { data: roleRecord } = await supabase
+              .from('roles')
+              .select('*')
+              .eq('id', userRecord.id_role)
+              .single();
+
+            if (roleRecord) {
+              setRoleUtilisateur(roleRecord);
+              setPermissions({
+                peut_creer: roleRecord.peut_creer ?? true,
+                peut_modifier: roleRecord.peut_modifier ?? true,
+                peut_supprimer: roleRecord.peut_supprimer ?? true,
+                peut_valider: roleRecord.peut_valider ?? true
+              });
+            }
+          }
+        } else if (nomConnecteLocalStorage) {
+          setNomUtilisateurConnecteReel(nomConnecteLocalStorage.toUpperCase());
         }
       }
     } catch (err) {
@@ -444,6 +464,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     let totalEntrees = stockBaseDirect;
     let totalSorties = 0;
 
+    // 1. Traitement des mouvements de stock
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
       
@@ -497,24 +518,42 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       }
     });
 
-    if (!emplacementCible) {
-      approvisionnements.forEach(app => {
-        if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT' && String(app.id_depot_destination || app.id_depot || '') !== String(depotCible)) {
-          return;
-        }
-        let listArt = [];
-        if (typeof app.details_articles === 'string') {
-          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-        } else if (Array.isArray(app.details_articles)) {
-          listArt = app.details_articles;
-        }
-        listArt.forEach(item => {
-          if (String(item.id_article || item.article_id) === String(articleId)) {
-            totalEntrees += parseInt(item.quantite || 0);
-          }
+    // 2. Traitement rigoureux des approvisionnements au même titre que les mouvements (support dépôt & emplacement)
+    approvisionnements.forEach(app => {
+      const appDepotDest = String(app.id_depot_destination || app.id_depot || '');
+      const appEmpDest = String(app.id_emplacement_destination || app.id_emplacement || '');
+
+      if (depotCible && depotCible !== 'TOUS' && depotCible !== 'AUCUN_DEPOT') {
+        if (appDepotDest !== String(depotCible)) return;
+      }
+
+      if (emplacementCible) {
+        if (appEmpDest !== String(emplacementCible)) return;
+      }
+
+      let listArt = [];
+      if (app.id_article && app.quantite) {
+        listArt.push({
+          id_article: app.id_article,
+          quantite: app.quantite
         });
+      }
+      if (typeof app.details_articles === 'string') {
+        try { 
+          const parsed = JSON.parse(app.details_articles);
+          if (Array.isArray(parsed)) listArt = listArt.concat(parsed);
+          else if (parsed) listArt.push(parsed);
+        } catch (e) {}
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = listArt.concat(app.details_articles);
+      }
+
+      listArt.forEach(item => {
+        if (String(item.id_article || item.article_id) === String(articleId)) {
+          totalEntrees += parseInt(item.quantite || 0, 10);
+        }
       });
-    }
+    });
 
     let stockCalcule = Math.max(0, totalEntrees - totalSorties);
 
@@ -829,6 +868,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const rapportLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheRapportLivreurInput.toLowerCase()));
   const clotureLivreursFiltres = listeLivreursUniques().filter(l => l.toLowerCase().includes(rechercheClotureLivreurInput.toLowerCase()));
 
+  // 🎯 FILTRAGE STRICT DES ARTICLES PAR PARTENAIRE
   const articlesFiltres = articles.filter((a) => {
     const designation = (a.Designation || a.designation || a.nom || '').toUpperCase();
     const matchNom = designation.includes(rechercheArticleInput.toUpperCase());
@@ -889,7 +929,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     ? (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && pointADepart.trim() !== '' && adresseLivraison.trim() !== '')
     : (idPartenaire && numeroClient.trim().length === 9 && numeroCommande.trim() !== '' && montantSaisi !== '' && adresseLivraison.trim() !== '' && Boolean(depotValideEffectif));
 
-  // Condition mise à jour : pour les partenaires gérés avec stockage, un article au moins doit être ajouté dans le panier
   const panierValidePourValidation = partenaireSansStockage || lignesSaisies.length > 0;
 
   const aEteModifie = (() => {
@@ -1302,6 +1341,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         vendeur_livreur: livreurAssigne,
         statut: statutCommandeSaisi,
         statut_commande: statutCommandeSaisi,
+        utilisateur_saisie: commandeEnEdition ? (commandeEnEdition.utilisateur_saisie || nomUtilisateurConnecteReel) : nomUtilisateurConnecteReel
       };
 
       let idCmdCourante = null;
@@ -2632,6 +2672,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               <span className="font-black text-blue-900 text-[9px] uppercase flex items-center gap-1">
                 🔒 ZONE RÉSERVÉE AU SUPERVISEUR
               </span>
+              <span className="bg-blue-900 text-blue-100 px-2 py-0.5 rounded text-[8px] font-mono font-black tracking-wider uppercase">
+                USER : {nomUtilisateurConnecteReel}
+              </span>
             </div>
 
             <div className="grid grid-cols-3 gap-1.5">
@@ -2679,7 +2722,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             </div>
           </div>
 
-          {/* BOUTON AJOUTER LES ARTICLES ET APERÇU PANIER */}
           {!partenaireSansStockage && (
             <div className="bg-white p-2.5 rounded-xl shadow-md border border-slate-200 space-y-2">
               <div className="flex items-center justify-between">
@@ -2781,7 +2823,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             </div>
           </div>
 
-          {/* MODALE 1 : SELECTION DES ARTICLES & PANIER */}
           {modalPanierOuverte && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-3">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -2793,7 +2834,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 </div>
 
                 <div className="p-3 grid grid-cols-2 gap-3 flex-1 overflow-hidden">
-                  {/* Colonne Liste Articles */}
                   <div className="flex flex-col space-y-2 overflow-hidden border-r border-slate-200 pr-2">
                     <div className="flex justify-between items-center">
                       <span className="font-black text-slate-800 text-[9px] uppercase">Articles disponibles</span>
@@ -2825,7 +2865,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     </div>
                   </div>
 
-                  {/* Colonne Panier Actuel */}
                   <div className="flex flex-col space-y-2 overflow-hidden">
                     <span className="font-black text-slate-800 text-[9px] uppercase">Panier en cours</span>
                     
@@ -2867,7 +2906,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
             </div>
           )}
 
-          {/* MODALE 2 : CONFIRMATION DE VALIDATION DE COMMANDE */}
           {modalConfirmationOuverte && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden space-y-3 p-4">
@@ -2951,7 +2989,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <input
                     type="text"
                     value={recherchePartenaireInput}
-                    onChange={(e) => setRecherchePartenaireInput(e.target.value)}
+                    onChange={(e) => setSearchPartenaireInput(e.target.value)}
                     placeholder=""
                     autoFocus
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
