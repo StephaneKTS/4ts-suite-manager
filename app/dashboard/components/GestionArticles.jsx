@@ -28,6 +28,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     onConfirmer: null
   });
 
+  // ⚙️ États pour le menu d'options et l'importation en masse
+  const [afficherModalOptions, setAfficherModalOptions] = useState(false);
+  const [afficherModalImport, setAfficherModalImport] = useState(false);
+  const [donneesImportees, setDonneesImportees] = useState([]);
+  const [nomFichierImport, setNomFichierImport] = useState('');
+  const importInputRef = useRef(null);
+
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -333,6 +340,243 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       localSync.synchroniserVersCloud(supabase);
     }
   }, [entrepriseId, moduleActuel]);
+
+  // 📥 TÉLÉCHARGEMENT DU MODÈLE AVEC LA COLONNE ID_FAMILLE JUSTE APRÈS DÉSIGNATION
+  const telechargerModeleExcel = () => {
+    let enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
+    
+    let lignesExemples = "";
+    if (familles.length > 0) {
+      const prem = familles[0];
+      const sec = familles.length > 1 ? familles[1] : prem;
+      
+      const id1 = prem.id || '';
+      const nom1 = prem.nom_famille || prem.Nom_Famille || 'BOISSONS';
+      const id2 = sec.id || '';
+      const nom2 = sec.nom_famille || sec.Nom_Famille || 'REPAS';
+
+      lignesExemples = `COCA COLA 33CL;${id1};${nom1};500;350;10;5449000000496;OUI\n` +
+                       `POULET DG;${id2};${nom2};3500;2500;5;;OUI\n`;
+    } else {
+      lignesExemples = `COCA COLA 33CL;32;BOISSONS;500;350;10;5449000000496;OUI\n` +
+                       `POULET DG;33;REPAS;3500;2500;5;;OUI\n`;
+    }
+
+    // Ajout d'une section informative claire des familles et de leurs ID respectifs
+    let commentairesFamilles = "\n# --- VOS FAMILLES ET ID DISPONIBLES ---\n";
+    familles.forEach(f => {
+      const nomF = f.nom_famille || f.Nom_Famille || '';
+      commentairesFamilles += `# ID: ${f.id} => Nom: ${nomF}\n`;
+    });
+
+    const contenuCsv = "\ufeff" + enTetes + lignesExemples + commentairesFamilles;
+    const blob = new Blob([contenuCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const lien = document.createElement('a');
+    lien.href = url;
+    lien.setAttribute('download', `Modele_Import_Articles_${moduleActuel}.csv`);
+    document.body.appendChild(lien);
+    lien.click();
+    document.body.removeChild(lien);
+    setAfficherModalOptions(false);
+  };
+
+  // 📥 GESTION DU FICHIER D'IMPORTATION AVEC ID_FAMILLE EN COLONNE B (Index 1)
+  const gererFichierImport = (e) => {
+    const fichier = e.target.files[0];
+    if (!fichier) return;
+
+    if (!permissions.creation) {
+      setEtatModale({
+        ouverte: true,
+        titre: 'Action non autorisée',
+        message: 'Vous n’avez pas les droits de création pour importer des articles.',
+        type: 'erreur',
+        onConfirmer: null
+      });
+      if (importInputRef.current) importInputRef.current.value = '';
+      return;
+    }
+
+    setNomFichierImport(fichier.name);
+    const lecteur = new FileReader();
+
+    lecteur.onload = (evenement) => {
+      const contenu = evenement.target.result || '';
+      const lignes = contenu.split(/\r\n|\n/);
+      const articlesParses = [];
+
+      for (let i = 1; i < lignes.length; i++) {
+        const ligne = lignes[i].trim();
+        if (!ligne || ligne.startsWith('#')) continue;
+
+        const separateur = ligne.includes(';') ? ';' : ',';
+        const colonnes = ligne.split(separateur);
+
+        if (colonnes.length >= 1) {
+          const designation = (colonnes[0] || '')
+            .trim()
+            .replace(/^['"]+|['"]+$/g, '')
+            .replace(/\s+/g, ' ')
+            .toUpperCase();
+
+          if (!designation) continue;
+
+          // 🔍 Colonne B (Index 1) = ID_Famille / Colonne C (Index 2) = Nom Famille (optionnel pour info)
+          const saisieIdFamille = (colonnes[1] || '').trim().replace(/^['"]+|['"]+$/g, '');
+          const saisieNomFamille = (colonnes[2] || '').trim().replace(/^['"]+|['"]+$/g, '').toUpperCase();
+          
+          const prixVenteBrut = (colonnes[3] || '0').trim().replace(/\s+/g, '').replace(',', '.');
+          const prixAchatBrut = (colonnes[4] || '0').trim().replace(/\s+/g, '').replace(',', '.');
+          const seuilBrut = (colonnes[5] || '5').trim().replace(/\s+/g, '');
+          const codeBarre = (colonnes[6] || '').trim().replace(/^['"]+|['"]+$/g, '').toUpperCase();
+          const suiviStockTexte = (colonnes[7] || 'OUI').trim().replace(/^['"]+|['"]+$/g, '').toUpperCase();
+
+          const prixVente = parseFloat(prixVenteBrut) || 0;
+          const prixAchat = moduleActuel !== 'LIVRAISON' ? (parseFloat(prixAchatBrut) || 0) : 0;
+          const seuilAlerte = seuilBrut !== '' && !isNaN(parseInt(seuilBrut)) ? parseInt(seuilBrut) : 5;
+          const suiviStock = !(suiviStockTexte === 'NON' || suiviStockTexte === 'FAUX' || suiviStockTexte === 'FALSE' || suiviStockTexte === '0');
+
+          // 🔍 Rattachement intelligent : Priorité absolue à l'ID (colonne B), puis secours par le nom
+          let familleId = familles.length > 0 ? familles[0].id : null;
+          let familleNomAffichee = familles.length > 0 ? (familles[0].nom_famille || familles[0].Nom_Famille || 'DÉFAUT') : 'AUCUNE';
+          let familleReconnue = false;
+
+          const familleTrouveeParId = familles.find(f => String(f.id) === String(saisieIdFamille));
+          const familleTrouveeParNom = familles.find(
+            f => (f.nom_famille || f.Nom_Famille || '').trim().toUpperCase() === saisieNomFamille
+          );
+
+          if (familleTrouveeParId) {
+            familleId = familleTrouveeParId.id;
+            familleNomAffichee = familleTrouveeParId.nom_famille || familleTrouveeParId.Nom_Famille;
+            familleReconnue = true;
+          } else if (familleTrouveeParNom) {
+            familleId = familleTrouveeParNom.id;
+            familleNomAffichee = familleTrouveeParNom.nom_famille || familleTrouveeParNom.Nom_Famille;
+            familleReconnue = true;
+          }
+
+          articlesParses.push({
+            _tempId: `imp_${i}_${Date.now()}`,
+            _familleNomAffichee: familleNomAffichee,
+            _familleReconnue: familleReconnue,
+            payload: {
+              id_entreprise: entrepriseId,
+              module: moduleActuel,
+              Designation: designation,
+              Famille: familleId,
+              Prix_Vente: prixVente,
+              Prix_Achat: prixAchat,
+              Seuil_Alerte: seuilAlerte,
+              Code_Barre: codeBarre,
+              Photo: '',
+              Disponible_Menu_QR: true,
+              date_peremption: null,
+              suivi_stock: suiviStock,
+              Quantite_Stock: 0
+            }
+          });
+        }
+      }
+
+      if (importInputRef.current) importInputRef.current.value = '';
+
+      if (articlesParses.length === 0) {
+        setEtatModale({
+          ouverte: true,
+          titre: 'Fichier vide ou invalide',
+          message: 'Aucun article valide n’a été détecté dans ce fichier. Vérifiez que la colonne A contient bien la Désignation.',
+          type: 'erreur',
+          onConfirmer: null
+        });
+        return;
+      }
+
+      setDonneesImportees(articlesParses);
+      setAfficherModalOptions(false);
+      setAfficherModalImport(true);
+    };
+
+    lecteur.onerror = () => {
+      if (importInputRef.current) importInputRef.current.value = '';
+      setEtatModale({
+        ouverte: true,
+        titre: 'Erreur de lecture',
+        message: 'Impossible de lire le fichier sélectionné.',
+        type: 'erreur',
+        onConfirmer: null
+      });
+    };
+
+    lecteur.readAsText(fichier, 'UTF-8');
+  };
+
+  const retirerLigneImport = (tempId) => {
+    if (enTrainDeSauvegarder) return;
+    setDonneesImportees(prev => prev.filter(item => item._tempId !== tempId));
+  };
+
+  const validerImportationMassive = async () => {
+    if (enTrainDeSauvegarder || donneesImportees.length === 0) return;
+
+    setEnTrainDeSauvegarder(true);
+    const payloadsAInserer = donneesImportees.map(item => item.payload);
+
+    try {
+      const tailleLot = 100;
+      let echecCloud = false;
+
+      for (let i = 0; i < payloadsAInserer.length; i += tailleLot) {
+        const lot = payloadsAInserer.slice(i, i + tailleLot);
+        const { error } = await supabase.from('articles_stock').insert(lot);
+        if (error) {
+          echecCloud = true;
+          lot.forEach(art => localSync.ajouterFileAttente('INSERT', 'articles_stock', art));
+        }
+      }
+
+      const nouveauxLocaux = payloadsAInserer.map((p, idx) => ({
+        ...p,
+        id: `local_imp_${Date.now()}_${idx}`,
+        id_article: `local_imp_${Date.now()}_${idx}`
+      }));
+
+      const articlesMaj = [...nouveauxLocaux, ...articles];
+      setArticles(articlesMaj);
+      localSync.sauvegarderDonneesLocales(cleCacheArticles, articlesMaj);
+
+      const totalImportes = payloadsAInserer.length;
+      setAfficherModalImport(false);
+      setDonneesImportees([]);
+      setNomFichierImport('');
+
+      if (!echecCloud) {
+        await chargerArticles();
+      }
+
+      setEtatModale({
+        ouverte: true,
+        titre: 'Importation terminée',
+        message: echecCloud
+          ? `${totalImportes} article(s) enregistré(s) localement (synchronisation cloud automatique dès le retour de la connexion).`
+          : `${totalImportes} article(s) ont été importés avec succès dans le module ${moduleActuel} !`,
+        type: 'succes',
+        onConfirmer: null
+      });
+    } catch (err) {
+      setEtatModale({
+        ouverte: true,
+        titre: 'Erreur d’importation',
+        message: 'Une erreur est survenue lors de l’importation : ' + err.message,
+        type: 'erreur',
+        onConfirmer: null
+      });
+    } finally {
+      setEnTrainDeSauvegarder(false);
+    }
+  };
 
   const isGestionPerissablesActive = () => {
     if (!entrepriseInfo) return false;
@@ -1391,7 +1635,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     }, 500);
   };
 
-  // 🎨 HARMONISATION IDENTIQUE À GestionMouvements_7.jsx (Cartes blanches, accents Orange-600 & Slate-900)
   const cardStyle = 'bg-white rounded-xl border border-slate-200 shadow-2xs';
   const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
   const selectTriggerStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-[10px] font-extrabold text-slate-900 cursor-pointer flex justify-between items-center hover:border-orange-400 transition';
@@ -1400,7 +1643,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   return (
     <div className="space-y-2 font-sans text-[10px]">
       
-      {/* Barre supérieure identique à GestionMouvements_7.jsx */}
+      {/* Barre supérieure */}
       <div className={`flex justify-between items-center p-2 gap-2 flex-wrap ${cardStyle}`}>
         <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <span className="font-extrabold uppercase text-slate-900 text-[10.5px] truncate">
@@ -1414,36 +1657,48 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
         
         {permissions.creation && (
-          <button
-            type="button"
-            disabled={enTrainDeSauvegarder}
-            onClick={() => {
-              setModeVue('catalogue');
-              annulerForm();
-              if (familles.length > 0) {
-                const premiereFam = familles[0];
-                setNouveauArticle(prev => ({ 
-                  ...prev, 
-                  Famille: premiereFam.id,
-                  suivi_stock: premiereFam.suivi_stock ?? true 
-                }));
-              }
-              setAfficherModalForm(true);
-              setTimeout(() => {
-                if (designationInputRef.current) {
-                  designationInputRef.current.focus();
-                  designationInputRef.current.select();
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* ⚙️ Bouton Option */}
+            <button
+              type="button"
+              onClick={() => setAfficherModalOptions(true)}
+              title="Options et assistants d'importation de catalogue"
+              className="py-1.5 px-2.5 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-slate-800 hover:bg-slate-700 text-white border-slate-700 shadow-xs cursor-pointer"
+            >
+              <span>⚙️</span> Option
+            </button>
+
+            <button
+              type="button"
+              disabled={enTrainDeSauvegarder}
+              onClick={() => {
+                setModeVue('catalogue');
+                annulerForm();
+                if (familles.length > 0) {
+                  const premiereFam = familles[0];
+                  setNouveauArticle(prev => ({ 
+                    ...prev, 
+                    Famille: premiereFam.id,
+                    suivi_stock: premiereFam.suivi_stock ?? true 
+                  }));
                 }
-              }, 50);
-            }}
-            className="py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-orange-600 hover:bg-orange-700 text-white border-orange-700 shadow-xs cursor-pointer"
-          >
-            <span>＋</span> Nouveau
-          </button>
+                setAfficherModalForm(true);
+                setTimeout(() => {
+                  if (designationInputRef.current) {
+                    designationInputRef.current.focus();
+                    designationInputRef.current.select();
+                  }
+                }, 50);
+              }}
+              className="py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-orange-600 hover:bg-orange-700 text-white border-orange-700 shadow-xs cursor-pointer"
+            >
+              <span>＋</span> Nouveau
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Sous-barre de navigation identique aux boutons Créer / Liste de GestionMouvements_7.jsx */}
+      {/* Sous-barre de navigation */}
       <div className="grid grid-cols-3 gap-1.5 w-full">
         <button
           type="button"
@@ -1496,7 +1751,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {modeVue === 'catalogue' && (
         <div className="space-y-2">
-          {/* Bloc Filtres identique au cadre formulaire de GestionMouvements_7.jsx */}
+          {/* Bloc Filtres */}
           <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
             <div className="flex justify-between items-center pb-1 border-b border-slate-100">
               <span className="font-extrabold text-[9.5px] uppercase text-orange-600">
@@ -1595,7 +1850,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             </div>
           </div>
 
-          {/* Carte Tableau Catalogue identique à LISTE_DOCS de GestionMouvements_7.jsx */}
+          {/* Tableau Catalogue */}
           <div className={`overflow-hidden ${cardStyle}`}>
             <div className="p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center gap-1.5">
@@ -2052,7 +2307,219 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* 🪟 MODALE DE SAISIE / CRÉATION / MODIFICATION D'ARTICLE (Style identique aux modales de GestionMouvements_7.jsx) */}
+      {/* ⚙️ BOÎTE DE DIALOGUE "OPTION" */}
+      {afficherModalOptions && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col p-5 space-y-4 text-slate-900">
+            
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h4 className="font-black uppercase text-xs flex items-center gap-1.5 text-slate-900">
+                <span>⚙️</span> OPTIONS DU CATALOGUE ARTICLES [{moduleActuel}]
+              </h4>
+              <button
+                type="button"
+                onClick={() => setAfficherModalOptions(false)}
+                className="text-slate-400 hover:text-slate-700 font-black text-sm px-2 py-1 rounded-md hover:bg-slate-100 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-[11px] font-semibold text-slate-600 leading-relaxed">
+              Sélectionnez une option pour gérer l'importation de vos catalogues d'articles.
+            </p>
+
+            <div className="grid grid-cols-1 gap-2.5 pt-1">
+              {/* Option 1 : Télécharger le modèle avec ID_Famille en colonne B */}
+              <button
+                type="button"
+                onClick={telechargerModeleExcel}
+                className="p-3.5 rounded-xl border-2 border-orange-200 bg-orange-50 hover:bg-orange-100/70 transition flex items-center gap-3 text-left cursor-pointer group"
+              >
+                <span className="text-xl p-2 bg-white rounded-lg shadow-2xs border border-orange-200 group-hover:scale-105 transition">
+                  📊
+                </span>
+                <div>
+                  <span className="block font-black text-[11px] uppercase text-orange-900">
+                    1. Télécharger le modèle (avec ID Famille)
+                  </span>
+                  <span className="text-[9.5px] font-bold text-orange-700">
+                    Inclut la colonne ID_Famille en colonne B et vos familles actuelles pré-remplies.
+                  </span>
+                </div>
+              </button>
+
+              {/* Option 2 : Importer le fichier rempli */}
+              <label
+                className="p-3.5 rounded-xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center gap-3 text-left cursor-pointer group"
+              >
+                <span className="text-xl p-2 bg-white rounded-lg shadow-2xs border border-slate-200 group-hover:scale-105 transition">
+                  📂
+                </span>
+                <div className="flex-1">
+                  <span className="block font-black text-[11px] uppercase text-slate-900">
+                    2. Importer le fichier rempli
+                  </span>
+                  <span className="text-[9.5px] font-bold text-slate-500">
+                    Sélectionnez votre fichier CSV/Excel configuré pour l'importer.
+                  </span>
+                </div>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={gererFichierImport}
+                  className="hidden"
+                  disabled={enTrainDeSauvegarder}
+                />
+              </label>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAfficherModalOptions(false)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-4 py-2 rounded-xl text-[10px] transition cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 📥 MODALE DE PRÉVISUALISATION DE L'IMPORTATION */}
+      {afficherModalImport && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-start justify-center pt-4 z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
+            
+            <div className="p-3.5 border-b border-slate-200 bg-slate-50 flex justify-between items-center gap-2">
+              <div>
+                <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                  <span>📥</span> PRÉVISUALISATION DE L'IMPORTATION [{moduleActuel}]
+                </h4>
+                <p className="text-[9.5px] font-bold text-slate-500 mt-0.5">
+                  Fichier : <span className="text-slate-800">{nomFichierImport}</span> •{' '}
+                  <span className="text-orange-600 font-black">{donneesImportees.length} article(s) prêt(s) à importer</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => {
+                  setAfficherModalImport(false);
+                  setDonneesImportees([]);
+                }}
+                className="text-slate-400 hover:text-slate-700 font-black text-sm px-2 py-1 rounded-md hover:bg-slate-200 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-3.5 py-2 bg-amber-50 border-b border-amber-200 text-[9px] font-bold text-amber-900 flex flex-wrap items-center justify-between gap-2">
+              <span>
+                💡 Le rattachement s’effectue automatiquement via l'ID de la famille (Colonne B).
+              </span>
+              <span className="bg-white px-2 py-0.5 rounded border border-amber-300 font-black">
+                Total : {donneesImportees.length} lignes
+              </span>
+            </div>
+
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-left text-[9.5px] border-collapse">
+                <thead className="sticky top-0 z-10 bg-slate-100 text-slate-700 uppercase text-[8.5px] font-extrabold border-b border-slate-200">
+                  <tr>
+                    <th className="p-2 text-center w-10">#</th>
+                    <th className="p-2">Désignation</th>
+                    <th className="p-2">Famille (ID / Nom)</th>
+                    <th className="p-2 text-right">PV</th>
+                    {moduleActuel !== 'LIVRAISON' && <th className="p-2 text-right">PA</th>}
+                    <th className="p-2 text-center">Seuil</th>
+                    <th className="p-2">Code-Barres</th>
+                    <th className="p-2 text-center">Suivi Stock</th>
+                    <th className="p-2 text-center w-10">Retirer</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-900 bg-white">
+                  {donneesImportees.map((item, idx) => {
+                    const p = item.payload;
+                    return (
+                      <tr key={item._tempId} className="hover:bg-orange-50/50 transition">
+                        <td className="p-2 text-center font-mono font-bold text-slate-400">{idx + 1}</td>
+                        <td className="p-2 font-black uppercase text-slate-900">{p.Designation}</td>
+                        <td className="p-2">
+                          <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold border ${
+                            item._familleReconnue
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}>
+                            ID: {p.Famille} ({item._familleNomAffichee})
+                          </span>
+                        </td>
+                        <td className="p-2 text-right font-black text-emerald-600">{p.Prix_Vente}</td>
+                        {moduleActuel !== 'LIVRAISON' && (
+                          <td className="p-2 text-right font-bold text-slate-700">{p.Prix_Achat}</td>
+                        )}
+                        <td className="p-2 text-center font-bold text-slate-700">{p.Seuil_Alerte}</td>
+                        <td className="p-2 font-mono text-slate-600">{p.Code_Barre || '-'}</td>
+                        <td className="p-2 text-center">
+                          <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black border ${
+                            p.suivi_stock
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}>
+                            {p.suivi_stock ? 'OUI' : 'NON'}
+                          </span>
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            disabled={enTrainDeSauvegarder}
+                            onClick={() => retirerLigneImport(item._tempId)}
+                            title="Retirer cette ligne de l'importation"
+                            className="text-rose-500 hover:text-rose-700 font-black px-1.5 py-0.5 rounded hover:bg-rose-50 transition cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-3 border-t border-slate-200 bg-slate-50 flex justify-between items-center gap-2">
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder}
+                onClick={() => {
+                  setAfficherModalImport(false);
+                  setDonneesImportees([]);
+                }}
+                className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold px-4 py-2 rounded-xl text-[10px] transition cursor-pointer"
+              >
+                Annuler
+              </button>
+
+              <button
+                type="button"
+                disabled={enTrainDeSauvegarder || donneesImportees.length === 0}
+                onClick={validerImportationMassive}
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black px-5 py-2 rounded-xl text-[10px] uppercase shadow-sm transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>✅</span>
+                {enTrainDeSauvegarder
+                  ? 'Importation en cours...'
+                  : `Valider et importer ${donneesImportees.length} article(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE FORMULAIRE ARTICLE */}
       {afficherModalForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
@@ -2092,7 +2559,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     <option value="">-- Choisir --</option>
                     {familles.map((fam) => (
                       <option key={fam.id} value={fam.id}>
-                        🏷️ {fam.nom_famille || fam.Nom_Famille}
+                        🏷️ {fam.nom_famille || fam.Nom_Famille} (ID: {fam.id})
                       </option>
                     ))}
                   </select>
@@ -2335,7 +2802,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* 🔔 MODALE UNIFIÉE (CONFIRMATION -> SUCCÈS -> ERREUR) */}
+      {/* MODALE UNIFIÉE */}
       {etatModale.ouverte && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl text-slate-900">
@@ -2394,7 +2861,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION D'ARTICLE (Grille 2 colonnes identique à GestionMouvements_7.jsx) */}
+      {/* MODALE DE SÉLECTION D'ARTICLE */}
       {afficherModalSelectionArticle && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -2444,7 +2911,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE PARTENAIRE / DÉPÔT */}
+      {/* MODALE DE SÉLECTION DE DÉPÔT */}
       {afficherModalSelectionDepot && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -2495,7 +2962,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION D'EMPLACEMENT / LIVREUR */}
+      {/* MODALE DE SÉLECTION D'EMPLACEMENT */}
       {afficherModalSelectionEmp && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -2545,7 +3012,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE FAMILLE (CATALOGUE) */}
+      {/* MODALE DE SÉLECTION DE FAMILLE */}
       {afficherModalFamilleCat && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -2595,7 +3062,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE DÉPÔT / PARTENAIRE (CATALOGUE) */}
+      {/* MODALE DE SÉLECTION DE DÉPÔT (CATALOGUE) */}
       {afficherModalDepotCat && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -2646,7 +3113,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION D'EMPLACEMENT / LIVREUR (CATALOGUE) */}
+      {/* MODALE DE SÉLECTION D'EMPLACEMENT (CATALOGUE) */}
       {afficherModalEmpCat && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
