@@ -1293,20 +1293,24 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         utilisateur_saisie: nomUtilisateurConnecteReel
       };
 
-      let idCmdCourante = commandeEnEdition ? commandeEnEdition.id : `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      let idCmdCourante = commandeEnEdition ? commandeEnEdition.id : null;
 
       if (commandeEnEdition) {
         const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'LIVRÉ';
         const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const etaitDejaLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
 
-        supabase.from('commandes_livraison_en_tete').update(payload).eq('id', commandeEnEdition.id).then(({ error: errUp }) => {
-          if (errUp) localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { ...payload, id: commandeEnEdition.id });
-        });
+        const { error: errUp } = await supabase
+          .from('commandes_livraison_en_tete')
+          .update(payload)
+          .eq('id', commandeEnEdition.id);
+        if (errUp) throw errUp;
 
-        supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id).then(({ error: errDel }) => {
-          if (errDel) localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
-        });
+        const { error: errDel } = await supabase
+          .from('commandes_livraison_lignes')
+          .delete()
+          .eq('id_commande', commandeEnEdition.id);
+        if (errDel) console.error(errDel);
 
         if (!partenaireSansStockage && etaitDejaLivre && !estLivreVerif) {
           const lignesCmdPrecedentes = lignesCommandesMap[commandeEnEdition.id] || [];
@@ -1361,16 +1365,21 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
 
       } else {
-        const cmdLocale = { ...payload, id: idCmdCourante, created_at: new Date().toISOString() };
-        const nouvelleListeCmd = [cmdLocale, ...commandes];
+        const { data: insertedCmd, error: errCmd } = await supabase
+          .from('commandes_livraison_en_tete')
+          .insert([payload])
+          .select()
+          .single();
+
+        if (errCmd) {
+          console.error('Erreur insertion en-tête :', errCmd);
+          throw new Error(errCmd.message);
+        }
+
+        idCmdCourante = insertedCmd.id;
+        const nouvelleListeCmd = [insertedCmd, ...commandes];
         setCommandes(nouvelleListeCmd);
         localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
-
-        supabase.from('commandes_livraison_en_tete').insert([payload]).then(({ error: errCmd }) => {
-          if (errCmd) {
-            localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', payload);
-          }
-        });
 
         if (!partenaireSansStockage && estLivreVerif) {
           lignesSaisies.forEach(item => {
@@ -1407,13 +1416,18 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           prix_unitaire: l.prix_unitaire,
         }));
 
-        supabase.from('commandes_livraison_lignes').insert(payloadLignes).then(({ error: errLignes }) => {
-          if (errLignes) localSync.ajouterFileAttente('INSERT', 'commandes_livraison_lignes', payloadLignes);
-        });
+        const { error: errLignes } = await supabase
+          .from('commandes_livraison_lignes')
+          .insert(payloadLignes);
 
-        const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
-        setLignesCommandesMap(mapLignesMaj);
-        localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignesMaj);
+        if (errLignes) {
+          console.error('Erreur insertion lignes :', errLignes);
+          setModalDoublonMessage('Erreur enregistrement articles : ' + errLignes.message);
+        } else {
+          const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
+          setLignesCommandesMap(mapLignesMaj);
+          localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignesMaj);
+        }
       }
 
       setModalConfirmationOuverte(false);
@@ -3310,26 +3324,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    {/* SECTION ARTICLES MODIFIÉE : Affichage vertical complet sans coupure */}
-                    <div className="pt-0.5 text-[8.5px]">
-                      {lignesCmd.length > 0 ? (
-                        <div className="flex flex-col gap-0.5">
-                          {lignesCmd.map((l, idx) => (
-                            <div key={idx} className="bg-slate-50 border border-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[8px] flex justify-between items-center">
-                              <span className="uppercase text-slate-900">{l.designation}</span>
-                              <span className="text-orange-600 font-black shrink-0 ml-2">x{l.quantite}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : cmd.nature_colis ? (
-                        <span className="text-blue-700 font-bold block">📦 {cmd.nature_colis}</span>
-                      ) : cmd.point_a ? (
-                        <span className="text-slate-800 font-bold block">📍 {cmd.point_a} ➔ {cmd.adresse_livraison}</span>
-                      ) : (
-                        <span className="text-slate-400 italic block">Aucun article</span>
-                      )}
-                    </div>
-
+                    {/* SECTION 1: NUMÉRO CLIENT & BOUTONS WHATSAPP / APPEL */}
                     <div className="flex justify-end items-center gap-1.5 pt-0.5 text-[8.5px]">
                       {cmd.numero_client && (
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -3359,6 +3354,26 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             <span className="tracking-wide">{cmd.numero_client}</span>
                           </a>
                         </div>
+                      )}
+                    </div>
+
+                    {/* SECTION 2: ARTICLES EN BAS DU NUMÉRO DU CLIENT */}
+                    <div className="pt-0.5 text-[8.5px]">
+                      {lignesCmd.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {lignesCmd.map((l, idx) => (
+                            <div key={idx} className="bg-slate-50 border border-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[8px] flex justify-between items-center">
+                              <span className="uppercase text-slate-900">{l.designation}</span>
+                              <span className="text-orange-600 font-black shrink-0 ml-2">x{l.quantite}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : cmd.nature_colis ? (
+                        <span className="text-blue-700 font-bold block">📦 {cmd.nature_colis}</span>
+                      ) : cmd.point_a ? (
+                        <span className="text-slate-800 font-bold block">📍 {cmd.point_a} ➔ {cmd.adresse_livraison}</span>
+                      ) : (
+                        <span className="text-slate-400 italic block">Aucun article</span>
                       )}
                     </div>
                   </div>
