@@ -137,7 +137,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
-  // Nouveaux états pour la gestion des règlements d'achats boutique
+  // États pour la gestion des règlements d'achats
   const [statutReglement, setStatutReglement] = useState('SOLDE'); // SOLDE, AVANCE, NON_PAYE
   const [montantPayeAchat, setMontantPayeAchat] = useState(0);
   const [modalReglementOuvert, setModalReglementOuvert] = useState(false);
@@ -684,7 +684,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
 
     const artId = art.id_article || art.id;
-    if (typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') {
+    if (ongletPrincipal === 'MOUVEMENTS' && (typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES')) {
       if (emplacementSourceId) {
         const stockEmp = calculerStockPourEmplacement(artId, emplacementSourceId);
         if (stockEmp <= 0) return false;
@@ -714,7 +714,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       return false;
     }
 
-    if (typeOperation === 'TRANSFERT') {
+    if (typeOperation === 'TRANSFERT' && ongletPrincipal === 'MOUVEMENTS') {
       if (!enTeteDoc.id_depot_source) { 
         afficherMessage('Sélectionnez le dépôt source (départ).', 'erreur', 'Dépôt manquant'); 
         return false; 
@@ -736,8 +736,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (enTrainDeSauvegarder || documentEnLectureSeule) return;
     if (!verifierEnTeteAvantSaisie()) return;
     setArticleSelectionneTemp(art);
-    // Récupération automatique du prix unitaire de l'article si disponible
-    const puDefaut = Number(art.Prix_Vente || art.prix_vente || art.prix_unitaire || art.PU || 0);
+    
+    // En mode Achat, on récupère en priorité le Prix d'Achat
+    const puDefaut = Number(art.Prix_Achat || art.prix_achat || art.Prix_Vente || art.prix_vente || art.prix_unitaire || art.PU || 0);
     setPrixUnitaireSaisi(puDefaut > 0 ? puDefaut : 0);
     setModalArticleOuvert(false);
     setRecherchePopup('');
@@ -754,7 +755,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const artObj = articles.find(a => String(a.id_article || a.id) === String(ligne.id_article)) || { id_article: ligne.id_article, Designation: ligne.designation };
     setArticleSelectionneTemp(artObj);
     setQuantiteSaisie(ligne.quantite);
-    setPrixUnitaireSaisi(ligne.prix_unitaire);
+    setPrixUnitaireSaisi(ligne.prix_unitaire || 0);
     setLignesPanier(lignesPanier.filter((l) => String(l.id_article) !== String(ligne.id_article)));
     setTimeout(() => { if (inputQuantiteRef.current) { inputQuantiteRef.current.focus(); inputQuantiteRef.current.select(); } }, 50);
   };
@@ -772,15 +773,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
     
     const qte = parseInt(quantiteSaisie);
-    const pu = parseFloat(prixUnitaireSaisi);
+    const pu = ongletPrincipal === 'ACHATS' ? parseFloat(prixUnitaireSaisi) : 0;
 
     if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { 
       afficherMessage('Quantité invalide.', 'erreur', 'Erreur de saisie'); 
       return; 
     }
 
-    if (isNaN(pu) || pu < 0) {
-      afficherMessage('Prix unitaire invalide.', 'erreur', 'Erreur de saisie');
+    if (ongletPrincipal === 'ACHATS' && (isNaN(pu) || pu < 0)) {
+      afficherMessage('Prix unitaire d\'achat invalide.', 'erreur', 'Erreur de saisie');
       return;
     }
 
@@ -789,14 +790,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const artId = String(articleSelectionneTemp.id_article || articleSelectionneTemp.id);
     const stockActuelDepot = calculerStockPourDepotActuel(artId);
     
-    if ((typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') && qte > stockActuelDepot) {
+    if (ongletPrincipal === 'MOUVEMENTS' && (typeOperation === 'SORTIE' || typeOperation === 'TRANSFERT' || typeOperation === 'AVARIES') && qte > stockActuelDepot) {
       afficherMessage(`Stock insuffisant (${stockActuelDepot} disponible(s)).`, 'erreur', 'Stock insuffisant');
       setEnTrainDInsertion(false);
       return;
     }
 
     let stockReelPrevisionnel = stockActuelDepot;
-    if (typeOperation === 'ENTREE' || typeOperation === 'ENTREE_STOCK') stockReelPrevisionnel = stockActuelDepot + qte;
+    if (ongletPrincipal === 'ACHATS' || typeOperation === 'ENTREE' || typeOperation === 'ENTREE_STOCK') stockReelPrevisionnel = stockActuelDepot + qte;
     else if (typeOperation === 'SORTIE' || typeOperation === 'AVARIES' || typeOperation === 'TRANSFERT') stockReelPrevisionnel = Math.max(0, stockActuelDepot - qte);
     else if (typeOperation === 'INVENTAIRE') stockReelPrevisionnel = qte;
 
@@ -841,6 +842,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const gererKeyDownQuantite = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (ongletPrincipal === 'ACHATS' && inputPrixRef.current) {
+        inputPrixRef.current.focus();
+        inputPrixRef.current.select();
+      } else {
+        ajouterArticleAuPanier();
+      }
+    }
+  };
+
+  const gererKeyDownPrix = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       ajouterArticleAuPanier();
@@ -1003,18 +1016,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       let nouveauxMouvementsAjoutes = [];
       for (const [artId, dataLigne] of Object.entries(lignesUniquesMap)) {
         const typeMvEff = ongletPrincipal === 'ACHATS' ? 'ENTREE' : typeOperation;
+        
+        // Payload strictement aligné sur les colonnes existantes de mouvements_stock
         const payload = {
           id_entreprise: entrepriseId,
           module: moduleActuel,
           type_mouvement: typeMvEff,
           id_depot_source: enTeteDoc.id_depot_source || null,
           id_emplacement_source: enTeteDoc.id_emplacement_source || null,
-          id_depot_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_depot_destination || null) : null,
-          id_emplacement_destination: typeOperation === 'TRANSFERT' ? (enTeteDoc.id_emplacement_destination || null) : null,
+          id_depot_destination: (ongletPrincipal === 'MOUVEMENTS' && typeOperation === 'TRANSFERT') ? (enTeteDoc.id_depot_destination || null) : null,
+          id_emplacement_destination: (ongletPrincipal === 'MOUVEMENTS' && typeOperation === 'TRANSFERT') ? (enTeteDoc.id_emplacement_destination || null) : null,
           id_article: parseInt(artId),
           quantite: dataLigne.quantite,
-          prix_unitaire: dataLigne.prix_unitaire,
-          montant_total: dataLigne.quantite * dataLigne.prix_unitaire,
           motif_remarque: motifDocumentFinal,
           reference: referenceSaisie,
           operateur: operateurActuel,
@@ -1022,7 +1035,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         };
 
         const idTemp = 'temp_' + Date.now() + '_' + Math.random().toString(36).substring(7);
-        const objetInsertion = { ...payload, id: idTemp };
+        const objetInsertion = { ...payload, id: idTemp, prix_unitaire: dataLigne.prix_unitaire, montant_total: dataLigne.quantite * dataLigne.prix_unitaire };
         nouveauxMouvementsAjoutes.push(objetInsertion);
 
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
@@ -1128,7 +1141,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const nouvellesLignes = lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
       const qte = Number(mvt.quantite || 0);
-      const pu = Number(mvt.prix_unitaire || art?.Prix_Vente || art?.prix_vente || 0);
+      const pu = estAchat ? Number(mvt.prix_unitaire || art?.Prix_Achat || art?.prix_achat || art?.Prix_Vente || art?.prix_vente || 0) : 0;
       return { 
         id_article: String(mvt.id_article), 
         designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, 
@@ -1740,55 +1753,105 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles [{moduleActuel}]</span>
             
             {!documentEnLectureSeule && (
-              <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
-                <div className="col-span-5">
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
-                  <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
-                    <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
-                    <span className="text-orange-600 shrink-0 ml-1">🔍</span>
-                  </button>
-                </div>
+              ongletPrincipal === 'ACHATS' ? (
+                /* ORDRE ACHAT & APPRO : ARTICLE -> QTE -> PU ACHAT -> MONTANT -> OK */
+                <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
+                  <div className="col-span-4">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
+                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
+                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
+                      <span className="text-emerald-600 shrink-0 ml-1">🔍</span>
+                    </button>
+                  </div>
 
-                <div className="col-span-3">
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">P.U. *</label>
-                  <input 
-                    type="number" 
-                    min="0" 
-                    value={prixUnitaireSaisi} 
-                    disabled={enTrainDeSauvegarder}
-                    onFocus={(e) => e.target.select()} 
-                    onChange={(e) => setPrixUnitaireSaisi(e.target.value)} 
-                    className="w-full bg-white border rounded p-1 font-black text-slate-900 text-center" 
-                  />
-                </div>
-                
-                <div className="col-span-3">
-                  <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
-                  <input 
-                    ref={inputQuantiteRef} 
-                    type="number" 
-                    min="1" 
-                    value={quantiteSaisie} 
-                    disabled={enTrainDeSauvegarder}
-                    onFocus={(e) => e.target.select()} 
-                    onChange={(e) => setQuantiteSaisie(e.target.value)} 
-                    onKeyDown={gererKeyDownQuantite}
-                    className="w-full bg-white border rounded p-1 font-black text-emerald-600 text-center" 
-                  />
-                </div>
+                  <div className="col-span-2">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
+                    <input 
+                      ref={inputQuantiteRef} 
+                      type="number" 
+                      min="1" 
+                      value={quantiteSaisie} 
+                      disabled={enTrainDeSauvegarder}
+                      onFocus={(e) => e.target.select()} 
+                      onChange={(e) => setQuantiteSaisie(e.target.value)} 
+                      onKeyDown={gererKeyDownQuantite}
+                      className="w-full bg-white border rounded p-1 font-black text-emerald-600 text-center" 
+                    />
+                  </div>
 
-                <div className="col-span-1">
-                  <button 
-                    type="button" 
-                    disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
-                    onClick={ajouterArticleAuPanier} 
-                    className={`w-full ${ongletPrincipal === 'ACHATS' ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400' : 'bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400'} text-white font-black p-1 rounded text-center text-[9px] shadow-2xs`} 
-                    title="Valider l'article (ou Entrée)"
-                  >
-                    {enTrainDInsertion ? '...' : 'OK'}
-                  </button>
+                  <div className="col-span-3">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">PU Achat *</label>
+                    <input 
+                      ref={inputPrixRef}
+                      type="number" 
+                      min="0" 
+                      value={prixUnitaireSaisi} 
+                      disabled={enTrainDeSauvegarder}
+                      onFocus={(e) => e.target.select()} 
+                      onChange={(e) => setPrixUnitaireSaisi(e.target.value)} 
+                      onKeyDown={gererKeyDownPrix}
+                      className="w-full bg-white border rounded p-1 font-black text-slate-900 text-center" 
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Montant</label>
+                    <div className="w-full bg-slate-100 border rounded p-1 font-black text-slate-800 text-right truncate">
+                      {(Number(quantiteSaisie || 0) * Number(prixUnitaireSaisi || 0)).toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div className="col-span-1">
+                    <button 
+                      type="button" 
+                      disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
+                      onClick={ajouterArticleAuPanier} 
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" 
+                      title="Valider l'article (ou Entrée)"
+                    >
+                      {enTrainDInsertion ? '...' : 'OK'}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* ORDRE MOUVEMENT DE STOCK : UNIQUEMENT ARTICLE -> QTE -> OK */
+                <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
+                  <div className="col-span-8">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
+                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
+                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
+                      <span className="text-orange-600 shrink-0 ml-1">🔍</span>
+                    </button>
+                  </div>
+                  
+                  <div className="col-span-3">
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
+                    <input 
+                      ref={inputQuantiteRef} 
+                      type="number" 
+                      min="1" 
+                      value={quantiteSaisie} 
+                      disabled={enTrainDeSauvegarder}
+                      onFocus={(e) => e.target.select()} 
+                      onChange={(e) => setQuantiteSaisie(e.target.value)} 
+                      onKeyDown={gererKeyDownQuantite}
+                      className="w-full bg-white border rounded p-1 font-black text-emerald-600 text-center" 
+                    />
+                  </div>
+
+                  <div className="col-span-1">
+                    <button 
+                      type="button" 
+                      disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
+                      onClick={ajouterArticleAuPanier} 
+                      className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" 
+                      title="Valider l'article (ou Entrée)"
+                    >
+                      {enTrainDInsertion ? '...' : 'OK'}
+                    </button>
+                  </div>
+                </div>
+              )
             )}
 
             {modalArticleOuvert && (
@@ -1841,32 +1904,59 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
             {lignesPanier.length === 0 ? (<p className="text-center text-slate-400 py-1.5 italic text-[9.5px]">Aucun article ajouté.</p>) : (
               <div className="overflow-x-auto border rounded-lg bg-white">
-                <table className="w-full text-left text-[9.5px] table-fixed">
-                  <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
-                    <tr>
-                      <th className="p-1 w-[45%]">ARTICLE</th>
-                      <th className="p-1 w-[15%] text-center">P.U.</th>
-                      <th className="p-1 w-[15%] text-center">QTE</th>
-                      <th className="p-1 w-[15%] text-right">TOTAL</th>
-                      {!documentEnLectureSeule && <th className="p-1 w-[10%] text-center">⚙️</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y text-[9px]">
-                    {lignesPanier.map((ligne, index) => (
-                      <tr key={index} onClick={() => !documentEnLectureSeule && !enTrainDeSauvegarder && modifierLignePanier(ligne)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition" : "transition"}>
-                        <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
-                        <td className="p-1.5 text-center font-bold text-slate-700">{Number(ligne.prix_unitaire).toLocaleString()}</td>
-                        <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
-                        <td className="p-1.5 text-right font-black text-slate-900">{Number(ligne.montant_total).toLocaleString()}</td>
-                        {!documentEnLectureSeule && (
-                          <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                            <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
-                          </td>
-                        )}
+                {ongletPrincipal === 'ACHATS' ? (
+                  /* TABLEAU ACHAT & APPRO : ARTICLE - QTE - PU ACHAT - MONTANT */
+                  <table className="w-full text-left text-[9.5px] table-fixed">
+                    <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
+                      <tr>
+                        <th className="p-1 w-[42%]">ARTICLE</th>
+                        <th className="p-1 w-[13%] text-center">QTE</th>
+                        <th className="p-1 w-[17%] text-center">PU ACHAT</th>
+                        <th className="p-1 w-[18%] text-right">MONTANT</th>
+                        {!documentEnLectureSeule && <th className="p-1 w-[10%] text-center">⚙️</th>}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y text-[9px]">
+                      {lignesPanier.map((ligne, index) => (
+                        <tr key={index} onClick={() => !documentEnLectureSeule && !enTrainDeSauvegarder && modifierLignePanier(ligne)} className={!documentEnLectureSeule ? "hover:bg-emerald-50/70 cursor-pointer transition" : "transition"}>
+                          <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
+                          <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
+                          <td className="p-1.5 text-center font-bold text-slate-700">{Number(ligne.prix_unitaire).toLocaleString()}</td>
+                          <td className="p-1.5 text-right font-black text-slate-900">{Number(ligne.montant_total).toLocaleString()}</td>
+                          {!documentEnLectureSeule && (
+                            <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  /* TABLEAU MOUVEMENT DE STOCK : UNIQUEMENT ARTICLE - QTE */
+                  <table className="w-full text-left text-[9.5px] table-fixed">
+                    <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
+                      <tr>
+                        <th className="p-1 w-[72%]">ARTICLE</th>
+                        <th className="p-1 w-[18%] text-center">QTE</th>
+                        {!documentEnLectureSeule && <th className="p-1 w-[10%] text-center">⚙️</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-[9px]">
+                      {lignesPanier.map((ligne, index) => (
+                        <tr key={index} onClick={() => !documentEnLectureSeule && !enTrainDeSauvegarder && modifierLignePanier(ligne)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition" : "transition"}>
+                          <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
+                          <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
+                          {!documentEnLectureSeule && (
+                            <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 
