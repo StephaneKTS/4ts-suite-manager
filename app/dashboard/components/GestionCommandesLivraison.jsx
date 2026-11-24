@@ -957,7 +957,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const napGlobal = parseFloat(montantSaisi) || 0;
 
-  // MODIFIÉ : Ouvre simplement la modale du panier sans enregistrer l'en-tête en base de données de manière prématurée
+  // MODIFIÉ : Vérification rigoureuse des doublons avant l'ouverture du panier ou la validation
   const validerEnteteEtOuvrirPanier = async () => {
     if (documentEnLectureSeule || validationEnteteEnCours) return;
 
@@ -1007,21 +1007,39 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
-    // Vérification des doublons avant d'ouvrir le panier
+    // VÉRIFICATION STRICTE DES DOUBLONS (LOCAL + SUPABASE)
     if (!commandeEnEdition) {
-      const doublonTrouve = commandes.find(c => 
-        c.numero_commande === numeroComplet &&
+      const doublonLocal = commandes.find(c => 
+        (c.numero_commande || '').trim().toUpperCase() === numeroComplet &&
         c.date_commande === dateNormalisee &&
         String(c.id_partenaire) === String(idPartenaire)
       );
 
-      if (doublonTrouve) {
-        setModalDoublonMessage(`Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
+      if (doublonLocal) {
+        setModalDoublonMessage(`Cette commande (${numeroComplet}) existe déjà pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
         return;
       }
+
+      // Vérification asynchrone supplémentaire directement dans Supabase pour contrer les doublons multi-utilisateurs
+      try {
+        const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
+        const { data: doublonCloud } = await supabase
+          .from('commandes_livraison_en_tete')
+          .select('id')
+          .eq('id_entreprise', currentEntId)
+          .eq('module', moduleActuel)
+          .eq('numero_commande', numeroComplet)
+          .eq('date_commande', dateNormalisee)
+          .eq('id_partenaire', idPartenaire)
+          .maybeSingle();
+
+        if (doublonCloud) {
+          setModalDoublonMessage(`DOUBLE SÉCURITÉ : La commande (${numeroComplet}) est déjà enregistrée en base de données pour ce partenaire à cette date.`);
+          return;
+        }
+      } catch (err) {}
     }
 
-    // Ouverture immédiate de la modale du panier sans insérer dans la liste principale
     setModalPanierOuverte(true);
   };
 
@@ -1319,15 +1337,32 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     try {
       const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
+      // DOUBLE VÉRIFICATION FINALE DES DOUBLONS AVANT INSERTION
       if (!commandeEnEdition) {
         const doublonTrouve = commandes.find(c => 
-          c.numero_commande === numeroComplet &&
+          (c.numero_commande || '').trim().toUpperCase() === numeroComplet &&
           c.date_commande === dateNormalisee &&
           String(c.id_partenaire) === String(idPartenaire)
         );
 
         if (doublonTrouve) {
           setModalDoublonMessage(`Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
+          setSauvegardeEnCours(false);
+          return;
+        }
+
+        const { data: doublonCloud } = await supabase
+          .from('commandes_livraison_en_tete')
+          .select('id')
+          .eq('id_entreprise', currentEntId)
+          .eq('module', moduleActuel)
+          .eq('numero_commande', numeroComplet)
+          .eq('date_commande', dateNormalisee)
+          .eq('id_partenaire', idPartenaire)
+          .maybeSingle();
+
+        if (doublonCloud) {
+          setModalDoublonMessage(`DOUBLE SÉCURITÉ : La commande (${numeroComplet}) existe déjà en base de données.`);
           setSauvegardeEnCours(false);
           return;
         }
@@ -3396,10 +3431,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         )}
                       </div>
 
+                      {/* MODIFIÉ : Le livreur a été retiré d'ici pour être placé en bas sous le lieu de livraison */}
                       <div className="text-right shrink-0 flex items-baseline gap-1">
-                        <span className="font-extrabold text-blue-700 uppercase text-[8.5px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
-                          🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
-                        </span>
                         {Number(cmd.frais_livraison || 0) > 0 && (
                           <span className="font-bold text-slate-400 text-[8px] font-mono">
                             Frais:{Number(cmd.frais_livraison || 0).toLocaleString('fr-FR')}F
@@ -3412,7 +3445,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                     </div>
 
                     {/* SECTION 1: NUMÉRO CLIENT & BOUTONS WHATSAPP / APPEL */}
-                    <div className="flex justify-end items-center gap-1.5 pt-0.5 text-[8.5px]">
+                    <div className="flex justify-between items-center gap-1.5 pt-0.5 text-[8.5px]">
+                      {/* MODIFIÉ : Affichage du livreur en bas du lieu de livraison */}
+                      <span className="font-extrabold text-blue-700 uppercase text-[8.5px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
+                        🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
+                      </span>
+
                       {cmd.numero_client && (
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <a
