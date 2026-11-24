@@ -30,14 +30,33 @@ const MODULES_DISPONIBLES = [
 ];
 
 export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkMode = false }) {
-  const [utilisateurs, setUtilisateurs] = useState([]);
-  const [utilisateursBruts, setUtilisateursBruts] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [caisses, setCaisses] = useState([]);
+  const obtenirModuleActuel = () => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('moduleActif') || localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+    }
+    return 'BOUTIQUE';
+  };
+
+  const moduleActuel = obtenirModuleActuel();
+  const estTontine = moduleActuel === 'TONTINE';
+  const cleCacheUtilisateurs = `utilisateurs_${entrepriseId}_${moduleActuel}`;
+  const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
+  const cleCacheCaisses = `caisses_${entrepriseId}_${moduleActuel}`;
+
+  // ⚡ INITIALISATION INSTANTANÉE DEPUIS LE CACHE LOCAL POUR ZÉRO LATENCE
+  const [utilisateurs, setUtilisateurs] = useState(() => localSync.recupererDonneesLocales(cleCacheUtilisateurs) || []);
+  const [utilisateursBruts, setUtilisateursBruts] = useState(() => localSync.recupererDonneesLocales(cleCacheUtilisateurs) || []);
+  const [roles, setRoles] = useState(() => localSync.recupererDonneesLocales(cleCacheRoles) || []);
+  const [caisses, setCaisses] = useState(() => localSync.recupererDonneesLocales(cleCacheCaisses) || []);
+  
   const [emplacements, setEmplacements] = useState([]);
   const [entrepriseInfo, setEntrepriseInfo] = useState(null);
   const [modulesSouscrits, setModulesSouscrits] = useState(['BOUTIQUE']);
-  const [chargement, setChargement] = useState(false);
+  const [chargement, setChargement] = useState(() => {
+    const cached = localSync.recupererDonneesLocales(cleCacheUtilisateurs);
+    return !cached || cached.length === 0;
+  });
+  
   const [afficherForm, setAfficherForm] = useState(false);
   const [userEnEdition, setUserEnEdition] = useState(null);
   const [recherche, setRecherche] = useState('');
@@ -94,19 +113,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     { id: 'tontine_attributions', nom: '🏆 Attributions & Cagnottes' }
   ];
 
-  const obtenirModuleActuel = () => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('moduleActif') || localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
-    }
-    return 'BOUTIQUE';
-  };
-
-  const moduleActuel = obtenirModuleActuel();
-  const estTontine = moduleActuel === 'TONTINE';
   const modulesApp = estTontine ? modulesTontine : modulesBoutique;
-  const cleCacheUtilisateurs = `utilisateurs_${entrepriseId}_${moduleActuel}`;
-  const cleCacheRoles = `roles_${entrepriseId}_${moduleActuel}`;
-  const cleCacheCaisses = `caisses_${entrepriseId}_${moduleActuel}`;
   const estModeLivraison = moduleActuel === 'LIVRAISON';
 
   const initialiserPermissionsDefaut = () => {
@@ -149,20 +156,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
   const estRoleLivreurOuChauffeur = estRoleLivreurStrict || (roleActuelObj && (roleActuelObj.nom_role.toUpperCase().includes('LIVREUR') || roleActuelObj.nom_role.toUpperCase().includes('CHAUFFEUR'))) || nouveauUser.type_collaborateur === 'LIVREUR' || nouveauUser.type_collaborateur === 'CHAUFFEUR';
 
   const chargerDonnees = async () => {
-    const utilisateursLocaux = localSync.recupererDonneesLocales(cleCacheUtilisateurs);
-    const rolesLocaux = localSync.recupererDonneesLocales(cleCacheRoles);
-    const caissesLocales = localSync.recupererDonneesLocales(cleCacheCaisses);
-
-    if (utilisateursLocaux && utilisateursLocaux.length > 0) {
-      setUtilisateurs(utilisateursLocaux);
-      setChargement(false);
-    } else {
-      setChargement(true);
-    }
-
-    if (rolesLocaux && rolesLocaux.length > 0) setRoles(rolesLocaux);
-    if (caissesLocales && caissesLocales.length > 0) setCaisses(caissesLocales);
-
     try {
       const { data: dataEnt } = await supabase
         .from('entreprises')
@@ -288,9 +281,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       localSync.sauvegarderDonneesLocales(cleCacheUtilisateurs, listUsers);
     } catch (err) {
       console.error('Erreur chargement utilisateurs :', err.message);
-      if (!utilisateursLocaux || utilisateursLocaux.length === 0) {
-        setUtilisateurs([]);
-      }
     } finally {
       setChargement(false);
     }
@@ -824,7 +814,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
   const paysActuelObj = LISTE_PAYS.find(p => p.code === nouveauUser.pays) || LISTE_PAYS[0];
 
-  // 🎨 STYLING HARMONISÉ (Cartes blanches, bordures fines, accents Orange-600 & Slate-900)
   const cardStyle = 'bg-white rounded-xl border border-slate-200 shadow-2xs';
   const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
   const tableHeaderStyle = 'bg-slate-50 text-slate-700 uppercase text-[8.5px] font-extrabold border-b border-slate-200';
@@ -1293,7 +1282,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
             <span>Total répertorié : <strong>{usersFiltres.length}</strong> personne(s)</span>
           </div>
 
-          {chargement ? (
+          {chargement && utilisateurs.length === 0 ? (
             <div className="p-4 text-center text-slate-400 font-bold">Chargement...</div>
           ) : usersFiltres.length === 0 ? (
             <div className={`p-4 text-center font-bold text-slate-500 ${cardStyle}`}>Aucun enregistrement trouvé.</div>

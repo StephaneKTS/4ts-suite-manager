@@ -126,30 +126,27 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     setModalInfo({ ouverte: true, titre, message, type });
   };
 
+  // 🚀 CHARGEMENT INITIAL GLOBAL (PRÉCHARGEMENT EN ARRIÈRE-PLAN DES ENTREPRISES ET MODULES POUR ZÉRO LATENCE)
   useEffect(() => {
     const chargerDonneesSuperAdmin = async () => {
       try {
         const supabase = getSupabaseClient();
         
-        const { data: configData } = await supabase
-          .from('configuration_globale')
-          .select('valeur')
-          .eq('cle', '4ts_contournement_cinetpay')
-          .maybeSingle();
+        const [configRes, tarifsRes, entreprisesRes, usersRes, modulesRes] = await Promise.all([
+          supabase.from('configuration_globale').select('valeur').eq('cle', '4ts_contournement_cinetpay').maybeSingle(),
+          supabase.from('configuration_globale').select('valeur').eq('cle', '4ts_tarifs_plateforme').maybeSingle(),
+          supabase.from('entreprises').select('*').order('created_at', { ascending: false }),
+          supabase.from('utilisateurs').select('id_entreprise'),
+          supabase.from('espaces_modules').select('*').order('id', { ascending: true })
+        ]);
 
-        if (configData) {
-          const actif = String(configData.valeur) === 'true' || configData.valeur === true;
+        if (configRes.data) {
+          const actif = String(configRes.data.valeur) === 'true' || configRes.data.valeur === true;
           setModeContournement(actif);
         }
 
-        const { data: tarifsData } = await supabase
-          .from('configuration_globale')
-          .select('valeur')
-          .eq('cle', '4ts_tarifs_plateforme')
-          .maybeSingle();
-
-        if (tarifsData && tarifsData.valeur) {
-          const parsedTarifs = typeof tarifsData.valeur === 'string' ? JSON.parse(tarifsData.valeur) : tarifsData.valeur;
+        if (tarifsRes.data && tarifsRes.data.valeur) {
+          const parsedTarifs = typeof tarifsRes.data.valeur === 'string' ? JSON.parse(tarifsRes.data.valeur) : tarifsRes.data.valeur;
           
           if (parsedTarifs.remisesDuree && !Array.isArray(parsedTarifs.remisesDuree)) {
             parsedTarifs.remisesDuree = [
@@ -169,8 +166,59 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
           setTarifsConfig(parsedTarifs);
           setTarifsInitiauxJson(JSON.stringify(parsedTarifs));
         }
+
+        let entreprisesData = [];
+        if (entreprisesRes.data) {
+          entreprisesData = entreprisesRes.data;
+          setListeEntreprises(entreprisesData);
+        }
+
+        if (usersRes.data) {
+          const counts = {};
+          usersRes.data.forEach((u) => {
+            const idEnt = u.id_entreprise;
+            if (idEnt) {
+              counts[idEnt] = (counts[idEnt] || 0) + 1;
+            }
+          });
+          setUtilisateursParEntreprise(counts);
+        }
+
+        if (modulesRes.data) {
+          const comptage = {};
+          LISTE_MODULES_DISPONIBLES.forEach(m => { comptage[m] = 0; });
+
+          entreprisesData.forEach(ent => {
+            let espaces = ent.espaces_souscrits;
+            if (!espaces && ent.module_actif) espaces = [ent.module_actif];
+            
+            if (typeof espaces === 'string') {
+              espaces = espaces.split(',').map(s => s.trim().toUpperCase());
+            } else if (Array.isArray(espaces)) {
+              espaces = espaces.map(s => String(s).trim().toUpperCase());
+            } else {
+              espaces = ['BOUTIQUE'];
+            }
+
+            espaces.forEach(esp => {
+              const match = LISTE_MODULES_DISPONIBLES.find(m => esp.includes(m));
+              if (match) {
+                comptage[match] = (comptage[match] || 0) + 1;
+              }
+            });
+          });
+
+          setComptageSouscriptionsModules(comptage);
+
+          const modulesFiltres = modulesRes.data.filter((mod) => {
+            const codeUpper = (mod.code_espace || '').toUpperCase();
+            return LISTE_MODULES_DISPONIBLES.some((m) => codeUpper.includes(m));
+          });
+          setListeModulesSupabase(modulesFiltres);
+        }
+
       } catch (err) {
-        console.warn("Erreur chargement configuration globale :", err);
+        console.warn("Erreur chargement initial superadmin :", err);
       }
     };
 
@@ -193,11 +241,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   }, []);
 
   useEffect(() => {
-    if (modalActive === 'entreprises') {
-      chargerListeEntreprises();
-    } else if (modalActive === 'modules') {
-      chargerModulesSupabase();
-    } else if (modalActive === 'tableaux') {
+    if (modalActive === 'tableaux') {
       chargerTableauxSupabase();
     }
   }, [modalActive]);
@@ -241,47 +285,16 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   };
 
   const chargerModulesSupabase = async () => {
+    if (listeModulesSupabase.length > 0) return;
     setChargementModules(true);
     try {
       const supabase = getSupabaseClient();
-      
       const { data: modulesData, error: errModules } = await supabase
         .from('espaces_modules')
         .select('*')
         .order('id', { ascending: true });
 
       if (errModules) throw errModules;
-
-      const { data: entreprisesData, error: errEnt } = await supabase
-        .from('entreprises')
-        .select('espaces_souscrits, module_actif');
-
-      const comptage = {};
-      LISTE_MODULES_DISPONIBLES.forEach(m => { comptage[m] = 0; });
-
-      if (!errEnt && entreprisesData) {
-        entreprisesData.forEach(ent => {
-          let espaces = ent.espaces_souscrits;
-          if (!espaces && ent.module_actif) espaces = [ent.module_actif];
-          
-          if (typeof espaces === 'string') {
-            espaces = espaces.split(',').map(s => s.trim().toUpperCase());
-          } else if (Array.isArray(espaces)) {
-            espaces = espaces.map(s => String(s).trim().toUpperCase());
-          } else {
-            espaces = ['BOUTIQUE'];
-          }
-
-          espaces.forEach(esp => {
-            const match = LISTE_MODULES_DISPONIBLES.find(m => esp.includes(m));
-            if (match) {
-              comptage[match] = (comptage[match] || 0) + 1;
-            }
-          });
-        });
-      }
-
-      setComptageSouscriptionsModules(comptage);
 
       const modulesFiltres = (modulesData || []).filter((mod) => {
         const codeUpper = (mod.code_espace || '').toUpperCase();
@@ -291,7 +304,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
       setListeModulesSupabase(modulesFiltres);
     } catch (err) {
       console.error("Erreur chargement espaces_modules :", err);
-      afficherMessageModal("Erreur", "Impossible de charger les modules depuis la base de données.", "erreur");
     } finally {
       setChargementModules(false);
     }
@@ -354,7 +366,11 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         }
       }
 
-      await chargerModulesSupabase();
+      const { data: refreshed } = await supabase.from('espaces_modules').select('*').order('id', { ascending: true });
+      if (refreshed) {
+        setListeModulesSupabase(refreshed.filter(mod => LISTE_MODULES_DISPONIBLES.some(m => (mod.code_espace || '').toUpperCase().includes(m))));
+      }
+
       afficherMessageModal("Synchronisé", "La base de données a été alignée avec vos 4 modules officiels.", "succes");
     } catch (err) {
       afficherMessageModal("Erreur", "Échec de la synchronisation : " + err.message, "erreur");
@@ -398,6 +414,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   };
 
   const chargerListeEntreprises = async () => {
+    if (listeEntreprises.length > 0) return;
     setChargementEntreprises(true);
     try {
       const supabase = getSupabaseClient();
@@ -408,45 +425,36 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
 
       if (error) throw error;
       setListeEntreprises(data || []);
-
-      const { data: usersData, error: userError } = await supabase
-        .from('utilisateurs')
-        .select('id_entreprise');
-
-      if (!userError && usersData) {
-        const counts = {};
-        usersData.forEach((u) => {
-          const idEnt = u.id_entreprise;
-          if (idEnt) {
-            counts[idEnt] = (counts[idEnt] || 0) + 1;
-          }
-        });
-        setUtilisateursParEntreprise(counts);
-      }
     } catch (err) {
-      console.error("Erreur lors du chargement des entreprises :", err);
-      afficherMessageModal("Erreur", "Impossible de charger la liste des entreprises.", "erreur");
+      console.error("Erreur chargement entreprises :", err);
     } finally {
       setChargementEntreprises(false);
     }
   };
 
-  // 🚀 FONCTION POUR ACCÉDER DIRECTEMENT À UNE ENTREPRISE (CONFIRMÉE)
   const executerAccesEntreprise = () => {
     if (!entrepriseCibleAcces || typeof window === 'undefined') return;
     const ent = entrepriseCibleAcces;
     const idEnt = ent.id_entreprise || ent.id;
     if (!idEnt) return;
 
-    // Enregistrement de l'entreprise active dans le stockage local
     localStorage.setItem('entreprise_id', idEnt);
     localStorage.setItem('entrepriseId', idEnt);
     localStorage.setItem('id_entreprise', idEnt);
+    
     if (ent.nom_entreprise) {
       localStorage.setItem('nom_entreprise', ent.nom_entreprise);
     }
-    if (ent.module_actif) {
-      localStorage.setItem('module_actif', ent.module_actif);
+    
+    let moduleActifCible = ent.module_actif;
+    if (!moduleActifCible && ent.espaces_souscrits) {
+      const espaces = Array.isArray(ent.espaces_souscrits) 
+        ? ent.espaces_souscrits 
+        : String(ent.espaces_souscrits).split(',').map(s => s.trim());
+      if (espaces.length > 0) moduleActifCible = espaces[0];
+    }
+    if (moduleActifCible) {
+      localStorage.setItem('module_actif', moduleActifCible);
     }
 
     setEntrepriseCibleAcces(null);
@@ -465,28 +473,13 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
       setChargementUtilisateursEnt(true);
       try {
         const supabase = getSupabaseClient();
-        
-        const { data: usersList, error: errUsers } = await supabase
-          .from('utilisateurs')
-          .select('*')
-          .eq('id_entreprise', idEnt);
+        const [usersRes, rolesRes] = await Promise.all([
+          supabase.from('utilisateurs').select('*').eq('id_entreprise', idEnt),
+          supabase.from('roles').select('*').eq('id_entreprise', idEnt)
+        ]);
 
-        const { data: rolesList, error: errRoles } = await supabase
-          .from('roles')
-          .select('*')
-          .eq('id_entreprise', idEnt);
-
-        if (!errUsers && usersList) {
-          setUtilisateursEntrepriseSelectionnee(usersList);
-        } else {
-          setUtilisateursEntrepriseSelectionnee([]);
-        }
-
-        if (!errRoles && rolesList) {
-          setRolesEntrepriseSelectionnee(rolesList);
-        } else {
-          setRolesEntrepriseSelectionnee([]);
-        }
+        if (usersRes.data) setUtilisateursEntrepriseSelectionnee(usersRes.data);
+        if (rolesRes.data) setRolesEntrepriseSelectionnee(rolesRes.data);
 
       } catch (errU) {
         console.warn("Erreur chargement utilisateurs/rôles de l'entreprise :", errU);
@@ -617,7 +610,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
       setDonneesEdition(null);
       setUtilisateursEntrepriseSelectionnee([]);
       setRolesEntrepriseSelectionnee([]);
-      chargerListeEntreprises();
     } catch (err) {
       afficherMessageModal("Erreur", "Échec de la mise à jour : " + err.message, "erreur");
     } finally {
@@ -647,7 +639,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
       setDonneesEdition(null);
       setUtilisateursEntrepriseSelectionnee([]);
       setRolesEntrepriseSelectionnee([]);
-      chargerListeEntreprises();
+      setListeEntreprises(prev => prev.filter(e => (e.id_entreprise || e.id) !== idEnt));
     } catch (err) {
       afficherMessageModal("Erreur", "Impossible de supprimer l'entreprise : " + err.message, "erreur");
     } finally {
@@ -810,7 +802,13 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         <button onClick={() => setModalActive('notifications')} className={menuButtonClass}>
           <span>📢</span> Notifications
         </button>
-        <button onClick={() => setModalActive('modules')} className={menuButtonClass}>
+        <button 
+          onClick={() => {
+            setModalActive('modules');
+            chargerModulesSupabase();
+          }} 
+          className={menuButtonClass}
+        >
           <span>🧩</span> Modules
         </button>
         <button onClick={() => setModalActive('maintenance')} className={menuButtonClass}>
@@ -966,7 +964,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* 🏢 MODALE ENTREPRISES AVEC LE BOUTON ACCÉDER ET DÉCLENCHEMENT DE CONFIRMATION */}
+      {/* 🏢 MODALE ENTREPRISES */}
       {modalActive === 'entreprises' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-3xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
@@ -979,7 +977,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               </button>
             </div>
 
-            {chargementEntreprises ? (
+            {chargementEntreprises && listeEntreprises.length === 0 ? (
               <div className={`py-12 text-center font-bold ${subTitleColor}`}>Chargement des entreprises...</div>
             ) : listeEntreprises.length === 0 ? (
               <div className={`py-12 text-center font-bold ${subTitleColor}`}>Aucune entreprise enregistrée pour le moment.</div>
@@ -1018,7 +1016,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                           </span>
                         </div>
                         
-                        {/* 🚀 BOUTON ACCÉDER AVEC OUVERTURE DE LA MODALE DE CONFIRMATION */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1098,7 +1095,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
         </div>
       )}
 
-      {/* 🧩 MODALE MODULES AVEC VERROUILLAGE SÉCURISÉ DES MODULES POSSÉDANT DES ENTREPRISES */}
+      {/* 🧩 MODALE MODULES */}
       {modalActive === 'modules' && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
           <div className={`w-full max-w-xl rounded-2xl shadow-2xl border p-5 space-y-4 max-h-[90vh] overflow-y-auto ${cardBg}`}>
@@ -1122,7 +1119,7 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
               </div>
             </div>
 
-            {chargementModules ? (
+            {chargementModules && listeModulesSupabase.length === 0 ? (
               <div className={`py-12 text-center font-bold ${subTitleColor}`}>Chargement des modules et comptage des souscriptions...</div>
             ) : listeModulesSupabase.length === 0 ? (
               <div className="py-10 text-center space-y-3">
