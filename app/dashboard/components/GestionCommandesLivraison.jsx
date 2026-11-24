@@ -34,6 +34,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [cloturesEffectuees, setCloturesEffectuees] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
+  const [validationEnteteEnCours, setValidationEnteteEnCours] = useState(false);
 
   const [roleUtilisateur, setRoleUtilisateur] = useState(null);
   const [permissions, setPermissions] = useState({
@@ -954,6 +955,172 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     return false;
   })();
 
+  const napGlobal = parseFloat(montantSaisi) || 0;
+
+  // NOUVELLE FONCTION : 1. Valide/enregistre l'en-tête en base s'il n'existe pas encore, 2. Ouvre le panier
+  const validerEnteteEtOuvrirPanier = async () => {
+    if (documentEnLectureSeule || validationEnteteEnCours) return;
+
+    // Si la commande a déjà un ID en base (déjà validée une première fois ou en cours de modification), on ouvre directement le panier
+    if (commandeEnEdition && commandeEnEdition.id) {
+      setModalPanierOuverte(true);
+      return;
+    }
+
+    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
+
+    let dateNormalisee = dateCommande;
+    if (dateNormalisee.includes('/')) {
+      const parts = dateNormalisee.split('/');
+      if (parts.length === 3) {
+        if (parts[2].length === 4) {
+          dateNormalisee = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        } else if (parts[0].length === 4) {
+          dateNormalisee = `${parts[0]}-${parts[1]}-${parts[2]}`;
+        }
+      }
+    }
+
+    if (dateNormalisee < dateDuJourStr) {
+      setModalDoublonMessage(`Création interdite : impossible d'enregistrer sur la date du ${dateNormalisee} car cette journée est clôturée.`);
+      return;
+    }
+
+    if (!permissions.peut_creer) {
+      setModalDoublonMessage('Accès refusé : Votre profil ne dispose pas des droits de création.');
+      return;
+    }
+
+    if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
+      setModalDoublonMessage('Le numéro du client est obligatoire et doit comporter exactement 9 caractères.');
+      if (inputNumeroClientRef.current) {
+        inputNumeroClientRef.current.focus();
+        inputNumeroClientRef.current.select();
+      }
+      return;
+    }
+
+    if (!numeroCommande.trim() || !idPartenaire || montantSaisi === '' || !adresseLivraison.trim()) {
+      setModalDoublonMessage("Veuillez d'abord remplir tous les champs obligatoires de l'en-tête.");
+      return;
+    }
+
+    const partObj = partenaires.find(p => String(p.id) === String(idPartenaire));
+    const depotSourceEffectif = (depotId && depotId !== 'AUCUN_DEPOT') ? depotId : (partObj?.id_depot || null);
+
+    if (!partenaireSansStockage && !depotSourceEffectif) {
+      setModalDoublonMessage('ACTION BLOQUÉE : Veuillez sélectionner obligatoirement un dépôt d’origine ou associer un dépôt au partenaire.');
+      return;
+    }
+
+    const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
+
+    // Vérification des doublons avant création de l'en-tête
+    const doublonTrouve = commandes.find(c => 
+      c.numero_commande === numeroComplet &&
+      c.date_commande === dateNormalisee &&
+      String(c.id_partenaire) === String(idPartenaire)
+    );
+
+    if (doublonTrouve) {
+      setModalDoublonMessage(`Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
+      return;
+    }
+
+    setValidationEnteteEnCours(true);
+    try {
+      const payload = {
+        id_entreprise: currentEntId,
+        module: moduleActuel,
+        numero_commande: numeroComplet,
+        date_commande: dateNormalisee,
+        id_partenaire: idPartenaire,
+        nom_partenaire: partObj ? (partObj.nom_fournisseur || partObj.nom) : '',
+        id_depot: depotSourceEffectif,
+        montant_commande: napGlobal,
+        point_a: partenaireSansStockage ? pointADepart : null,
+        adresse_livraison: adresseLivraison,
+        numero_client: numeroClient.trim(),
+        nature_colis: partenaireSansStockage ? natureColis : null,
+        zone_effective_livraison: zoneGrilleSelectionnee || adresseLivraison,
+        frais_livraison: parseFloat(fraisLivraisonSaisi) || 0,
+        vendeur_livreur: livreurAssigne,
+        statut: statutCommandeSaisi,
+        statut_commande: statutCommandeSaisi,
+        utilisateur_saisie: nomUtilisateurConnecteReel
+      };
+
+      const { data: insertedCmd, error: errCmd } = await supabase
+        .from('commandes_livraison_en_tete')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (errCmd) {
+        // Fallback hors-ligne sécurisé si pas de connexion réseau : on génère un UUID local valide
+        if (typeof window !== 'undefined' && !navigator.onLine) {
+          const offlineId = crypto.randomUUID();
+          const offlineCmd = { ...payload, id: offlineId, created_at: new Date().toISOString() };
+          localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', offlineCmd);
+          
+          const nouvelleListeCmd = [offlineCmd, ...commandes];
+          setCommandes(nouvelleListeCmd);
+          localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
+          
+          setCommandeEnEdition(offlineCmd);
+          setSnapshotCommandeInitiale({
+            dateCommande: dateNormalisee,
+            idPartenaire: idPartenaire || '',
+            numeroCommande: numeroCommande.trim(),
+            numeroClient: numeroClient.trim(),
+            adresseLivraison: adresseLivraison || '',
+            montantSaisi: montantSaisi || '0',
+            pointADepart: pointADepart || '',
+            natureColis: natureColis || '',
+            fraisLivraisonSaisi: fraisLivraisonSaisi || '',
+            livreurAssigne: livreurAssigne || '',
+            statutCommandeSaisi: statutCommandeSaisi || 'LIVRÉ',
+            lignes: [],
+            estNouvelleCreationViaPanier: true
+          });
+          setModalPanierOuverte(true);
+          return;
+        }
+        throw new Error(errCmd.message);
+      }
+
+      // L'en-tête est bien créé dans Supabase avec un vrai ID !
+      const nouvelleListeCmd = [insertedCmd, ...commandes];
+      setCommandes(nouvelleListeCmd);
+      localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
+
+      // On bascule l'état en édition sur cette commande fraîchement créée
+      setCommandeEnEdition(insertedCmd);
+      setSnapshotCommandeInitiale({
+        dateCommande: dateNormalisee,
+        idPartenaire: idPartenaire || '',
+        numeroCommande: numeroCommande.trim(),
+        numeroClient: numeroClient.trim(),
+        adresseLivraison: adresseLivraison || '',
+        montantSaisi: montantSaisi || '0',
+        pointADepart: pointADepart || '',
+        natureColis: natureColis || '',
+        fraisLivraisonSaisi: fraisLivraisonSaisi || '',
+        livreurAssigne: livreurAssigne || '',
+        statutCommandeSaisi: statutCommandeSaisi || 'LIVRÉ',
+        lignes: [],
+        estNouvelleCreationViaPanier: true // Marqueur pour gérer correctement la sortie de stock à la validation finale
+      });
+
+      // Ouverture immédiate de la liste des articles
+      setModalPanierOuverte(true);
+    } catch (err) {
+      setModalDoublonMessage("Erreur lors de la validation de l'en-tête : " + (err.message || err));
+    } finally {
+      setValidationEnteteEnCours(false);
+    }
+  };
+
   const ajouterArticleAuPanier = async (artObj) => {
     if (documentEnLectureSeule) return;
     if (!numeroClient.trim() || numeroClient.trim().length !== 9) {
@@ -1038,8 +1205,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     if (documentEnLectureSeule) return;
     setLignesSaisies(lignesSaisies.filter((_, i) => i !== index));
   };
-
-  const napGlobal = parseFloat(montantSaisi) || 0;
 
   const ouvrirCommandePourModification = async (cmd) => {
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
@@ -1296,9 +1461,10 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       let idCmdCourante = commandeEnEdition ? commandeEnEdition.id : null;
 
       if (commandeEnEdition) {
+        const estNouvelleCreationPreEnregistree = Boolean(snapshotCommandeInitiale?.estNouvelleCreationViaPanier);
         const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'LIVRÉ';
         const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const etaitDejaLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
+        const etaitDejaLivre = estNouvelleCreationPreEnregistree ? false : (statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ');
 
         const { error: errUp } = await supabase
           .from('commandes_livraison_en_tete')
@@ -1422,7 +1588,14 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
         if (errLignes) {
           console.error('Erreur insertion lignes :', errLignes);
-          setModalDoublonMessage('Erreur enregistrement articles : ' + errLignes.message);
+          if (typeof window !== 'undefined' && !navigator.onLine) {
+            payloadLignes.forEach(pl => localSync.ajouterFileAttente('INSERT', 'commandes_livraison_lignes', pl));
+            const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
+            setLignesCommandesMap(mapLignesMaj);
+            localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignesMaj);
+          } else {
+            setModalDoublonMessage('Erreur enregistrement articles : ' + errLignes.message);
+          }
         } else {
           const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
           setLignesCommandesMap(mapLignesMaj);
@@ -2653,11 +2826,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                 <span className="font-black text-slate-900 uppercase text-[9.5px]">Articles & Panier ({lignesSaisies.length})</span>
                 <button
                   type="button"
-                  disabled={!enteteValide || documentEnLectureSeule}
-                  onClick={() => setModalPanierOuverte(true)}
+                  disabled={!enteteValide || documentEnLectureSeule || validationEnteteEnCours}
+                  onClick={validerEnteteEtOuvrirPanier}
                   className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1.5 rounded-lg text-[9px] shadow-xs transition disabled:opacity-50"
                 >
-                  ➕ Ajouter les articles
+                  {validationEnteteEnCours ? 'Validation en-tête...' : '➕ Ajouter les articles'}
                 </button>
               </div>
 
