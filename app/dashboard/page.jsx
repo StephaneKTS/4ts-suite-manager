@@ -742,9 +742,9 @@ function DashboardContent() {
                 </div>
               )}
               {verifierPermission('mouvements_stock', estSuperAdmin) && (
-                <div onClick={() => tenterAccesModule('mouvements', 'Mouvement Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                <div onClick={() => tenterAccesModule('mouvements', 'Approvisionnement et Mouvement de stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Approvisionnement et Mouvement de stock</span>
                 </div>
               )}
               {verifierPermission('roles_utilisateurs', estSuperAdmin) && (
@@ -815,9 +815,9 @@ function DashboardContent() {
               )}
 
               {verifierPermission('mouvements_stock', estSuperAdmin) && (
-                <div onClick={() => tenterAccesModule('mouvements', 'Mouvements Stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
+                <div onClick={() => tenterAccesModule('mouvements', 'Approvisionnement et Mouvement de stock')} className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group`}>
                   <span className="text-2xl group-hover:scale-110 transition">🔄</span>
-                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Mouvement Stock</span>
+                  <span className="font-bold text-[11px] sm:text-xs leading-tight">Approvisionnement et Mouvement de stock</span>
                 </div>
               )}
               {verifierPermission('emplacements_stock', estSuperAdmin) && (

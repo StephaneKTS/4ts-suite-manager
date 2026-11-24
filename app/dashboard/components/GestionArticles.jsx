@@ -35,6 +35,10 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   const [nomFichierImport, setNomFichierImport] = useState('');
   const importInputRef = useRef(null);
 
+  // État pour la modale de sélection du Partenaire dans le rapport
+  const [afficherModalSelectionDepotRapport, setAfficherModalSelectionDepotRapport] = useState(false);
+  const [rechercheModalDepotRapport, setRechercheModalDepotRapport] = useState('');
+
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
@@ -341,7 +345,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     }
   }, [entrepriseId, moduleActuel]);
 
-  // 📥 TÉLÉCHARGEMENT DU MODÈLE AVEC FORMAT ID-XX
   const telechargerModeleExcel = () => {
     let enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
     
@@ -375,7 +378,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     setAfficherModalOptions(false);
   };
 
-  // 📤 EXPORTATION DU CATALOGUE ACTUEL AVEC ID-XX
   const exporterCatalogueExcel = () => {
     let enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
     let lignesCatalogue = "";
@@ -407,7 +409,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     setAfficherModalOptions(false);
   };
 
-  // 📥 GESTION DU FICHIER D'IMPORTATION (Gère ID-32 ou 32)
   const gererFichierImport = (e) => {
     const fichier = e.target.files[0];
     if (!fichier) return;
@@ -448,7 +449,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
           if (!designation) continue;
 
-          // 🔍 Nettoyage du préfixe ID- (ex: ID-32 devient 32)
           const saisieIdFamilleBrut = (colonnes[1] || '').trim().replace(/^['"]+|['"]+$/g, '');
           const saisieIdFamille = saisieIdFamilleBrut.replace(/^ID-/i, '');
           const saisieNomFamille = (colonnes[2] || '').trim().replace(/^['"]+|['"]+$/g, '').toUpperCase();
@@ -1439,6 +1439,11 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     ...depots.filter(d => (d.nom_depot || d.Nom_Depot || '').toLowerCase().includes(rechercheModalDepot.toLowerCase()))
   ];
 
+  const depotsRapportModalFiltres = [
+    { id: 'TOUS', nom_depot: moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts' },
+    ...depots.filter(d => (d.nom_depot || d.Nom_Depot || '').toLowerCase().includes(rechercheModalDepotRapport.toLowerCase()))
+  ];
+
   const emplacementsModalFiltres = [
     { id: 'TOUS', nom_emplacement: moduleActuel === 'LIVRAISON' ? 'Tous les livreurs' : 'Tous les emplacements' },
     ...emplacementsStatDisponibles.filter(e => (e.nom_emplacement || '').toLowerCase().includes(rechercheModalEmp.toLowerCase()))
@@ -1672,7 +1677,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         
         {permissions.creation && (
           <div className="flex items-center gap-1 shrink-0">
-            {/* ⚙️ Bouton Option */}
             <button
               type="button"
               onClick={() => setAfficherModalOptions(true)}
@@ -1712,7 +1716,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         )}
       </div>
 
-      {/* Sous-barre de navigation avec boutons Article, Stats et Rapport Stock redimensionnés pour éviter les retours à la ligne */}
+      {/* Sous-barre de navigation */}
       <div className="grid grid-cols-3 gap-1 w-full">
         <button
           type="button"
@@ -1765,14 +1769,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {modeVue === 'catalogue' && (
         <div className="space-y-1.5">
-          {/* Bloc Filtres optimisé sans les petits titres superflus */}
           <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
             <div className="flex justify-between items-center gap-2 pb-1 border-b border-slate-100">
               <span className="font-extrabold text-[9px] uppercase text-orange-600 shrink-0">
                 🔍 FILTRE & RECHERCHE
               </span>
 
-              {/* Barre de recherche directement devant le titre */}
               <div className="relative flex-1 max-w-[240px]">
                 <input
                   type="text"
@@ -1856,7 +1858,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             </div>
           </div>
 
-          {/* Tableau Catalogue */}
           <div className={`overflow-hidden ${cardStyle}`}>
             <div className="p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center gap-1.5">
@@ -2018,7 +2019,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
         return (
           <div className="space-y-1.5">
-            {/* Bloc Stat réduit sans les petits titres superflus */}
             <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
               <div className="flex justify-between items-center gap-2 pb-1 border-b border-slate-100">
                 <span className="font-extrabold text-[9px] uppercase text-orange-600 shrink-0">
@@ -2172,11 +2172,11 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {modeVue === 'rapport' && (
         <div className="space-y-1.5">
-          {/* Bloc Rapport mis à jour avec le titre principal Rapport Stock, les zones de dates réduites sur la première ligne, et "Rapport" + "Rechercher, saisir une désignation" dans les boutons de la deuxième ligne */}
+          {/* Bloc Rapport mis à jour avec le titre RAPPORT, les zones de dates réduites et le bouton Partenaire ouvrant une modale */}
           <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
             <div className="flex justify-between items-center gap-1 pb-1 border-b border-slate-100">
               <span className="font-extrabold text-[8.5px] uppercase text-orange-600 shrink-0">
-                RAPPORT STOCK
+                RAPPORT
               </span>
 
               <div className="flex items-center gap-1 flex-1 justify-end">
@@ -2187,7 +2187,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     disabled={enTrainDeSauvegarder}
                     value={dateDebutRapport}
                     onChange={(e) => setDateDebutRapport(e.target.value)}
-                    className={`${inputStyle} font-mono py-0.5 px-1 w-[104px] text-[9px]`}
+                    className={`${inputStyle} font-mono py-0.5 px-0.5 w-[92px] text-[9px]`}
                   />
                 </div>
                 <div className="flex items-center gap-0.5">
@@ -2197,7 +2197,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     disabled={enTrainDeSauvegarder}
                     value={dateFinRapport}
                     onChange={(e) => setDateFinRapport(e.target.value)}
-                    className={`${inputStyle} font-mono py-0.5 px-1 w-[104px] text-[9px]`}
+                    className={`${inputStyle} font-mono py-0.5 px-0.5 w-[92px] text-[9px]`}
                   />
                 </div>
               </div>
@@ -2205,19 +2205,19 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
             <div className="grid grid-cols-2 gap-1 pt-0.5">
               <div>
-                <select
-                  disabled={enTrainDeSauvegarder}
-                  value={depotRapportFiltre}
-                  onChange={(e) => setDepotRapportFiltre(e.target.value)}
-                  className={`${inputStyle} text-orange-600 font-extrabold py-1`}
+                <div
+                  onClick={() => {
+                    if (enTrainDeSauvegarder) return;
+                    setRechercheModalDepotRapport('');
+                    setAfficherModalSelectionDepotRapport(true);
+                  }}
+                  className={selectTriggerStyle}
                 >
-                  <option value="TOUS">Partenaire: {moduleActuel === 'LIVRAISON' ? 'Tous' : 'Tous'}</option>
-                  {depots.map((dep) => (
-                    <option key={dep.id} value={dep.id}>
-                      {dep.nom_depot || dep.Nom_Depot}
-                    </option>
-                  ))}
-                </select>
+                  <span className="truncate uppercase text-orange-600">
+                    Partenaire: {obtenirNomDepotParId(depotRapportFiltre)}
+                  </span>
+                  <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
+                </div>
               </div>
 
               <div>
@@ -2228,7 +2228,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     value={rechercheRapportInput}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setRechercheRapportInput(e.target.value)}
-                    placeholder="RECHERCHER, SAISIR UNE DÉSIGNATION..."
+                    placeholder="SAISIR UN ARTICLE..."
                     className={`${inputStyle} pl-5 py-1 text-[9px]`}
                   />
                   <span className="absolute left-1.5 top-1 text-slate-400 text-[8px]">🔍</span>
@@ -2331,7 +2331,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             </p>
 
             <div className="grid grid-cols-1 gap-2.5 pt-1">
-              {/* Bouton 1 : Télécharger le modèle */}
               <button
                 type="button"
                 onClick={telechargerModeleExcel}
@@ -2350,7 +2349,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 </div>
               </button>
 
-              {/* Bouton 2 : Importer le fichier rempli */}
               <label
                 className="p-3.5 rounded-xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center gap-3 text-left cursor-pointer group"
               >
@@ -2375,7 +2373,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 />
               </label>
 
-              {/* Bouton 3 : Exporter le catalogue existant */}
               <button
                 type="button"
                 onClick={exporterCatalogueExcel}
@@ -2969,6 +2966,56 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                         setDepotStatFiltre(idD);
                         setEmplacementStatFiltre('TOUS');
                         setAfficherModalSelectionDepot(false);
+                      }}
+                      className={`p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs ${idD === 'TOUS' ? 'col-span-2 bg-slate-50 text-center' : 'bg-white'}`}
+                    >
+                      <span className={`font-black text-xs uppercase truncate ${idD === 'TOUS' ? 'text-slate-500' : 'text-slate-900'}`}>{nomD}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE SÉLECTION DE PARTENAIRE (RAPPORT) */}
+      {afficherModalSelectionDepotRapport && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
+                <span>🔍</span> SÉLECTIONNER UN {libelleDepotPartenaire.toUpperCase()}
+              </h4>
+              <button disabled={enTrainDeSauvegarder} onClick={() => setAfficherModalSelectionDepotRapport(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
+            </div>
+
+            <input
+              type="text"
+              autoFocus
+              disabled={enTrainDeSauvegarder}
+              value={rechercheModalDepotRapport}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setRechercheModalDepotRapport(e.target.value.toUpperCase())}
+              placeholder="RECHERCHER..."
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+              {depotsRapportModalFiltres.length === 0 ? (
+                <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun résultat.</div>
+              ) : (
+                depotsRapportModalFiltres.map((dep) => {
+                  const idD = String(dep.id);
+                  const nomD = dep.nom_depot || dep.Nom_Depot || '';
+
+                  return (
+                    <div
+                      key={idD}
+                      onClick={() => {
+                        if (enTrainDeSauvegarder) return;
+                        setDepotRapportFiltre(idD);
+                        setAfficherModalSelectionDepotRapport(false);
                       }}
                       className={`p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs ${idD === 'TOUS' ? 'col-span-2 bg-slate-50 text-center' : 'bg-white'}`}
                     >
