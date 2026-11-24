@@ -957,17 +957,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const napGlobal = parseFloat(montantSaisi) || 0;
 
-  // NOUVELLE FONCTION : 1. Valide/enregistre l'en-tête en base s'il n'existe pas encore, 2. Ouvre le panier
+  // MODIFIÉ : Ouvre simplement la modale du panier sans enregistrer l'en-tête en base de données de manière prématurée
   const validerEnteteEtOuvrirPanier = async () => {
     if (documentEnLectureSeule || validationEnteteEnCours) return;
-
-    // Si la commande a déjà un ID en base (déjà validée une première fois ou en cours de modification), on ouvre directement le panier
-    if (commandeEnEdition && commandeEnEdition.id) {
-      setModalPanierOuverte(true);
-      return;
-    }
-
-    const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
 
     let dateNormalisee = dateCommande;
     if (dateNormalisee.includes('/')) {
@@ -1015,110 +1007,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
-    // Vérification des doublons avant création de l'en-tête
-    const doublonTrouve = commandes.find(c => 
-      c.numero_commande === numeroComplet &&
-      c.date_commande === dateNormalisee &&
-      String(c.id_partenaire) === String(idPartenaire)
-    );
+    // Vérification des doublons avant d'ouvrir le panier
+    if (!commandeEnEdition) {
+      const doublonTrouve = commandes.find(c => 
+        c.numero_commande === numeroComplet &&
+        c.date_commande === dateNormalisee &&
+        String(c.id_partenaire) === String(idPartenaire)
+      );
 
-    if (doublonTrouve) {
-      setModalDoublonMessage(`Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
-      return;
-    }
-
-    setValidationEnteteEnCours(true);
-    try {
-      const payload = {
-        id_entreprise: currentEntId,
-        module: moduleActuel,
-        numero_commande: numeroComplet,
-        date_commande: dateNormalisee,
-        id_partenaire: idPartenaire,
-        nom_partenaire: partObj ? (partObj.nom_fournisseur || partObj.nom) : '',
-        id_depot: depotSourceEffectif,
-        montant_commande: napGlobal,
-        point_a: partenaireSansStockage ? pointADepart : null,
-        adresse_livraison: adresseLivraison,
-        numero_client: numeroClient.trim(),
-        nature_colis: partenaireSansStockage ? natureColis : null,
-        zone_effective_livraison: zoneGrilleSelectionnee || adresseLivraison,
-        frais_livraison: parseFloat(fraisLivraisonSaisi) || 0,
-        vendeur_livreur: livreurAssigne,
-        statut: statutCommandeSaisi,
-        statut_commande: statutCommandeSaisi,
-        utilisateur_saisie: nomUtilisateurConnecteReel
-      };
-
-      const { data: insertedCmd, error: errCmd } = await supabase
-        .from('commandes_livraison_en_tete')
-        .insert([payload])
-        .select()
-        .single();
-
-      if (errCmd) {
-        // Fallback hors-ligne sécurisé si pas de connexion réseau : on génère un UUID local valide
-        if (typeof window !== 'undefined' && !navigator.onLine) {
-          const offlineId = crypto.randomUUID();
-          const offlineCmd = { ...payload, id: offlineId, created_at: new Date().toISOString() };
-          localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', offlineCmd);
-          
-          const nouvelleListeCmd = [offlineCmd, ...commandes];
-          setCommandes(nouvelleListeCmd);
-          localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
-          
-          setCommandeEnEdition(offlineCmd);
-          setSnapshotCommandeInitiale({
-            dateCommande: dateNormalisee,
-            idPartenaire: idPartenaire || '',
-            numeroCommande: numeroCommande.trim(),
-            numeroClient: numeroClient.trim(),
-            adresseLivraison: adresseLivraison || '',
-            montantSaisi: montantSaisi || '0',
-            pointADepart: pointADepart || '',
-            natureColis: natureColis || '',
-            fraisLivraisonSaisi: fraisLivraisonSaisi || '',
-            livreurAssigne: livreurAssigne || '',
-            statutCommandeSaisi: statutCommandeSaisi || 'LIVRÉ',
-            lignes: [],
-            estNouvelleCreationViaPanier: true
-          });
-          setModalPanierOuverte(true);
-          return;
-        }
-        throw new Error(errCmd.message);
+      if (doublonTrouve) {
+        setModalDoublonMessage(`Cette commande (${numeroComplet}) a déjà été créée pour ce partenaire à la date du ${formaterDateEnFrancais(dateNormalisee)}.`);
+        return;
       }
-
-      // L'en-tête est bien créé dans Supabase avec un vrai ID !
-      const nouvelleListeCmd = [insertedCmd, ...commandes];
-      setCommandes(nouvelleListeCmd);
-      localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
-
-      // On bascule l'état en édition sur cette commande fraîchement créée
-      setCommandeEnEdition(insertedCmd);
-      setSnapshotCommandeInitiale({
-        dateCommande: dateNormalisee,
-        idPartenaire: idPartenaire || '',
-        numeroCommande: numeroCommande.trim(),
-        numeroClient: numeroClient.trim(),
-        adresseLivraison: adresseLivraison || '',
-        montantSaisi: montantSaisi || '0',
-        pointADepart: pointADepart || '',
-        natureColis: natureColis || '',
-        fraisLivraisonSaisi: fraisLivraisonSaisi || '',
-        livreurAssigne: livreurAssigne || '',
-        statutCommandeSaisi: statutCommandeSaisi || 'LIVRÉ',
-        lignes: [],
-        estNouvelleCreationViaPanier: true // Marqueur pour gérer correctement la sortie de stock à la validation finale
-      });
-
-      // Ouverture immédiate de la liste des articles
-      setModalPanierOuverte(true);
-    } catch (err) {
-      setModalDoublonMessage("Erreur lors de la validation de l'en-tête : " + (err.message || err));
-    } finally {
-      setValidationEnteteEnCours(false);
     }
+
+    // Ouverture immédiate de la modale du panier sans insérer dans la liste principale
+    setModalPanierOuverte(true);
   };
 
   const ajouterArticleAuPanier = async (artObj) => {
@@ -1461,10 +1365,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       let idCmdCourante = commandeEnEdition ? commandeEnEdition.id : null;
 
       if (commandeEnEdition) {
-        const estNouvelleCreationPreEnregistree = Boolean(snapshotCommandeInitiale?.estNouvelleCreationViaPanier);
         const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'LIVRÉ';
         const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const etaitDejaLivre = estNouvelleCreationPreEnregistree ? false : (statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ');
+        const etaitDejaLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
 
         const { error: errUp } = await supabase
           .from('commandes_livraison_en_tete')
@@ -1539,13 +1442,24 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
         if (errCmd) {
           console.error('Erreur insertion en-tête :', errCmd);
-          throw new Error(errCmd.message);
+          if (typeof window !== 'undefined' && !navigator.onLine) {
+            const offlineId = crypto.randomUUID();
+            const offlineCmd = { ...payload, id: offlineId, created_at: new Date().toISOString() };
+            localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', offlineCmd);
+            
+            const nouvelleListeCmd = [offlineCmd, ...commandes];
+            setCommandes(nouvelleListeCmd);
+            localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
+            idCmdCourante = offlineId;
+          } else {
+            throw new Error(errCmd.message);
+          }
+        } else {
+          idCmdCourante = insertedCmd.id;
+          const nouvelleListeCmd = [insertedCmd, ...commandes];
+          setCommandes(nouvelleListeCmd);
+          localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
         }
-
-        idCmdCourante = insertedCmd.id;
-        const nouvelleListeCmd = [insertedCmd, ...commandes];
-        setCommandes(nouvelleListeCmd);
-        localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
 
         if (!partenaireSansStockage && estLivreVerif) {
           lignesSaisies.forEach(item => {
@@ -2830,7 +2744,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   onClick={validerEnteteEtOuvrirPanier}
                   className="bg-orange-600 hover:bg-orange-700 text-white font-black px-3 py-1.5 rounded-lg text-[9px] shadow-xs transition disabled:opacity-50"
                 >
-                  {validationEnteteEnCours ? 'Validation en-tête...' : '➕ Ajouter les articles'}
+                  {validationEnteteEnCours ? 'Chargement...' : '➕ Ajouter les articles'}
                 </button>
               </div>
 
