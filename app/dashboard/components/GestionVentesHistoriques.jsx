@@ -59,6 +59,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   // --- CONFIGURATION DE LA PAGINATION (Vagues de 20) ---
   const [limiteVentes, setLimiteVentes] = useState(20);
+  const [limiteJournal, setLimiteJournal] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
 
   const [triTicketCol, setTriTicketCol] = useState('created_at');
@@ -380,15 +381,24 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
-  // --- RÉINITIALISATION AUTOMATIQUE DE LA LIMITE LORS DES CHANGEMENTS DE FILTRES ---
+  // --- RÉINITIALISATION AUTOMATIQUE DES LIMITES LORS DES CHANGEMENTS DE FILTRES ---
   useEffect(() => {
     setLimiteVentes(20);
   }, [recherche, filtreModePaiement, filtreDateDebut, filtreDateFin]);
+
+  useEffect(() => {
+    setLimiteJournal(20);
+  }, [journalDateDebut, journalDateFin, journalCaisseId, journalCaissierId]);
 
   // --- CHARGEMENT PROGRESSIF PAR VAGUES DE 20 ÉLÉMENTS ---
   const chargerPlusVentes = () => {
     if (enTrainDeSauvegarder) return;
     setLimiteVentes(prev => prev + 20);
+  };
+
+  const chargerPlusJournal = () => {
+    if (enTrainDeSauvegarder) return;
+    setLimiteJournal(prev => prev + 20);
   };
 
   useEffect(() => {
@@ -1026,7 +1036,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return 0;
   });
 
-  // --- APPLICATION DE LA LIMITE SUR LES DONNÉES FILTRÉES ---
+  // --- APPLICATION DE LA LIMITE SUR LES TICKETS ---
   const ventesAffichees = ventesFiltrees.slice(0, limiteVentes);
 
   const gererTriJournal = (colonne) => {
@@ -1128,6 +1138,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     if (valA > valB) return triJournalOrdre === 'asc' ? 1 : -1;
     return 0;
   });
+
+  // --- APPLICATION DE LA LIMITE SUR LE JOURNAL ---
+  const lignesJournalAffichees = lignesJournalDetails.slice(0, limiteJournal);
 
   const ventesClotureFiltrees = ventesNonCloturees.filter((v) => {
     let matchDate = true;
@@ -1409,6 +1422,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         )}
       </div>
 
+      {/* BARRE DE NAVIGATION PAR ONGLETS */}
       <div className="flex justify-between items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
         <div className="flex flex-1 gap-1">
           <button
@@ -1436,7 +1450,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               ongletActif === 'journal' ? 'bg-orange-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
             }`}
           >
-            Journal
+            Journal ({lignesJournalAffichees.length} / {lignesJournalDetails.length})
           </button>
           <button
             disabled={enTrainDeSauvegarder}
@@ -1470,7 +1484,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 <label className="block text-[7.5px] font-extrabold text-slate-400 uppercase tracking-tighter">CAISSE *</label>
                 <div
                   onClick={() => !enTrainDeSauvegarder && setAfficherModalCaisse(true)}
-                  className="w-full bg-slate-55 border border-slate-200 rounded-lg px-1 py-0.5 font-bold text-[8.5px] text-slate-900 cursor-pointer flex justify-between items-center h-[22px]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 font-bold text-[8.5px] text-slate-900 cursor-pointer flex justify-between items-center h-[22px]"
                 >
                   <span className="truncate">{caisseNomSelectionnee}</span>
                   <span className="text-[7.5px] text-slate-400">🔍</span>
@@ -1882,8 +1896,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
+      {/* ONGLET 2 : TICKETS (Par vagues de 20) */}
       {ongletActif === 'tickets' && (
-        <div className="space-y-2">
+        <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1">
               <span className="font-extrabold text-slate-700 uppercase text-[9px]">🔍 FILTRER LES TICKETS</span>
@@ -2012,6 +2027,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </table>
               </div>
 
+              {/* Bouton pour charger 20 tickets supplémentaires */}
               {limiteVentes < ventesFiltrees.length && (
                 <div className="text-center pt-1 pb-2">
                   <button
@@ -2029,8 +2045,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
+      {/* ONGLET 3 : JOURNAL (Par vagues de 20) */}
       {ongletActif === 'journal' && (
-        <div className="space-y-2">
+        <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
             <span className="font-extrabold text-slate-700 uppercase text-[9px] block border-b border-slate-100 pb-1">
               📊 PARAMÈTRES DU JOURNAL DES VENTES
@@ -2091,45 +2108,61 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-            <table className="w-full text-left text-[9.5px] whitespace-nowrap">
-              <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase text-[8px] font-black select-none">
-                <tr>
-                  <th onClick={() => gererTriJournal('date')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
-                    Date {rendreFlecheTriJournal('date')}
-                  </th>
-                  <th onClick={() => gererTriJournal('numeroTicket')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
-                    N° Ticket {rendreFlecheTriJournal('numeroTicket')}
-                  </th>
-                  <th onClick={() => gererTriJournal('designation')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
-                    Articles {rendreFlecheTriJournal('designation')}
-                  </th>
-                  <th className="p-2 text-center">Qté</th>
-                  <th className="p-2 text-right">P.Achat</th>
-                  <th className="p-2 text-right">P.Vente</th>
-                  <th className="p-2 text-right">Marge</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {lignesJournalDetails.length === 0 ? (
+          <div className="space-y-2">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+              <table className="w-full text-left text-[9.5px] whitespace-nowrap">
+                <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 uppercase text-[8px] font-black select-none">
                   <tr>
-                    <td colSpan="7" className="p-6 text-center text-slate-400">Aucune vente encaissée enregistrée pour ces critères.</td>
+                    <th onClick={() => gererTriJournal('date')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
+                      Date {rendreFlecheTriJournal('date')}
+                    </th>
+                    <th onClick={() => gererTriJournal('numeroTicket')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
+                      N° Ticket {rendreFlecheTriJournal('numeroTicket')}
+                    </th>
+                    <th onClick={() => gererTriJournal('designation')} className="p-2 cursor-pointer hover:bg-slate-200 transition">
+                      Articles {rendreFlecheTriJournal('designation')}
+                    </th>
+                    <th className="p-2 text-center">Qté</th>
+                    <th className="p-2 text-right">P.Achat</th>
+                    <th className="p-2 text-right">P.Vente</th>
+                    <th className="p-2 text-right">Marge</th>
                   </tr>
-                ) : (
-                  lignesJournalDetails.map((ligne, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition">
-                      <td className="p-2 font-mono text-[9px] text-slate-600">{ligne.date}</td>
-                      <td className="p-2 font-mono font-bold text-orange-600">{ligne.numeroTicket}</td>
-                      <td className="p-2 font-extrabold uppercase text-slate-900 max-w-[120px] truncate" title={ligne.designation}>{ligne.designation}</td>
-                      <td className="p-2 text-center font-bold text-slate-800">{ligne.quantite}</td>
-                      <td className="p-2 text-right font-mono text-slate-600">{ligne.prixAchat.toLocaleString('fr-FR')}</td>
-                      <td className="p-2 text-right font-mono font-bold text-slate-900">{ligne.prixVente.toLocaleString('fr-FR')}</td>
-                      <td className="p-2 text-right font-mono font-black text-emerald-700">{ligne.marge.toLocaleString('fr-FR')}</td>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {lignesJournalAffichees.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="p-6 text-center text-slate-400">Aucune vente encaissée enregistrée pour ces critères.</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    lignesJournalAffichees.map((ligne, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition">
+                        <td className="p-2 font-mono text-[9px] text-slate-600">{ligne.date}</td>
+                        <td className="p-2 font-mono font-bold text-orange-600">{ligne.numeroTicket}</td>
+                        <td className="p-2 font-extrabold uppercase text-slate-900 max-w-[120px] truncate" title={ligne.designation}>{ligne.designation}</td>
+                        <td className="p-2 text-center font-bold text-slate-800">{ligne.quantite}</td>
+                        <td className="p-2 text-right font-mono text-slate-600">{ligne.prixAchat.toLocaleString('fr-FR')}</td>
+                        <td className="p-2 text-right font-mono font-bold text-slate-900">{ligne.prixVente.toLocaleString('fr-FR')}</td>
+                        <td className="p-2 text-right font-mono font-black text-emerald-700">{ligne.marge.toLocaleString('fr-FR')}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bouton pour charger 20 lignes supplémentaires dans le journal */}
+            {limiteJournal < lignesJournalDetails.length && (
+              <div className="text-center pt-1 pb-1">
+                <button
+                  type="button"
+                  disabled={enTrainDeSauvegarder}
+                  onClick={chargerPlusJournal}
+                  className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
+                >
+                  📥 Charger 20 lignes de plus ({lignesJournalDetails.length - limiteJournal} restantes)
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="bg-slate-900 text-white p-3 rounded-xl flex justify-between items-center shadow-xs">
@@ -2150,7 +2183,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       )}
 
       {ongletActif === 'cloture' && (
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 overflow-y-auto flex-1 pr-0.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
             <div className="flex justify-between items-center border-b border-slate-100 pb-1">
               <span className="font-extrabold text-slate-700 uppercase text-[9px]">
@@ -2497,7 +2530,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 autoFocus
                 disabled={enTrainDeSauvegarder}
                 value={rechercheClientInput}
-                onChange={(e) => setSearchClientInput ? setRechercheClientInput(e.target.value.toUpperCase()) : setRechercheClientInput(e.target.value.toUpperCase())}
+                onChange={(e) => setRechercheClientInput(e.target.value.toUpperCase())}
                 placeholder={moduleActuel === 'LIVRAISON' ? "RECHERCHER UN LIVREUR..." : "RECHERCHER UN CLIENT..."}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none font-extrabold uppercase text-slate-900 placeholder:text-slate-400 shadow-2xs"
               />
