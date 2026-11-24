@@ -73,6 +73,45 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return 'ZOA ABATE KATY';
   };
 
+  // Nettoyage des éléments obsolètes dans la file d'attente locale (colonnes supprimées du schéma)
+  const nettoyerFileAttenteSync = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const cle = localStorage.key(i);
+        if (!cle) continue;
+        const brut = localStorage.getItem(cle);
+        if (!brut || !brut.includes('mouvements_stock')) continue;
+        try {
+          const parsed = JSON.parse(brut);
+          if (Array.isArray(parsed)) {
+            let modifie = false;
+            const listeNettoyee = parsed.map((item) => {
+              if (item && item.table === 'mouvements_stock') {
+                const cible = item.data || item.payload || item.donnees;
+                if (cible && ('prix_unitaire' in cible || 'montant_total' in cible)) {
+                  const { prix_unitaire, montant_total, ...donneesValides } = cible;
+                  modifie = true;
+                  if (item.data) return { ...item, data: donneesValides };
+                  if (item.payload) return { ...item, payload: donneesValides };
+                  if (item.donnees) return { ...item, donnees: donneesValides };
+                }
+              }
+              return item;
+            });
+            if (modifie) {
+              localStorage.setItem(cle, JSON.stringify(listeNettoyee));
+            }
+          }
+        } catch (errParse) {
+          // Ignorer si la clé n'est pas un JSON valide
+        }
+      }
+    } catch (e) {
+      // Ignorer silencieusement
+    }
+  };
+
   const [mouvements, setMouvements] = useState(() => {
     if (typeof window !== 'undefined') {
       const data = localSync.recupererDonneesLocales(cleCacheMouvements);
@@ -379,6 +418,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   useEffect(() => { 
+    nettoyerFileAttenteSync();
     chargerDonnees(); 
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);

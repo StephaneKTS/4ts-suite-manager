@@ -169,6 +169,31 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     suivi_stock: true,
   });
 
+  // Nettoyage des éléments obsolètes dans la file d'attente locale (colonnes supprimées du schéma)
+  const nettoyerFileAttenteSync = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const clesPossibles = ['local_sync_queue', 'sync_queue', 'offline_queue', 'file_attente_sync'];
+      for (const cle of clesPossibles) {
+        const brut = localStorage.getItem(cle);
+        if (!brut) continue;
+        const liste = JSON.parse(brut);
+        if (Array.isArray(liste)) {
+          const listeNettoyee = liste.map((item) => {
+            if (item && item.table === 'mouvements_stock' && item.data) {
+              const { prix_unitaire, montant_total, ...donneesValides } = item.data;
+              return { ...item, data: donneesValides };
+            }
+            return item;
+          });
+          localStorage.setItem(cle, JSON.stringify(listeNettoyee));
+        }
+      }
+    } catch (e) {
+      // Ignorer silencieusement les erreurs de parsing
+    }
+  };
+
   const toutesLesSuggestionsArticles = Array.from(
     new Set(articles.map(art => (art.Designation || art.designation || '').trim().toUpperCase()))
   ).sort();
@@ -341,6 +366,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     chargerDonneesReference();
     chargerArticles();
     if (typeof window !== 'undefined') {
+      nettoyerFileAttenteSync();
       localSync.synchroniserVersCloud(supabase);
     }
   }, [entrepriseId, moduleActuel]);
