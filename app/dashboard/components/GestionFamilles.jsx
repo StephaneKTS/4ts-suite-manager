@@ -9,7 +9,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
   const [familles, setFamilles] = useState([]);
   const [chargement, setChargement] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
-  const [afficherModalForm, setAfficherModalForm] = useState(false); // 🪟 Modale de création / modification
+  const [afficherModalForm, setAfficherModalForm] = useState(false);
   const [familleSelectionnee, setFamilleSelectionnee] = useState(null);
   
   // 🔔 États pour les modales de confirmation et de succès stylisées
@@ -419,7 +419,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
 
   const famillesAffichees = familles.slice(0, limiteFamilles);
 
-  // 🎨 STYLING HARMONISÉ AVEC GestionMouvements & GestionArticles (Cartes blanches, Orange Vif & Slate-900)
+  // 🎨 STYLING HARMONISÉ
   const cardStyle = 'bg-white rounded-xl border border-slate-200 shadow-2xs';
   const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
   const tableHeaderStyle = 'bg-slate-50 text-slate-700 uppercase text-[8.5px] font-extrabold border-b border-slate-200';
@@ -444,7 +444,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
         )}
       </div>
 
-      {/* EN-TÊTE PRINCIPAL IDENTIQUE AUX AUTRES MODULES */}
+      {/* EN-TÊTE PRINCIPAL */}
       <div className={`flex justify-between items-center p-2 gap-2 flex-wrap ${cardStyle}`}>
         <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <span className="font-extrabold uppercase text-slate-900 text-[10.5px] truncate">
@@ -482,12 +482,13 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
         </button>
       </div>
 
-      {/* TABLEAU DE LA LISTE HARMONISÉ */}
+      {/* TABLEAU DE LA LISTE AVEC FORMAT ID-XX */}
       <div className="space-y-2">
         <div className={`overflow-x-auto ${cardStyle}`}>
           <table className="w-full text-left text-[9.5px]">
             <thead>
               <tr className={tableHeaderStyle}>
+                <th className="p-2 w-24 text-center">ID Famille</th>
                 <th className="p-2">Famille</th>
                 <th className="p-2 text-center">Suivi de stock</th>
               </tr>
@@ -495,11 +496,11 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
             <tbody className="divide-y divide-slate-100 text-[9.5px] text-slate-900 bg-white">
               {chargement && familles.length === 0 ? (
                 <tr>
-                  <td colSpan="2" className="p-4 text-center text-slate-400 font-bold">Chargement...</td>
+                  <td colSpan="3" className="p-4 text-center text-slate-400 font-bold">Chargement...</td>
                 </tr>
               ) : famillesAffichees.length === 0 ? (
                 <tr>
-                  <td colSpan="2" className="p-4 text-center font-bold text-slate-500">Aucune famille d'articles enregistrée.</td>
+                  <td colSpan="3" className="p-4 text-center font-bold text-slate-500">Aucune famille d'articles enregistrée.</td>
                 </tr>
               ) : (
                 famillesAffichees.map((fam) => (
@@ -508,6 +509,9 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
                     onClick={() => !enTrainDeSauvegarder && permissions.modification && ouvrirFicheDetail(fam)}
                     className={`transition select-none ${permissions.modification ? 'hover:bg-orange-50/70 cursor-pointer' : 'cursor-default'}`}
                   >
+                    <td className="p-2 text-center font-mono font-black text-orange-600 bg-slate-50/70 border-r border-slate-100">
+                      ID-{fam.id}
+                    </td>
                     <td className="p-2 font-extrabold uppercase text-slate-900 truncate">
                       🏷️ {fam.nom_famille}
                     </td>
@@ -550,12 +554,26 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
             
             <div className="p-3.5 border-b border-slate-100 flex justify-between items-center">
               <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
-                <span>🏷️</span> {familleSelectionnee ? 'MODIFIER LA FAMILLE' : 'NOUVELLE FAMILLE D\'ARTICLES'}
+                <span>🏷️</span> {familleSelectionnee ? `MODIFIER LA FAMILLE (ID-${familleSelectionnee.id})` : 'NOUVELLE FAMILLE D\'ARTICLES'}
               </h4>
               <button disabled={enTrainDeSauvegarder} onClick={() => { reinitialiser(); setAfficherModalForm(false); }} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition cursor-pointer">✕</button>
             </div>
 
             <form onSubmit={preparerEnregistrement} className="p-4 space-y-3 text-[10px]">
+              {familleSelectionnee && (
+                <div>
+                  <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">
+                    ID Système (Généré automatiquement)
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`ID-${familleSelectionnee.id}`}
+                    className="w-full bg-slate-100 border border-slate-200 rounded-lg p-1.5 font-mono font-black text-slate-500 text-[10px] cursor-not-allowed"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block font-bold text-[8px] text-slate-600 uppercase mb-1">
                   Nom de la famille *
@@ -623,7 +641,7 @@ export default function GestionFamilles({ entrepriseId = '4TS-TEST', isDarkMode 
         </div>
       )}
 
-      {/* 🔔 MODALE UNIFIÉE (CONFIRMATION -> SUCCÈS -> ERREUR) */}
+      {/* 🔔 MODALE UNIFIÉE */}
       {etatModale.ouverte && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 space-y-4 text-center shadow-2xl text-slate-900">

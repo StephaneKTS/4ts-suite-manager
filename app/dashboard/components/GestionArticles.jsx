@@ -341,7 +341,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     }
   }, [entrepriseId, moduleActuel]);
 
-  // 📥 TÉLÉCHARGEMENT DU MODÈLE AVEC LA COLONNE ID_FAMILLE JUSTE APRÈS DÉSIGNATION
+  // 📥 TÉLÉCHARGEMENT DU MODÈLE AVEC FORMAT ID-XX
   const telechargerModeleExcel = () => {
     let enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
     
@@ -350,26 +350,19 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       const prem = familles[0];
       const sec = familles.length > 1 ? familles[1] : prem;
       
-      const id1 = prem.id || '';
+      const id1 = prem.id ? `ID-${prem.id}` : '';
       const nom1 = prem.nom_famille || prem.Nom_Famille || 'BOISSONS';
-      const id2 = sec.id || '';
+      const id2 = sec.id ? `ID-${sec.id}` : '';
       const nom2 = sec.nom_famille || sec.Nom_Famille || 'REPAS';
 
       lignesExemples = `COCA COLA 33CL;${id1};${nom1};500;350;10;5449000000496;OUI\n` +
                        `POULET DG;${id2};${nom2};3500;2500;5;;OUI\n`;
     } else {
-      lignesExemples = `COCA COLA 33CL;32;BOISSONS;500;350;10;5449000000496;OUI\n` +
-                       `POULET DG;33;REPAS;3500;2500;5;;OUI\n`;
+      lignesExemples = `COCA COLA 33CL;ID-32;BOISSONS;500;350;10;5449000000496;OUI\n` +
+                       `POULET DG;ID-33;REPAS;3500;2500;5;;OUI\n`;
     }
 
-    // Ajout d'une section informative claire des familles et de leurs ID respectifs
-    let commentairesFamilles = "\n# --- VOS FAMILLES ET ID DISPONIBLES ---\n";
-    familles.forEach(f => {
-      const nomF = f.nom_famille || f.Nom_Famille || '';
-      commentairesFamilles += `# ID: ${f.id} => Nom: ${nomF}\n`;
-    });
-
-    const contenuCsv = "\ufeff" + enTetes + lignesExemples + commentairesFamilles;
+    const contenuCsv = "\ufeff" + enTetes + lignesExemples;
     const blob = new Blob([contenuCsv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     
@@ -382,7 +375,39 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     setAfficherModalOptions(false);
   };
 
-  // 📥 GESTION DU FICHIER D'IMPORTATION AVEC ID_FAMILLE EN COLONNE B (Index 1)
+  // 📤 EXPORTATION DU CATALOGUE ACTUEL AVEC ID-XX
+  const exporterCatalogueExcel = () => {
+    let enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
+    let lignesCatalogue = "";
+
+    articles.forEach(art => {
+      const designation = (art.Designation || art.designation || '').replace(/;/g, ' ');
+      const idFamilleBrut = art.Famille || art.famille || '';
+      const idFamille = idFamilleBrut ? `ID-${idFamilleBrut}` : '';
+      const nomFamille = obtenirNomFamilleParId(idFamilleBrut).replace(/;/g, ' ');
+      const prixVente = art.Prix_Vente || art.prix_vente || 0;
+      const prixAchat = art.Prix_Achat || art.prix_achat || 0;
+      const seuilAlerte = art.Seuil_Alerte || art.seuil_alerte || 5;
+      const codeBarre = (art.Code_Barre || art.code_barre || '').replace(/;/g, ' ');
+      const suiviStock = (art.suivi_stock ?? true) ? 'OUI' : 'NON';
+
+      lignesCatalogue += `${designation};${idFamille};${nomFamille};${prixVente};${prixAchat};${seuilAlerte};${codeBarre};${suiviStock}\n`;
+    });
+
+    const contenuCsv = "\ufeff" + enTetes + lignesCatalogue;
+    const blob = new Blob([contenuCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const lien = document.createElement('a');
+    lien.href = url;
+    lien.setAttribute('download', `Catalogue_Articles_${moduleActuel}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(lien);
+    lien.click();
+    document.body.removeChild(lien);
+    setAfficherModalOptions(false);
+  };
+
+  // 📥 GESTION DU FICHIER D'IMPORTATION (Gère ID-32 ou 32)
   const gererFichierImport = (e) => {
     const fichier = e.target.files[0];
     if (!fichier) return;
@@ -423,8 +448,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
           if (!designation) continue;
 
-          // 🔍 Colonne B (Index 1) = ID_Famille / Colonne C (Index 2) = Nom Famille (optionnel pour info)
-          const saisieIdFamille = (colonnes[1] || '').trim().replace(/^['"]+|['"]+$/g, '');
+          // 🔍 Nettoyage du préfixe ID- (ex: ID-32 devient 32)
+          const saisieIdFamilleBrut = (colonnes[1] || '').trim().replace(/^['"]+|['"]+$/g, '');
+          const saisieIdFamille = saisieIdFamilleBrut.replace(/^ID-/i, '');
           const saisieNomFamille = (colonnes[2] || '').trim().replace(/^['"]+|['"]+$/g, '').toUpperCase();
           
           const prixVenteBrut = (colonnes[3] || '0').trim().replace(/\s+/g, '').replace(',', '.');
@@ -438,7 +464,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
           const seuilAlerte = seuilBrut !== '' && !isNaN(parseInt(seuilBrut)) ? parseInt(seuilBrut) : 5;
           const suiviStock = !(suiviStockTexte === 'NON' || suiviStockTexte === 'FAUX' || suiviStockTexte === 'FALSE' || suiviStockTexte === '0');
 
-          // 🔍 Rattachement intelligent : Priorité absolue à l'ID (colonne B), puis secours par le nom
           let familleId = familles.length > 0 ? familles[0].id : null;
           let familleNomAffichee = familles.length > 0 ? (familles[0].nom_famille || familles[0].Nom_Famille || 'DÉFAUT') : 'AUCUNE';
           let familleReconnue = false;
@@ -487,7 +512,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         setEtatModale({
           ouverte: true,
           titre: 'Fichier vide ou invalide',
-          message: 'Aucun article valide n’a été détecté dans ce fichier. Vérifiez que la colonne A contient bien la Désignation.',
+          message: 'Aucun article valide n’a été détecté dans ce fichier.',
           type: 'erreur',
           onConfirmer: null
         });
@@ -497,17 +522,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       setDonneesImportees(articlesParses);
       setAfficherModalOptions(false);
       setAfficherModalImport(true);
-    };
-
-    lecteur.onerror = () => {
-      if (importInputRef.current) importInputRef.current.value = '';
-      setEtatModale({
-        ouverte: true,
-        titre: 'Erreur de lecture',
-        message: 'Impossible de lire le fichier sélectionné.',
-        type: 'erreur',
-        onConfirmer: null
-      });
     };
 
     lecteur.readAsText(fichier, 'UTF-8');
@@ -1636,34 +1650,34 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   };
 
   const cardStyle = 'bg-white rounded-xl border border-slate-200 shadow-2xs';
-  const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
-  const selectTriggerStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-[10px] font-extrabold text-slate-900 cursor-pointer flex justify-between items-center hover:border-orange-400 transition';
+  const inputStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none uppercase';
+  const selectTriggerStyle = 'w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-[10px] font-extrabold text-slate-900 cursor-pointer flex justify-between items-center hover:border-orange-400 transition';
   const tableHeaderStyle = 'bg-slate-50 text-slate-700 uppercase text-[8.5px] font-extrabold border-b border-slate-200';
 
   return (
-    <div className="space-y-2 font-sans text-[10px]">
+    <div className="space-y-1.5 font-sans text-[10px]">
       
-      {/* Barre supérieure */}
-      <div className={`flex justify-between items-center p-2 gap-2 flex-wrap ${cardStyle}`}>
-        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-          <span className="font-extrabold uppercase text-slate-900 text-[10.5px] truncate">
-            📦 GESTION DES ARTICLES ({articlesAffiches.length} / {articlesFiltres.length})
+      {/* Barre supérieure épurée sur une seule ligne */}
+      <div className={`flex justify-between items-center px-2.5 py-1.5 gap-2 flex-nowrap ${cardStyle}`}>
+        <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+          <span className="font-extrabold uppercase text-slate-900 text-[10px] truncate">
+            📦 ARTICLES ({articlesFiltres.length})
           </span>
           {isGestionPerissablesActive() && (
-            <span className="text-[8.5px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full font-bold border border-amber-200 shrink-0">
+            <span className="text-[7.5px] bg-amber-50 text-amber-800 px-1.5 py-0.2 rounded-full font-bold border border-amber-200 shrink-0">
               Périssables
             </span>
           )}
         </div>
         
         {permissions.creation && (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             {/* ⚙️ Bouton Option */}
             <button
               type="button"
               onClick={() => setAfficherModalOptions(true)}
-              title="Options et assistants d'importation de catalogue"
-              className="py-1.5 px-2.5 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-slate-800 hover:bg-slate-700 text-white border-slate-700 shadow-xs cursor-pointer"
+              title="Options"
+              className="py-1 px-2 rounded-lg font-black transition text-center text-[9px] uppercase flex items-center justify-center gap-0.5 border bg-slate-800 hover:bg-slate-700 text-white border-slate-700 shadow-xs cursor-pointer"
             >
               <span>⚙️</span> Option
             </button>
@@ -1690,7 +1704,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   }
                 }, 50);
               }}
-              className="py-1.5 px-3 rounded-lg font-black transition text-center text-[10px] uppercase flex items-center justify-center gap-1 border bg-orange-600 hover:bg-orange-700 text-white border-orange-700 shadow-xs cursor-pointer"
+              className="py-1 px-2.5 rounded-lg font-black transition text-center text-[9px] uppercase flex items-center justify-center gap-0.5 border bg-orange-600 hover:bg-orange-700 text-white border-orange-700 shadow-xs cursor-pointer"
             >
               <span>＋</span> Nouveau
             </button>
@@ -1698,8 +1712,8 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         )}
       </div>
 
-      {/* Sous-barre de navigation */}
-      <div className="grid grid-cols-3 gap-1.5 w-full">
+      {/* Sous-barre de navigation avec boutons Article, Stats et Rapport Stock redimensionnés pour éviter les retours à la ligne */}
+      <div className="grid grid-cols-3 gap-1 w-full">
         <button
           type="button"
           disabled={enTrainDeSauvegarder}
@@ -1707,13 +1721,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             setModeVue('catalogue');
             annulerForm();
           }}
-          className={`py-1.5 px-2 rounded-xl font-black transition text-center text-[9.5px] uppercase border cursor-pointer truncate ${
+          className={`py-1 px-0.5 rounded-lg font-black transition text-center text-[9px] uppercase border cursor-pointer truncate ${
             modeVue === 'catalogue' 
               ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
               : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
           }`}
         >
-          📦 Article ({articles.length})
+          📦 Article
         </button>
 
         <button
@@ -1723,7 +1737,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             setModeVue('statistiques');
             annulerForm();
           }}
-          className={`py-1.5 px-2 rounded-xl font-black transition text-center text-[9.5px] uppercase border cursor-pointer truncate ${
+          className={`py-1 px-0.5 rounded-lg font-black transition text-center text-[9px] uppercase border cursor-pointer truncate ${
             modeVue === 'statistiques' 
               ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
               : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
@@ -1739,7 +1753,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             setModeVue('rapport');
             annulerForm();
           }}
-          className={`py-1.5 px-2 rounded-xl font-black transition text-center text-[9.5px] uppercase border cursor-pointer truncate ${
+          className={`py-1 px-0.5 rounded-lg font-black transition text-center text-[8.5px] uppercase border cursor-pointer truncate ${
             modeVue === 'rapport' 
               ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
               : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
@@ -1750,13 +1764,37 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       </div>
 
       {modeVue === 'catalogue' && (
-        <div className="space-y-2">
-          {/* Bloc Filtres */}
+        <div className="space-y-1.5">
+          {/* Bloc Filtres optimisé sans les petits titres superflus */}
           <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
-            <div className="flex justify-between items-center pb-1 border-b border-slate-100">
-              <span className="font-extrabold text-[9.5px] uppercase text-orange-600">
-                🔍 FILTRES & RECHERCHE [{moduleActuel}]
+            <div className="flex justify-between items-center gap-2 pb-1 border-b border-slate-100">
+              <span className="font-extrabold text-[9px] uppercase text-orange-600 shrink-0">
+                🔍 FILTRE & RECHERCHE
               </span>
+
+              {/* Barre de recherche directement devant le titre */}
+              <div className="relative flex-1 max-w-[240px]">
+                <input
+                  type="text"
+                  disabled={enTrainDeSauvegarder}
+                  value={rechercheArticleInput}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setRechercheArticleInput(e.target.value)}
+                  placeholder="SAISIR UNE DÉSIGNATION..."
+                  className={`${inputStyle} pl-6 py-0.5`}
+                />
+                <span className="absolute left-1.5 top-1 text-slate-400 text-[9px]">🔍</span>
+                {rechercheArticleInput && (
+                  <button
+                    type="button"
+                    onClick={() => setRechercheArticleInput('')}
+                    className="absolute right-1.5 top-0.5 text-slate-400 hover:text-slate-700 font-black text-[9px]"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
               {(rechercheArticleInput || familleFiltre !== 'TOUTES' || depotFiltre !== 'TOUS' || emplacementFiltre !== 'TOUS') && (
                 <button
                   type="button"
@@ -1766,41 +1804,15 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     setDepotFiltre('TOUS');
                     setEmplacementFiltre('TOUS');
                   }}
-                  className="text-[8.5px] text-orange-600 font-bold underline hover:text-orange-700 cursor-pointer"
+                  className="text-[8px] text-orange-600 font-bold underline hover:text-orange-700 cursor-pointer shrink-0"
                 >
-                  Réinitialiser
+                  Réinit.
                 </button>
               )}
             </div>
 
-            <div>
-              <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Rechercher un article</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  disabled={enTrainDeSauvegarder}
-                  value={rechercheArticleInput}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setRechercheArticleInput(e.target.value)}
-                  placeholder="SAISIR UNE DÉSIGNATION..."
-                  className={`${inputStyle} pl-7`}
-                />
-                <span className="absolute left-2 top-1.5 text-slate-400 text-[10px]">🔍</span>
-                {rechercheArticleInput && (
-                  <button
-                    type="button"
-                    onClick={() => setRechercheArticleInput('')}
-                    className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 font-black text-[10px]"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-1 pt-0.5">
               <div>
-                <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5 truncate">Famille</label>
                 <div
                   onClick={() => {
                     if (enTrainDeSauvegarder) return;
@@ -1809,15 +1821,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   }}
                   className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase text-orange-600">{obtenirNomFamilleParId(familleFiltre)}</span>
-                  <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
+                  <span className="truncate uppercase text-orange-600">Famille: {obtenirNomFamilleParId(familleFiltre)}</span>
+                  <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5 truncate">
-                  {libelleDepotPartenaire}
-                </label>
                 <div
                   onClick={() => {
                     if (enTrainDeSauvegarder) return;
@@ -1826,15 +1835,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   }}
                   className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase text-orange-600">{obtenirNomDepotParId(depotFiltre)}</span>
-                  <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
+                  <span className="truncate uppercase text-orange-600">Partenaire: {obtenirNomDepotParId(depotFiltre)}</span>
+                  <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5 truncate">
-                  {libelleLivreurOuEmplacement}
-                </label>
                 <div
                   onClick={() => {
                     if (enTrainDeSauvegarder) return;
@@ -1843,8 +1849,8 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   }}
                   className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase text-slate-800">{obtenirNomEmplacementParId(emplacementFiltre)}</span>
-                  <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
+                  <span className="truncate uppercase text-slate-800">Livreur: {obtenirNomEmplacementParId(emplacementFiltre)}</span>
+                  <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                 </div>
               </div>
             </div>
@@ -1855,7 +1861,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             <div className="p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold uppercase text-slate-800 text-[9.5px]">
-                  📦 Stock des Articles [{moduleActuel}]
+                  📦 STOCK DES ARTICLES [{moduleActuel}]
                 </span>
                 <span className="bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-bold text-[9px]">
                   {articlesAffiches.length} / {articlesFiltres.length}
@@ -2011,41 +2017,40 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         const nomEmpActuel = obtenirNomEmplacementParId(emplacementStatFiltre);
 
         return (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
+            {/* Bloc Stat réduit sans les petits titres superflus */}
             <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
-              <div className="pb-1 border-b border-slate-100">
-                <span className="font-extrabold text-[9.5px] uppercase text-orange-600">
-                  📈 PARAMÈTRES D'ANALYSE FICHE ARTICLE
+              <div className="flex justify-between items-center gap-2 pb-1 border-b border-slate-100">
+                <span className="font-extrabold text-[9px] uppercase text-orange-600 shrink-0">
+                  📈 STAT
                 </span>
+
+                <div className="flex items-center gap-1.5 flex-1 justify-end">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[7px] font-bold text-slate-500 uppercase">Du</span>
+                    <input
+                      type="date"
+                      disabled={enTrainDeSauvegarder}
+                      value={dateDebutStat}
+                      onChange={(e) => setDateDebutStat(e.target.value)}
+                      className={`${inputStyle} font-mono py-0.5 w-26`}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[7px] font-bold text-slate-500 uppercase">Au</span>
+                    <input
+                      type="date"
+                      disabled={enTrainDeSauvegarder}
+                      value={dateFinStat}
+                      onChange={(e) => setDateFinStat(e.target.value)}
+                      className={`${inputStyle} font-mono py-0.5 w-26`}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-3 gap-1 pt-0.5">
                 <div>
-                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">Date début</label>
-                  <input
-                    type="date"
-                    disabled={enTrainDeSauvegarder}
-                    value={dateDebutStat}
-                    onChange={(e) => setDateDebutStat(e.target.value)}
-                    className={`${inputStyle} font-mono`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">Date fin</label>
-                  <input
-                    type="date"
-                    disabled={enTrainDeSauvegarder}
-                    value={dateFinStat}
-                    onChange={(e) => setDateFinStat(e.target.value)}
-                    className={`${inputStyle} font-mono`}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-1.5">
-                <div>
-                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">{libelleDepotPartenaire}</label>
                   <div
                     onClick={() => {
                       if (enTrainDeSauvegarder) return;
@@ -2054,13 +2059,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     }}
                     className={selectTriggerStyle}
                   >
-                    <span className="truncate uppercase text-orange-600">{nomDepotActuel}</span>
-                    <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
+                    <span className="truncate uppercase text-orange-600">Partenaire: {nomDepotActuel}</span>
+                    <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">{libelleLivreurOuEmplacement}</label>
                   <div
                     onClick={() => {
                       if (enTrainDeSauvegarder) return;
@@ -2069,13 +2073,12 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     }}
                     className={selectTriggerStyle}
                   >
-                    <span className="truncate uppercase text-slate-800">{nomEmpActuel}</span>
-                    <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
+                    <span className="truncate uppercase text-slate-800">Livreur: {nomEmpActuel}</span>
+                    <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5 truncate">Article *</label>
                   <div
                     onClick={() => {
                       if (enTrainDeSauvegarder) return;
@@ -2085,9 +2088,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     className={selectTriggerStyle}
                   >
                     <span className="truncate uppercase text-orange-600">
-                      {artObj ? nomArticle : '-- Choisir --'}
+                      Article: {artObj ? nomArticle : 'Sélectionner...'}
                     </span>
-                    <span className="text-[9px] text-slate-400 shrink-0 ml-1">🔍</span>
+                    <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                   </div>
                 </div>
               </div>
@@ -2168,48 +2171,47 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       })()}
 
       {modeVue === 'rapport' && (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
+          {/* Bloc Rapport mis à jour avec le titre principal Rapport Stock, les zones de dates réduites sur la première ligne, et "Rapport" + "Rechercher, saisir une désignation" dans les boutons de la deuxième ligne */}
           <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
-            <div className="pb-1 border-b border-slate-100">
-              <span className="font-extrabold text-[9.5px] uppercase text-orange-600">
-                📊 PÉRIODE & FILTRES DU RAPPORT DE STOCK
+            <div className="flex justify-between items-center gap-1 pb-1 border-b border-slate-100">
+              <span className="font-extrabold text-[8.5px] uppercase text-orange-600 shrink-0">
+                RAPPORT STOCK
               </span>
+
+              <div className="flex items-center gap-1 flex-1 justify-end">
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[7px] font-bold text-slate-500 uppercase">Du</span>
+                  <input
+                    type="date"
+                    disabled={enTrainDeSauvegarder}
+                    value={dateDebutRapport}
+                    onChange={(e) => setDateDebutRapport(e.target.value)}
+                    className={`${inputStyle} font-mono py-0.5 px-1 w-[104px] text-[9px]`}
+                  />
+                </div>
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[7px] font-bold text-slate-500 uppercase">Au</span>
+                  <input
+                    type="date"
+                    disabled={enTrainDeSauvegarder}
+                    value={dateFinRapport}
+                    onChange={(e) => setDateFinRapport(e.target.value)}
+                    className={`${inputStyle} font-mono py-0.5 px-1 w-[104px] text-[9px]`}
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1 pt-0.5">
               <div>
-                <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">Du</label>
-                <input
-                  type="date"
-                  disabled={enTrainDeSauvegarder}
-                  value={dateDebutRapport}
-                  onChange={(e) => setDateDebutRapport(e.target.value)}
-                  className={`${inputStyle} font-mono`}
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">Au</label>
-                <input
-                  type="date"
-                  disabled={enTrainDeSauvegarder}
-                  value={dateFinRapport}
-                  onChange={(e) => setDateFinRapport(e.target.value)}
-                  className={`${inputStyle} font-mono`}
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">
-                  {libelleDepotPartenaire}
-                </label>
                 <select
                   disabled={enTrainDeSauvegarder}
                   value={depotRapportFiltre}
                   onChange={(e) => setDepotRapportFiltre(e.target.value)}
-                  className={`${inputStyle} text-orange-600 font-extrabold`}
+                  className={`${inputStyle} text-orange-600 font-extrabold py-1`}
                 >
-                  <option value="TOUS">{moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts'}</option>
+                  <option value="TOUS">Partenaire: {moduleActuel === 'LIVRAISON' ? 'Tous' : 'Tous'}</option>
                   {depots.map((dep) => (
                     <option key={dep.id} value={dep.id}>
                       {dep.nom_depot || dep.Nom_Depot}
@@ -2217,30 +2219,29 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   ))}
                 </select>
               </div>
-            </div>
 
-            <div>
-              <label className="block font-bold uppercase text-[7.5px] text-slate-600 mb-0.5">Rechercher un article</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  disabled={enTrainDeSauvegarder}
-                  value={rechercheRapportInput}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setRechercheRapportInput(e.target.value)}
-                  placeholder="SAISIR UNE DÉSIGNATION..."
-                  className={`${inputStyle} pl-7`}
-                />
-                <span className="absolute left-2 top-1.5 text-slate-400 text-[10px]">🔍</span>
-                {rechercheRapportInput && (
-                  <button
-                    type="button"
-                    onClick={() => setRechercheRapportInput('')}
-                    className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-700 font-black text-[10px]"
-                  >
-                    ✕
-                  </button>
-                )}
+              <div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    disabled={enTrainDeSauvegarder}
+                    value={rechercheRapportInput}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setRechercheRapportInput(e.target.value)}
+                    placeholder="RECHERCHER, SAISIR UNE DÉSIGNATION..."
+                    className={`${inputStyle} pl-5 py-1 text-[9px]`}
+                  />
+                  <span className="absolute left-1.5 top-1 text-slate-400 text-[8px]">🔍</span>
+                  {rechercheRapportInput && (
+                    <button
+                      type="button"
+                      onClick={() => setRechercheRapportInput('')}
+                      className="absolute right-1.5 top-0.5 text-slate-400 hover:text-slate-700 font-black text-[9px]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2326,11 +2327,11 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
             </div>
 
             <p className="text-[11px] font-semibold text-slate-600 leading-relaxed">
-              Sélectionnez une option pour gérer l'importation de vos catalogues d'articles.
+              Sélectionnez une option pour gérer l'importation ou l'exportation de vos catalogues d'articles.
             </p>
 
             <div className="grid grid-cols-1 gap-2.5 pt-1">
-              {/* Option 1 : Télécharger le modèle avec ID_Famille en colonne B */}
+              {/* Bouton 1 : Télécharger le modèle */}
               <button
                 type="button"
                 onClick={telechargerModeleExcel}
@@ -2341,15 +2342,15 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                 </span>
                 <div>
                   <span className="block font-black text-[11px] uppercase text-orange-900">
-                    1. Télécharger le modèle (avec ID Famille)
+                    1. Télécharger le modèle
                   </span>
                   <span className="text-[9.5px] font-bold text-orange-700">
-                    Inclut la colonne ID_Famille en colonne B et vos familles actuelles pré-remplies.
+                    Modèle à télécharger pour remplir vos différents articles et les réimporter ensuite.
                   </span>
                 </div>
               </button>
 
-              {/* Option 2 : Importer le fichier rempli */}
+              {/* Bouton 2 : Importer le fichier rempli */}
               <label
                 className="p-3.5 rounded-xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center gap-3 text-left cursor-pointer group"
               >
@@ -2373,6 +2374,25 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   disabled={enTrainDeSauvegarder}
                 />
               </label>
+
+              {/* Bouton 3 : Exporter le catalogue existant */}
+              <button
+                type="button"
+                onClick={exporterCatalogueExcel}
+                className="p-3.5 rounded-xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center gap-3 text-left cursor-pointer group"
+              >
+                <span className="text-xl p-2 bg-white rounded-lg shadow-2xs border border-slate-200 group-hover:scale-105 transition">
+                  📤
+                </span>
+                <div>
+                  <span className="block font-black text-[11px] uppercase text-slate-900">
+                    3. Exporter le catalogue existant
+                  </span>
+                  <span className="text-[9.5px] font-bold text-slate-500">
+                    Téléchargez la liste de vos articles actuels pour les analyser ou les modifier sur Excel.
+                  </span>
+                </div>
+              </button>
             </div>
 
             <div className="pt-2 border-t border-slate-100 flex justify-end">
