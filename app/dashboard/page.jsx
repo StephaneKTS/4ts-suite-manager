@@ -169,16 +169,29 @@ function DashboardContent() {
           }
         }
 
-        // 🔍 VÉRIFICATION DES DROITS UTILISATEUR SANS ÉCRASER LE MODULE LOCAL EN COURS
+        // 🔍 RÉCUPÉRATION DIRECTE ET MISE À JOUR DU NOM DEPUIS LA TABLE UTILISATEURS
         if (utilisateurConnecte || emailConnecte) {
           const { data: userData } = await supabase
             .from('utilisateurs')
-            .select('modules_cibles, module')
+            .select('modules_cibles, module, nom_complet')
             .eq('id_entreprise', entrepriseIdUrl)
             .or(`email.eq.${emailConnecte},nom_complet.eq.${utilisateurConnecte}`);
 
           let modulesAutorisesUser = [];
           if (userData && userData.length > 0) {
+            const exactUser = userData.find(u => 
+              (u.email && u.email.toLowerCase() === (emailConnecte || '').toLowerCase()) || 
+              (u.nom_complet && u.nom_complet.toUpperCase() === (utilisateurConnecte || ''))
+            ) || userData[0];
+
+            if (exactUser && exactUser.nom_complet) {
+              const nomDb = exactUser.nom_complet.toUpperCase();
+              setUtilisateurConnecte(nomDb);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('utilisateurConnecte', nomDb);
+              }
+            }
+
             userData.forEach(row => {
               if (Array.isArray(row.modules_cibles) && row.modules_cibles.length > 0) {
                 row.modules_cibles.forEach(m => modulesAutorisesUser.push(m.toUpperCase()));

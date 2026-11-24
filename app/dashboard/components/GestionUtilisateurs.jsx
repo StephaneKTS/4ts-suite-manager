@@ -551,7 +551,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       };
 
       if (userEnEdition && userEnEdition.id) {
-        // --- MISE À JOUR EXACTE PAR ID (CORRECTION PRINCIPALE) ---
         const { error: errUpd } = await supabase
           .from('utilisateurs')
           .update(basePayload)
@@ -559,7 +558,6 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
         if (errUpd) throw errUpd;
       } else {
-        // --- CRÉATION DE NOUVEAUX ENREGISTREMENTS PAR MODULE ---
         for (const modCible of modulesPayload) {
           await supabase.from('utilisateurs').insert([{ ...basePayload, module: modCible }]);
         }
@@ -852,7 +850,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
               </h4>
               {userEnEdition && userEnEdition.id && (
                 <p className="text-[9px] font-mono font-bold text-orange-600 mt-0.5">
-                  ID Unique : {userEnEdition.id}
+                  ID Unique : {mapIdStables.get(userEnEdition.id) || `${entrepriseId}-01`}
                 </p>
               )}
             </div>
@@ -975,7 +973,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
                         value={nouveauUser.mot_de_passe} 
                         onChange={(e) => setNouveauUser({ ...nouveauUser, mot_de_passe: e.target.value })} 
                         placeholder="••••••••" 
-                        className={`${inputStyle} font-mono pr-7`} 
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none font-mono pr-7" 
                       />
                       <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setAfficherMotDePasse(!afficherMotDePasse)} className="absolute right-2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer">
                         {afficherMotDePasse ? '🙈' : '👁️'}
@@ -1002,7 +1000,14 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
                 <div>
                   <label className="block font-bold text-[7.5px] text-slate-600 uppercase mb-0.5">Email</label>
-                  <input type="email" disabled={enTrainDeSauvegarder} value={nouveauUser.email} onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} placeholder="collaborateur@keita.cm" className={inputStyle} />
+                  <input 
+                    type="email" 
+                    disabled={enTrainDeSauvegarder} 
+                    value={nouveauUser.email} 
+                    onChange={(e) => setNouveauUser({ ...nouveauUser, email: e.target.value.toLowerCase() })} 
+                    placeholder="collaborateur@keita.cm" 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold text-slate-900 text-[10px] focus:ring-1 focus:ring-orange-500 focus:outline-none lowercase" 
+                  />
                 </div>
               </div>
             )}
