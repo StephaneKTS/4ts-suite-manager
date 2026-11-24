@@ -73,7 +73,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return 'ZOA ABATE KATY';
   };
 
-  // Nettoyage des éléments obsolètes dans la file d'attente locale (colonnes supprimées du schéma)
   const nettoyerFileAttenteSync = () => {
     if (typeof window === 'undefined') return;
     try {
@@ -103,13 +102,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               localStorage.setItem(cle, JSON.stringify(listeNettoyee));
             }
           }
-        } catch (errParse) {
-          // Ignorer si la clé n'est pas un JSON valide
-        }
+        } catch (errParse) {}
       }
-    } catch (e) {
-      // Ignorer silencieusement
-    }
+    } catch (e) {}
   };
 
   const [mouvements, setMouvements] = useState(() => {
@@ -176,8 +171,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [modeAffichage, setModeAffichage] = useState('SAISIE');
   const [typeOperation, setTypeOperation] = useState('TRANSFERT');
 
-  // États pour la gestion des règlements d'achats
-  const [statutReglement, setStatutReglement] = useState('SOLDE'); // SOLDE, AVANCE, NON_PAYE
+  const [statutReglement, setStatutReglement] = useState('SOLDE');
   const [montantPayeAchat, setMontantPayeAchat] = useState(0);
   const [modalReglementOuvert, setModalReglementOuvert] = useState(false);
 
@@ -238,19 +232,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const libellesTypesMouvement = {
-    TRANSFERT: 'TRANSFERT ENTRE DÉPÔTS (TR)',
-    ENTREE: 'ACHAT / APPROVISIONNEMENT (APP)',
-    ENTREE_STOCK: 'ENTRÉE EN STOCK (ES)',
-    SORTIE: 'SORTIE DE STOCK (MS)',
-    AVARIES: 'AVARIES & PERTES (AV)',
-    INVENTAIRE: 'SAISIE D’INVENTAIRE (INV)',
+    TRANSFERT: 'TRANSFERT',
+    ENTREE: 'ACHAT',
+    ENTREE_STOCK: 'ENTRÉE EN STOCK',
+    SORTIE: 'SORTIE DE STOCK',
+    AVARIES: 'AVARIES & PERTES',
+    INVENTAIRE: 'INVENTAIRE',
   };
 
   const descriptionsTypesMouvement = {
     TRANSFERT: 'Transférer des articles d’un dépôt ou emplacement vers un autre.',
-    ENTREE_STOCK: 'Ajouter directement du stock en interne (ex: régularisation, don, etc.).',
-    SORTIE: 'Enregistrer une sortie de stock interne ou une consommation.',
-    AVARIES: 'Déclarer des articles perdus, endommagés ou périmés.',
+    ENTREE_STOCK: 'Ajouter directement du stock en interne.',
+    SORTIE: 'Enregistrer une sortie de stock interne.',
+    AVARIES: 'Déclarer des articles perdus ou endommagés.',
     INVENTAIRE: 'Réajuster l’inventaire physique réel d’un dépôt.',
   };
 
@@ -262,12 +256,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return `${prefix}-${timestampAleatoire}-${suffixeAleatoire}`;
   };
 
-  // Calcul du montant total de la facture d'achat
   const montantTotalFacture = useMemo(() => {
     return lignesPanier.reduce((acc, ligne) => acc + (Number(ligne.quantite || 0) * Number(ligne.prix_unitaire || 0)), 0);
   }, [lignesPanier]);
 
-  // Synchronisation du montant payé selon le statut choisi
   useEffect(() => {
     if (statutReglement === 'SOLDE') {
       setMontantPayeAchat(montantTotalFacture);
@@ -304,12 +296,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             const estSuperAdminOuAdmin = emailConnecte === 'stephs7352@gmail.com' || nomRoleUser.includes('ADMINISTRATEUR') || nomRoleUser === 'ADMINISTRATEUR' || nomRoleUser.includes('ADMIN');
             
             if (estSuperAdminOuAdmin) {
-              setPermissions({
-                peut_creer: true,
-                peut_modifier: true,
-                peut_supprimer: true,
-                peut_valider: true
-              });
+              setPermissions({ peut_creer: true, peut_modifier: true, peut_supprimer: true, peut_valider: true });
             } else if (nomRoleUser) {
               const { data: roleData } = await supabase
                 .from('roles')
@@ -340,48 +327,28 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       setNomUtilisateurConnecte(nomConnecteEffectif);
       setEnTeteDoc(prev => ({ ...prev, operateur: nomConnecteEffectif }));
 
-      const { data: dataDepots } = await supabase
-        .from('depots_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+      const { data: dataDepots } = await supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const depotsList = Array.isArray(dataDepots) ? dataDepots : [];
       setDepots(depotsList);
       localSync.sauvegarderDonneesLocales(cleCacheDepots, depotsList);
 
-      const { data: dataEmplacements } = await supabase
-        .from('emplacements_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+      const { data: dataEmplacements } = await supabase.from('emplacements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const emplacementsList = Array.isArray(dataEmplacements) ? dataEmplacements : [];
       setEmplacements(emplacementsList);
       localSync.sauvegarderDonneesLocales(cleCacheEmplacements, emplacementsList);
 
-      const { data: dataFournisseurs } = await supabase
-        .from('fournisseurs')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+      const { data: dataFournisseurs } = await supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const fournisseursList = Array.isArray(dataFournisseurs) ? dataFournisseurs : [];
       setFournisseurs(fournisseursList);
       localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, fournisseursList);
 
-      const { data: dataArticles } = await supabase
-        .from('articles_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+      const { data: dataArticles } = await supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       if (Array.isArray(dataArticles)) {
         setArticles(dataArticles);
         localSync.sauvegarderDonneesLocales(cleCacheArticles, dataArticles);
       }
 
-      const { data: dataFamilles } = await supabase
-        .from('familles_articles')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+      const { data: dataFamilles } = await supabase.from('familles_articles').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       setFamilles(Array.isArray(dataFamilles) ? dataFamilles : []);
 
       let mouvementsList = [];
@@ -411,7 +378,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: nomConnecteEffectif }));
       }
     } catch (err) { 
-      console.error('Erreur (mode hors-ligne actif) :', err.message); 
+      console.error('Erreur :', err.message); 
     } finally { 
       setChargement(false); 
     }
@@ -507,15 +474,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const obtenirNomDestinationParMvt = (mvt) => {
     if (!mvt) return '-';
-    if (mvt.id_emplacement_destination) {
-      return obtenirNomEmplacementParId(mvt.id_emplacement_destination);
-    }
-    if (mvt.id_depot_destination) {
-      return obtenirNomDepotParId(mvt.id_depot_destination);
-    }
-    if (mvt.id_emplacement_source) {
-      return obtenirNomEmplacementParId(mvt.id_emplacement_source);
-    }
+    if (mvt.id_emplacement_destination) return obtenirNomEmplacementParId(mvt.id_emplacement_destination);
+    if (mvt.id_depot_destination) return obtenirNomDepotParId(mvt.id_depot_destination);
+    if (mvt.id_emplacement_source) return obtenirNomEmplacementParId(mvt.id_emplacement_source);
     return '-';
   };
 
@@ -552,19 +513,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const matchSource = String(m.emplacement_source) === String(emplacementId);
       const matchDest = String(m.emplacement_destination) === String(emplacementId);
 
-      if (typeMvt === 'INVENTAIRE' && matchSource) {
-        stockEmp = qte;
-        return;
-      }
+      if (typeMvt === 'INVENTAIRE' && matchSource) { stockEmp = qte; return; }
       if (typeMvt === 'TRANSFERT') {
         if (matchDest) stockEmp += qte;
         if (matchSource) stockEmp -= qte;
         return;
       }
-      if (typeMvt === 'ENTREE_STOCK' && matchSource) {
-        stockEmp += qte;
-        return;
-      }
+      if (typeMvt === 'ENTREE_STOCK' && matchSource) { stockEmp += qte; return; }
       if (matchDest) stockEmp += qte;
       if (matchSource) stockEmp -= qte;
     });
@@ -574,9 +529,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   const calculerStockPourDepotActuel = (articleId) => {
     const emplacementCibleId = enTeteDoc.id_emplacement_source;
-    if (emplacementCibleId) {
-      return calculerStockPourEmplacement(articleId, emplacementCibleId);
-    }
+    if (emplacementCibleId) return calculerStockPourEmplacement(articleId, emplacementCibleId);
 
     const depotCibleId = enTeteDoc.id_depot_source;
     if (!depotCibleId) {
@@ -591,22 +544,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const qte = m.quantite; 
       const typeMvt = m.type;
 
-      if (typeMvt === 'INVENTAIRE' && matchDepotSource) { 
-        stockDepot = qte; 
-        return; 
-      }
+      if (typeMvt === 'INVENTAIRE' && matchDepotSource) { stockDepot = qte; return; }
       if (typeMvt === 'TRANSFERT') { 
-        if (matchDepotSource && matchDepotDest) {
-          return;
-        }
+        if (matchDepotSource && matchDepotDest) return;
         if (matchDepotDest) stockDepot += qte; 
         if (matchDepotSource) stockDepot -= qte; 
         return; 
       }
-      if (typeMvt === 'ENTREE_STOCK' && matchDepotSource) {
-        stockDepot += qte;
-        return;
-      }
+      if (typeMvt === 'ENTREE_STOCK' && matchDepotSource) { stockDepot += qte; return; }
       if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || typeMvt.includes('ACHAT') || typeMvt.includes('APPRO') || typeMvt.includes('FACTURE')) {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
       } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
@@ -625,20 +570,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           const motif = (mvt.motif_remarque || '').trim().toUpperCase();
           const typeMvt = (mvt.type_mouvement || 'TRANSFERT').toUpperCase();
           
-          const estSystemeAuto = (
-            motif.includes('CMD-') || 
-            motif.includes('LIVRAISON') || 
-            motif.includes('RESTITUTION') ||
-            motif.includes('VENTE') ||
-            motif.includes('VENTE TICKET')
-          );
+          const estSystemeAuto = (motif.includes('CMD-') || motif.includes('LIVRAISON') || motif.includes('RESTITUTION') || motif.includes('VENTE') || motif.includes('VENTE TICKET'));
           if (estSystemeAuto) return false;
 
-          if (ongletPrincipal === 'ACHATS') {
-            return typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT';
-          } else {
-            return typeMvt !== 'ENTREE' && typeMvt !== 'APPROVISIONNEMENT';
-          }
+          if (ongletPrincipal === 'ACHATS') return typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT';
+          return typeMvt !== 'ENTREE' && typeMvt !== 'APPROVISIONNEMENT';
         })
         .reduce((acc, mvt) => {
           const numDocBrut = mvt.motif_remarque || 'SANS-REF';
@@ -680,9 +616,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const prefixes = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
       const prefix = prefixes[typeMvt] || 'TR';
 
-      if (!compteursParType[prefix]) {
-        compteursParType[prefix] = 0;
-      }
+      if (!compteursParType[prefix]) compteursParType[prefix] = 0;
       compteursParType[prefix] += 1;
       const numeroSequentiel = `${prefix}-${String(compteursParType[prefix]).padStart(2, '0')}`;
 
@@ -710,17 +644,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const empObj = emplacements.find(e => String(e.id) === String(emplacementSourceId));
       if (empObj) {
         const empPartenaire = String(empObj.partenaire || empObj.id_partenaire || '').trim().toUpperCase();
-        if (empPartenaire && artPartenaire && empPartenaire !== artPartenaire) {
-          return false;
-        }
+        if (empPartenaire && artPartenaire && empPartenaire !== artPartenaire) return false;
       }
     }
 
     if (ongletPrincipal === 'ACHATS' && enTeteDoc.id_fournisseur) {
       const fournNom = obtenirNomFournisseurParId(enTeteDoc.id_fournisseur).toUpperCase();
-      if (artPartenaire && artPartenaire !== String(enTeteDoc.id_fournisseur).toUpperCase() && artPartenaire !== fournNom) {
-        return false;
-      }
+      if (artPartenaire && artPartenaire !== String(enTeteDoc.id_fournisseur).toUpperCase() && artPartenaire !== fournNom) return false;
     }
 
     const artId = art.id_article || art.id;
@@ -745,29 +675,20 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (enTeteDoc.dateDoc < dateDuJour) {
-      afficherMessage(`Modification interdite : le document est daté du ${enTeteDoc.dateDoc} (journée clôturée et verrouillée).`, 'erreur', 'Journée clôturée');
+      afficherMessage(`Modification interdite : le document est daté du ${enTeteDoc.dateDoc} (journée clôturée).`, 'erreur', 'Journée clôturée');
       return false;
     }
 
     if (!enTeteDoc.referenceDoc || String(enTeteDoc.referenceDoc).trim() === '') {
-      afficherMessage(ongletPrincipal === 'ACHATS' ? 'La référence / N° Facture ou Motif est obligatoire.' : 'La zone Motif est obligatoire pour pouvoir ajouter des articles.', 'erreur', 'Champ manquant');
+      afficherMessage(ongletPrincipal === 'ACHATS' ? 'La référence / N° Facture ou Motif est obligatoire.' : 'La zone Motif est obligatoire.', 'erreur', 'Champ manquant');
       return false;
     }
 
     if (typeOperation === 'TRANSFERT' && ongletPrincipal === 'MOUVEMENTS') {
-      if (!enTeteDoc.id_depot_source) { 
-        afficherMessage('Sélectionnez le dépôt source (départ).', 'erreur', 'Dépôt manquant'); 
-        return false; 
-      }
-      if (!enTeteDoc.id_depot_destination) { 
-        afficherMessage('Sélectionnez le dépôt destination.', 'erreur', 'Dépôt manquant'); 
-        return false; 
-      }
+      if (!enTeteDoc.id_depot_source) { afficherMessage('Sélectionnez le dépôt source (départ).', 'erreur', 'Dépôt manquant'); return false; }
+      if (!enTeteDoc.id_depot_destination) { afficherMessage('Sélectionnez le dépôt destination.', 'erreur', 'Dépôt manquant'); return false; }
     } else {
-      if (!enTeteDoc.id_depot_source) { 
-        afficherMessage('Sélectionnez le dépôt ou partenaire.', 'erreur', 'Dépôt manquant'); 
-        return false; 
-      }
+      if (!enTeteDoc.id_depot_source) { afficherMessage('Sélectionnez le dépôt ou partenaire.', 'erreur', 'Dépôt manquant'); return false; }
     }
     return true;
   };
@@ -777,7 +698,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (!verifierEnTeteAvantSaisie()) return;
     setArticleSelectionneTemp(art);
     
-    // En mode Achat, on récupère en priorité le Prix d'Achat
     const puDefaut = Number(art.Prix_Achat || art.prix_achat || art.Prix_Vente || art.prix_vente || art.prix_unitaire || art.PU || 0);
     setPrixUnitaireSaisi(puDefaut > 0 ? puDefaut : 0);
     setModalArticleOuvert(false);
@@ -815,15 +735,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const qte = parseInt(quantiteSaisie);
     const pu = ongletPrincipal === 'ACHATS' ? parseFloat(prixUnitaireSaisi) : 0;
 
-    if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { 
-      afficherMessage('Quantité invalide.', 'erreur', 'Erreur de saisie'); 
-      return; 
-    }
-
-    if (ongletPrincipal === 'ACHATS' && (isNaN(pu) || pu < 0)) {
-      afficherMessage('Prix unitaire d\'achat invalide.', 'erreur', 'Erreur de saisie');
-      return;
-    }
+    if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { afficherMessage('Quantité invalide.', 'erreur', 'Erreur de saisie'); return; }
+    if (ongletPrincipal === 'ACHATS' && (isNaN(pu) || pu < 0)) { afficherMessage('Prix unitaire d\'achat invalide.', 'erreur', 'Erreur de saisie'); return; }
 
     setEnTrainDInsertion(true);
 
@@ -908,9 +821,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         const userObj = JSON.parse(utilisateurConnecteStr);
         const email = (userObj.email || '').trim().toLowerCase();
         const role = (userObj.nom_role || userObj.role || '').trim().toUpperCase();
-        if (email === 'stephs7352@gmail.com' || role.includes('ADMIN') || role.includes('ADMINISTRATEUR')) {
-          return true;
-        }
+        if (email === 'stephs7352@gmail.com' || role.includes('ADMIN') || role.includes('ADMINISTRATEUR')) return true;
       }
     } catch (e) {}
 
@@ -948,9 +859,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         try {
           if (motifSuppr) {
             const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', motifSuppr);
-            if (error) {
-              localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: motifSuppr });
-            }
+            if (error) localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: motifSuppr });
 
             const listeMaj = mouvements.filter(m => m.motif_remarque !== motifSuppr);
             setMouvements(listeMaj);
@@ -999,18 +908,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       return;
     }
 
-    if (mouvementEnEditionId && !permissions.peut_modifier) {
-      afficherMessage('Action non autorisée : Votre profil n’a pas le droit de modifier les mouvements.', 'erreur', 'Permission refusée');
-      return;
-    }
-    if (!mouvementEnEditionId && !permissions.peut_creer) {
-      afficherMessage('Action non autorisée : Votre profil n’a pas le droit de créer des mouvements.', 'erreur', 'Permission refusée');
-      return;
-    }
-    if (!permissions.peut_valider) {
-      afficherMessage('Action non autorisée : Votre profil n’a pas le droit de valider des documents.', 'erreur', 'Permission refusée');
-      return;
-    }
+    if (mouvementEnEditionId && !permissions.peut_modifier) { afficherMessage('Action non autorisée : Modification refusée.', 'erreur', 'Permission refusée'); return; }
+    if (!mouvementEnEditionId && !permissions.peut_creer) { afficherMessage('Action non autorisée : Création refusée.', 'erreur', 'Permission refusée'); return; }
+    if (!permissions.peut_valider) { afficherMessage('Action non autorisée : Validation refusée.', 'erreur', 'Permission refusée'); return; }
 
     if (!verifierEnTeteAvantSaisie() || lignesPanier.length === 0) { 
       if (lignesPanier.length === 0) afficherMessage('Ajoutez des articles.', 'erreur', 'Panier vide'); 
@@ -1047,9 +947,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         const qte = Number(ligne.quantite || 0);
         const pu = Number(ligne.prix_unitaire || 0);
         if (qte <= 0) continue;
-        if (!lignesUniquesMap[artId]) {
-          lignesUniquesMap[artId] = { designation: ligne.designation, quantite: 0, prix_unitaire: pu };
-        }
+        if (!lignesUniquesMap[artId]) lignesUniquesMap[artId] = { designation: ligne.designation, quantite: 0, prix_unitaire: pu };
         lignesUniquesMap[artId].quantite += qte;
       }
 
@@ -1057,7 +955,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       for (const [artId, dataLigne] of Object.entries(lignesUniquesMap)) {
         const typeMvEff = ongletPrincipal === 'ACHATS' ? 'ENTREE' : typeOperation;
         
-        // Payload strictement aligné sur les colonnes existantes de mouvements_stock
         const payload = {
           id_entreprise: entrepriseId,
           module: moduleActuel,
@@ -1079,12 +976,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         nouveauxMouvementsAjoutes.push(objetInsertion);
 
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
-        if (error) {
-          localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
-        }
+        if (error) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
       }
 
-      // Enregistrement de l'impact financier sur le compte du partenaire en cas d'achat
       if (ongletPrincipal === 'ACHATS' && (enTeteDoc.id_fournisseur || enTeteDoc.id_depot_source)) {
         const partenaireId = enTeteDoc.id_fournisseur || enTeteDoc.id_depot_source;
         const creditRestant = resteAVerserFacture;
@@ -1109,7 +1003,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
       localStorage.removeItem(cleCacheMouvements);
 
-      afficherMessage(`${ongletPrincipal === 'ACHATS' ? 'Achat / Approvisionnement' : 'Document'} validé avec succès par ${operateurActuel} !`, 'succès', 'Validation réussie');
+      afficherMessage(`Document validé avec succès par ${operateurActuel} !`, 'succès', 'Validation réussie');
       setLignesPanier([]);
       setMouvementEnEditionId(null);
       setNumeroDocOriginal(null);
@@ -1294,7 +1188,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       <div className="space-y-4 font-sans text-[10px] p-2 max-w-2xl mx-auto">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-center space-y-1">
           <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
-            📦 APPROVISIONNEMENT ET MOUVEMENT DE STOCK
+            📦 GESTION DU STOCK
           </h2>
           <p className="text-[10px] text-slate-500 font-bold">
             Sélectionnez l'opération que vous souhaitez effectuer :
@@ -1311,14 +1205,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 🛒
               </div>
               <h3 className="font-black text-xs uppercase text-emerald-900">
-                Achat & Approvisionnement
+                Achat
               </h3>
               <p className="text-[9.5px] font-semibold text-slate-600 leading-relaxed">
                 Permet d'enregistrer les entrées de stock issues des fournisseurs ou des achats.
               </p>
             </div>
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-emerald-700 font-black text-[9.5px]">
-              <span>Ouvrir le module</span>
+              <span>Ouvrir</span>
               <span>→</span>
             </div>
           </div>
@@ -1332,14 +1226,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 🔀
               </div>
               <h3 className="font-black text-xs uppercase text-orange-900">
-                Mouvement de stock
+                Mouvement
               </h3>
               <p className="text-[9.5px] font-semibold text-slate-600 leading-relaxed">
-                Permet d'effectuer des transferts entre dépôts, des sorties, des avaries ou des inventaires.
+                Permet d'effectuer des transferts, des sorties, des avaries ou des inventaires.
               </p>
             </div>
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-orange-700 font-black text-[9.5px]">
-              <span>Ouvrir le module</span>
+              <span>Ouvrir</span>
               <span>→</span>
             </div>
           </div>
@@ -1349,7 +1243,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 text-orange-600 text-xl font-black">
-                {modalMessage.type === 'erreur' ? '⚠️' : modalMessage.type === 'succès' ? '✅' : 'ℹ️'}
+                {modalMessage.type === 'erreur' ? '⚠️' : 'ℹ️'}
               </div>
               <div className="space-y-1">
                 <h3 className="font-black text-slate-900 text-sm uppercase">{modalMessage.titre}</h3>
@@ -1371,27 +1265,23 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
+      {/* Premier bloc épuré avec les boutons Retour, titre court et actions sur la même ligne */}
+      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs gap-1.5 flex-nowrap overflow-x-auto">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button 
             type="button" 
             onClick={() => setOngletPrincipal(null)} 
-            className="p-1 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-[9.5px] transition cursor-pointer flex items-center gap-1 border border-slate-300"
-            title="Retour au choix principal"
+            className="p-1 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-[9px] transition cursor-pointer flex items-center gap-1 border border-slate-300"
+            title="Retour"
           >
             <span>←</span> Retour
           </button>
-          <span className="font-extrabold uppercase text-slate-900 text-[10.5px]">
-            {ongletPrincipal === 'ACHATS' ? '🛒 ACHAT' : '🔀 MOUVEMENT DE STOCK'}
+          <span className="font-black uppercase text-slate-900 text-[10px]">
+            {ongletPrincipal === 'ACHATS' ? '🛒 ACHAT' : '🔀 MOUVEMENT'}
           </span>
-          {roleNom && (
-            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold border border-slate-200">
-              {roleNom}
-            </span>
-          )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 shrink-0">
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
@@ -1409,19 +1299,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               setMontantPayeAchat(0);
               setEnTeteDoc(prev => ({ ...prev, id_depot_source: '', id_depot_destination: '', id_fournisseur: '', referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeCible), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
             }} 
-            className={`py-1 px-3 rounded-lg font-black transition text-center text-[9.5px] uppercase border ${
+            className={`py-1 px-2.5 rounded-lg font-black transition text-center text-[9px] uppercase border whitespace-nowrap ${
               modeAffichage === 'SAISIE' 
                 ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
             }`}
           >
-            ✍️ {mouvementEnEditionId ? 'Modifier' : (ongletPrincipal === 'ACHATS' ? 'Nouvel Achat' : 'Créer Mouvement')}
+            ✍️ {mouvementEnEditionId ? 'Modifier' : (ongletPrincipal === 'ACHATS' ? 'Créer' : 'Créer')}
           </button>
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
             onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
-            className={`py-1 px-3 rounded-lg font-black transition text-center text-[9.5px] uppercase border ${
+            className={`py-1 px-2.5 rounded-lg font-black transition text-center text-[9px] uppercase border whitespace-nowrap ${
               modeAffichage === 'LISTE_DOCS' 
                 ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
@@ -1436,18 +1326,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         <>
           {documentEnLectureSeule && (
             <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs flex items-center justify-center gap-2">
-              <span>🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée et verrouillée)</span>
+              <span>🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée)</span>
             </div>
           )}
 
           {ongletPrincipal === 'MOUVEMENTS' && (
             <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
-              <span className="font-extrabold text-[9px] text-slate-700 uppercase shrink-0">Type d'opération</span>
+              <span className="font-extrabold text-[9px] text-slate-700 uppercase shrink-0">Type</span>
               <button
                 type="button"
                 disabled={enTeteVerrouille || !!mouvementEnEditionId}
                 onClick={() => setModalTypeMouvementOuvert(true)}
-                className="bg-slate-50 border rounded px-2.5 py-1 font-extrabold text-orange-600 text-[9.5px] truncate w-full flex justify-between items-center disabled:opacity-70"
+                className="bg-slate-50 border rounded px-2.5 py-1 font-extrabold text-orange-600 text-[9px] truncate w-full flex justify-between items-center disabled:opacity-70"
               >
                 <span className="truncate">{libellesTypesMouvement[typeOperation]}</span>
                 <span>🔍</span>
@@ -1460,18 +1350,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                   <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
-                    <span>🔀</span> SÉLECTIONNER LE TYPE DE MOUVEMENT
+                    <span>🔀</span> TYPE DE MOUVEMENT
                   </h4>
                   <button type="button" onClick={() => setModalTypeMouvementOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
                 </div>
                 
                 <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
                   {[
-                    { id: 'TRANSFERT', libelle: 'TRANSFERT ENTRE DÉPÔTS (TR)', icone: '🔀' },
-                    { id: 'ENTREE_STOCK', libelle: 'ENTRÉE EN STOCK (ES)', icone: '📥' },
-                    { id: 'SORTIE', libelle: 'SORTIE DE STOCK (MS)', icone: '📤' },
-                    { id: 'AVARIES', libelle: 'AVARIES & PERTES (AV)', icone: '⚠️' },
-                    { id: 'INVENTAIRE', libelle: 'SAISIE D’INVENTAIRE (INV)', icone: '📊' }
+                    { id: 'TRANSFERT', libelle: 'TRANSFERT', icone: '🔀' },
+                    { id: 'ENTREE_STOCK', libelle: 'ENTRÉE EN STOCK', icone: '📥' },
+                    { id: 'SORTIE', libelle: 'SORTIE DE STOCK', icone: '📤' },
+                    { id: 'AVARIES', libelle: 'AVARIES & PERTES', icone: '⚠️' },
+                    { id: 'INVENTAIRE', libelle: 'INVENTAIRE', icone: '📊' }
                   ].map((item) => (
                     <div 
                       key={item.id} 
@@ -1500,17 +1390,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
+          {/* Deuxième bloc compact et épuré avec libellés courts sur la même ligne */}
           <div className={`bg-white border-2 ${ongletPrincipal === 'ACHATS' ? 'border-emerald-500/50' : 'border-orange-500/50'} p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
-            <div className="flex justify-between items-center pb-1 border-b">
-              <div className="flex flex-col">
-                <span className={`font-extrabold text-[10px] uppercase ${ongletPrincipal === 'ACHATS' ? 'text-emerald-700' : 'text-orange-600'}`}>
-                  {libellesTypesMouvement[typeOperation]} {enTeteVerrouille && '🔒'}
+            <div className="flex justify-between items-center pb-1 border-b gap-1">
+              <div className="flex items-center gap-2 truncate">
+                <span className={`font-black text-[9.5px] uppercase truncate ${ongletPrincipal === 'ACHATS' ? 'text-emerald-700' : 'text-orange-600'}`}>
+                  {ongletPrincipal === 'ACHATS' ? 'ACHAT' : (typeOperation === 'TRANSFERT' ? 'TRANSFERT' : libellesTypesMouvement[typeOperation])} {enTeteVerrouille && '🔒'}
                 </span>
-                <span className="text-[8px] text-slate-500 font-bold uppercase mt-0.5">
-                  OPÉRATEUR CONNECTÉ : <strong className="text-slate-800">{mouvementEnEditionId ? enTeteDoc.operateur : obtenirNomOperateurConnecte()}</strong>
+                <span className="text-[8px] text-slate-500 font-bold uppercase whitespace-nowrap">
+                  USER : <strong className="text-slate-800">{mouvementEnEditionId ? enTeteDoc.operateur : obtenirNomOperateurConnecte()}</strong>
                 </span>
               </div>
-              <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-1.5 py-0.5 rounded font-mono font-bold text-[9px]`}>
+              <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-1.5 py-0.5 rounded font-mono font-black text-[9px] shrink-0`}>
                 {enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}
               </span>
             </div>
@@ -1531,7 +1422,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     type="text" 
                     disabled={documentEnLectureSeule} 
                     value={enTeteDoc.referenceDoc} 
-                    placeholder={ongletPrincipal === 'ACHATS' ? 'N° Facture / Motif *' : 'Motif * (Obligatoire)'}
+                    placeholder={ongletPrincipal === 'ACHATS' ? 'N° Facture / Motif *' : 'Motif *'}
                     onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
                     className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900 disabled:opacity-70 text-[9.5px]" 
                   />
@@ -1559,7 +1450,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
                       className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-600 text-[9.5px] flex justify-between items-center disabled:opacity-70"
                     >
-                      <span className="truncate">🏢 {obtenirNomDepotParId(enTeteDoc.id_depot_source) !== '-' ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : '-- Dépôt / Partenaire --'}</span>
+                      <span className="truncate">🏢 {obtenirNomDepotParId(enTeteDoc.id_depot_source) !== '-' ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : '-- Dépôt --'}</span>
                       <span>🔍</span>
                     </button>
                   </div>
@@ -1629,7 +1520,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
                       className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-600 text-[9px] flex justify-between items-center disabled:opacity-70"
                     >
-                      <span className="truncate">🏢 {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : '-- Dépôt / Partenaire --'}</span>
+                      <span className="truncate">🏢 {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : '-- Dépôt --'}</span>
                       <span>🔍</span>
                     </button>
                   </div>
@@ -1653,15 +1544,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🤝</span> SÉLECTIONNER UN FOURNISSEUR / PARTENAIRE</h4>
-                  <button type="button" onClick={() => setModalFournisseurOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🤝</span> FOURNISSEUR</h4>
+                  <button type="button" onClick={() => setModalFournisseurOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN FOURNISSEUR..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_fournisseur: '' })); setModalFournisseurOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition cursor-pointer font-bold text-slate-500 text-xs text-center bg-slate-50">
-                    -- Tous les articles / Fournisseur libre --
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_fournisseur: '' })); setModalFournisseurOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:bg-emerald-50 cursor-pointer font-bold text-slate-500 text-xs text-center bg-slate-50">
+                    -- Fournisseur libre --
                   </div>
                   {fournisseurs.filter(f => (f.nom_fournisseur || f.nom || '').toUpperCase().includes(rechercheModalPopup)).map((f) => (
                     <div key={f.id} onClick={() => { 
@@ -1673,7 +1564,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                         id_depot_source: depotAssocie ? depotAssocie.id : prev.id_depot_source
                       })); 
                       setModalFournisseurOuvert(false); 
-                    }} className="p-3 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                    }} className="p-3 rounded-xl border border-slate-200 hover:bg-emerald-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                       <span className="font-black text-xs text-slate-900 uppercase truncate">{f.nom_fournisseur || f.nom}</span>
                     </div>
                   ))}
@@ -1686,29 +1577,25 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER UN PARTENAIRE / DÉPÔT</h4>
-                  <button type="button" onClick={() => setModalDepotSourceOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> DÉPÔT / PARTENAIRE</h4>
+                  <button type="button" onClick={() => setModalDepotSourceOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN DÉPÔT..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).length === 0 ? (
-                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun dépôt trouvé.</div>
-                  ) : (
-                    depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
-                      <div key={dep.id} onClick={() => { 
-                        setEnTeteDoc(prev => ({ 
-                          ...prev, 
-                          id_depot_source: dep.id,
-                          id_depot_destination: (typeOperation === 'TRANSFERT' && (!prev.id_depot_destination || prev.id_depot_destination === prev.id_depot_source)) ? dep.id : prev.id_depot_destination
-                        })); 
-                        setModalDepotSourceOuvert(false); 
-                      }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
-                        <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
-                      </div>
-                    ))
-                  )}
+                  {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
+                    <div key={dep.id} onClick={() => { 
+                      setEnTeteDoc(prev => ({ 
+                        ...prev, 
+                        id_depot_source: dep.id,
+                        id_depot_destination: (typeOperation === 'TRANSFERT' && (!prev.id_depot_destination || prev.id_depot_destination === prev.id_depot_source)) ? dep.id : prev.id_depot_destination
+                      })); 
+                      setModalDepotSourceOuvert(false); 
+                    }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1718,22 +1605,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER LE DÉPÔT DESTINATION</h4>
-                  <button type="button" onClick={() => setModalDepotDestOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> DÉPÔT DESTINATION</h4>
+                  <button type="button" onClick={() => setModalDepotDestOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN DÉPÔT..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).length === 0 ? (
-                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun dépôt trouvé.</div>
-                  ) : (
-                    depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
-                      <div key={dep.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_depot_destination: dep.id })); setModalDepotDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
-                        <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
-                      </div>
-                    ))
-                  )}
+                  {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
+                    <div key={dep.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_depot_destination: dep.id })); setModalDepotDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
+                      <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1743,20 +1626,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER UN {libelleLivreur.toUpperCase()}</h4>
-                  <button type="button" onClick={() => setModalLivreurSourceOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> {libelleLivreur.toUpperCase()}</h4>
+                  <button type="button" onClick={() => setModalLivreurSourceOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: '' })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: '' })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
                     <span className="font-black text-xs text-slate-500 uppercase truncate">{libelleAucunLivreur}</span>
                   </div>
                   {emplacementsSourceFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
-                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: emp.id })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: emp.id })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                       <span className="font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</span>
-                      {emp.responsable_emplacement && <span className="text-[9px] text-slate-500 font-bold mt-0.5">{emp.responsable_emplacement}</span>}
                     </div>
                   ))}
                 </div>
@@ -1768,20 +1650,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> SÉLECTIONNER LE {libelleLivreur.toUpperCase()} DESTINATION</h4>
-                  <button type="button" onClick={() => setModalLivreurDestOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> {libelleLivreur.toUpperCase()} DESTINATION</h4>
+                  <button type="button" onClick={() => setModalLivreurDestOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
                 </div>
                 <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: '' })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: '' })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
                     <span className="font-black text-xs text-slate-500 uppercase truncate">{libelleAucunLivreur}</span>
                   </div>
                   {emplacementsDestinationFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
-                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: emp.id })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs">
+                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: emp.id })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                       <span className="font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</span>
-                      {emp.responsable_emplacement && <span className="text-[9px] text-slate-500 font-bold mt-0.5">{emp.responsable_emplacement}</span>}
                     </div>
                   ))}
                 </div>
@@ -1794,7 +1675,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             
             {!documentEnLectureSeule && (
               ongletPrincipal === 'ACHATS' ? (
-                /* ORDRE ACHAT & APPRO : ARTICLE -> QTE -> PU ACHAT -> MONTANT -> OK */
                 <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
                   <div className="col-span-4">
                     <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
@@ -1820,7 +1700,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </div>
 
                   <div className="col-span-3">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">PU Achat *</label>
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">PU *</label>
                     <input 
                       ref={inputPrixRef}
                       type="number" 
@@ -1835,7 +1715,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </div>
 
                   <div className="col-span-2">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Montant</label>
+                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Total</label>
                     <div className="w-full bg-slate-100 border rounded p-1 font-black text-slate-800 text-right truncate">
                       {(Number(quantiteSaisie || 0) * Number(prixUnitaireSaisi || 0)).toLocaleString()}
                     </div>
@@ -1846,15 +1726,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button" 
                       disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
                       onClick={ajouterArticleAuPanier} 
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" 
-                      title="Valider l'article (ou Entrée)"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black p-1 rounded text-center text-[9px]"
                     >
                       {enTrainDInsertion ? '...' : 'OK'}
                     </button>
                   </div>
                 </div>
               ) : (
-                /* ORDRE MOUVEMENT DE STOCK : UNIQUEMENT ARTICLE -> QTE -> OK */
                 <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
                   <div className="col-span-8">
                     <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
@@ -1884,8 +1762,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button" 
                       disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
                       onClick={ajouterArticleAuPanier} 
-                      className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white font-black p-1 rounded text-center text-[9px] shadow-2xs" 
-                      title="Valider l'article (ou Entrée)"
+                      className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black p-1 rounded text-center text-[9px]"
                     >
                       {enTrainDInsertion ? '...' : 'OK'}
                     </button>
@@ -1898,41 +1775,24 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
                 <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
                   <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                    <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
-                      <span>🔍</span> ARTICLE
-                    </h4>
-                    <button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                    <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> ARTICLE</h4>
+                    <button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
                   </div>
                   <div>
-                    <input
-                      type="text"
-                      value={recherchePopup}
-                      onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())}
-                      placeholder="RECHERCHER..."
-                      autoFocus
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs shadow-inner focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
+                    <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
                   </div>
                   <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
                     {articlesPopupFiltres.length === 0 ? (
-                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé pour ce partenaire / cet emplacement.</div>
+                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
                     ) : (
                       articlesPopupFiltres.map((art) => {
                         const artId = art.id_article || art.id;
                         const stockActuel = calculerStockPourDepotActuel(artId);
                         const estEpuise = stockActuel <= 0 && ongletPrincipal !== 'ACHATS';
                         return (
-                          <div 
-                            key={artId} 
-                            onClick={() => !enTrainDeSauvegarder && selectionnerArticleEtFocusQte(art)} 
-                            className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${
-                              estEpuise ? 'bg-slate-100 border-slate-200 opacity-60' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50'
-                            }`}
-                          >
+                          <div key={artId} onClick={() => !enTrainDeSauvegarder && selectionnerArticleEtFocusQte(art)} className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${estEpuise ? 'bg-slate-100 opacity-60' : 'bg-white hover:border-orange-500'}`}>
                             <span className="font-black text-xs text-slate-900 uppercase truncate">{art.Designation || art.designation}</span>
-                            <span className="font-black text-[10px] mt-1 text-slate-700">
-                              Stock : <strong className={stockActuel <= 0 ? 'text-rose-600' : 'text-emerald-700'}>{stockActuel}</strong>
-                            </span>
+                            <span className="font-black text-[10px] mt-1 text-slate-700">Stock : <strong className={stockActuel <= 0 ? 'text-rose-600' : 'text-emerald-700'}>{stockActuel}</strong></span>
                           </div>
                         );
                       })
@@ -1945,14 +1805,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             {lignesPanier.length === 0 ? (<p className="text-center text-slate-400 py-1.5 italic text-[9.5px]">Aucun article ajouté.</p>) : (
               <div className="overflow-x-auto border rounded-lg bg-white">
                 {ongletPrincipal === 'ACHATS' ? (
-                  /* TABLEAU ACHAT & APPRO : ARTICLE - QTE - PU ACHAT - MONTANT */
                   <table className="w-full text-left text-[9.5px] table-fixed">
                     <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
                       <tr>
                         <th className="p-1 w-[42%]">ARTICLE</th>
                         <th className="p-1 w-[13%] text-center">QTE</th>
-                        <th className="p-1 w-[17%] text-center">PU ACHAT</th>
-                        <th className="p-1 w-[18%] text-right">MONTANT</th>
+                        <th className="p-1 w-[17%] text-center">PU</th>
+                        <th className="p-1 w-[18%] text-right">TOTAL</th>
                         {!documentEnLectureSeule && <th className="p-1 w-[10%] text-center">⚙️</th>}
                       </tr>
                     </thead>
@@ -1965,7 +1824,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           <td className="p-1.5 text-right font-black text-slate-900">{Number(ligne.montant_total).toLocaleString()}</td>
                           {!documentEnLectureSeule && (
                             <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
+                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]">🗑️</button>
                             </td>
                           )}
                         </tr>
@@ -1973,7 +1832,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     </tbody>
                   </table>
                 ) : (
-                  /* TABLEAU MOUVEMENT DE STOCK : UNIQUEMENT ARTICLE - QTE */
                   <table className="w-full text-left text-[9.5px] table-fixed">
                     <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
                       <tr>
@@ -1989,7 +1847,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
                           {!documentEnLectureSeule && (
                             <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 disabled:opacity-50 rounded text-[9px]" title="Supprimer">🗑️</button>
+                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]">🗑️</button>
                             </td>
                           )}
                         </tr>
@@ -2000,11 +1858,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               </div>
             )}
 
-            {/* Total général de la facture et options de règlement en mode Achat */}
             {ongletPrincipal === 'ACHATS' && lignesPanier.length > 0 && (
               <div className="bg-emerald-50/60 border border-emerald-200 p-2 rounded-xl space-y-1.5 text-[9.5px]">
-                <div className="flex justify-between items-center font-black text-emerald-900 text-[10.5px]">
-                  <span>NET À PAYER (FACTURE) :</span>
+                <div className="flex justify-between items-center font-black text-emerald-900 text-[10px]">
+                  <span>NET À PAYER :</span>
                   <span className="font-mono text-emerald-700">{montantTotalFacture.toLocaleString()} FCFA</span>
                 </div>
 
@@ -2033,14 +1890,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-4 space-y-3">
                   <div className="flex justify-between items-center border-b pb-2">
-                    <h4 className="font-black text-slate-900 uppercase text-xs">OPTION DE RÈGLEMENT</h4>
+                    <h4 className="font-black text-slate-900 uppercase text-xs">RÈGLEMENT</h4>
                     <button type="button" onClick={() => setModalReglementOuvert(false)} className="text-slate-400 font-bold text-sm">✕</button>
                   </div>
                   <div className="space-y-2">
                     {[
-                      { id: 'SOLDE', libelle: 'Soldé (Totalité réglée)' },
-                      { id: 'AVANCE', libelle: 'Avancé (Paiement partiel)' },
-                      { id: 'NON_PAYE', libelle: 'Non payé (Crédit fournisseur)' }
+                      { id: 'SOLDE', libelle: 'Soldé' },
+                      { id: 'AVANCE', libelle: 'Avancé' },
+                      { id: 'NON_PAYE', libelle: 'Non payé' }
                     ].map((opt) => (
                       <div
                         key={opt.id}
@@ -2051,7 +1908,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           setModalReglementOuvert(false);
                         }}
                         className={`p-3 rounded-xl border cursor-pointer font-black text-xs uppercase flex justify-between items-center ${
-                          statutReglement === opt.id ? 'bg-emerald-50 border-emerald-500 text-emerald-900' : 'bg-slate-50 border-slate-200 hover:border-emerald-400'
+                          statutReglement === opt.id ? 'bg-emerald-50 border-emerald-500 text-emerald-900' : 'bg-slate-50 border-slate-200'
                         }`}
                       >
                         <span>{opt.libelle}</span>
@@ -2061,7 +1918,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
                     {statutReglement === 'AVANCE' && (
                       <div className="pt-2 space-y-1">
-                        <label className="block font-extrabold text-[8.5px] text-slate-700 uppercase">Montant réellement payé (Avance) *</label>
+                        <label className="block font-extrabold text-[8.5px] text-slate-700 uppercase">Montant payé *</label>
                         <input
                           type="number"
                           min="0"
@@ -2073,13 +1930,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       </div>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setModalReglementOuvert(false)}
-                    className="w-full py-2 bg-emerald-600 text-white font-black text-xs uppercase rounded-xl shadow-md"
-                  >
-                    Valider l'option
-                  </button>
+                  <button type="button" onClick={() => setModalReglementOuvert(false)} className="w-full py-2 bg-emerald-600 text-white font-black text-xs uppercase rounded-xl">OK</button>
                 </div>
               </div>
             )}
@@ -2087,20 +1938,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <div className="pt-1.5 flex items-center justify-between gap-1 flex-nowrap overflow-x-auto">
               <div className="flex items-center gap-1 shrink-0">
                 {!documentEnLectureSeule && verifierDroitSuppressionEffectif() && (
-                  <button 
-                    type="button" 
-                    disabled={enTrainDeSauvegarder} 
-                    onClick={supprimerDocumentActuel} 
-                    className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-bold px-1.5 py-1 rounded text-[8px] shadow-2xs whitespace-nowrap"
-                    title="Supprimer définitivement ce document"
-                  >
+                  <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerDocumentActuel} className="bg-red-600 hover:bg-red-700 text-white font-bold px-1.5 py-1 rounded text-[8px]" title="Supprimer">
                     🗑️ Suppr.
                   </button>
                 )}
               </div>
               
               <div className="flex items-center gap-1 shrink-0">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-1.5 py-1 rounded text-[8px] whitespace-nowrap">🖨️ Imp.</button>
+                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-1.5 py-1 rounded text-[8px]">🖨️ Imp.</button>
                 
                 {!documentEnLectureSeule && ((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
                   <button 
@@ -2126,7 +1971,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         <div className="bg-white border rounded-xl overflow-hidden shadow-2xs space-y-2">
           <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]">
             <span className="font-extrabold uppercase text-slate-800">
-              {ongletPrincipal === 'ACHATS' ? 'Achats & Entrées Enregistrés' : 'Mouvements Internes Enregistrés'} [{moduleActuel}] ({documentsAffiches.length} / {documentsTries.length})
+              {ongletPrincipal === 'ACHATS' ? 'Achats Enregistrés' : 'Mouvements Enregistrés'} [{moduleActuel}] ({documentsAffiches.length} / {documentsTries.length})
             </span>
             <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-1.5 py-0.5 rounded font-bold`}>{documentsTries.length}</span>
           </div>
@@ -2134,60 +1979,34 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           <div className="px-2 pt-1">
             <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200 space-y-1.5">
               <div className="flex justify-between items-center">
-                <span className="font-black text-[8.5px] text-slate-700 uppercase">🔍 FILTRER LES DOCUMENTS</span>
+                <span className="font-black text-[8.5px] text-slate-700 uppercase">🔍 FILTRES</span>
                 {(filtreDateDebut || filtreDateFin || filtrePartenaire || filtreLivreur) && (
-                  <button 
-                    type="button" 
-                    onClick={() => { setFiltreDateDebut(''); setFiltreDateFin(''); setFiltrePartenaire(''); setFiltreLivreur(''); }} 
-                    className="text-[8px] text-orange-600 font-bold underline hover:text-orange-700"
-                  >
-                    Réinitialiser les filtres
+                  <button type="button" onClick={() => { setFiltreDateDebut(''); setFiltreDateFin(''); setFiltrePartenaire(''); setFiltreLivreur(''); }} className="text-[8px] text-orange-600 font-bold underline">
+                    Réinitialiser
                   </button>
                 )}
               </div>
               <div className="grid grid-cols-4 gap-1.5 items-end">
                 <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Date début</label>
-                  <input 
-                    type="date" 
-                    value={filtreDateDebut} 
-                    onChange={(e) => setFiltreDateDebut(e.target.value)} 
-                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" 
-                  />
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Début</label>
+                  <input type="date" value={filtreDateDebut} onChange={(e) => setFiltreDateDebut(e.target.value)} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" />
                 </div>
                 <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Date fin</label>
-                  <input 
-                    type="date" 
-                    value={filtreDateFin} 
-                    onChange={(e) => setFiltreDateFin(e.target.value)} 
-                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" 
-                  />
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Fin</label>
+                  <input type="date" value={filtreDateFin} onChange={(e) => setFiltreDateFin(e.target.value)} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" />
                 </div>
                 <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Partenaire / Dépôt</label>
-                  <button
-                    type="button"
-                    onClick={() => { setRechercheFiltreModal(''); setModalFiltrePartenaireOuvert(true); }}
-                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] text-left truncate flex justify-between items-center"
-                  >
-                    <span className="truncate">
-                      {filtrePartenaire ? (depots.find(d => String(d.id) === String(filtrePartenaire))?.nom_depot || filtrePartenaire) : 'Tous'}
-                    </span>
-                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
+                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Partenaire</label>
+                  <button type="button" onClick={() => { setRechercheFiltreModal(''); setModalFiltrePartenaireOuvert(true); }} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] text-left truncate flex justify-between items-center">
+                    <span className="truncate">{filtrePartenaire ? (depots.find(d => String(d.id) === String(filtrePartenaire))?.nom_depot || filtrePartenaire) : 'Tous'}</span>
+                    <span className="text-slate-400 text-[7px]">🔍</span>
                   </button>
                 </div>
                 <div>
                   <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">{libelleLivreur}</label>
-                  <button
-                    type="button"
-                    onClick={() => { setRechercheFiltreModal(''); setModalFiltreLivreurOuvert(true); }}
-                    className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] uppercase text-left truncate flex justify-between items-center"
-                  >
-                    <span className="truncate">
-                      {filtreLivreur ? (emplacements.find(e => String(e.id) === String(filtreLivreur))?.nom_emplacement || emplacements.find(e => String(e.id) === String(filtreLivreur))?.code_emplacement || filtreLivreur) : 'Tous'}
-                    </span>
-                    <span className="text-slate-400 shrink-0 text-[7px]">🔍</span>
+                  <button type="button" onClick={() => { setRechercheFiltreModal(''); setModalFiltreLivreurOuvert(true); }} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] uppercase text-left truncate flex justify-between items-center">
+                    <span className="truncate">{filtreLivreur ? (emplacements.find(e => String(e.id) === String(filtreLivreur))?.nom_emplacement || filtreLivreur) : 'Tous'}</span>
+                    <span className="text-slate-400 text-[7px]">🔍</span>
                   </button>
                 </div>
               </div>
@@ -2198,19 +2017,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <table className="w-full text-left text-[9.5px]">
               <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
                 <tr>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° DOC</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('referenceDoc')} className="p-1.5 cursor-pointer">MOTIF / RÉF</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('depotNom')} className="p-1.5 cursor-pointer">DÉPÔT</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('depotDestNom')} className="p-1.5 cursor-pointer">DESTINATION</th>
-                  <th onClick={() => !enTrainDeSauvegarder && gererTri('operateur')} className="p-1.5 cursor-pointer">OPÉRATEUR</th>
+                  <th onClick={() => gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
+                  <th onClick={() => gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° DOC</th>
+                  <th onClick={() => gererTri('referenceDoc')} className="p-1.5 cursor-pointer">MOTIF</th>
+                  <th onClick={() => gererTri('depotNom')} className="p-1.5 cursor-pointer">DÉPÔT</th>
+                  <th onClick={() => gererTri('depotDestNom')} className="p-1.5 cursor-pointer">DEST</th>
+                  <th onClick={() => gererTri('operateur')} className="p-1.5 cursor-pointer">USER</th>
                 </tr>
               </thead>
               <tbody className="divide-y text-[9.5px]">
                 {documentsAffiches.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="p-4 text-center text-slate-400 font-bold">Aucun document ne correspond à vos critères de filtre.</td>
-                  </tr>
+                  <tr><td colSpan="6" className="p-4 text-center text-slate-400 font-bold">Aucun document trouvé.</td></tr>
                 ) : (
                   documentsAffiches.map((doc, idx) => (
                     <tr key={idx} onClick={() => !enTrainDeSauvegarder && ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
@@ -2229,13 +2046,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
           {limiteDocuments < documentsTries.length && (
             <div className="text-center pt-2 pb-3 px-2">
-              <button
-                type="button"
-                disabled={enTrainDeSauvegarder}
-                onClick={() => setLimiteDocuments(prev => prev + 20)}
-                className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-[10px] transition shadow-xs border border-slate-300 w-full"
-              >
-                📥 Charger 20 documents de plus ({documentsTries.length - limiteDocuments} restants)
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLimiteDocuments(prev => prev + 20)} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-[10px] w-full">
+                📥 Charger plus ({documentsTries.length - limiteDocuments} restants)
               </button>
             </div>
           )}
@@ -2245,26 +2057,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       {modalFiltrePartenaireOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-              <h4 className="font-black text-slate-900 uppercase text-xs">FILTRER PAR PARTENAIRE / DÉPÔT</h4>
+            <div className="flex justify-between items-center border-b pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">PARTENAIRE</h4>
               <button type="button" onClick={() => setModalFiltrePartenaireOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
             </div>
-            <input
-              type="text"
-              value={rechercheFiltreModal}
-              onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())}
-              placeholder="RECHERCHER..."
-              autoFocus
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs"
-            />
+            <input type="text" value={rechercheFiltreModal} onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border rounded-xl p-2 font-black text-xs" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2">
-              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">
-                -- Tous les partenaires --
-              </div>
+              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuvert(false); }} className="col-span-2 p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
               {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheFiltreModal)).map(d => (
-                <div key={d.id} onClick={() => { setFiltrePartenaire(d.id); setModalFiltrePartenaireOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">
-                  {d.nom_depot || d.nom}
-                </div>
+                <div key={d.id} onClick={() => { setFiltrePartenaire(d.id); setModalFiltrePartenaireOuvert(false); }} className="p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{d.nom_depot || d.nom}</div>
               ))}
             </div>
           </div>
@@ -2274,31 +2075,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       {modalFiltreLivreurOuvert && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-              <h4 className="font-black text-slate-900 uppercase text-xs">FILTRER PAR {libelleLivreur.toUpperCase()}</h4>
+            <div className="flex justify-between items-center border-b pb-2">
+              <h4 className="font-black text-slate-900 uppercase text-xs">{libelleLivreur.toUpperCase()}</h4>
               <button type="button" onClick={() => setModalFiltreLivreurOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
             </div>
-            <input
-              type="text"
-              value={rechercheFiltreModal}
-              onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())}
-              placeholder={`RECHERCHER UN ${libelleLivreur.toUpperCase()}...`}
-              autoFocus
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs"
-            />
+            <input type="text" value={rechercheFiltreModal} onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border rounded-xl p-2 font-black text-xs" />
             <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2">
-              <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuvert(false); }} className="col-span-2 p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">
-                -- Tous les {libelleLivreur.toLowerCase()}s --
-              </div>
-              {emplacements.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheFiltreModal)).map((emp) => {
-                const nomEmp = emp.nom_emplacement || emp.code_emplacement || '';
-                return (
-                  <div key={emp.id} onClick={() => { setFiltreLivreur(emp.id); setModalFiltreLivreurOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition cursor-pointer flex flex-col justify-between shadow-2xs bg-white">
-                    <span className="font-black text-xs text-slate-900 uppercase truncate">{nomEmp}</span>
-                    {emp.responsable_emplacement && <span className="text-[9px] text-slate-500 font-bold mt-0.5">{emp.responsable_emplacement}</span>}
-                  </div>
-                );
-              })}
+              <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuvert(false); }} className="col-span-2 p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
+              {emplacements.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheFiltreModal)).map((emp) => (
+                <div key={emp.id} onClick={() => { setFiltreLivreur(emp.id); setModalFiltreLivreurOuvert(false); }} className="p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</div>
+              ))}
             </div>
           </div>
         </div>
@@ -2306,55 +2092,32 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
       {modalMessage && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
-            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 text-orange-600 text-xl font-black">
-              {modalMessage.type === 'erreur' ? '⚠️' : modalMessage.type === 'succès' ? '✅' : 'ℹ️'}
-            </div>
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 text-orange-600 text-xl font-black">ℹ️</div>
             <div className="space-y-1">
               <h3 className="font-black text-slate-900 text-sm uppercase">{modalMessage.titre}</h3>
               <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalMessage.texte}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setModalMessage(null)}
-              className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
-            >
-              OK
-            </button>
+            <button type="button" onClick={() => setModalMessage(null)} className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl">OK</button>
           </div>
         </div>
       )}
 
       {modalConfirmation && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
-            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 text-red-600 text-xl font-black">
-              ❓
-            </div>
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 text-red-600 text-xl font-black">❓</div>
             <div className="space-y-1">
               <h3 className="font-black text-slate-900 text-sm uppercase">{modalConfirmation.titre}</h3>
               <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalConfirmation.texte}</p>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setModalConfirmation(null)}
-                className="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xs uppercase rounded-xl transition"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={modalConfirmation.onConfirm}
-                className="py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
-              >
-                Confirmer
-              </button>
+              <button type="button" onClick={() => setModalConfirmation(null)} className="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xs uppercase rounded-xl">Annuler</button>
+              <button type="button" onClick={modalConfirmation.onConfirm} className="py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase rounded-xl">Confirmer</button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

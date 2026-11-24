@@ -53,11 +53,16 @@ export const localSync = {
         
         let error = null;
 
-        // Fonction de nettoyage approfondi des IDs temporaires (local_ ou temp_)
+        // Fonction de nettoyage approfondi des IDs temporaires (local_ ou temp_) et des champs obsolètes
         const nettoyerPayload = (obj) => {
           if (!obj || typeof obj !== 'object') return obj;
           const propre = { ...obj };
           
+          // Supprime l'ancien champ prix_unitaire si présent sur mouvements_stock pour éviter l'erreur de cache
+          if (table === 'mouvements_stock' && 'prix_unitaire' in propre) {
+            delete propre.prix_unitaire;
+          }
+
           Object.keys(propre).forEach(key => {
             const val = propre[key];
             if (val && (String(val).startsWith('local_') || String(val).startsWith('temp_'))) {
@@ -98,9 +103,18 @@ export const localSync = {
             error.message.includes('Action interdite')
           );
 
+          // Vérification si l'erreur est liée à une colonne absente du cache de schéma (ex: schema cache)
+          const estErreurSchema = error.message && (
+            error.message.includes('schema cache') || 
+            error.code === 'PGRST204'
+          );
+
           if (estErreurVerrouillage) {
             // Transforme l'erreur rouge en simple avertissement propre pour éviter de saturer la console
             console.warn(`⚠️ Synchronisation rejetée (journée clôturée et verrouillée) sur la table ${table} :`, error.message);
+          } else if (estErreurSchema) {
+            // Ignore et élimine de la queue les éléments obsolètes touchant une colonne inexistante
+            console.warn(`⚠️ Élément de synchronisation ignoré (colonne obsolète absente du schéma) sur ${table} :`, error.message);
           } else {
             // Pour les autres types d'erreurs (réseau, etc.), on garde l'affichage en erreur
             console.error(`Erreur sync table ${table}:`, error.message);

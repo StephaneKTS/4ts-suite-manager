@@ -670,7 +670,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         }
       }
 
-      // Mise à jour optimisée en arrière-plan
       supabase
         .from('commandes_livraison_en_tete')
         .update({ statut: nouveauStatut, statut_commande: nouveauStatut })
@@ -1042,7 +1041,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const napGlobal = parseFloat(montantSaisi) || 0;
 
-  const ouvrirCommandePourModification = (cmd) => {
+  const ouvrirCommandePourModification = async (cmd) => {
     const dateCmdStr = cmd.date_commande || dateDuJourStr;
     const estVerrouille = dateCmdStr < dateDuJourStr;
 
@@ -1068,7 +1067,20 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       if (cmd.id_depot) setDepotId(cmd.id_depot);
     }
 
-    const lignesInit = lignesCommandesMap[cmd.id] || [];
+    let lignesInit = lignesCommandesMap[cmd.id] || [];
+    if (lignesInit.length === 0) {
+      try {
+        const { data: resLignes } = await supabase
+          .from('commandes_livraison_lignes')
+          .select('*')
+          .eq('id_commande', cmd.id);
+        if (resLignes && resLignes.length > 0) {
+          lignesInit = resLignes;
+          setLignesCommandesMap(prev => ({ ...prev, [cmd.id]: resLignes }));
+        }
+      } catch (e) {}
+    }
+
     setLignesSaisies(lignesInit);
 
     const numClean = cmd.numero_commande ? cmd.numero_commande.replace('CMD-', '') : '1';
@@ -1088,28 +1100,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     });
 
     setVueActive('CREATION');
-
-    supabase
-      .from('commandes_livraison_lignes')
-      .select('*')
-      .eq('id_commande', cmd.id)
-      .then(({ data: lignesData, error }) => {
-        if (!error && lignesData && lignesData.length > 0) {
-          const lignesFraiches = lignesData.map(l => ({
-            id_article: l.id_article,
-            designation: l.designation,
-            quantite: l.quantite,
-            prix_unitaire: l.prix_unitaire
-          }));
-          setLignesCommandesMap(prev => ({ ...prev, [cmd.id]: lignesFraiches }));
-          setLignesSaisies(actuelles => {
-            if (actuelles.length === 0 && lignesFraiches.length > 0) {
-              return lignesFraiches;
-            }
-            return actuelles;
-          });
-        }
-      }).catch(() => {});
   };
 
   const supprimerCommandeActuelle = async () => {
@@ -1130,42 +1120,22 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     setSauvegardeEnCours(true);
     try {
-      const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'LIVRÉ';
-      const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const etaitLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
-      const partObj = partenaires.find(p => String(p.id) === String(commandeEnEdition.id_partenaire));
-      const estSansStockage = !partObj || (partObj.statut_stockage || partObj.statut || '').toString().trim().toUpperCase() === 'SANS_STOCKAGE';
+      const numeroComplet = commandeEnEdition.numero_commande;
 
-      if (!estSansStockage && etaitLivre) {
-        const estSuperviseurCmd = estUnSuperviseur(commandeEnEdition.vendeur_livreur);
-        const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(commandeEnEdition.vendeur_livreur);
-        const lignesCmd = lignesCommandesMap[commandeEnEdition.id] || [];
-        const depotRestitution = commandeEnEdition.id_depot || (depotId !== 'AUCUN_DEPOT' ? depotId : (partObj?.id_depot || null));
-
-        lignesCmd.forEach(item => {
-          const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
-          const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
-
-          if (estSuiviArticle !== false && estSuiviArticle !== 0) {
-            const payloadRestitution = {
-              id_entreprise: currentEntId,
-              module: moduleActuel,
-              type_mouvement: 'ENTREE',
-              id_depot_source: null,
-              id_emplacement_source: null,
-              id_depot_destination: depotRestitution,
-              id_emplacement_destination: empIdTrouve,
-              id_article: parseInt(item.id_article),
-              quantite: item.quantite,
-              motif_remarque: `RESTITUTION STOCK SUPPRESSION ${commandeEnEdition.numero_commande}`,
-              created_at: `${commandeEnEdition.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
-            };
-            supabase.from('mouvements_stock').insert([payloadRestitution]).then(({ error: errRestit }) => {
-              if (errRestit) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
+      supabase
+        .from('mouvements_stock')
+        .delete()
+        .eq('id_entreprise', currentEntId)
+        .eq('module', moduleActuel)
+        .ilike('motif_remarque', `%${numeroComplet}%`)
+        .then(({ error: errMvt }) => {
+          if (errMvt) {
+            localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { 
+              id_entreprise: currentEntId, 
+              motif_remarque: numeroComplet 
             });
           }
         });
-      }
 
       supabase.from('commandes_livraison_lignes').delete().eq('id_commande', commandeEnEdition.id).then(({ error: errLignes }) => {
         if (errLignes) localSync.ajouterFileAttente('DELETE', 'commandes_livraison_lignes', { id_commande: commandeEnEdition.id });
@@ -1179,7 +1149,11 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setCommandes(commandesMaj);
       localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, commandesMaj);
 
-      setModalDoublonMessage('Commande supprimée avec succès.');
+      const mouvementsMaj = mouvements.filter(m => !(m.motif_remarque && m.motif_remarque.includes(numeroComplet)));
+      setMouvements(mouvementsMaj);
+      localSync.sauvegarderDonneesLocales(`mouvements_stock_${currentEntId}`, mouvementsMaj);
+
+      setModalDoublonMessage('Commande et mouvements de stock associés supprimés avec succès.');
       setNumeroCommande('1');
       setIdPartenaire('');
       setDepotId('AUCUN_DEPOT');
@@ -1207,7 +1181,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   };
 
-  // --- FONCTION DE SAUVEGARDE ULTRA RAPIDE ET OPTIMISÉE ---
   const sauvegarderCommande = async (e) => {
     if (e) e.preventDefault();
     if (sauvegardeEnCours || documentEnLectureSeule) return;
@@ -1327,7 +1300,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const etaitDejaLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
 
-        // Requêtes non bloquantes en arrière-plan pour la modification
         supabase.from('commandes_livraison_en_tete').update(payload).eq('id', commandeEnEdition.id).then(({ error: errUp }) => {
           if (errUp) localSync.ajouterFileAttente('UPDATE', 'commandes_livraison_en_tete', { ...payload, id: commandeEnEdition.id });
         });
@@ -1447,7 +1419,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       setModalConfirmationOuverte(false);
       setModalPostSuccesOuverte(true);
       
-      // Rafraîchissement asynchrone des données en arrière-plan
       chargerDonnees();
     } catch (err) {
       setModalDoublonMessage('Erreur technique : ' + (err.message || err));
@@ -1730,9 +1701,9 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
       return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     } else if (colonneTri === 'article') {
       const lignesA = lignesCommandesMap[a.id] || [];
-      valA = lignesA.length > 0 ? lignesA.map(l => `${l.designation} x${l.quantite}`).join(', ') : '';
+      valA = lignesA.length > 0 ? lignesA.map(l => `${l.designation} x${l.quantite}`).join(', ') : (a.nature_colis || '');
       const lignesB = lignesCommandesMap[b.id] || [];
-      valB = lignesB.length > 0 ? lignesB.map(l => `${l.designation} x${l.quantite}`).join(', ') : '';
+      valB = lignesB.length > 0 ? lignesB.map(l => `${l.designation} x${l.quantite}`).join(', ') : (b.nature_colis || '');
       if (valA !== valB) return ordreTri === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
       return extraireNumero(a.numero_commande) - extraireNumero(b.numero_commande);
     } else if (colonneTri === 'montant') {
@@ -2380,6 +2351,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                                 <span className="text-slate-800 font-bold text-[8px]">
                                   📍 <strong className="text-slate-900">{cmd.point_a}</strong> ➔ <strong className="text-orange-600">{cmd.adresse_livraison}</strong>
                                 </span>
+                              ) : cmd.nature_colis ? (
+                                <span className="text-blue-700 font-bold text-[8px]">📦 {cmd.nature_colis}</span>
                               ) : (
                                 <span className="text-slate-400 italic">Sans stockage</span>
                               )}
@@ -3337,30 +3310,34 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center gap-1.5 pt-0.5 text-[8.5px]">
-                      <div className="text-slate-600 font-medium truncate">
-                        {lignesCmd.length > 0 ? (
-                          <div className="flex flex-wrap gap-0.5 truncate">
-                            {lignesCmd.map((l, idx) => (
-                              <span key={idx} className="bg-slate-100 text-slate-800 font-bold px-1 py-0.2 rounded text-[8px] truncate max-w-[120px]">
-                                {l.designation} <span className="text-orange-600 font-black">x{l.quantite}</span>
-                              </span>
-                            ))}
-                          </div>
-                        ) : cmd.nature_colis ? (
-                          <span className="text-blue-700 font-bold truncate">📦 {cmd.nature_colis}</span>
-                        ) : (
-                          <span className="text-slate-400 italic">Aucun article</span>
-                        )}
-                      </div>
+                    {/* SECTION ARTICLES MODIFIÉE : Affichage vertical complet sans coupure */}
+                    <div className="pt-0.5 text-[8.5px]">
+                      {lignesCmd.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                          {lignesCmd.map((l, idx) => (
+                            <div key={idx} className="bg-slate-50 border border-slate-100 text-slate-800 font-bold px-1.5 py-0.5 rounded text-[8px] flex justify-between items-center">
+                              <span className="uppercase text-slate-900">{l.designation}</span>
+                              <span className="text-orange-600 font-black shrink-0 ml-2">x{l.quantite}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : cmd.nature_colis ? (
+                        <span className="text-blue-700 font-bold block">📦 {cmd.nature_colis}</span>
+                      ) : cmd.point_a ? (
+                        <span className="text-slate-800 font-bold block">📍 {cmd.point_a} ➔ {cmd.adresse_livraison}</span>
+                      ) : (
+                        <span className="text-slate-400 italic block">Aucun article</span>
+                      )}
+                    </div>
 
+                    <div className="flex justify-end items-center gap-1.5 pt-0.5 text-[8.5px]">
                       {cmd.numero_client && (
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <a
                             href={`https://wa.me/${cmd.numero_client.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 px-1 py-0.2 rounded text-[8px] font-black transition flex items-center gap-0.5 shadow-2xs"
+                            className="bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 px-1.5 py-0.5 rounded text-[8px] font-black transition flex items-center gap-0.5 shadow-2xs"
                             title={`WhatsApp ${cmd.numero_client}`}
                           >
                             <span>💬</span>
@@ -3371,7 +3348,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                             onClick={() => {
                               setCommandesAppelees(prev => ({ ...prev, [cmd.id]: true }));
                             }}
-                            className={`font-mono px-1 py-0.2 rounded border flex items-center gap-0.5 transition shadow-sm text-[8.5px] font-black ${styleNumero} ${
+                            className={`font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 transition shadow-sm text-[8.5px] font-black ${styleNumero} ${
                               estEnAttente 
                                 ? (!dejaAppele ? 'bg-rose-50 border-rose-300 hover:bg-rose-100' : 'bg-blue-50 border-blue-300 hover:bg-blue-100')
                                 : 'bg-slate-100 border-slate-200 hover:bg-slate-200'
