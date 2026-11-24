@@ -270,7 +270,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
 
       const mapUniques = new Map();
       rawUsers.forEach((u) => {
-        const cleUnique = (u.nom_complet || '').trim().toUpperCase() + '_' + (u.prenom || '').trim().toUpperCase();
+        const cleUnique = u.id ? String(u.id) : ((u.nom_complet || '').trim().toUpperCase() + '_' + (u.prenom || '').trim().toUpperCase());
         if (!mapUniques.has(cleUnique) || (u.module || '').toUpperCase() === moduleActuel) {
           mapUniques.set(cleUnique, u);
         }
@@ -550,37 +550,16 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
         modules_cibles: modulesPayload
       };
 
-      const { data: existingRecords } = await supabase
-        .from('utilisateurs')
-        .select('id, module')
-        .eq('id_entreprise', entrepriseId)
-        .eq('nom_complet', nomNomCollab);
+      if (userEnEdition && userEnEdition.id) {
+        // --- MISE À JOUR EXACTE PAR ID (CORRECTION PRINCIPALE) ---
+        const { error: errUpd } = await supabase
+          .from('utilisateurs')
+          .update(basePayload)
+          .eq('id', userEnEdition.id);
 
-      for (const modObj of MODULES_DISPONIBLES) {
-        const modCible = modObj.id;
-        const doitEtreActif = modulesPayload.includes(modCible);
-        const recordTrouve = existingRecords?.find(r => (r.module || '').toUpperCase() === modCible);
-
-        if (doitEtreActif) {
-          if (recordTrouve) {
-            await supabase
-              .from('utilisateurs')
-              .update({ ...basePayload, module: modCible })
-              .eq('id', recordTrouve.id);
-          } else {
-            await supabase
-              .from('utilisateurs')
-              .insert([{ ...basePayload, module: modCible }]);
-          }
-        } else if (recordTrouve) {
-          await supabase
-            .from('utilisateurs')
-            .delete()
-            .eq('id', recordTrouve.id);
-        }
-      }
-
-      if (!userEnEdition && (!existingRecords || existingRecords.length === 0)) {
+        if (errUpd) throw errUpd;
+      } else {
+        // --- CRÉATION DE NOUVEAUX ENREGISTREMENTS PAR MODULE ---
         for (const modCible of modulesPayload) {
           await supabase.from('utilisateurs').insert([{ ...basePayload, module: modCible }]);
         }
@@ -639,7 +618,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
     }
 
     const lignesGlobalesUser = utilisateursBruts.filter(
-      u => (u.nom_complet || '').trim().toUpperCase() === (user.nom_complet || '').trim().toUpperCase()
+      u => u.id === user.id || (u.nom_complet || '').trim().toUpperCase() === (user.nom_complet || '').trim().toUpperCase()
     );
     
     lignesGlobalesUser.forEach(l => {
@@ -708,16 +687,7 @@ export default function GestionUtilisateurs({ entrepriseId = '4TS-TEST', isDarkM
       onConfirmer: async () => {
         setEnTrainDeSauvegarder(true);
         try {
-          const nomCollab = (userEnEdition.nom_complet || '').trim();
-          
-          let queryDel = supabase.from('utilisateurs').delete().eq('id_entreprise', entrepriseId);
-          if (nomCollab) {
-            queryDel = queryDel.or(`id.eq.${userEnEdition.id},nom_complet.eq.${nomCollab}`);
-          } else {
-            queryDel = queryDel.eq('id', userEnEdition.id);
-          }
-
-          const { error } = await queryDel;
+          const { error } = await supabase.from('utilisateurs').delete().eq('id', userEnEdition.id);
           if (error) throw error;
 
           setUtilisateurs(prev => prev.filter(u => u.id !== userEnEdition.id));
