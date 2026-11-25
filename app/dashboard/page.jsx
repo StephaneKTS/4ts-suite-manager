@@ -65,6 +65,9 @@ function DashboardContent() {
   const [moduleActif, setModuleActif] = useState(null);
   const [ongletNavigation, setOngletNavigation] = useState('accueil');
   
+  // 🎯 État pour le compteur en temps réel des commandes QR en attente sur la tuile d'accueil
+  const [nombreCommandesEnAttente, setNombreCommandesEnAttente] = useState(0);
+
   // 🎯 CORRECTION CLEF : Lecture prioritaire du stockage local pour éviter l'écrasement par la base
   const [moduleCourant, setModuleCourant] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -196,6 +199,21 @@ function DashboardContent() {
     }
   };
 
+  // Fonction pour actualiser le compteur des commandes en attente depuis la base
+  const rafraichirCompteurEnAttente = async (idEnt) => {
+    try {
+      const { data, error } = await supabase
+        .from('commandes_clients_qr')
+        .select('id, statut')
+        .eq('id_entreprise', idEnt)
+        .eq('statut', 'EN_ATTENTE');
+      
+      if (!error && data) {
+        setNombreCommandesEnAttente(data.length);
+      }
+    } catch (e) {}
+  };
+
   const notifierNouvelleCommandeGlobal = (cmd) => {
     const nomClientPropre = (cmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
     const numeroElegant = formaterNumeroElegant(cmd.numero_commande);
@@ -204,6 +222,10 @@ function DashboardContent() {
     if (audioActiveGlobal) {
       declencherVibrationGlobal();
       ajouterAlerteCompleteGlobal(messageVocal);
+    }
+    // Met à jour instantanément le compteur sur la tuile d'accueil
+    if (entrepriseId) {
+      rafraichirCompteurEnAttente(entrepriseId);
     }
   };
 
@@ -220,10 +242,12 @@ function DashboardContent() {
       try {
         const { data } = await supabase
           .from('commandes_clients_qr')
-          .select('id')
+          .select('id, statut')
           .eq('id_entreprise', entrepriseId);
         if (data) {
           data.forEach(c => idsCommandesConnuesGlobal.current.add(c.id));
+          const enAttenteInit = data.filter(c => c.statut === 'EN_ATTENTE').length;
+          setNombreCommandesEnAttente(enAttenteInit);
         }
       } catch (e) {}
     }
@@ -241,17 +265,21 @@ function DashboardContent() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'commandes_clients_qr',
           filter: `id_entreprise=eq.${entrepriseId}`
         },
         (payload) => {
-          const nouvelleCmd = payload.new;
-          if (nouvelleCmd && !idsCommandesConnuesGlobal.current.has(nouvelleCmd.id)) {
-            idsCommandesConnuesGlobal.current.add(nouvelleCmd.id);
-            notifierNouvelleCommandeGlobal(nouvelleCmd);
+          if (payload.eventType === 'INSERT') {
+            const nouvelleCmd = payload.new;
+            if (nouvelleCmd && !idsCommandesConnuesGlobal.current.has(nouvelleCmd.id)) {
+              idsCommandesConnuesGlobal.current.add(nouvelleCmd.id);
+              notifierNouvelleCommandeGlobal(nouvelleCmd);
+            }
           }
+          // Actualise le compteur à chaque modification ou suppression
+          rafraichirCompteurEnAttente(entrepriseId);
         }
       )
       .subscribe();
@@ -263,7 +291,7 @@ function DashboardContent() {
           .select('*')
           .eq('id_entreprise', entrepriseId)
           .order('created_at', { ascending: false })
-          .limit(5);
+          .limit(10);
 
         if (data) {
           data.forEach(cmd => {
@@ -277,6 +305,7 @@ function DashboardContent() {
               }
             }
           });
+          rafraichirCompteurEnAttente(entrepriseId);
         }
       } catch (e) {}
     }, 4000);
@@ -368,7 +397,6 @@ function DashboardContent() {
           }
         }
 
-        // 🔍 RÉCUPÉRATION DIRECTE ET MISE À JOUR DU NOM DEPUIS LA TABLE UTILISATEURS
         if (utilisateurConnecte || emailConnecte) {
           const { data: userData } = await supabase
             .from('utilisateurs')
@@ -742,10 +770,10 @@ function DashboardContent() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* Indicateur visuel permanent du radar QR Code actif */}
+          {/* Indicateur visuel permanent du radar QR Code actif (Corrigé pour s'afficher aussi sur mobile) */}
           <div 
-            title="Radar de commandes QR actif en arrière-plan sur toutes les pages" 
-            className="hidden sm:flex items-center gap-1 bg-orange-500/10 border border-orange-500/30 px-2 py-1 rounded-lg text-[9px] font-black text-orange-400"
+            title="Radar de commandes QR actif en arrière-plan" 
+            className="flex items-center gap-1 bg-orange-500/10 border border-orange-500/30 px-2 py-1 rounded-lg text-[9px] font-black text-orange-400 shrink-0"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
             <span>Radar QR Actif</span>
@@ -756,13 +784,13 @@ function DashboardContent() {
           <button
             onClick={basculerTheme}
             title={isDarkMode ? "Passer en mode Jour" : "Passer en mode Nuit"}
-            className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition flex items-center gap-1 border shadow-2xs cursor-pointer ${
+            className={`px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-black transition flex items-center gap-1 border shadow-2xs cursor-pointer ${
               isDarkMode 
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30' 
                 : 'bg-slate-800 text-cyan-200 border-slate-700 hover:bg-slate-700'
             }`}
           >
-            <span>{isDarkMode ? '☀️ Jour' : '🌙 Nuit'}</span>
+            <span>{isDarkMode ? '☀️' : '🌙'}</span>
           </button>
 
           {(moduleActif || ongletNavigation !== 'accueil') ? (
@@ -991,8 +1019,15 @@ function DashboardContent() {
               {verifierPermission('commandes_clients_qr', estSuperAdmin) && (
                 <div 
                   onClick={() => setModuleActif('commandes_clients_qr')} 
-                  className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-orange-500/50`}
+                  className={`${cardClass} p-3 rounded-xl cursor-pointer transition flex flex-col items-center text-center space-y-1.5 group border-2 border-orange-500/50 relative`}
                 >
+                  {/* 🎯 COMPTEUR VISUEL DE COMMANDES QR EN ATTENTE SUR LA TUILE */}
+                  {nombreCommandesEnAttente > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full shadow-lg ring-2 ring-white animate-bounce">
+                      {nombreCommandesEnAttente}
+                    </span>
+                  )}
+
                   <span className="text-2xl group-hover:scale-110 transition">📱</span>
                   <span className="font-black text-[11px] sm:text-xs leading-tight text-orange-600">Commandes QR Code</span>
                 </div>
