@@ -231,7 +231,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setModalMessage({ texte, type, titre });
   };
 
-  // --- GESTION DES VERROUS MULTI-UTILISATEURS ---
+  // --- GESTION DES VERROUS STRICTS ET INSTANTANÉS ---
   const libererVerrouDoc = async (numeroDocUnique) => {
     if (!numeroDocUnique) return;
     try {
@@ -253,7 +253,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     try {
       const operateurActuel = obtenirNomOperateurConnecte();
       
-      // Vérifier si un autre utilisateur a un verrou actif (moins de 15 minutes)
+      // Vérifier si un autre utilisateur a déjà posé un verrou actif sur ce document
       const { data, error } = await supabase
         .from('verrous_documents')
         .select('*')
@@ -263,17 +263,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         .maybeSingle();
 
       if (data && data.utilisateur && data.utilisateur !== operateurActuel) {
-        const lockTime = new Date(data.updated_at).getTime();
-        const now = Date.now();
-        // Si le verrou date de moins de 15 minutes, on bloque l'accès
-        if (now - lockTime < 15 * 60 * 1000) {
-          afficherMessage(`Ce document est déjà ouvert et en cours de modification par ${data.utilisateur}. Accès refusé.`, 'erreur', 'Document verrouillé');
-          return false;
-        }
+        // Bloqué instantanément à la milliseconde près, sans délai d'attente
+        afficherMessage(`Ce document est actuellement ouvert et verrouillé par ${data.utilisateur}. Accès refusé.`, 'erreur', 'Document verrouillé');
+        return false;
       }
 
-      // Poser ou actualiser notre propre verrou
-      await supabase
+      // Poser immédiatement notre verrou exclusif
+      const { error: upsertError } = await supabase
         .from('verrous_documents')
         .upsert([{
           id_entreprise: entrepriseId,
@@ -283,10 +279,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           updated_at: new Date().toISOString()
         }], { onConflict: 'id_entreprise,module,numero_doc' });
 
+      if (upsertError) {
+        console.error('Erreur upsert verrou:', upsertError);
+      }
+
       return true;
     } catch (e) {
       console.error('Erreur acquisition verrou:', e);
-      return true; // En cas de souci réseau, on laisse passer pour ne pas bloquer l'activité
+      return true; 
     }
   };
 
@@ -1098,12 +1098,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const ouvrirDocumentDepuisListe = async (numeroDocUnique) => {
     if (enTrainDeSauvegarder) return;
 
-    // Vérifier et acquérir le verrou avant d'ouvrir
+    // Vérifier et acquérir le verrou instantanément
     const verrouAcquis = await acquerirVerrouDoc(numeroDocUnique);
-    if (!verrouAcquis) return; // Stoppé si déjà ouvert par quelqu'un d'autre
+    if (!verrouAcquis) return; // Stoppé et bloqué immédiatement si déjà ouvert par quelqu'un d'autre
 
     const lignesAssociees = mouvements.filter(m => m.motif_remarque === numeroDocUnique);
-    if (lignesAssociees.length === 0) return;
+    if (lignesAssociees.length === 0) {
+      await libererVerrouDoc(numeroDocUnique);
+      return;
+    }
     const premier = lignesAssociees[0];
     
     const docGroupeTrouve = documentsGroupes.find(d => String(d.numeroDocBrut) === String(numeroDocUnique));
