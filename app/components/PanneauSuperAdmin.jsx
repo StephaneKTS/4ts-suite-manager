@@ -1,16 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 import CentreNotificationSuperAdmin from './CentreNotificationSuperAdmin';
-
-const getSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-};
 
 const LISTE_MODULES_DISPONIBLES = ['BOUTIQUE', 'LIVRAISON', 'LOGISTIQUE', 'TONTINE'];
 
@@ -126,12 +118,10 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     setModalInfo({ ouverte: true, titre, message, type });
   };
 
-  // 🚀 CHARGEMENT INITIAL GLOBAL (PRÉCHARGEMENT EN ARRIÈRE-PLAN DES ENTREPRISES ET MODULES POUR ZÉRO LATENCE)
+  // 🚀 CHARGEMENT INITIAL GLOBAL
   useEffect(() => {
     const chargerDonneesSuperAdmin = async () => {
       try {
-        const supabase = getSupabaseClient();
-        
         const [configRes, tarifsRes, entreprisesRes, usersRes, modulesRes] = await Promise.all([
           supabase.from('configuration_globale').select('valeur').eq('cle', '4ts_contournement_cinetpay').maybeSingle(),
           supabase.from('configuration_globale').select('valeur').eq('cle', '4ts_tarifs_plateforme').maybeSingle(),
@@ -225,18 +215,34 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     chargerDonneesSuperAdmin();
   }, []);
 
-  // ⚡ ÉCOUTEUR TEMPS RÉEL (REALTIME SUPABASE) POUR LES TABLEAUX DYNAMIQUES
+  // ⚡ ÉCOUTEUR TEMPS RÉEL (REALTIME SUPABASE) CORRIGÉ
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    const canalRealtime = supabase
-      .channel('public:tableaux_dynamiques')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tableaux_dynamiques' }, (payload) => {
-        chargerTableauxSupabase();
-      })
-      .subscribe();
+    let canalRealtime = null;
+
+    try {
+      const nomCanalUnique = `tableaux_dynamiques_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      canalRealtime = supabase
+        .channel(nomCanalUnique)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'tableaux_dynamiques' },
+          () => {
+            chargerTableauxSupabase();
+          }
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("Erreur initialisation Realtime :", err);
+    }
 
     return () => {
-      supabase.removeChannel(canalRealtime);
+      if (canalRealtime) {
+        try {
+          supabase.removeChannel(canalRealtime);
+        } catch (e) {
+          // Ignorer si déjà nettoyé
+        }
+      }
     };
   }, []);
 
@@ -249,7 +255,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   const chargerTableauxSupabase = async () => {
     setChargementTableaux(true);
     try {
-      const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('tableaux_dynamiques')
         .select('*')
@@ -257,7 +262,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
 
       if (error) {
         console.error("Erreur Supabase tableaux_dynamiques :", error.message);
-        afficherMessageModal("Erreur Base de Données", "Impossible de charger les tableaux : " + error.message, "erreur");
         return;
       }
 
@@ -278,7 +282,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
       }
     } catch (err) {
       console.error("Erreur inattendue chargement tableaux :", err);
-      afficherMessageModal("Erreur", "Une erreur technique est survenue lors du chargement des tableaux.", "erreur");
     } finally {
       setChargementTableaux(false);
     }
@@ -288,7 +291,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     if (listeModulesSupabase.length > 0) return;
     setChargementModules(true);
     try {
-      const supabase = getSupabaseClient();
       const { data: modulesData, error: errModules } = await supabase
         .from('espaces_modules')
         .select('*')
@@ -312,8 +314,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
   const synchroniserModulesOfficiels = async () => {
     setInitialisationModulesEnCours(true);
     try {
-      const supabase = getSupabaseClient();
-
       const { data: existants } = await supabase.from('espaces_modules').select('*');
       if (existants) {
         for (const item of existants) {
@@ -394,7 +394,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     setConfirmModuleModal({ ouverte: false, idModule: null, nomModule: '', champ: '', valeurActuelle: true });
 
     try {
-      const supabase = getSupabaseClient();
       const nouveauStatut = !valeurActuelle;
 
       const { error } = await supabase
@@ -417,7 +416,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     if (listeEntreprises.length > 0) return;
     setChargementEntreprises(true);
     try {
-      const supabase = getSupabaseClient();
       const { data, error } = await supabase
         .from('entreprises')
         .select('*')
@@ -472,7 +470,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     if (idEnt) {
       setChargementUtilisateursEnt(true);
       try {
-        const supabase = getSupabaseClient();
         const [usersRes, rolesRes] = await Promise.all([
           supabase.from('utilisateurs').select('*').eq('id_entreprise', idEnt),
           supabase.from('roles').select('*').eq('id_entreprise', idEnt)
@@ -493,7 +490,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
 
   const basculerAccesUtilisateur = async (userId, statutActuel) => {
     try {
-      const supabase = getSupabaseClient();
       const nouveauStatutAcces = !statutActuel;
 
       const { error } = await supabase
@@ -518,7 +514,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     }
 
     try {
-      const supabase = getSupabaseClient();
       const { error } = await supabase
         .from('utilisateurs')
         .delete()
@@ -586,7 +581,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     if (!modificationsEntrepriseApportees) return;
     setChargementActionEntreprise(true);
     try {
-      const supabase = getSupabaseClient();
       const idEnt = donneesEdition.id_entreprise || donneesEdition.id;
       const primaryKeyCol = donneesEdition.id_entreprise ? 'id_entreprise' : 'id';
 
@@ -623,7 +617,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     setChargementActionEntreprise(true);
 
     try {
-      const supabase = getSupabaseClient();
       const idEnt = entrepriseSelectionnee.id_entreprise || entrepriseSelectionnee.id;
       const primaryKeyCol = entrepriseSelectionnee.id_entreprise ? 'id_entreprise' : 'id';
 
@@ -658,7 +651,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     setModeContournement(nouveauStatut);
 
     try {
-      const supabase = getSupabaseClient();
       await supabase
         .from('configuration_globale')
         .upsert([{ cle: '4ts_contournement_cinetpay', valeur: String(nouveauStatut) }], { onConflict: 'cle' });
@@ -725,7 +717,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
     setChargementTarifs(true);
 
     try {
-      const supabase = getSupabaseClient();
       const { error } = await supabase
         .from('configuration_globale')
         .upsert([{ cle: '4ts_tarifs_plateforme', valeur: tarifsConfig }], { onConflict: 'cle' });
@@ -1378,8 +1369,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
 
                     setChargementCreationTableau(true);
                     try {
-                      const supabase = getSupabaseClient();
-
                       if (tableauEnEditionId) {
                         const { error } = await supabase
                           .from('tableaux_dynamiques')
@@ -1482,7 +1471,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                             onClick={async () => {
                               if (window.confirm(`Voulez-vous supprimer définitivement le tableau "${tab.titre}" ?`)) {
                                 try {
-                                  const supabase = getSupabaseClient();
                                   const { error } = await supabase
                                     .from('tableaux_dynamiques')
                                     .delete()
@@ -1656,7 +1644,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                     }
 
                     try {
-                      const supabase = getSupabaseClient();
                       const { error } = await supabase
                         .from('tableaux_dynamiques')
                         .update({ lignes: nouvellesLignes })
@@ -1696,7 +1683,6 @@ export default function PanneauSuperAdmin({ isDarkMode = false }) {
                       });
 
                       try {
-                        const supabase = getSupabaseClient();
                         const { error } = await supabase
                           .from('tableaux_dynamiques')
                           .update({ lignes: lignesMisesAJour })
