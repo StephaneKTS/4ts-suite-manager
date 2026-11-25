@@ -56,7 +56,14 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const [rechercheModale, setRechercheModale] = useState('');
   const [nouveauMotifInput, setNouveauMotifInput] = useState('');
   const [motifsSauvegardes, setMotifsSauvegardes] = useState([]);
-  const [nouveauCompteInput, setNouveauCompteInput] = useState('');
+  
+  // --- ÉTATS POUR LA CRÉATION AVANCÉE D'UN COMPTE (PLAN COMPTABLE) ---
+  const [afficherFormulaireNouveauCompte, setAfficherFormulaireNouveauCompte] = useState(false);
+  const [formNouveauCompte, setFormNouveauCompte] = useState({
+    nature: 'CHARGE',
+    numero_compte: '605007',
+    intitule: ''
+  });
 
   // --- FILTRE CAISSE POUR L'HISTORIQUE ---
   const [caisseHistoriqueId, setCaisseHistoriqueId] = useState('');
@@ -64,7 +71,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const ouvrirModaleSelection = (type) => {
     setRechercheModale('');
     setNouveauMotifInput('');
-    setNouveauCompteInput('');
+    setAfficherFormulaireNouveauCompte(false);
     setModaleSelection(type);
   };
 
@@ -72,21 +79,22 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     setModaleSelection(null);
     setRechercheModale('');
     setNouveauMotifInput('');
-    setNouveauCompteInput('');
+    setAfficherFormulaireNouveauCompte(false);
   };
 
-  // --- CRÉATION RAPIDE D'UN COMPTE (AVEC CONTRÔLE DE DUPLICATION) ---
-  const creerEtUtiliserNouveauCompte = async () => {
-    const intitule = (nouveauCompteInput || rechercheModale).trim().toUpperCase();
-    if (!intitule) {
-      afficherNotification('Champ requis', 'Veuillez saisir un intitulé de compte valide.', 'erreur');
+  // --- CRÉATION COMPLÈTE D'UN COMPTE DEPUIS LA MODALE ---
+  const enregistrerNouveauCompteComptable = async (e) => {
+    if (e) e.preventDefault();
+    const intituleClean = (formNouveauCompte.intitule || '').trim().toUpperCase();
+    const numeroClean = (formNouveauCompte.numero_compte || '').trim().toUpperCase();
+    const natureClean = (formNouveauCompte.nature || 'CHARGE').trim().toUpperCase();
+
+    if (!intituleClean) {
+      afficherNotification('Champ requis', "Veuillez saisir l'intitulé du compte.", 'erreur');
       return;
     }
-
-    // Vérification de la duplication (insensible à la casse et aux espaces superflus)
-    const compteExistant = comptes.find(c => (c.intitule_compte || '').trim().toUpperCase() === intitule);
-    if (compteExistant) {
-      afficherNotification('Duplication interdite', `Le compte "${intitule}" existe déjà dans ce module. Veuillez en choisir un autre ou le sélectionner directement.`, 'erreur');
+    if (!numeroClean) {
+      afficherNotification('Champ requis', "Veuillez saisir le numéro de code du compte.", 'erreur');
       return;
     }
 
@@ -94,16 +102,18 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        intitule_compte: intitule,
-        numero_compte: `CPT-${Math.floor(100 + Math.random() * 900)}`,
-        nature: 'GENERAL'
+        intitule_compte: intituleClean,
+        numero_compte: numeroClean,
+        nature: natureClean
       };
+
       const { data, error } = await supabase.from('comptes_comptables').insert([payload]).select().single();
       if (error) throw error;
+
       if (data) {
         setComptes(prev => [...prev, data]);
         selectionnerCompteSaisie(data.id);
-        afficherNotification('Succès', `Compte [${intitule}] créé et sélectionné avec succès !`, 'succes');
+        afficherNotification('Succès', `Compte [${numeroClean} - ${intituleClean}] créé et sélectionné avec succès !`, 'succes');
       }
     } catch (err) {
       afficherNotification('Erreur', 'Impossible de créer le compte : ' + err.message, 'erreur');
@@ -2201,14 +2211,137 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             </div>
 
             <div className="p-3.5 space-y-2.5 max-h-[75vh] overflow-y-auto">
-              <input
-                type="text"
-                autoFocus
-                placeholder="RECHERCHER..."
-                value={rechercheModale}
-                onChange={(e) => setRechercheModale(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-900 text-[11px] uppercase placeholder-slate-400 focus:outline-none focus:border-orange-500"
-              />
+
+              {/* CRÉATION COMPLÈTE D'UN COMPTE (PLAN COMPTABLE - STYLE INTERFACE DEMANDÉE) */}
+              {modaleSelection === 'compte_saisie' && afficherFormulaireNouveauCompte ? (
+                <form onSubmit={enregistrerNouveauCompteComptable} className="bg-orange-50/70 p-3.5 rounded-xl border border-orange-200 space-y-3">
+                  <div className="flex justify-between items-center border-b border-orange-200 pb-2">
+                    <h4 className="font-extrabold text-orange-900 text-[11px] uppercase">
+                      📂 NOUVEAU COMPTE (PLAN COMPTABLE)
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setAfficherFormulaireNouveauCompte(false)}
+                      className="text-slate-500 hover:text-slate-900 font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="block font-black text-slate-800 text-[9px] uppercase mb-1">Nature *</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setFormNouveauCompte({ ...formNouveauCompte, nature: 'CHARGE' })}
+                        className={`py-2 px-2 rounded-lg font-black text-[10px] uppercase transition border ${
+                          formNouveauCompte.nature === 'CHARGE'
+                            ? 'bg-red-600 text-white border-red-700 shadow-sm'
+                            : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                        }`}
+                      >
+                        🔴 Charge
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormNouveauCompte({ ...formNouveauCompte, nature: 'PRODUIT' })}
+                        className={`py-2 px-2 rounded-lg font-black text-[10px] uppercase transition border ${
+                          formNouveauCompte.nature === 'PRODUIT'
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                        }`}
+                      >
+                        🟢 Produit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormNouveauCompte({ ...formNouveauCompte, nature: 'GENERAL' })}
+                        className={`py-2 px-2 rounded-lg font-black text-[10px] uppercase transition border ${
+                          formNouveauCompte.nature === 'GENERAL'
+                            ? 'bg-slate-800 text-white border-slate-900 shadow-sm'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                        }`}
+                      >
+                        ⚪ Général
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-black text-slate-800 text-[9px] uppercase mb-1">N° Code (Modifiable) *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formNouveauCompte.numero_compte}
+                        onChange={(e) => setFormNouveauCompte({ ...formNouveauCompte, numero_compte: e.target.value.toUpperCase() })}
+                        className="w-full bg-white border border-orange-300 rounded-lg p-2 font-mono font-black text-orange-600 text-[10px] uppercase shadow-2xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-black text-slate-800 text-[9px] uppercase mb-1">Intitulé *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="EX: DÉPANNAGE MOTO..."
+                        value={formNouveauCompte.intitule}
+                        onChange={(e) => setFormNouveauCompte({ ...formNouveauCompte, intitule: e.target.value.toUpperCase() })}
+                        className="w-full bg-white border border-orange-300 rounded-lg p-2 font-black text-slate-900 text-[10px] uppercase shadow-2xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-orange-200">
+                    <button
+                      type="button"
+                      onClick={() => setAfficherFormulaireNouveauCompte(false)}
+                      className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-3.5 py-1.5 rounded-lg text-[10px]"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-4 py-1.5 rounded-lg text-[10px] shadow-2xs"
+                    >
+                      Enregistrer
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="RECHERCHER..."
+                    value={rechercheModale}
+                    onChange={(e) => setRechercheModale(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-900 text-[11px] uppercase placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                  />
+
+                  {/* BOUTON CRÉER UN NOUVEAU COMPTE DEPUIS LA SÉLECTION */}
+                  {modaleSelection === 'compte_saisie' && (
+                    <div className="bg-orange-50/70 p-2.5 rounded-xl border border-orange-200 flex items-center justify-between gap-2">
+                      <span className="font-black text-orange-900 text-[9px] uppercase">
+                        + CRÉER ET UTILISER UN NOUVEAU COMPTE :
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormNouveauCompte({
+                            nature: 'CHARGE',
+                            numero_compte: `605${Math.floor(100 + Math.random() * 900)}`,
+                            intitule: rechercheModale.trim().toUpperCase()
+                          });
+                          setAfficherFormulaireNouveauCompte(true);
+                        }}
+                        className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase shrink-0 shadow-2xs cursor-pointer"
+                      >
+                        CRÉER
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
 
               {/* CRÉATION INSTANTANÉE DE MOTIF */}
               {modaleSelection === 'motif_saisie' && (
@@ -2245,37 +2378,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                           fermerModaleSelection();
                         }
                       }}
-                      className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase shrink-0 shadow-2xs"
-                    >
-                      Créer
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* CRÉATION INSTANTANÉE DE COMPTE (AVEC BLOCAGE DE DUPLICATION) */}
-              {modaleSelection === 'compte_saisie' && (
-                <div className="bg-orange-50/70 p-2.5 rounded-xl border border-orange-200 space-y-1.5">
-                  <label className="block font-black text-orange-900 text-[9px] uppercase">
-                    ＋ Créer et utiliser un nouveau compte :
-                  </label>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="INTITULÉ DU COMPTE..."
-                      value={nouveauCompteInput}
-                      onChange={(e) => setNouveauCompteInput(e.target.value.toUpperCase())}
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          await creerEtUtiliserNouveauCompte();
-                        }
-                      }}
-                      className="flex-1 bg-white border border-orange-300 rounded-lg px-2.5 py-1.5 font-black text-slate-900 text-[10px] uppercase focus:outline-none focus:border-orange-600"
-                    />
-                    <button
-                      type="button"
-                      onClick={creerEtUtiliserNouveauCompte}
                       className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase shrink-0 shadow-2xs"
                     >
                       Créer
@@ -2336,7 +2438,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
               )}
 
               {/* CONTENU : COMPTE */}
-              {(modaleSelection === 'compte_saisie' || modaleSelection === 'compte_gl') && (
+              {(!afficherFormulaireNouveauCompte && (modaleSelection === 'compte_saisie' || modaleSelection === 'compte_gl')) && (
                 <div className="space-y-1.5">
                   {modaleSelection === 'compte_gl' && (
                     <div
