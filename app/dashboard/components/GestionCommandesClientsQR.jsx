@@ -9,6 +9,9 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const [filtreStatut, setFiltreStatut] = useState('TOUT');
   const [filtreDate, setFiltreDate] = useState('AUJOURDHUI');
   
+  // 🔒 Anti-double clic et verrouillage local par ID de commande en cours de traitement
+  const [idsEnCoursDeTraitement, setIdsEnCoursDeTraitement] = useState(new Set());
+  
   const [audioActive, setAudioActive] = useState(true);
   const [pushActif, setPushActif] = useState(false);
 
@@ -28,7 +31,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     numeroCmd: null
   });
 
-  // Nouveaux états pour les modales de confirmation Audio et Push (remplacement des alertes natives)
+  // États pour les modales de confirmation Audio, Push et Messages
   const [modalAudio, setModalAudio] = useState({ visible: false, actionVoulue: false });
   const [modalPush, setModalPush] = useState({ visible: false, actionVoulue: false });
   const [modalMessageInfo, setModalMessageInfo] = useState({ visible: false, titre: '', texte: '', type: 'info' });
@@ -62,11 +65,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       navigator.serviceWorker.ready.then(async (registration) => {
         try {
           const sub = await registration.pushManager.getSubscription();
-          if (sub && Notification.permission === 'granted') {
-            setPushActif(true);
-          } else {
-            setPushActif(false);
-          }
+          setPushActif(!!sub && Notification.permission === 'granted');
         } catch (e) {
           setPushActif(false);
         }
@@ -90,7 +89,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // Intercepte le clic sur le bouton Push pour ouvrir la modale de confirmation
   const demanderBasculementPush = () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       setModalMessageInfo({
@@ -132,7 +130,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         setModalMessageInfo({
           visible: true,
           titre: 'Permission Refusée',
-          texte: "Permission de notification refusée. Veuillez l'autoriser dans les paramètres du téléphone.",
+          texte: "Permission de notification refusée. Veuillez l'autoriser dans les paramètres.",
           type: 'erreur'
         });
         return;
@@ -167,7 +165,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       setModalMessageInfo({
         visible: true,
         titre: 'Notifications Activées',
-        texte: "🔔 Notifications push activées ! Votre téléphone est configuré pour sonner même en veille.",
+        texte: "🔔 Notifications push activées avec succès.",
         type: 'succes'
       });
     } catch (err) {
@@ -177,7 +175,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
-  // 🎯 GESTION INSTANTANÉE SANS TEMPS MORT
   const traiterFileDAbsolue = async () => {
     if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActive) {
       return;
@@ -188,7 +185,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
 
     try {
       if (tacheCourante.type === 'ALERTE_ET_VOIX') {
-        // Exécute le son et lance la voix immédiatement à la fin exacte du bip
         await executerSonFort();
         await executerVoix(tacheCourante.texte);
       }
@@ -213,28 +209,20 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         const audioCtx = new AudioContext();
-        
         if (audioCtx.state === 'suspended') {
           await audioCtx.resume();
         }
-        
-        // Bip court de 250ms pour enchaîner instantanément
         const dureeBipMs = 250;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-        
         gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dureeBipMs / 1000);
-        
         osc.connect(gain);
         gain.connect(audioCtx.destination);
-        
         osc.start(audioCtx.currentTime);
         osc.stop(audioCtx.currentTime + dureeBipMs / 1000);
-
         setTimeout(resolve, dureeBipMs);
       } catch (e) {
         resolve();
@@ -247,16 +235,13 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try {
           window.speechSynthesis.resume();
-          
           const utterance = new SpeechSynthesisUtterance(texte);
           utterance.lang = 'fr-FR';
-          utterance.rate = 1.0; // Vitesse fluide
+          utterance.rate = 1.0;
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
-          
           utterance.onend = () => resolve();
           utterance.onerror = () => resolve();
-
           window.speechSynthesis.speak(utterance);
         } catch (e) {
           resolve();
@@ -267,7 +252,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     });
   };
 
-  // Intercepte le clic sur le bouton Son pour ouvrir la modale de confirmation
   const demanderBasculementAudio = () => {
     setModalAudio({ visible: true, actionVoulue: !audioActive });
   };
@@ -275,7 +259,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
   const executerBasculementAudio = async () => {
     const nouvelEtat = modalAudio.actionVoulue;
     setModalAudio({ visible: false, actionVoulue: false });
-
     setAudioActive(nouvelEtat);
     localStorage.setItem('4ts_audio_active', nouvelEtat);
 
@@ -333,13 +316,15 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     }
   };
 
+  // 🚀 OPTIMISATION PERFORMANCES : Chargement paginé / limité pour éviter la lenteur avec des millions de lignes
   const chargerCommandesQR = async () => {
     try {
       const { data, error } = await supabase
         .from('commandes_clients_qr')
         .select('*')
         .eq('id_entreprise', entrepriseId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(150); // Sécurité anti-surcharge
 
       if (error) throw error;
       const liste = data || [];
@@ -362,7 +347,6 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
     chargerCommandesQR();
 
     const nomCanal = `commandes-realtime-${entrepriseId}`;
-
     supabase.getChannels().forEach((c) => {
       if (c.topic.includes(nomCanal)) {
         supabase.removeChannel(c);
@@ -394,38 +378,17 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       )
       .subscribe();
 
-    const intervalSecours = setInterval(async () => {
-      try {
-        const { data } = await supabase
-          .from('commandes_clients_qr')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .order('created_at', { ascending: false });
-
-        if (data) {
-          data.forEach(cmd => {
-            if (!idsCommandesConnues.current.has(cmd.id)) {
-              const diffMs = new Date() - new Date(cmd.created_at);
-              if (diffMs < 120000) {
-                idsCommandesConnues.current.add(cmd.id);
-                setCommandes((prev) => [cmd, ...prev]);
-                notifierNouvelleCommande(cmd);
-              } else {
-                idsCommandesConnues.current.add(cmd.id);
-              }
-            }
-          });
-        }
-      } catch (e) {}
-    }, 4000);
-
     return () => {
       supabase.removeChannel(canalRealtime);
-      clearInterval(intervalSecours);
     };
   }, [entrepriseId, audioActive]);
 
+  // 🛡️ SÉCURISATION DU DÉSTOCKAGE (Anti-Double Clic et verrouillage par ID)
   const executerChangementStatutServi = async (idCommande) => {
+    if (idsEnCoursDeTraitement.has(idCommande)) return; // Bloque les clics simultanés
+
+    setIdsEnCoursDeTraitement(prev => new Set(prev).add(idCommande));
+
     try {
       const { data, error } = await supabase.rpc('valider_et_destockage_commande_qr', {
         p_id_commande: idCommande,
@@ -438,9 +401,16 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         return;
       }
 
-      chargerCommandesQR();
+      // Mise à jour instantanée de l'état local sans re-télécharger toute la table
+      setCommandes(prev => prev.map(c => c.id === idCommande ? { ...c, statut: 'SERVI' } : c));
     } catch (err) {
       setModalMessageInfo({ visible: true, titre: 'Erreur', texte: 'Erreur lors de la mise à jour du statut : ' + err.message, type: 'erreur' });
+    } finally {
+      setIdsEnCoursDeTraitement(prev => {
+        const next = new Set(prev);
+        next.delete(idCommande);
+        return next;
+      });
     }
   };
 
@@ -465,9 +435,8 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
           .eq('id_entreprise', entrepriseId);
 
         if (error) throw error;
+        setCommandes(prev => prev.map(c => c.id === idCommande ? { ...c, statut: nouveauStatut } : c));
       }
-
-      chargerCommandesQR();
     } catch (err) {
       setModalMessageInfo({ visible: true, titre: 'Erreur', texte: 'Erreur lors de la mise à jour du statut : ' + err.message, type: 'erreur' });
     }
@@ -573,14 +542,14 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
               <span className={`w-2 h-2 rounded-full ${audioActive ? 'bg-emerald-600 animate-pulse' : 'bg-red-500'} inline-block`}></span>
               Commandes Clients
             </h2>
-            <p className="text-[9px] text-slate-500 font-bold">Temps Réel Instantané & Déstockage auto</p>
+            <p className="text-[9px] text-slate-500 font-bold">Temps Réel Instantané & Déstockage sécurisé</p>
           </div>
           
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={demanderBasculementPush}
-              title={pushActif ? "Push Veille : Actif (Cliquer pour désactiver)" : "Push Veille : Inactif (Cliquer pour activer)"}
+              title={pushActif ? "Push Veille : Actif" : "Push Veille : Inactif"}
               className={`p-1.5 rounded-lg text-xs font-black transition shadow-xs flex items-center justify-center relative cursor-pointer ${
                 pushActif 
                   ? 'bg-slate-900 text-amber-400 ring-2 ring-amber-400/60' 
@@ -596,7 +565,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             <button
               type="button"
               onClick={demanderBasculementAudio}
-              title={audioActive ? "Audio : Actif (Cliquer pour couper)" : "Audio : Coupé (Cliquer pour activer)"}
+              title={audioActive ? "Audio : Actif" : "Audio : Coupé"}
               className={`p-1.5 rounded-lg text-xs font-black transition shadow-xs flex items-center justify-center relative cursor-pointer ${
                 audioActive 
                   ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/60' 
@@ -647,7 +616,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
       </div>
 
       {chargement ? (
-        <div className="bg-white p-6 text-center text-slate-400 font-bold rounded-xl border">Chargement...</div>
+        <div className="bg-white p-6 text-center text-slate-400 font-bold rounded-xl border">Chargement rapide...</div>
       ) : commandesFiltrees.length === 0 ? (
         <div className="bg-white p-6 text-center text-slate-400 font-bold rounded-xl border italic text-[11px]">Aucune commande trouvée pour cette période.</div>
       ) : (
@@ -666,6 +635,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
             const estPaye = cmd.statut_paiement === 'PAYE';
             const estAnnule = cmd.statut === 'ANNULE';
             const estServiImpaye = cmd.statut === 'SERVI' && !estPaye;
+            const estEnCoursTraitement = idsEnCoursDeTraitement.has(cmd.id);
 
             const numeroAffichage = formaterNumeroElegant(cmd.numero_commande);
 
@@ -712,15 +682,10 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                       <p className="font-bold text-slate-600 text-[9px]">
                         📞{' '}
                         {cmd.telephone_client ? (
-                          <a 
-                            href={`tel:${cmd.telephone_client.replace(/[^0-9+]/g, '')}`} 
-                            className="text-blue-600 hover:underline font-mono"
-                          >
+                          <a href={`tel:${cmd.telephone_client.replace(/[^0-9+]/g, '')}`} className="text-blue-600 hover:underline font-mono">
                             {cmd.telephone_client}
                           </a>
-                        ) : (
-                          'N/A'
-                        )}{' '}
+                        ) : ('N/A')}{' '}
                         | 💳 {cmd.mode_paiement || 'ESPECES'}
                       </p>
                     </div>
@@ -733,9 +698,7 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                         disabled={estAnnule}
                         onClick={() => demanderBasculementPaiement(cmd.id, cmd.statut_paiement, cmd.montant_total, cmd.numero_commande)}
                         className={`px-2 py-0.5 rounded-md font-black text-[8px] uppercase border transition cursor-pointer ${
-                          estPaye 
-                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' 
-                            : 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
+                          estPaye ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200' : 'bg-red-100 text-red-800 border-red-300 hover:bg-red-200'
                         }`}
                       >
                         {estPaye ? 'Payé 🟢' : 'Non Payé 🔴'}
@@ -783,18 +746,20 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
                       {cmd.statut !== 'EN_COURS' && (
                         <button
                           type="button"
+                          disabled={estEnCoursTraitement}
                           onClick={() => changerStatutCommande(cmd.id, 'EN_COURS', cmd.statut_paiement)}
-                          className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-black py-1 rounded text-[8px] uppercase transition shadow-2xs"
+                          className="flex-1 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-300 text-white font-black py-1 rounded text-[8px] uppercase transition shadow-2xs cursor-pointer"
                         >
                           En cours 🍳
                         </button>
                       )}
                       <button
                         type="button"
+                        disabled={estEnCoursTraitement}
                         onClick={() => changerStatutCommande(cmd.id, 'SERVI', cmd.statut_paiement)}
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-1 rounded text-[8px] uppercase transition shadow-2xs"
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 text-white font-black py-1 rounded text-[8px] uppercase transition shadow-2xs cursor-pointer"
                       >
-                        Servi ✅
+                        {estEnCoursTraitement ? 'Traitement...' : 'Servi ✅'}
                       </button>
                     </div>
                   )}
@@ -805,227 +770,68 @@ export default function GestionCommandesClientsQR({ entrepriseId = '4TS-290136' 
         </div>
       )}
 
-      {/* MODALE DE CONFIRMATION POUR LE SON (AUDIO) */}
+      {/* MODALE DE CONFIRMATION AUDIO */}
       {modalAudio.visible && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 font-black shadow-inner ${
-                modalAudio.actionVoulue ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-              }`}>
-                {modalAudio.actionVoulue ? '🔊' : '🔇'}
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 uppercase text-xs">Gestion du Son & Voix</h3>
-                <p className="text-[10px] text-slate-500 font-bold">Alertes sonores et vocales</p>
-              </div>
-            </div>
-
-            <div className={`border rounded-xl p-3 space-y-1 ${
-              modalAudio.actionVoulue ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
-            }`}>
-              <p className={`font-black text-xs ${modalAudio.actionVoulue ? 'text-emerald-800' : 'text-red-800'}`}>
-                {modalAudio.actionVoulue ? "Voulez-vous vraiment réactiver le son ?" : "Voulez-vous vraiment couper le son ?"}
-              </p>
-              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
-                {modalAudio.actionVoulue 
-                  ? "Les alertes sonores et annonces vocales des nouvelles commandes seront de nouveau émises."
-                  : "Vous ne recevrez plus d'annonces vocales ni de bips sonores lors de l'arrivée de nouvelles commandes."}
-              </p>
-            </div>
-
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3">
+            <h3 className="font-black text-slate-900 uppercase text-xs">Gestion du Son & Voix</h3>
+            <p className="text-slate-700 text-[11px]">Voulez-vous modifier l'état des alertes sonores ?</p>
             <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setModalAudio({ visible: false, actionVoulue: false })}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={executerBasculementAudio}
-                className={`flex-1 font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg transition cursor-pointer text-white ${
-                  modalAudio.actionVoulue 
-                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30' 
-                    : 'bg-red-600 hover:bg-red-500 shadow-red-600/30'
-                }`}
-              >
-                {modalAudio.actionVoulue ? 'Oui, activer 🔊' : 'Oui, couper 🔇'}
-              </button>
+              <button type="button" onClick={() => setModalAudio({ visible: false, actionVoulue: false })} className="flex-1 bg-slate-100 py-2 rounded-xl text-[10px] font-bold">Annuler</button>
+              <button type="button" onClick={executerBasculementAudio} className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-[10px] font-bold">Confirmer</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODALE DE CONFIRMATION POUR LES NOTIFICATIONS PUSH */}
+      {/* MODALE DE CONFIRMATION PUSH */}
       {modalPush.visible && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 font-black shadow-inner ${
-                modalPush.actionVoulue ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'
-              }`}>
-                🔔
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 uppercase text-xs">Notifications Push en Veille</h3>
-                <p className="text-[10px] text-slate-500 font-bold">Service Worker & Background</p>
-              </div>
-            </div>
-
-            <div className={`border rounded-xl p-3 space-y-1 ${
-              modalPush.actionVoulue ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <p className={`font-black text-xs ${modalPush.actionVoulue ? 'text-amber-800' : 'text-slate-800'}`}>
-                {modalPush.actionVoulue ? "Voulez-vous vraiment activer les notifications push ?" : "Voulez-vous vraiment désactiver les notifications push ?"}
-              </p>
-              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
-                {modalPush.actionVoulue 
-                  ? "Votre appareil pourra recevoir des alertes même lorsque l'application est en arrière-plan ou en veille."
-                  : "Vous ne recevrez plus de notifications push en arrière-plan."}
-              </p>
-            </div>
-
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3">
+            <h3 className="font-black text-slate-900 uppercase text-xs">Notifications Push</h3>
+            <p className="text-slate-700 text-[11px]">Modifier l'état des notifications en arrière-plan ?</p>
             <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setModalPush({ visible: false, actionVoulue: false })}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={executerBasculementPush}
-                className="flex-1 font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg transition cursor-pointer text-white bg-slate-900 hover:bg-slate-800 shadow-slate-900/30"
-              >
-                {modalPush.actionVoulue ? 'Oui, activer 🔔' : 'Oui, désactiver 🔕'}
-              </button>
+              <button type="button" onClick={() => setModalPush({ visible: false, actionVoulue: false })} className="flex-1 bg-slate-100 py-2 rounded-xl text-[10px] font-bold">Annuler</button>
+              <button type="button" onClick={executerBasculementPush} className="flex-1 bg-slate-900 text-white py-2 rounded-xl text-[10px] font-bold">Confirmer</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODALE DE MESSAGE D'INFORMATION / ERREUR / SUCCÈS GÉNÉRALE */}
+      {/* MODALE MESSAGE INFO */}
       {modalMessageInfo.visible && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100 text-center">
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto text-2xl font-black shadow-sm ${
-              modalMessageInfo.type === 'succes' ? 'bg-emerald-100 text-emerald-600' : modalMessageInfo.type === 'erreur' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
-            }`}>
-              {modalMessageInfo.type === 'succes' ? '✅' : modalMessageInfo.type === 'erreur' ? '❌' : 'ℹ️'}
-            </div>
-            
-            <div className="space-y-1">
-              <h3 className="font-black text-slate-900 uppercase text-xs">{modalMessageInfo.titre}</h3>
-              <p className="text-xs text-slate-600 leading-relaxed font-medium">{modalMessageInfo.texte}</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setModalMessageInfo({ visible: false, titre: '', texte: '', type: 'info' })}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2.5 rounded-xl uppercase text-[10px] shadow-md transition cursor-pointer"
-            >
-              Compris 👍
-            </button>
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 text-center">
+            <h3 className="font-black text-slate-900 uppercase text-xs">{modalMessageInfo.titre}</h3>
+            <p className="text-xs text-slate-600 font-medium">{modalMessageInfo.texte}</p>
+            <button type="button" onClick={() => setModalMessageInfo({ visible: false, titre: '', texte: '', type: 'info' })} className="w-full bg-slate-900 text-white py-2.5 rounded-xl uppercase text-[10px] font-bold">Compris 👍</button>
           </div>
         </div>
       )}
 
-      {/* MODALE DE CONFIRMATION POUR COMMANDE SERVIE NON PAYÉE */}
+      {/* MODALE COMMANDE SERVIE IMPAYÉE */}
       {modalConfirmation.visible && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center text-xl shrink-0 font-black shadow-inner">
-                ⚠️
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 uppercase text-xs">Alerte Paiement</h3>
-                <p className="text-[10px] text-slate-500 font-bold">Vérification de sécurité caisse</p>
-              </div>
-            </div>
-
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1">
-              <p className="text-red-800 font-black text-xs">
-                Cette commande n'a pas encore été payée !
-              </p>
-              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
-                Voulez-vous vraiment la marquer comme <strong className="text-emerald-700 uppercase">SERVIE</strong> et l'enregistrer dans l'historique des ventes ?
-              </p>
-            </div>
-
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3">
+            <h3 className="font-black text-slate-900 uppercase text-xs">⚠️ Alerte Paiement</h3>
+            <p className="text-slate-700 text-[11px]">Cette commande n'a pas été payée. Voulez-vous la marquer comme servie et déstocker ?</p>
             <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={fermerModalConfirmation}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={confirmerActionImpaye}
-                className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg shadow-red-600/30 transition cursor-pointer"
-              >
-                Confirmer & Servir ✅
-              </button>
+              <button type="button" onClick={fermerModalConfirmation} className="flex-1 bg-slate-100 py-2 rounded-xl text-[10px] font-bold">Annuler</button>
+              <button type="button" onClick={confirmerActionImpaye} className="flex-1 bg-red-600 text-white py-2 rounded-xl text-[10px] font-bold">Confirmer & Servir</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODALE DE CONFIRMATION POUR LE BASCULEMENT DU STATUT DE PAIEMENT */}
+      {/* MODALE BASCULEMENT PAIEMENT */}
       {modalPaiement.visible && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3 transform transition-all scale-100">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 font-black shadow-inner ${
-                modalPaiement.statutActuel === 'PAYE' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-              }`}>
-                {modalPaiement.statutActuel === 'PAYE' ? '🔄' : '💳'}
-              </div>
-              <div>
-                <h3 className="font-black text-slate-900 uppercase text-xs">Confirmation Paiement</h3>
-                <p className="text-[10px] text-slate-500 font-bold">Modification du statut financier</p>
-              </div>
-            </div>
-
-            <div className={`border rounded-xl p-3 space-y-1 ${
-              modalPaiement.statutActuel === 'PAYE' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'
-            }`}>
-              <p className={`font-black text-xs ${modalPaiement.statutActuel === 'PAYE' ? 'text-amber-800' : 'text-emerald-800'}`}>
-                {modalPaiement.statutActuel === 'PAYE' 
-                  ? "Passer cette commande de PAYÉ à NON PAYÉ ?" 
-                  : "Valider le paiement effectif de cette commande ?"}
-              </p>
-              <p className="text-slate-700 text-[11px] font-medium leading-relaxed">
-                {modalPaiement.statutActuel === 'PAYE' 
-                  ? "Cette action va retirer le montant des règlements comptant et le basculer en crédit/impayé dans l'historique."
-                  : "Le client a-t-il réellement payé ? Cette action va valider le règlement complet dans le journal des ventes."}
-              </p>
-            </div>
-
+          <div className="bg-white rounded-2xl shadow-2xl border border-orange-200 max-w-sm w-full p-4 space-y-3">
+            <h3 className="font-black text-slate-900 uppercase text-xs">Confirmation Paiement</h3>
+            <p className="text-slate-700 text-[11px]">Voulez-vous modifier le statut financier de cette commande ?</p>
             <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={fermerModalPaiement}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2.5 rounded-xl uppercase text-[10px] transition cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={confirmerBasculementPaiement}
-                className={`flex-1 font-black py-2.5 rounded-xl uppercase text-[10px] shadow-lg transition cursor-pointer text-white ${
-                  modalPaiement.statutActuel === 'PAYE' 
-                    ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30' 
-                    : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
-                }`}
-              >
-                {modalPaiement.statutActuel === 'PAYE' ? 'Mettre en Non Payé 🔴' : 'Confirmer Payé 🟢'}
-              </button>
+              <button type="button" onClick={fermerModalPaiement} className="flex-1 bg-slate-100 py-2 rounded-xl text-[10px] font-bold">Annuler</button>
+              <button type="button" onClick={confirmerBasculementPaiement} className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-[10px] font-bold">Confirmer</button>
             </div>
           </div>
         </div>
