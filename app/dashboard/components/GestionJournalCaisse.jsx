@@ -4,9 +4,46 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localSync } from '../../lib/localSync';
 
-export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueInitiale = 'saisie_operations', utilisateurActif = 'THEODORE STEPHANE' }) {
+export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueInitiale = 'saisie_operations', utilisateurActif = '' }) {
   const [modeSaisie, setModeSaisie] = useState('nouveau');
   const [sousOngletControle, setSousOngletControle] = useState('nouveau_controle');
+
+  // --- RÉSOLUTION DYNAMIQUE DE L'UTILISATEUR CONNECTÉ (COHÉRENCE EN-TÊTE) ---
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState(utilisateurActif || '');
+
+  useEffect(() => {
+    if (utilisateurActif) {
+      setUtilisateurConnecte(utilisateurActif.toUpperCase());
+    } else if (typeof window !== 'undefined') {
+      const userStored =
+        localStorage.getItem('utilisateur_actif') ||
+        localStorage.getItem('nom_utilisateur') ||
+        localStorage.getItem('user_name') ||
+        sessionStorage.getItem('utilisateur_actif') ||
+        '';
+      if (userStored) {
+        setUtilisateurConnecte(userStored.toUpperCase());
+      } else {
+        try {
+          const sessionRaw = localStorage.getItem('4ts_session') || localStorage.getItem('user_session');
+          if (sessionRaw) {
+            const parsed = JSON.parse(sessionRaw);
+            const nom = parsed?.nom_complet || parsed?.nom || parsed?.name || parsed?.email || '';
+            if (nom) setUtilisateurConnecte(String(nom).toUpperCase());
+          }
+        } catch (e) {
+          // Ignorer erreur parsing
+        }
+      }
+    }
+  }, [utilisateurActif]);
+
+  // --- ÉTAT GLOBAL POUR LES MODALES DE NOTIFICATION ---
+  const [modalNotification, setModalNotification] = useState(null);
+
+  const afficherNotification = (titre, texte, type = 'info', onConfirm = null) => {
+    setModalNotification({ titre, texte, type, onConfirm });
+  };
 
   // --- LIMITES D'AFFICHAGE ---
   const [limiteHistorique, setLimiteHistorique] = useState(20);
@@ -14,9 +51,64 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const [limiteJournal, setLimiteJournal] = useState(20);
   const [limiteEtatsCaisse, setLimiteEtatsCaisse] = useState(20);
 
-  // --- MODALE DE RECHERCHE PERSONNALISÉE (TIERS / PERSONNEL) ---
-  const [afficherModaleTiers, setAfficherModaleTiers] = useState(false);
-  const [rechercheTiersInput, setRechercheTiersInput] = useState('');
+  // --- MODALES DE SÉLECTION (CAISSE, COMPTE, TIERS, MOTIFS) ---
+  const [modaleSelection, setModaleSelection] = useState(null); // 'caisse_saisie' | 'compte_saisie' | 'tiers_saisie' | 'motif_saisie' | 'compte_gl' | 'tiers_gl' | 'caisse_journal' | 'caisse_historique'
+  const [rechercheModale, setRechercheModale] = useState('');
+  const [nouveauMotifInput, setNouveauMotifInput] = useState('');
+  const [motifsSauvegardes, setMotifsSauvegardes] = useState([]);
+  const [nouveauCompteInput, setNouveauCompteInput] = useState('');
+
+  // --- FILTRE CAISSE POUR L'HISTORIQUE ---
+  const [caisseHistoriqueId, setCaisseHistoriqueId] = useState('');
+
+  const ouvrirModaleSelection = (type) => {
+    setRechercheModale('');
+    setNouveauMotifInput('');
+    setNouveauCompteInput('');
+    setModaleSelection(type);
+  };
+
+  const fermerModaleSelection = () => {
+    setModaleSelection(null);
+    setRechercheModale('');
+    setNouveauMotifInput('');
+    setNouveauCompteInput('');
+  };
+
+  // --- CRÉATION RAPIDE D'UN COMPTE (AVEC CONTRÔLE DE DUPLICATION) ---
+  const creerEtUtiliserNouveauCompte = async () => {
+    const intitule = (nouveauCompteInput || rechercheModale).trim().toUpperCase();
+    if (!intitule) {
+      afficherNotification('Champ requis', 'Veuillez saisir un intitulé de compte valide.', 'erreur');
+      return;
+    }
+
+    // Vérification de la duplication (insensible à la casse et aux espaces superflus)
+    const compteExistant = comptes.find(c => (c.intitule_compte || '').trim().toUpperCase() === intitule);
+    if (compteExistant) {
+      afficherNotification('Duplication interdite', `Le compte "${intitule}" existe déjà dans ce module. Veuillez en choisir un autre ou le sélectionner directement.`, 'erreur');
+      return;
+    }
+
+    try {
+      const payload = {
+        id_entreprise: entrepriseId,
+        module: moduleActuel,
+        intitule_compte: intitule,
+        numero_compte: `CPT-${Math.floor(100 + Math.random() * 900)}`,
+        nature: 'GENERAL'
+      };
+      const { data, error } = await supabase.from('comptes_comptables').insert([payload]).select().single();
+      if (error) throw error;
+      if (data) {
+        setComptes(prev => [...prev, data]);
+        selectionnerCompteSaisie(data.id);
+        afficherNotification('Succès', `Compte [${intitule}] créé et sélectionné avec succès !`, 'succes');
+      }
+    } catch (err) {
+      afficherNotification('Erreur', 'Impossible de créer le compte : ' + err.message, 'erreur');
+    }
+  };
 
   // --- DATE DU JOUR PAR DÉFAUT ---
   const obtenirDateDuJour = () => {
@@ -47,7 +139,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const premierJourMoisStr = obtenirPremierJourDuMois();
   const dernierJourMoisStr = obtenirDernierJourDuMois();
 
-  // Dates par défaut réglées sur la date du jour
   const [dateDebutJournal, setDateDebutJournal] = useState(dateDuJourStr);
   const [dateFinJournal, setDateFinJournal] = useState(dateDuJourStr);
   const [caisseSelectionneeJournal, setCaisseSelectionneeJournal] = useState('');
@@ -84,7 +175,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const [caissierFiltre, setCaissierFiltre] = useState('');
   const [livreurControle, setLivreurControle] = useState('');
   const [montantVerse, setMontantVerse] = useState('');
-  
+
   const [dernierEtatIdValidé, setDernierEtatIdValidé] = useState(null);
   const [numeroPieceCloture, setNumeroPieceCloture] = useState('');
 
@@ -124,8 +215,46 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const cleCacheMouvements = `mouvements_caisse_${entrepriseId}_${moduleActuel}`;
   const cleCacheEtatsCaisse = `etats_caisse_${entrepriseId}_${moduleActuel}`;
   const cleCacheClotures = `clotures_caisses_${entrepriseId}_${moduleActuel}`;
+  const cleCacheMotifs = `motifs_caisse_${entrepriseId}_${moduleActuel}`;
 
-  // 🛡️ Fonction utilitaire stricte pour fusionner des listes par ID unique (Évite écrasement multi-superviseur)
+  // Chargement initial des motifs personnalisés
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = JSON.parse(localStorage.getItem(cleCacheMotifs) || '[]');
+        if (Array.isArray(saved)) setMotifsSauvegardes(saved);
+      } catch (e) {
+        setMotifsSauvegardes([]);
+      }
+    }
+  }, [cleCacheMotifs]);
+
+  const ajouterMotifPersonnalise = (motifText) => {
+    const clean = (motifText || '').trim().toUpperCase();
+    if (!clean) return;
+    setMotifsSauvegardes((prev) => {
+      const maj = Array.from(new Set([clean, ...prev]));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(cleCacheMotifs, JSON.stringify(maj));
+      }
+      return maj;
+    });
+  };
+
+  // --- EXTRACTION PROPRE DU MOTIF ET DE L'UTILISATEUR ---
+  const extraireAuteurEtMotif = (libelleRaw) => {
+    const str = (libelleRaw || '').trim();
+    if (str.startsWith('[')) {
+      const idxFermet = str.indexOf(']');
+      if (idxFermet !== -1) {
+        const auteur = str.substring(1, idxFermet).trim();
+        const motif = str.substring(idxFermet + 1).trim();
+        return { auteur: auteur || '-', motif: motif || '-' };
+      }
+    }
+    return { auteur: '-', motif: str || '-' };
+  };
+
   const fusionnerParId = (liste1 = [], liste2 = []) => {
     const map = new Map();
     [...liste2, ...liste1].forEach(item => {
@@ -138,7 +267,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const genererCodePieceSequentiel = (dateStr, listeEtats, listeClotures) => {
     const dClean = (dateStr || new Date().toISOString().split('T')[0]).replace(/-/g, '');
-    
     const elementsMemeDate = [
       ...listeEtats.filter(e => (e.date_debut || '').replace(/-/g, '') === dClean),
       ...listeClotures.filter(cl => (cl.date_debut || cl.created_at || '').split('T')[0].replace(/-/g, '') === dClean)
@@ -179,23 +307,26 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       const { data: dataCaisses } = await supabase
         .from('caisses')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+        .eq('id_entreprise', entrepriseId);
 
-      setCaisses(dataCaisses || []);
+      const caissesModule = (dataCaisses || []).filter(
+        c => !c.module || String(c.module).toUpperCase() === moduleActuel
+      );
+      setCaisses(caissesModule);
 
-      if (dataCaisses && dataCaisses.length > 0 && !caisseSelectionneeJournal) {
-        setCaisseSelectionneeJournal(dataCaisses[0].id);
+      const caisseEntrepriseObj = caissesModule.find(c => (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE')) ||
+                                  caissesModule.find(c => (c.nature || '').toUpperCase() === 'PRINCIPALE') ||
+                                  caissesModule[0];
+
+      if (caisseEntrepriseObj && !caisseSelectionneeJournal) {
+        setCaisseSelectionneeJournal(caisseEntrepriseObj.id);
       }
 
-      const caisseEntrepriseObj = (dataCaisses || []).find(c => (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE')) || 
-                                  (dataCaisses || []).find(c => (c.nature || '').toUpperCase() === 'PRINCIPALE');
-      
       if (caisseEntrepriseObj && !enteteSaisie.id_caisse) {
         setEnteteSaisie(prev => ({ ...prev, id_caisse: caisseEntrepriseObj.id }));
       }
 
-      const caissesPrincipales = (dataCaisses || []).filter(c => (c.nature || '').toUpperCase() === 'PRINCIPALE' || (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
+      const caissesPrincipales = caissesModule.filter(c => (c.nature || '').toUpperCase() === 'PRINCIPALE' || (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
       if (caissesPrincipales.length > 0 && !caisseDestinationVersement) {
         setCaisseDestinationVersement(caissesPrincipales[0].id);
       }
@@ -220,7 +351,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: true });
-      
+
       const listMvtsCloud = dataMvts || [];
       const listMvtsFinal = fusionnerParId(listMvtsCloud, mouvementsLocaux);
       setMouvements(listMvtsFinal);
@@ -261,13 +392,28 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('module', moduleActuel);
       setUtilisateurs(dataUsers || []);
 
+      if (!utilisateurConnecte && !utilisateurActif) {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user) {
+          const emailAuth = authData.user.email;
+          const userMatch = (dataUsers || []).find(u => u.email === emailAuth || u.id === authData.user.id);
+          if (userMatch) {
+            setUtilisateurConnecte((userMatch.nom_complet || userMatch.email || '').toUpperCase());
+          } else if (authData.user.user_metadata?.nom_complet || authData.user.user_metadata?.name) {
+            setUtilisateurConnecte((authData.user.user_metadata.nom_complet || authData.user.user_metadata.name).toUpperCase());
+          } else if (emailAuth) {
+            setUtilisateurConnecte(emailAuth.split('@')[0].toUpperCase());
+          }
+        }
+      }
+
       const { data: dataEtats } = await supabase
         .from('etats_caisse')
         .select('*')
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
-      
+
       const listEtatsCloud = dataEtats || [];
       const listEtatsFinal = fusionnerParId(listEtatsCloud, etatsLocaux);
       setEtatsCaisseList(listEtatsFinal);
@@ -279,7 +425,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('id_entreprise', entrepriseId)
         .eq('module', moduleActuel)
         .order('created_at', { ascending: false });
-      
+
       const listCloturesCloud = dataCloturesCaisses || [];
       const listCloturesFinal = fusionnerParId(listCloturesCloud, cloturesLocales);
       setCloturesCaissesList(listCloturesFinal);
@@ -330,14 +476,45 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     setNumeroPieceCloture(prochainNum);
   };
 
+  const estCaissePrincipale = (caisseObj) => {
+    if (!caisseObj) return false;
+    const nat = (caisseObj.nature || '').toUpperCase();
+    const nom = (caisseObj.nom_caisse || '').toUpperCase();
+    return nat === 'PRINCIPALE' || nat === 'CAISSE ENTREPRISE' || nom.includes('PRINCIPALE');
+  };
+
+  const mouvementCorrespondCaisse = (mvt, caisseIdCible) => {
+    if (!caisseIdCible) return true;
+    const cibleStr = String(caisseIdCible).trim();
+    const mvtCaisseStr = mvt.id_caisse !== null && mvt.id_caisse !== undefined ? String(mvt.id_caisse).trim() : '';
+
+    if (mvtCaisseStr === cibleStr) return true;
+
+    const caisseCibleObj = caisses.find(c => String(c.id).trim() === cibleStr);
+    if (estCaissePrincipale(caisseCibleObj)) {
+      const lib = (mvt.libelle || '').toUpperCase();
+      const piece = (mvt.piece_physique || '').toUpperCase();
+      const estVersementLivraison =
+        lib.includes('CLÔTURE LIVRAISON') ||
+        lib.includes('VERS. CLÔTURE') ||
+        lib.includes('FRAIS LIVR') ||
+        piece.includes('LIVR-');
+      if (estVersementLivraison && (!mvtCaisseStr || !caisses.some(c => String(c.id).trim() === mvtCaisseStr))) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   const calculerSoldeCaisse = (caisseId) => {
     if (!caisseId) return 0;
-    
-    const caisseObj = caisses.find(c => String(c.id) === String(caisseId));
-    const estCaissePrin = caisseObj && ((caisseObj.nature || '').toUpperCase() === 'PRINCIPALE' || (caisseObj.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (caisseObj.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
+
+    const caisseObj = caisses.find(c => String(c.id).trim() === String(caisseId).trim());
+    const estCaissePrin = estCaissePrincipale(caisseObj);
 
     let totalMvts = mouvements
-      .filter(m => String(m.id_caisse) === String(caisseId))
+      .filter(m => mouvementCorrespondCaisse(m, caisseId))
       .reduce((acc, m) => {
         return m.type_mouvement === 'ENTREE' ? acc + Number(m.montant) : acc - Number(m.montant);
       }, 0);
@@ -347,14 +524,24 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .filter(e => e.statut_versement === 'VERSE')
         .reduce((acc, e) => acc + Number(e.montant_verse || 0), 0);
 
-      const totalVersementsClotures = cloturesCaissesList
-        .filter(cl => String(cl.id_caisse_destination) === String(caisseId) || !cl.id_caisse_destination)
+      const piecesDejaDansMvts = new Set(
+        mouvements
+          .filter(m => mouvementCorrespondCaisse(m, caisseId) && m.piece_physique)
+          .map(m => String(m.piece_physique).trim().toUpperCase())
+      );
+
+      const totalVersementsCloturesNonDoublonnes = cloturesCaissesList
+        .filter(cl => {
+          const destOk = !cl.id_caisse_destination || String(cl.id_caisse_destination).trim() === String(caisseId).trim();
+          const codeCl = String(cl.code_cloture || '').trim().toUpperCase();
+          return destOk && (!codeCl || !piecesDejaDansMvts.has(codeCl));
+        })
         .reduce((acc, cl) => acc + Number((cl.montant_reel_verse ?? cl.montant_attendu ?? cl.montant_total_encaisse) || 0), 0);
 
-      totalMvts += (totalVersementsEtats + totalVersementsClotures);
+      totalMvts += (totalVersementsEtats + totalVersementsCloturesNonDoublonnes);
     } else {
       const totalVentesCaisse = ventes
-        .filter(v => String(v.id_caisse) === String(caisseId))
+        .filter(v => String(v.id_caisse).trim() === String(caisseId).trim())
         .reduce((acc, v) => acc + Number(v.montant_regle ?? v.total_montant ?? 0), 0);
       totalMvts += totalVentesCaisse;
     }
@@ -362,28 +549,48 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return totalMvts;
   };
 
-  // 🛡️ Enregistrement d'une opération avec protection anti-écrasement multi-superviseur
+  const auteurEffectif = (utilisateurConnecte || utilisateurActif || 'UTILISATEUR').toUpperCase();
+
   const enregistrerOperationUnique = async (e) => {
     if (e) e.preventDefault();
-    if (moduleActuel !== 'LIVRAISON' && !enteteSaisie.id_caisse) {
-      alert('Veuillez sélectionner une caisse.');
+    if (!enteteSaisie.id_caisse) {
+      afficherNotification('Champ requis', 'Veuillez obligatoirement sélectionner une caisse pour effectuer une saisie.', 'erreur');
+      return;
+    }
+    if (!ligneUnique.id_compte) {
+      afficherNotification('Champ requis', 'Veuillez obligatoirement sélectionner un compte.', 'erreur');
       return;
     }
 
     try {
-      let libelleFinal = utilisateurMotif ? utilisateurMotif.toUpperCase() : 'MOUV. INT.';
+      const motifBrut = utilisateurMotif ? utilisateurMotif.trim().toUpperCase() : 'MOUV. INT.';
+      if (utilisateurMotif && motifBrut !== 'MOUV. INT.') {
+        ajouterMotifPersonnalise(motifBrut);
+      }
+
+      let libelleFinal = `[${auteurEffectif}] ${motifBrut}`;
+
+      let nomTiersAssocie = '';
+      if (ligneUnique.id_utilisateur_tiers) {
+        const tiersObj = utilisateurs.find(u => String(u.id) === String(ligneUnique.id_utilisateur_tiers));
+        if (tiersObj) {
+          nomTiersAssocie = tiersObj.nom_complet || tiersObj.email || '';
+          if (nomTiersAssocie && !libelleFinal.includes(nomTiersAssocie.toUpperCase())) {
+            libelleFinal = `[${auteurEffectif}] ${motifBrut} - ${nomTiersAssocie.toUpperCase()}`;
+          }
+        }
+      }
 
       const payload = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
-        id_caisse: moduleActuel === 'LIVRAISON' ? (caisses[0]?.id || null) : enteteSaisie.id_caisse,
+        id_caisse: enteteSaisie.id_caisse,
         type_mouvement: enteteSaisie.type_mouvement,
         montant: Number(ligneUnique.montant),
         libelle: libelleFinal,
         id_compte: ligneUnique.id_compte || null,
         piece_physique: ligneUnique.piece_physique || null,
-        created_at: new Date(enteteSaisie.date).toISOString(),
-        utilisateur_saisie: utilisateurActif
+        created_at: new Date(enteteSaisie.date).toISOString()
       };
 
       if (idOperationEnCoursModif) {
@@ -394,31 +601,21 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         if (error) throw error;
 
         setMouvements(prev => prev.map(m => m.id === idOperationEnCoursModif ? { ...m, ...payload } : m));
-        alert('Opération modifiée avec succès !');
+        afficherNotification('Succès', 'Opération modifiée avec succès !', 'succes');
         setIdOperationEnCoursModif(null);
         setNumeroPieceEnCoursModif('');
       } else {
-        const idLocalTemp = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-        const payloadTemp = { ...payload, id: idLocalTemp };
-
         const { error, data } = await supabase.from('mouvements_caisse').insert([payload]).select().single();
-        
+
         if (error) {
-          // Mode hors-ligne : Ajout sécurisé sans écraser les autres mouvements
-          localSync.ajouterFileAttente('INSERT', 'mouvements_caisse', payload);
-          setMouvements(prev => {
-            const listeMaj = fusionnerParId(prev, [payloadTemp]);
-            localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
-            return listeMaj;
-          });
-          alert(`Opération enregistrée hors-ligne par ${utilisateurActif} (ID unique: ${idLocalTemp}).`);
+          throw new Error("Erreur Supabase : " + error.message);
         } else if (data) {
           setMouvements(prev => {
             const listeMaj = fusionnerParId(prev, [data]);
             localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
             return listeMaj;
           });
-          alert(`Opération enregistrée avec succès par ${utilisateurActif}.`);
+          afficherNotification('Succès', `Opération enregistrée par ${auteurEffectif}.`, 'succes');
         }
       }
 
@@ -427,7 +624,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       await chargerDonneesGlobales();
       setModeSaisie('historique');
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      afficherNotification('Erreur d\'enregistrement', err.message, 'erreur');
     }
   };
 
@@ -438,10 +635,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     }
   };
 
-  const gererChangementCompte = (e) => {
-    const compteId = e.target.value;
-    setLigneUnique({ ...ligneUnique, id_compte: compteId });
-
+  const selectionnerCompteSaisie = (compteId) => {
+    setLigneUnique(prev => ({ ...prev, id_compte: compteId }));
     if (compteId) {
       const compteObj = comptes.find(c => String(c.id) === String(compteId));
       if (compteObj) {
@@ -453,14 +648,15 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         }
       }
     }
+    fermerModaleSelection();
   };
 
-  const gererChangementTiers = (e) => {
-    const val = e.target.value;
-    setLigneUnique({ ...ligneUnique, id_utilisateur_tiers: val });
-    if (!val) {
-      setUtilisateurMotif('MOUV. INT.');
+  const selectionnerTiersSaisie = (tiersId) => {
+    setLigneUnique(prev => ({ ...prev, id_utilisateur_tiers: tiersId }));
+    if (!tiersId && !utilisateurMotif) {
+      setUtilisateurMotif('');
     }
+    fermerModaleSelection();
   };
 
   const preparerModificationOperation = (mvt, indexMvt) => {
@@ -479,44 +675,65 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       piece_physique: mvt.piece_physique || '',
       id_utilisateur_tiers: ''
     });
-    setUtilisateurMotif(mvt.libelle && !['MOUVEMENT INTERNE', 'MOUV. INT.', 'DEPENSE INTERNE', 'CHARGE INTERNE'].includes(mvt.libelle) ? mvt.libelle : '');
+    const { motif } = extraireAuteurEtMotif(mvt.libelle);
+    setUtilisateurMotif(motif && !['MOUVEMENT INTERNE', 'MOUV. INT.', 'DEPENSE INTERNE', 'CHARGE INTERNE', '-'].includes(motif) ? motif : '');
     setModeSaisie('nouveau');
   };
 
   const supprimerOperation = async (id) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette opération ?')) return;
-    try {
-      const { error } = await supabase
-        .from('mouvements_caisse')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+    afficherNotification(
+      'Confirmation de suppression',
+      'Êtes-vous sûr de vouloir supprimer cette opération ?',
+      'info',
+      async () => {
+        try {
+          const { error } = await supabase
+            .from('mouvements_caisse')
+            .delete()
+            .eq('id', id);
+          if (error) throw error;
 
-      setMouvements(prev => {
-        const listeMaj = prev.filter(m => m.id !== id);
-        localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
-        return listeMaj;
-      });
+          setMouvements(prev => {
+            const listeMaj = prev.filter(m => m.id !== id);
+            localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+            return listeMaj;
+          });
 
-      alert('Opération supprimée avec succès !');
-      setIdOperationEnCoursModif(null);
-      setNumeroPieceEnCoursModif('');
-      setLigneUnique({ id_compte: '', montant: '', piece_physique: '', id_utilisateur_tiers: '' });
-      setUtilisateurMotif('');
-      await chargerDonneesGlobales();
-      setModeSaisie('historique');
-    } catch (err) {
-      alert('Erreur lors de la suppression : ' + err.message);
-    }
+          afficherNotification('Succès', 'Opération supprimée avec succès !', 'succes');
+          setIdOperationEnCoursModif(null);
+          setNumeroPieceEnCoursModif('');
+          setLigneUnique({ id_compte: '', montant: '', piece_physique: '', id_utilisateur_tiers: '' });
+          setUtilisateurMotif('');
+          await chargerDonneesGlobales();
+          setModeSaisie('historique');
+        } catch (err) {
+          afficherNotification('Erreur', 'Erreur lors de la suppression : ' + err.message, 'erreur');
+        }
+      }
+    );
   };
 
-  const caissesPrincipalesPourSaisie = caisses.filter(c => (c.nature || '').toUpperCase() === 'PRINCIPALE' || (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
   const caissesFacturationPourControle = caisses.filter(c => (c.nature || '').toUpperCase() === 'FACTURATION' || !(c.nom_caisse || '').toUpperCase().includes('PRINCIPALE'));
 
   const listeLivreurs = Array.from(new Set([
     ...(commandesLivraison.map(c => c.vendeur_livreur).filter(Boolean)),
     ...(emplacementsStock.map(e => e.nom_emplacement || e.responsable_emplacement).filter(Boolean))
   ])).map(l => l.toUpperCase());
+
+  // --- CONSTRUCTION DE LA LISTE DES MOTIFS (SAUVEGARDÉS + HISTORIQUES) ---
+  const listeMotifsUniques = (() => {
+    const setMotifs = new Set(motifsSauvegardes);
+    mouvements.forEach(m => {
+      const { motif } = extraireAuteurEtMotif(m.libelle);
+      if (motif && motif !== '-' && !motif.startsWith('VERS. CLÔTURE')) {
+        const baseMotif = motif.split(' - ')[0].trim().toUpperCase();
+        if (baseMotif && baseMotif !== 'MOUV. INT.') {
+          setMotifs.add(baseMotif);
+        }
+      }
+    });
+    return Array.from(setMotifs);
+  })();
 
   const mapTiersCategories = new Map();
   utilisateurs.forEach(u => {
@@ -537,9 +754,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   });
 
   const listeTiersGlobale = Array.from(mapTiersCategories.entries()).map(([nom, cat]) => ({ nom, categorie: cat }));
-  const listeTiersFiltresModale = listeTiersGlobale.filter(t => 
-    t.nom.includes(rechercheTiersInput.toUpperCase()) || t.categorie.includes(rechercheTiersInput.toUpperCase())
-  );
 
   const obtenirCaissiersFiltres = (caisseIdSelectionnee = '') => {
     return utilisateurs.filter(u => {
@@ -568,18 +782,24 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return idOuNom;
   };
 
-  // --- GRAND LIVRE TRANSVERSAL ---
-  const mouvementsMvtsGrandLivre = mouvements.map(m => {
-    let libelleAffichage = m.libelle || 'MOUV. CAISSE';
+  const formaterLibelleMouvement = (libelleRaw) => {
+    let libelleAffichage = libelleRaw || 'MOUV. CAISSE';
     if (moduleActuel === 'LIVRAISON' && (libelleAffichage.toUpperCase().includes('CLÔTURE LIVRAISON') || libelleAffichage.toUpperCase().includes('VERS. CLÔTURE'))) {
       libelleAffichage = 'Frais Livr.';
     }
+    return libelleAffichage;
+  };
+
+  // --- GRAND LIVRE MAPPINGS ---
+  const mouvementsMvtsGrandLivre = mouvements.map(m => {
+    const { auteur, motif } = extraireAuteurEtMotif(m.libelle);
     return {
       id: `mvt-${m.id}`,
       created_at: m.created_at,
       piece_physique: m.piece_physique || '-',
       id_compte: m.id_compte,
-      libelle: libelleAffichage,
+      libelle: formaterLibelleMouvement(motif),
+      auteur: auteur,
       type_mouvement: m.type_mouvement,
       montant: Number(m.montant || 0)
     };
@@ -591,6 +811,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     piece_physique: v.numero_ticket || `TICK-${v.id}`,
     id_compte: v.id_compte || null,
     libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
+    auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : '-',
     type_mouvement: 'ENTREE',
     montant: Number(v.montant_regle ?? v.total_montant ?? 0)
   }));
@@ -601,6 +822,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     piece_physique: a.reference || `APRO-${a.id}`,
     id_compte: a.id_compte || null,
     libelle: `APPRO. (${a.nom_fournisseur || 'FOURN.'})`,
+    auteur: '-',
     type_mouvement: 'SORTIE',
     montant: Number(a.montant_total || a.montant || 0)
   }));
@@ -666,31 +888,73 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const resultatNetGrandLivre = totalEntreesGrandLivre - totalSortiesGrandLivre;
 
-  // --- JOURNAL DE CAISSE CORRIGÉ (ISOLATION STRICTE PAR MODULE & SUPPRESSION DES DOUBLONS) ---
-  const idsCaissesModuleActuel = new Set(caisses.map(c => String(c.id)));
+  const idsCaissesModuleActuel = new Set(caisses.map(c => String(c.id).trim()));
 
+  // --- CONSTRUCTION DES MOUVEMENTS DU JOURNAL DE CAISSE (INCLUANT LES FRAIS DE LIVRAISON DÉVERSÉS) ---
   const mouvementsDeCaisseFiltres = mouvements.filter(m => {
-    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
+    if (!mouvementCorrespondCaisse(m, caisseSelectionneeJournal)) return false;
 
-    if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
     const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
     if (dateDebutJournal && dateMvt < dateDebutJournal) return false;
     if (dateFinJournal && dateMvt > dateFinJournal) return false;
     return true;
   }).map(m => {
-    let libelleAffichage = m.libelle || '';
-    if (moduleActuel === 'LIVRAISON' && (libelleAffichage.toUpperCase().includes('CLÔTURE LIVRAISON') || libelleAffichage.toUpperCase().includes('VERS. CLÔTURE'))) {
-      libelleAffichage = 'Frais Livr.';
-    }
-    return { ...m, libelle: libelleAffichage };
+    const { auteur, motif } = extraireAuteurEtMotif(m.libelle);
+    return {
+      ...m,
+      libelle: formaterLibelleMouvement(motif),
+      auteur: auteur
+    };
   });
+
+  const piecesDejaPresentesDansJournal = new Set(
+    mouvementsDeCaisseFiltres
+      .filter(m => m.piece_physique)
+      .map(m => String(m.piece_physique).trim().toUpperCase())
+  );
+
+  const cloturesLivraisonSupplementairesJournal = (moduleActuel === 'LIVRAISON' ? cloturesCaissesList : [])
+    .filter(cl => {
+      const codeCl = String(cl.code_cloture || '').trim().toUpperCase();
+      if (codeCl && piecesDejaPresentesDansJournal.has(codeCl)) return false;
+
+      if (caisseSelectionneeJournal) {
+        const destStr = cl.id_caisse_destination !== null && cl.id_caisse_destination !== undefined ? String(cl.id_caisse_destination).trim() : '';
+        const cibleStr = String(caisseSelectionneeJournal).trim();
+        const caisseCibleObj = caisses.find(c => String(c.id).trim() === cibleStr);
+        if (destStr && destStr !== cibleStr && !(estCaissePrincipale(caisseCibleObj) && !idsCaissesModuleActuel.has(destStr))) {
+          return false;
+        }
+        if (!destStr && !estCaissePrincipale(caisseCibleObj)) {
+          return false;
+        }
+      }
+
+      const dateCl = (cl.created_at || cl.date_debut || '').split('T')[0];
+      if (dateDebutJournal && dateCl < dateDebutJournal) return false;
+      if (dateFinJournal && dateCl > dateFinJournal) return false;
+      return Number(cl.montant_reel_verse || 0) > 0;
+    })
+    .map(cl => ({
+      id: `cloture-jnl-${cl.id}`,
+      id_entreprise: cl.id_entreprise,
+      module: cl.module,
+      id_caisse: cl.id_caisse_destination || caisseSelectionneeJournal,
+      type_mouvement: 'ENTREE',
+      montant: Number(cl.montant_reel_verse || 0),
+      libelle: 'Frais Livr.',
+      auteur: cl.responsable || 'UTILISATEUR',
+      id_compte: null,
+      piece_physique: cl.code_cloture || `LIVR-${cl.id}`,
+      created_at: cl.created_at || `${cl.date_debut}T12:00:00`
+    }));
 
   const ventesTransformeesEnMouvements = ventes
     .filter(v => {
-      if (v.id_caisse && !idsCaissesModuleActuel.has(String(v.id_caisse))) return false;
+      if (v.id_caisse && !idsCaissesModuleActuel.has(String(v.id_caisse).trim())) return false;
 
       if (caisseSelectionneeJournal) {
-        if (String(v.id_caisse) !== String(caisseSelectionneeJournal)) return false;
+        if (String(v.id_caisse).trim() !== String(caisseSelectionneeJournal).trim()) return false;
       }
       const dateVente = v.created_at ? v.created_at.split('T')[0] : '';
       if (dateDebutJournal && dateVente < dateDebutJournal) return false;
@@ -705,13 +969,15 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       type_mouvement: 'ENTREE',
       montant: Number(v.montant_regle ?? v.total_montant ?? 0),
       libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
+      auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : '-',
       id_compte: v.id_compte || null,
       piece_physique: v.numero_ticket || `TICK-${v.id}`,
       created_at: v.created_at
     }));
 
   const mouvementsJournalTries = [
-    ...mouvementsDeCaisseFiltres, 
+    ...mouvementsDeCaisseFiltres,
+    ...cloturesLivraisonSupplementairesJournal,
     ...ventesTransformeesEnMouvements
   ].sort((a, b) => {
     let valA, valB;
@@ -735,21 +1001,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return 0;
   });
 
-  const gererTriJournal = (colonne) => {
-    if (colonneTriJournal === colonne) {
-      setOrdreTriJournal(ordreTriJournal === 'asc' ? 'desc' : 'asc');
-    } else {
-      setColonneTriJournal(colonne);
-      setOrdreTriJournal('asc');
-    }
-  };
-
   const mouvementsJournalAffiches = mouvementsJournalTries.slice(0, limiteJournal);
 
-  // --- CALCUL DU REPORT ANTÉRIEUR GLOBAL POUR LE JOURNAL DE CAISSE (MOUVEMENTS + VENTES) ---
   const reportAnterieurMouvements = mouvements.filter(m => {
-    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
-    if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
+    if (!mouvementCorrespondCaisse(m, caisseSelectionneeJournal)) return false;
     const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
     return dateDebutJournal && dateMvt < dateDebutJournal;
   }).reduce((acc, m) => {
@@ -757,8 +1012,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   }, 0);
 
   const reportAnterieurVentes = ventes.filter(v => {
-    if (v.id_caisse && !idsCaissesModuleActuel.has(String(v.id_caisse))) return false;
-    if (caisseSelectionneeJournal && String(v.id_caisse) !== String(caisseSelectionneeJournal)) return false;
+    if (v.id_caisse && !idsCaissesModuleActuel.has(String(v.id_caisse).trim())) return false;
+    if (caisseSelectionneeJournal && String(v.id_caisse).trim() !== String(caisseSelectionneeJournal).trim()) return false;
     const dateVente = v.created_at ? v.created_at.split('T')[0] : '';
     return dateDebutJournal && dateVente < dateDebutJournal;
   }).reduce((acc, v) => {
@@ -778,20 +1033,19 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const soldeJournal = reportAntérieur + totalEntreesJournal - totalSortiesJournal;
 
   const mouvementsManuelsFiltres = mouvements.filter(m => {
-    if (m.id_caisse && !idsCaissesModuleActuel.has(String(m.id_caisse))) return false;
-    if (caisseSelectionneeJournal && String(m.id_caisse) !== String(caisseSelectionneeJournal)) return false;
+    if (caisseHistoriqueId) {
+      if (!mouvementCorrespondCaisse(m, caisseHistoriqueId)) return false;
+    }
     const lib = (m.libelle || '').toUpperCase();
     if (lib === 'VERSEMENT' || lib.includes('VERSEMENT ÉTAT') || lib.includes('CLÔTURE')) return false;
-    const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
-    if (dateDebutJournal && dateMvt < dateDebutJournal) return false;
-    if (dateFinJournal && dateMvt > dateFinJournal) return false;
     return true;
   }).map(m => {
-    let libelleAffichage = m.libelle || '';
-    if (moduleActuel === 'LIVRAISON' && (libelleAffichage.toUpperCase().includes('CLÔTURE LIVRAISON') || libelleAffichage.toUpperCase().includes('VERS. CLÔTURE'))) {
-      libelleAffichage = 'Frais Livr.';
-    }
-    return { ...m, libelle: libelleAffichage };
+    const { auteur, motif } = extraireAuteurEtMotif(m.libelle);
+    return {
+      ...m,
+      libelle: formaterLibelleMouvement(motif),
+      auteur: auteur
+    };
   });
 
   const mouvementsManuelsAffiches = mouvementsManuelsFiltres.slice(0, limiteHistorique);
@@ -837,21 +1091,21 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const validerFormulaireControle = () => {
     if (moduleActuel === 'LIVRAISON') {
       if (!livreurControle) {
-        alert('⚠️ Veuillez obligatoirement sélectionner un livreur.');
+        afficherNotification('Champ requis', 'Veuillez obligatoirement sélectionner un livreur.', 'erreur');
         return false;
       }
     } else {
       if (!caisseControleId) {
-        alert('⚠️ Veuillez obligatoirement sélectionner une caisse.');
+        afficherNotification('Champ requis', 'Veuillez obligatoirement sélectionner une caisse.', 'erreur');
         return false;
       }
       if (!caissierFiltre) {
-        alert('⚠️ Veuillez obligatoirement sélectionner un caissier.');
+        afficherNotification('Champ requis', 'Veuillez obligatoirement sélectionner un caissier.', 'erreur');
         return false;
       }
     }
     if (montantVerse === '' || isNaN(Number(montantVerse))) {
-      alert('⚠️ Veuillez obligatoirement renseigner le montant versé.');
+      afficherNotification('Champ requis', 'Veuillez obligatoirement renseigner le montant versé.', 'erreur');
       return false;
     }
     return true;
@@ -863,6 +1117,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       const montantV = Number(montantVerse);
       const codePieceActuel = genererCodePieceSequentiel(dateControle, etatsCaisseList, cloturesCaissesList);
 
+      const caissePrincipaleObj = caisses.find(c =>
+        (c.nature || '').toUpperCase() === 'PRINCIPALE' ||
+        (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' ||
+        (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE')
+      ) || caisses[0];
+
       const payloadEtat = {
         id_entreprise: entrepriseId,
         module: moduleActuel,
@@ -873,14 +1133,32 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         montant_attendu: montantAttenduCaisse,
         montant_verse: montantV,
         ecart: ecartCaisse,
-        statut_versement: 'NON_VERSE',
-        responsable: utilisateurActif,
+        statut_versement: 'VERSE',
+        responsable: auteurEffectif,
         code_piece: codePieceActuel,
         created_at: new Date().toISOString()
       };
 
       const { data, error } = await supabase.from('etats_caisse').insert([payloadEtat]).select().single();
       if (error) throw error;
+
+      if (caissePrincipaleObj) {
+        const payloadMvt = {
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          id_caisse: caissePrincipaleObj.id,
+          type_mouvement: 'ENTREE',
+          montant: montantV,
+          libelle: moduleActuel === 'LIVRAISON' ? `[${auteurEffectif}] Frais Livr. - ${codePieceActuel}` : `[${auteurEffectif}] VERS. CLÔTURE ${codePieceActuel}`,
+          piece_physique: codePieceActuel,
+          created_at: new Date().toISOString()
+        };
+
+        const { error: errMvt } = await supabase.from('mouvements_caisse').insert([payloadMvt]);
+        if (errMvt) {
+          console.error("Erreur lors de l'alimentation automatique de la caisse principale :", errMvt);
+        }
+      }
 
       if (data) {
         setEtatsCaisseList(prev => {
@@ -891,16 +1169,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         setDernierEtatIdValidé(data.id);
       }
 
-      alert(`✅ Clôture de caisse [${codePieceActuel}] validée avec succès ! Montant de ${montantV.toLocaleString('fr-FR')} CFA prêt à être versé dans la caisse principale.`);
+      afficherNotification('Clôture validée', `Clôture [${codePieceActuel}] validée avec succès ! Montant de ${montantV.toLocaleString('fr-FR')} CFA versé automatiquement dans la caisse principale.`, 'succes');
       await chargerDonneesGlobales();
     } catch (err) {
-      alert('Erreur lors de la validation : ' + err.message);
+      afficherNotification('Erreur de clôture', err.message, 'erreur');
     }
   };
 
   const declencherOuvertureModalVersement = (etat) => {
     setEtatEnCoursDeVersement(etat);
-    const caissePrin = caissesPrincipalesPourSaisie[0];
+    const caissePrin = caisses.find(c => (c.nature || '').toUpperCase() === 'PRINCIPALE' || (c.nature || '').toUpperCase() === 'CAISSE ENTREPRISE' || (c.nom_caisse || '').toUpperCase().includes('PRINCIPALE')) || caisses[0];
     if (caissePrin) {
       setCaisseDestinationVersement(caissePrin.id);
     }
@@ -909,14 +1187,14 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const executerVersementModale = async () => {
     if (!etatEnCoursDeVersement || !caisseDestinationVersement) {
-      alert('Veuillez sélectionner une caisse de destination valide.');
+      afficherNotification('Champ requis', 'Veuillez sélectionner une caisse de destination valide.', 'erreur');
       return;
     }
     try {
       const etat = etatEnCoursDeVersement;
       const numClotureAssocie = etat.code_piece || `CL-${(etat.date_debut || '').replace(/-/g, '')}-1`;
 
-      const libelleMouvement = moduleActuel === 'LIVRAISON' ? 'Frais Livr.' : 'VERS';
+      const libelleMouvement = moduleActuel === 'LIVRAISON' ? `[${auteurEffectif}] Frais Livr.` : `[${auteurEffectif}] VERS`;
 
       const payloadMvt = {
         id_entreprise: entrepriseId,
@@ -924,10 +1202,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         id_caisse: caisseDestinationVersement,
         type_mouvement: 'ENTREE',
         montant: Number(etat.montant_verse),
-        libelle: libelleMouvement, 
+        libelle: libelleMouvement,
         piece_physique: numClotureAssocie,
-        created_at: new Date().toISOString(),
-        utilisateur_saisie: utilisateurActif
+        created_at: new Date().toISOString()
       };
 
       const { error: errMvt } = await supabase.from('mouvements_caisse').insert([payloadMvt]);
@@ -940,12 +1217,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
       if (errUpdate) throw errUpdate;
 
-      alert(`🚀 Versement de la clôture [${numClotureAssocie}] effectué avec succès !`);
+      afficherNotification('Versement réussi', `Versement de la clôture [${numClotureAssocie}] effectué avec succès !`, 'succes');
       setAfficherModaleVersement(false);
       setEtatEnCoursDeVersement(null);
       await chargerDonneesGlobales();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      afficherNotification('Erreur', 'Erreur : ' + err.message, 'erreur');
     }
   };
 
@@ -974,7 +1251,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   };
 
   const etatsCaisseFiltres = etatsCaisseList.filter(etat => {
-    if (etat.id_caisse && !idsCaissesModuleActuel.has(String(etat.id_caisse))) return false;
+    if (etat.id_caisse && !idsCaissesModuleActuel.has(String(etat.id_caisse).trim())) return false;
     const dateEtat = etat.date_debut || '';
     if (filtreDateDebut && dateEtat < filtreDateDebut) return false;
     if (filtreDateFin && dateEtat > filtreDateFin) return false;
@@ -1014,13 +1291,18 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const etatsCaisseAffiches = etatsCaisseTries.slice(0, limiteEtatsCaisse);
 
+  const caisseSaisieObj = caisses.find(c => String(c.id) === String(enteteSaisie.id_caisse));
+  const compteSaisieObj = comptes.find(c => String(c.id) === String(ligneUnique.id_compte));
+  const tiersSaisieObj = utilisateurs.find(u => String(u.id) === String(ligneUnique.id_utilisateur_tiers));
+  const compteLivreObj = comptes.find(c => String(c.id) === String(compteLivreId));
+
   return (
     <div className="space-y-2 text-[11px] font-sans max-w-full overflow-hidden px-0.5 sm:px-0 relative">
-      
+
       {/* 1. VUE : SAISIE DES OPÉRATIONS */}
       {vueInitiale === 'saisie_operations' && (
         <div className="space-y-2">
-          
+
           <div className="bg-white p-2.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
             <h4 className="font-extrabold text-slate-900 text-xs uppercase leading-tight">
               Saisie & Comptabilité
@@ -1073,25 +1355,34 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
           {/* CONTENU : FORMULAIRE NOUVEAU */}
           {modeSaisie === 'nouveau' && (
-            <form onSubmit={enregistrerOperationUnique} onKeyDown={gererKeyDownFormulaire} className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                <span className="font-bold text-slate-500 uppercase text-[9px]">
-                  {idOperationEnCoursModif ? 'Modifier' : 'Formulaire'}
-                </span>
+            <form onSubmit={enregistrerOperationUnique} onKeyDown={gererKeyDownFormulaire} className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
+              <div className="flex flex-wrap justify-between items-center border-b border-slate-100 pb-2 gap-1.5">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    required
+                    value={enteteSaisie.date}
+                    onChange={(e) => setEnteteSaisie({ ...enteteSaisie, date: e.target.value })}
+                    className="bg-slate-100 border border-slate-300 rounded-lg px-2 py-1 font-black text-slate-900 text-[10px] shadow-2xs"
+                  />
+                  <span className="font-extrabold text-slate-800 uppercase text-[10px] tracking-wide">
+                    {idOperationEnCoursModif ? 'Modifier' : 'Formulaire'}
+                  </span>
+                </div>
+
                 <div className="flex items-center gap-1.5">
                   {idOperationEnCoursModif && numeroPieceEnCoursModif && (
                     <div className="bg-orange-50 text-orange-800 px-2 py-1 rounded-xl text-right border border-orange-200 shadow-2xs">
-                      <span className="block text-[8px] uppercase text-orange-600 font-black">N° PIÈCE</span>
-                      <span className="text-[11px] font-mono font-black text-orange-700">{numeroPieceEnCoursModif}</span>
+                      <span className="text-[9px] font-mono font-black text-orange-700">{numeroPieceEnCoursModif}</span>
                     </div>
                   )}
-                  {moduleActuel !== 'LIVRAISON' && enteteSaisie.id_caisse && (
-                    <div className={`px-2.5 py-1 rounded-xl text-right border shadow-2xs flex items-center gap-2 ${
-                      calculerSoldeCaisse(enteteSaisie.id_caisse) < 0 
-                        ? 'bg-red-50 border-red-200 text-red-700' 
+                  {enteteSaisie.id_caisse && (
+                    <div className={`px-2.5 py-1 rounded-xl text-right border shadow-2xs flex items-center gap-1.5 ${
+                      calculerSoldeCaisse(enteteSaisie.id_caisse) < 0
+                        ? 'bg-red-50 border-red-200 text-red-700'
                         : 'bg-emerald-50 border-emerald-200 text-emerald-700'
                     }`}>
-                      <span className="text-[9px] uppercase font-black">SOLDE CAISSE</span>
+                      <span className="text-[8px] uppercase font-black">SOLDE</span>
                       <span className="text-[11px] font-black">
                         {calculerSoldeCaisse(enteteSaisie.id_caisse).toLocaleString('fr-FR')}
                       </span>
@@ -1100,73 +1391,51 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                 </div>
               </div>
 
-              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                {/* LIGNE 1 : Date, Compte, Tiers (et Caisse si hors livraison) sur la même ligne */}
-                <div className={`grid ${moduleActuel === 'LIVRAISON' ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5`}>
-                  <div className="col-span-1">
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={enteteSaisie.date}
-                      onChange={(e) => setEnteteSaisie({ ...enteteSaisie, date: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[11px] shadow-2xs"
-                    />
+              <div className="space-y-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Caisse *</label>
+                    <button
+                      type="button"
+                      onClick={() => ouvrirModaleSelection('caisse_saisie')}
+                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs flex items-center justify-between gap-1 text-left"
+                    >
+                      <span className="truncate uppercase">
+                        {caisseSaisieObj ? `💵 ${caisseSaisieObj.nom_caisse || caisseSaisieObj.code_caisse}` : '-- CAISSE --'}
+                      </span>
+                      <span className="text-slate-400 text-[9px] shrink-0">▼</span>
+                    </button>
                   </div>
-
-                  {moduleActuel !== 'LIVRAISON' && (
-                    <div>
-                      <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Caisse *</label>
-                      <select
-                        required
-                        value={enteteSaisie.id_caisse}
-                        onChange={(e) => setEnteteSaisie({ ...enteteSaisie, id_caisse: e.target.value })}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[11px] truncate shadow-2xs"
-                      >
-                        <option value="">-- Caisse --</option>
-                        {caisses.map((c) => (
-                          <option key={c.id} value={c.id}>💵 {c.nom_caisse || c.code_caisse}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
 
                   <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Compte *</label>
-                    <select
-                      required
-                      value={ligneUnique.id_compte}
-                      onChange={gererChangementCompte}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 shadow-2xs truncate uppercase"
+                    <button
+                      type="button"
+                      onClick={() => ouvrirModaleSelection('compte_saisie')}
+                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs flex items-center justify-between gap-1 text-left"
                     >
-                      <option value="">-- Compte --</option>
-                      {comptes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.numero_compte ? `${c.numero_compte} - ` : ''}{c.intitule_compte}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate uppercase">
+                        {compteSaisieObj ? compteSaisieObj.intitule_compte : '-- COMPTE --'}
+                      </span>
+                      <span className="text-slate-400 text-[9px] shrink-0">▼</span>
+                    </button>
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Tiers / Personnel *</label>
-                    <select
-                      required
-                      value={ligneUnique.id_utilisateur_tiers}
-                      onChange={gererChangementTiers}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 shadow-2xs truncate uppercase"
+                    <label className="block font-black text-slate-700 mb-0.5 text-[9px]">Tiers</label>
+                    <button
+                      type="button"
+                      onClick={() => ouvrirModaleSelection('tiers_saisie')}
+                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs flex items-center justify-between gap-1 text-left"
                     >
-                      <option value="">-- Aucun --</option>
-                      {utilisateurs.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.nom_complet || u.email || `Utilisateur #${u.id}`}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="truncate uppercase">
+                        {tiersSaisieObj ? (tiersSaisieObj.nom_complet || tiersSaisieObj.email) : '-- AUCUN --'}
+                      </span>
+                      <span className="text-slate-400 text-[9px] shrink-0">▼</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* LIGNE 2 : N° pièce, Motif et Montant sur la même ligne */}
                 <div className="grid grid-cols-3 gap-1.5">
                   <div>
                     <label className="block font-black text-slate-700 text-[9px] mb-0.5">N° pièce</label>
@@ -1175,19 +1444,22 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       placeholder="OPTIONNEL"
                       value={ligneUnique.piece_physique}
                       onChange={(e) => setLigneUnique({ ...ligneUnique, piece_physique: e.target.value.toUpperCase() })}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-mono font-bold text-slate-900 uppercase shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-mono font-bold text-slate-900 uppercase shadow-2xs"
                     />
                   </div>
 
                   <div>
                     <label className="block font-black text-slate-700 text-[9px] mb-0.5">Motif</label>
-                    <input
-                      type="text"
-                      placeholder={!ligneUnique.id_utilisateur_tiers ? "MOUV. INT." : "Motif..."}
-                      value={utilisateurMotif}
-                      onChange={(e) => setUtilisateurMotif(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-slate-900 uppercase shadow-2xs"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => ouvrirModaleSelection('motif_saisie')}
+                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 uppercase shadow-2xs flex items-center justify-between gap-1 text-left"
+                    >
+                      <span className={`truncate ${!utilisateurMotif ? 'text-slate-400' : 'text-slate-900'}`}>
+                        {utilisateurMotif || 'MOUV. INT.'}
+                      </span>
+                      <span className="text-orange-500 text-[9px] shrink-0">🔍</span>
+                    </button>
                   </div>
 
                   <div>
@@ -1200,7 +1472,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       value={ligneUnique.montant}
                       onChange={(e) => setLigneUnique({ ...ligneUnique, montant: e.target.value })}
                       onFocus={(e) => e.target.select()}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[11px] font-black text-orange-600 shadow-2xs"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-orange-600 shadow-2xs"
                     />
                   </div>
                 </div>
@@ -1243,11 +1515,23 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             </form>
           )}
 
-          {/* CONTENU : HISTORIQUE */}
+          {/* CONTENU : HISTORIQUE (AVEC CAISSE EN EN-TÊTE) */}
           {modeSaisie === 'historique' && (
             <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
-              <div className="flex flex-col gap-1.5 border-b border-slate-100 pb-2">
-                <h5 className="font-extrabold text-slate-900 text-[11px] uppercase">Historique ({mouvementsManuelsAffiches.length} / {mouvementsManuelsFiltres.length})</h5>
+              <div className="flex flex-wrap justify-between items-center border-b border-slate-100 pb-2 gap-2">
+                <h5 className="font-extrabold text-slate-900 text-[11px] uppercase">
+                  Historique ({mouvementsManuelsAffiches.length} / {mouvementsManuelsFiltres.length})
+                </h5>
+                <button
+                  type="button"
+                  onClick={() => ouvrirModaleSelection('caisse_historique')}
+                  className="bg-slate-100 hover:bg-orange-50 border border-slate-300 rounded-xl px-2.5 py-1 font-black text-slate-900 text-[10px] flex items-center gap-1.5 shadow-2xs"
+                >
+                  <span className="uppercase">
+                    💵 {caisseHistoriqueId ? (caisses.find(c => String(c.id) === String(caisseHistoriqueId))?.nom_caisse || 'CAISSE') : 'Toutes les caisses'}
+                  </span>
+                  <span className="text-orange-600 text-[9px]">▼</span>
+                </button>
               </div>
 
               <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
@@ -1259,12 +1543,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       <th className="p-1.5">Compte</th>
                       <th className="p-1.5">Motif</th>
                       <th className="p-1.5 text-right">Montant</th>
+                      <th className="p-1.5">Utilisateur</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
                     {mouvementsManuelsAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucune opération.</td>
+                        <td colSpan="6" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucune opération.</td>
                       </tr>
                     ) : (
                       mouvementsManuelsAffiches.map((m, indexMvt) => {
@@ -1272,6 +1557,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         const estEntree = m.type_mouvement === 'ENTREE';
                         let numeroPieceSequence = m.piece_physique || `PC-${String(indexMvt + 1).padStart(2, '0')}`;
                         let nomCompteAffichage = compteAssocie ? compteAssocie.intitule_compte : '-';
+                        const { auteur, motif } = extraireAuteurEtMotif(m.libelle);
 
                         return (
                           <tr
@@ -1283,10 +1569,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
                             <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{numeroPieceSequence}</td>
                             <td className="p-1.5 font-bold text-slate-900 truncate uppercase">{nomCompteAffichage}</td>
-                            <td className="p-1.5 font-extrabold uppercase truncate">{m.libelle || '-'}</td>
+                            <td className="p-1.5 font-extrabold uppercase truncate">{motif}</td>
                             <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-600' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{auteur}</td>
                           </tr>
                         );
                       })
@@ -1335,29 +1622,30 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                 <div className="grid grid-cols-2 gap-1.5">
                   <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Compte :</label>
-                    <select
-                      value={compteLivreId}
-                      onChange={(e) => setCompteLivreId(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] truncate uppercase"
+                    <button
+                      type="button"
+                      onClick={() => ouvrirModaleSelection('compte_gl')}
+                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] cursor-pointer truncate shadow-2xs flex justify-between items-center text-left"
                     >
-                      <option value="">-- Tous les comptes --</option>
-                      {comptes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.numero_compte ? `${c.numero_compte} - ` : ''}{c.intitule_compte}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="uppercase truncate">
+                        {compteLivreObj
+                          ? `${compteLivreObj.numero_compte ? `${compteLivreObj.numero_compte} - ` : ''}${compteLivreObj.intitule_compte}`
+                          : '-- TOUS LES COMPTES --'}
+                      </span>
+                      <span className="text-slate-400 shrink-0 ml-1">🔍</span>
+                    </button>
                   </div>
 
                   <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Tiers / Fournisseur / Personnel :</label>
-                    <div 
-                      onClick={() => setAfficherModaleTiers(true)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] cursor-pointer truncate shadow-2xs flex justify-between items-center"
+                    <button
+                      type="button"
+                      onClick={() => ouvrirModaleSelection('tiers_gl')}
+                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] cursor-pointer truncate shadow-2xs flex justify-between items-center text-left"
                     >
-                      <span className="uppercase">{tiersLivreFiltre || '-- TOUS --'}</span>
-                      <span className="text-slate-400">🔍</span>
-                    </div>
+                      <span className="uppercase truncate">{tiersLivreFiltre || '-- TOUS --'}</span>
+                      <span className="text-slate-400 shrink-0 ml-1">🔍</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1371,15 +1659,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       <th onClick={() => gererTriGrandLivre('compte')} className="p-1.5 cursor-pointer">Compte ↕</th>
                       <th onClick={() => gererTriGrandLivre('libelle')} className="p-1.5 cursor-pointer">Libellé / Source ↕</th>
                       <th onClick={() => gererTriGrandLivre('montant')} className="p-1.5 text-right cursor-pointer">Montant ↕</th>
+                      <th className="p-1.5">Utilisateur</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {resultatGrandLivreAffiches.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucun mouvement trouvé dans le grand livre.</td>
+                        <td colSpan="6" className="p-3 text-center text-slate-500 font-bold text-[10px]">Aucun mouvement trouvé dans le grand livre.</td>
                       </tr>
                     ) : (
-                      resultatGrandLivreAffiches.map((m, idx) => {
+                      resultatGrandLivreAffiches.map((m) => {
                         const estEntree = m.type_mouvement === 'ENTREE';
                         const compteAssocie = comptes.find(c => String(c.id) === String(m.id_compte));
                         return (
@@ -1391,6 +1680,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-700' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || '-'}</td>
                           </tr>
                         );
                       })
@@ -1399,15 +1689,15 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   {resultatGrandLivreTries.length > 0 && (
                     <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
                       <tr>
-                        <td colSpan="4" className="p-2 uppercase text-[9px]">Total Entrées :</td>
+                        <td colSpan="5" className="p-2 uppercase text-[9px]">Total Entrées :</td>
                         <td className="p-2 text-right font-black text-emerald-800">+{totalEntreesGrandLivre.toLocaleString('fr-FR')}</td>
                       </tr>
                       <tr>
-                        <td colSpan="4" className="p-2 uppercase text-[9px]">Total Sorties :</td>
+                        <td colSpan="5" className="p-2 uppercase text-[9px]">Total Sorties :</td>
                         <td className="p-2 text-right font-black text-red-700">-{totalSortiesGrandLivre.toLocaleString('fr-FR')}</td>
                       </tr>
                       <tr className="bg-orange-50 border-t border-slate-200">
-                        <td colSpan="4" className="p-2 uppercase text-[9px] text-orange-900 font-black">Résultat Net :</td>
+                        <td colSpan="5" className="p-2 uppercase text-[9px] text-orange-900 font-black">Résultat Net :</td>
                         <td className={`p-2 text-right font-black ${resultatNetGrandLivre >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                           {resultatNetGrandLivre >= 0 ? `+${resultatNetGrandLivre.toLocaleString('fr-FR')}` : resultatNetGrandLivre.toLocaleString('fr-FR')}
                         </td>
@@ -1419,7 +1709,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             </div>
           )}
 
-          {/* CONTENU : JOURNAL DE CAISSE */}
+          {/* CONTENU : JOURNAL DE CAISSE (AVEC SÉLECTION DE CAISSE EN MODALE) */}
           {modeSaisie === 'journal_caisse' && (
             <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
               <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
@@ -1432,7 +1722,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                 </button>
               </div>
 
-              {/* FILTRES SUR LA MÊME LIGNE (Date Début, Date Fin, Caisse obligatoire) */}
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <div className="grid grid-cols-3 gap-1.5">
                   <div>
@@ -1455,17 +1744,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
                   <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Caisse * :</label>
-                    <select
-                      required
-                      value={caisseSelectionneeJournal}
-                      onChange={(e) => setCaisseSelectionneeJournal(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs truncate"
+                    <button
+                      type="button"
+                      onClick={() => ouvrirModaleSelection('caisse_journal')}
+                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] shadow-2xs flex items-center justify-between gap-1 text-left"
                     >
-                      <option value="">-- Sélectionnez --</option>
-                      {caisses.map((c) => (
-                        <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
-                      ))}
-                    </select>
+                      <span className="truncate uppercase">
+                        {caisseSelectionneeJournal ? (caisses.find(c => String(c.id) === String(caisseSelectionneeJournal))?.nom_caisse || 'CAISSE') : '-- TOUTES --'}
+                      </span>
+                      <span className="text-slate-400 text-[9px] shrink-0">▼</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1480,6 +1768,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       <th className="p-1.5">Motif</th>
                       <th className="p-1.5 text-right">Entrée</th>
                       <th className="p-1.5 text-right">Sortie</th>
+                      <th className="p-1.5">Utilisateur</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
@@ -1495,11 +1784,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         <td className={`p-1.5 font-black text-right ${reportAntérieur >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
                           {reportAntérieur < 0 ? `${Math.abs(reportAntérieur).toLocaleString('fr-FR')}` : '-'}
                         </td>
+                        <td className="p-1.5 font-bold text-slate-600">-</td>
                       </tr>
                     )}
                     {mouvementsJournalAffiches.length === 0 && reportAntérieur === 0 ? (
                       <tr>
-                        <td colSpan="6" className="p-3 text-center text-slate-500 font-bold">Aucun mouvement de caisse.</td>
+                        <td colSpan="7" className="p-3 text-center text-slate-500 font-bold">Aucun mouvement de caisse.</td>
                       </tr>
                     ) : (
                       mouvementsJournalAffiches.map((m, idx) => {
@@ -1509,7 +1799,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
                         let pieceAffichee = m.piece_physique || `PC-${idx + 1}`;
                         let nomLivreurAssocie = '';
-                        if (moduleActuel === 'LIVRAISON') {
+                        if (moduleActuel === 'LIVRAISON' && !pieceAffichee.includes('LIVR-')) {
                           const cmdAssociee = commandesLivraison.find(cmd => (cmd.frais_livraison && Number(cmd.frais_livraison) === montantNum) || (m.piece_physique && m.piece_physique.includes(cmd.id)));
                           if (cmdAssociee && cmdAssociee.vendeur_livreur) {
                             nomLivreurAssocie = cmdAssociee.vendeur_livreur;
@@ -1521,7 +1811,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                           <tr key={m.id} className="hover:bg-slate-50">
                             <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString('fr-FR')}</td>
                             <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{pieceFinale}</td>
-                            <td className="p-1.5 font-bold text-slate-900 truncate max-w-[80px] uppercase">{compteObj ? compteObj.intitule_compte : '-'}</td>
+                            <td className="p-1.5 font-bold text-slate-900 truncate max-w-[80px] uppercase">{compteObj ? compteObj.intitule_compte : 'NON LIÉ'}</td>
                             <td className="p-1.5 font-black text-slate-900 uppercase truncate max-w-[140px]">{m.libelle}</td>
                             <td className="p-1.5 font-black text-emerald-700 text-right whitespace-nowrap">
                               {estEntree ? `${montantNum.toLocaleString('fr-FR')}` : '-'}
@@ -1529,6 +1819,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className="p-1.5 font-black text-red-600 text-right whitespace-nowrap">
                               {!estEntree ? `${montantNum.toLocaleString('fr-FR')}` : '-'}
                             </td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || '-'}</td>
                           </tr>
                         );
                       })
@@ -1540,10 +1831,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         <td colSpan="4" className="p-2 uppercase text-[9px]">Totaux de la période :</td>
                         <td className="p-2 text-right font-black text-emerald-800">{totalEntreesJournal.toLocaleString('fr-FR')}</td>
                         <td className="p-2 text-right font-black text-red-700">{totalSortiesJournal.toLocaleString('fr-FR')}</td>
+                        <td></td>
                       </tr>
                       <tr className="bg-orange-50 border-t border-slate-200">
                         <td colSpan="4" className="p-2 uppercase text-[9px] text-orange-900 font-black">Solde Net (Report inclus) :</td>
-                        <td colSpan="2" className={`p-2 text-right font-black ${soldeJournal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        <td colSpan="3" className={`p-2 text-right font-black ${soldeJournal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                           {soldeJournal.toLocaleString('fr-FR')} CFA
                         </td>
                       </tr>
@@ -1670,7 +1962,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
                 )}
 
-                {/* 1. LIGNE : MONTANT TOTAL & TOTAL ENCAISSÉ SUR LA MÊME LIGNE */}
                 <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-200">
                   <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">MONTANT TOTAL :</label>
@@ -1686,7 +1977,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
                 </div>
 
-                {/* 2. LIGNE : MONTANT ATTENDU, VERSEMENT ET ÉCART SUR LA MÊME LIGNE */}
                 <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-200">
                   <div>
                     <label className="block font-black text-slate-800 mb-0.5 text-[9px]">MONTANT ATTENDU :</label>
@@ -1782,7 +2072,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
                 </div>
               </div>
-              
+
               <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs max-h-[340px]">
                 <table className="w-full text-left text-[10px] border-collapse">
                   <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black text-[9px] uppercase sticky top-0 z-10">
@@ -1883,6 +2173,375 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         </div>
       )}
 
+      {/* --- MODALE UNIVERSELLE DE SÉLECTION (CAISSE, COMPTE, TIERS, MOTIFS) --- */}
+      {modaleSelection && (
+        <div
+          onClick={fermerModaleSelection}
+          className="fixed inset-0 z-50 flex items-start justify-center pt-8 sm:pt-12 bg-slate-950/70 backdrop-blur-2xs p-3"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white text-slate-900 w-full max-w-md rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-200 bg-slate-900 text-white">
+              <h3 className="font-extrabold text-xs uppercase tracking-wider text-orange-400">
+                {(modaleSelection === 'caisse_saisie' || modaleSelection === 'caisse_journal' || modaleSelection === 'caisse_historique') && '💵 SÉLECTIONNER UNE CAISSE'}
+                {(modaleSelection === 'compte_saisie' || modaleSelection === 'compte_gl') && '📒 SÉLECTIONNER UN COMPTE'}
+                {modaleSelection === 'tiers_saisie' && '👤 SÉLECTIONNER UN TIERS'}
+                {modaleSelection === 'tiers_gl' && '🔍 FILTRER PAR TIERS'}
+                {modaleSelection === 'motif_saisie' && '📝 CHOISIR OU CRÉER UN MOTIF'}
+              </h3>
+              <button
+                type="button"
+                onClick={fermerModaleSelection}
+                className="text-slate-400 hover:text-white font-bold p-1 rounded-lg transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 space-y-2.5 max-h-[75vh] overflow-y-auto">
+              <input
+                type="text"
+                autoFocus
+                placeholder="RECHERCHER..."
+                value={rechercheModale}
+                onChange={(e) => setRechercheModale(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-900 text-[11px] uppercase placeholder-slate-400 focus:outline-none focus:border-orange-500"
+              />
+
+              {/* CRÉATION INSTANTANÉE DE MOTIF */}
+              {modaleSelection === 'motif_saisie' && (
+                <div className="bg-orange-50/70 p-2.5 rounded-xl border border-orange-200 space-y-1.5">
+                  <label className="block font-black text-orange-900 text-[9px] uppercase">
+                    ＋ Créer et utiliser un nouveau motif :
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="EX: ACHAT CARBURANT, FACTURE ENEO..."
+                      value={nouveauMotifInput}
+                      onChange={(e) => setNouveauMotifInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = (nouveauMotifInput || rechercheModale).trim().toUpperCase();
+                          if (val) {
+                            ajouterMotifPersonnalise(val);
+                            setUtilisateurMotif(val);
+                            fermerModaleSelection();
+                          }
+                        }
+                      }}
+                      className="flex-1 bg-white border border-orange-300 rounded-lg px-2.5 py-1.5 font-black text-slate-900 text-[10px] uppercase focus:outline-none focus:border-orange-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = (nouveauMotifInput || rechercheModale).trim().toUpperCase();
+                        if (val) {
+                          ajouterMotifPersonnalise(val);
+                          setUtilisateurMotif(val);
+                          fermerModaleSelection();
+                        }
+                      }}
+                      className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase shrink-0 shadow-2xs"
+                    >
+                      Créer
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* CRÉATION INSTANTANÉE DE COMPTE (AVEC BLOCAGE DE DUPLICATION) */}
+              {modaleSelection === 'compte_saisie' && (
+                <div className="bg-orange-50/70 p-2.5 rounded-xl border border-orange-200 space-y-1.5">
+                  <label className="block font-black text-orange-900 text-[9px] uppercase">
+                    ＋ Créer et utiliser un nouveau compte :
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="INTITULÉ DU COMPTE..."
+                      value={nouveauCompteInput}
+                      onChange={(e) => setNouveauCompteInput(e.target.value.toUpperCase())}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          await creerEtUtiliserNouveauCompte();
+                        }
+                      }}
+                      className="flex-1 bg-white border border-orange-300 rounded-lg px-2.5 py-1.5 font-black text-slate-900 text-[10px] uppercase focus:outline-none focus:border-orange-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={creerEtUtiliserNouveauCompte}
+                      className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase shrink-0 shadow-2xs"
+                    >
+                      Créer
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* CONTENU : CAISSE (SAISIE, JOURNAL, HISTORIQUE) */}
+              {(modaleSelection === 'caisse_saisie' || modaleSelection === 'caisse_journal' || modaleSelection === 'caisse_historique') && (
+                <div className="space-y-1.5">
+                  {modaleSelection !== 'caisse_saisie' && (
+                    <div
+                      onClick={() => {
+                        if (modaleSelection === 'caisse_journal') setCaisseSelectionneeJournal('');
+                        if (modaleSelection === 'caisse_historique') setCaisseHistoriqueId('');
+                        fermerModaleSelection();
+                      }}
+                      className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
+                    >
+                      <span>⭐ -- TOUTES LES CAISSES --</span>
+                      <span className="text-[9px] text-orange-600 font-black">TOUTES</span>
+                    </div>
+                  )}
+                  {caisses
+                    .filter(c => (c.nom_caisse || c.code_caisse || '').toUpperCase().includes(rechercheModale.toUpperCase()))
+                    .map(c => {
+                      const solde = calculerSoldeCaisse(c.id);
+                      const estSelectionnee =
+                        modaleSelection === 'caisse_saisie' ? String(enteteSaisie.id_caisse) === String(c.id) :
+                        modaleSelection === 'caisse_journal' ? String(caisseSelectionneeJournal) === String(c.id) :
+                        String(caisseHistoriqueId) === String(c.id);
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            if (modaleSelection === 'caisse_saisie') {
+                              setEnteteSaisie(prev => ({ ...prev, id_caisse: c.id }));
+                            } else if (modaleSelection === 'caisse_journal') {
+                              setCaisseSelectionneeJournal(c.id);
+                            } else if (modaleSelection === 'caisse_historique') {
+                              setCaisseHistoriqueId(c.id);
+                            }
+                            fermerModaleSelection();
+                          }}
+                          className={`p-3 rounded-xl border cursor-pointer transition flex justify-between items-center ${
+                            estSelectionnee ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
+                          }`}
+                        >
+                          <span className="font-black text-slate-900 text-[11px] uppercase">💵 {c.nom_caisse || c.code_caisse}</span>
+                          <span className={`font-black text-[10px] ${solde < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                            {solde.toLocaleString('fr-FR')} CFA
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* CONTENU : COMPTE */}
+              {(modaleSelection === 'compte_saisie' || modaleSelection === 'compte_gl') && (
+                <div className="space-y-1.5">
+                  {modaleSelection === 'compte_gl' && (
+                    <div
+                      onClick={() => {
+                        setCompteLivreId('');
+                        fermerModaleSelection();
+                      }}
+                      className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
+                    >
+                      <span>⭐ -- TOUS LES COMPTES --</span>
+                      <span className="text-[9px] text-orange-600 font-black">TOUS</span>
+                    </div>
+                  )}
+                  {comptes
+                    .filter(c =>
+                      (c.intitule_compte || '').toUpperCase().includes(rechercheModale.toUpperCase()) ||
+                      (c.numero_compte || '').toUpperCase().includes(rechercheModale.toUpperCase())
+                    )
+                    .map(c => {
+                      const estSelectionne =
+                        modaleSelection === 'compte_saisie'
+                          ? String(ligneUnique.id_compte) === String(c.id)
+                          : String(compteLivreId) === String(c.id);
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            if (modaleSelection === 'compte_saisie') {
+                              selectionnerCompteSaisie(c.id);
+                            } else {
+                              setCompteLivreId(c.id);
+                              fermerModaleSelection();
+                            }
+                          }}
+                          className={`p-3 rounded-xl border cursor-pointer transition flex justify-between items-center ${
+                            estSelectionne ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
+                          }`}
+                        >
+                          <div className="truncate pr-2">
+                            {c.numero_compte && (
+                              <span className="font-mono font-black text-orange-600 text-[10px] mr-1.5">{c.numero_compte}</span>
+                            )}
+                            <span className="font-black text-slate-900 text-[11px] uppercase">{c.intitule_compte}</span>
+                          </div>
+                          <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* CONTENU : TIERS SAISIE */}
+              {modaleSelection === 'tiers_saisie' && (
+                <div className="space-y-1.5">
+                  <div
+                    onClick={() => selectionnerTiersSaisie('')}
+                    className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
+                  >
+                    <span>-- AUCUN TIERS --</span>
+                    <span className="text-[9px] text-slate-500 font-bold">EFFACER</span>
+                  </div>
+                  {utilisateurs
+                    .filter(u => (u.nom_complet || u.email || '').toUpperCase().includes(rechercheModale.toUpperCase()))
+                    .map(u => {
+                      const estSelectionne = String(ligneUnique.id_utilisateur_tiers) === String(u.id);
+                      return (
+                        <div
+                          key={u.id}
+                          onClick={() => selectionnerTiersSaisie(u.id)}
+                          className={`p-3 rounded-xl border cursor-pointer transition flex justify-between items-center ${
+                            estSelectionne ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
+                          }`}
+                        >
+                          <span className="font-black text-slate-900 text-[11px] uppercase truncate">
+                            👤 {u.nom_complet || u.email}
+                          </span>
+                          <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* CONTENU : TIERS GRAND LIVRE */}
+              {modaleSelection === 'tiers_gl' && (
+                <div className="space-y-1.5">
+                  <div
+                    onClick={() => {
+                      setTiersLivreFiltre('');
+                      fermerModaleSelection();
+                    }}
+                    className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
+                  >
+                    <span>⭐ -- TOUS --</span>
+                    <span className="text-[9px] text-orange-600 font-black">TOUS</span>
+                  </div>
+                  {listeTiersGlobale
+                    .filter(t => t.nom.includes(rechercheModale.toUpperCase()) || t.categorie.includes(rechercheModale.toUpperCase()))
+                    .map((item, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setTiersLivreFiltre(item.nom);
+                          fermerModaleSelection();
+                        }}
+                        className="bg-white hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-200 cursor-pointer transition uppercase text-[11px] flex justify-between items-center"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="text-orange-600 text-[9px] font-mono shrink-0">({item.categorie})</span>
+                          <span className="truncate">{item.nom}</span>
+                        </div>
+                        <span className="text-[9px] text-slate-600 font-bold border border-slate-300 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* CONTENU : MOTIFS */}
+              {modaleSelection === 'motif_saisie' && (
+                <div className="space-y-1.5">
+                  <div
+                    onClick={() => {
+                      setUtilisateurMotif('');
+                      fermerModaleSelection();
+                    }}
+                    className="bg-slate-50 hover:bg-orange-50 text-slate-700 font-black p-2.5 rounded-xl border border-slate-200 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
+                  >
+                    <span>MOUV. INT. (PAR DÉFAUT)</span>
+                    <span className="text-[9px] text-slate-400 font-bold">DÉFAUT</span>
+                  </div>
+                  {listeMotifsUniques
+                    .filter(m => m.includes(rechercheModale.toUpperCase()))
+                    .map((motifItem, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setUtilisateurMotif(motifItem);
+                          fermerModaleSelection();
+                        }}
+                        className={`p-2.5 rounded-xl border cursor-pointer transition flex justify-between items-center ${
+                          utilisateurMotif === motifItem ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
+                        }`}
+                      >
+                        <span className="font-black text-slate-900 text-[11px] uppercase truncate">{motifItem}</span>
+                        <span className="text-[9px] text-orange-600 font-bold border border-orange-200 px-2 py-0.5 rounded-lg shrink-0">UTILISER</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODALE GLOBALE DE NOTIFICATION STYLE GRILLE --- */}
+      {modalNotification && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-2xs p-4">
+          <div className="bg-white text-slate-900 w-full max-w-sm rounded-2xl border border-slate-200 shadow-2xl overflow-hidden p-5 space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full text-xl font-black ${
+              modalNotification.type === 'erreur' ? 'bg-red-100 text-red-600' : modalNotification.type === 'succes' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
+            }`}>
+              {modalNotification.type === 'erreur' ? '⚠️' : modalNotification.type === 'succes' ? '✅' : 'ℹ️'}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="font-black text-slate-900 text-sm uppercase">{modalNotification.titre}</h3>
+              <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalNotification.texte}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              {modalNotification.onConfirm ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setModalNotification(null)}
+                    className="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xs uppercase rounded-xl transition"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const action = modalNotification.onConfirm;
+                      setModalNotification(null);
+                      if (action) action();
+                    }}
+                    className="py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
+                  >
+                    Confirmer
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setModalNotification(null)}
+                  className="col-span-2 w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- MODALE DE SÉLECTION DE LA CAISSE DE VERSEMENT --- */}
       {afficherModaleVersement && etatEnCoursDeVersement && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-2xs p-4">
@@ -1931,79 +2590,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
               >
                 Confirmer
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODALE DE RECHERCHE DE TIERS --- */}
-      {afficherModaleTiers && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 bg-slate-950/70 backdrop-blur-2xs p-4">
-          <div className="bg-white text-slate-900 w-full max-w-md rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between p-3.5 border-b border-slate-200 bg-slate-900 text-white">
-              <h3 className="font-extrabold text-xs uppercase tracking-wider text-orange-400">
-                SÉLECTIONNER UN TIERS / CLIENT / EMPLOYÉ
-              </h3>
-              <button
-                onClick={() => {
-                  setAfficherModaleTiers(false);
-                  setRechercheTiersInput('');
-                }}
-                className="text-slate-400 hover:text-white font-bold p-1 rounded-lg transition"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-3.5 space-y-2 max-h-[75vh] overflow-y-auto">
-              <div className="relative mb-2">
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="RECHERCHER..."
-                  value={rechercheTiersInput}
-                  onChange={(e) => setRechercheTiersInput(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 font-bold text-slate-900 text-[11px] uppercase placeholder-slate-400 shadow-inner focus:outline-none focus:border-orange-500"
-                />
-              </div>
-
-              <div
-                onClick={() => {
-                  setTiersLivreFiltre('');
-                  setAfficherModaleTiers(false);
-                  setRechercheTiersInput('');
-                }}
-                className="bg-white hover:bg-slate-50 text-slate-900 font-black p-3 rounded-xl border border-slate-300 cursor-pointer transition shadow-2xs uppercase text-[10px] flex justify-between items-center"
-              >
-                <span>⭐ -- TOUS --</span>
-                <span className="text-[9px] text-orange-600 font-black">TOUS</span>
-              </div>
-
-              <div className="space-y-1.5">
-                {listeTiersFiltresModale.length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 font-bold text-[11px]">
-                    Aucun tiers trouvé.
-                  </div>
-                ) : (
-                  listeTiersFiltresModale.map((item, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        setTiersLivreFiltre(item.nom);
-                        setAfficherModaleTiers(false);
-                        setRechercheTiersInput('');
-                      }}
-                      className="bg-white hover:bg-orange-50 text-slate-900 font-black p-3 rounded-xl border border-slate-300 cursor-pointer transition shadow-2xs uppercase text-[11px] flex justify-between items-center"
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <span className="text-orange-600 text-[9px] font-mono shrink-0">({item.categorie})</span>
-                        <span className="truncate">{item.nom}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-600 font-bold border border-slate-300 px-2 py-1 rounded-lg shrink-0">SÉLECTIONNER</span>
-                    </div>
-                  ))
-                )}
-              </div>
             </div>
           </div>
         </div>

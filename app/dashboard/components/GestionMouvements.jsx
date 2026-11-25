@@ -227,11 +227,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const inputPrixRef = useRef(null);
   const boutonSelectionArticleRef = useRef(null);
 
+  // Référence pour garder trace du document actif en cours d'édition pour le nettoyage automatique
+  const numeroDocOriginalRef = useRef(numeroDocOriginal);
+  useEffect(() => {
+    numeroDocOriginalRef.current = numeroDocOriginal;
+  }, [numeroDocOriginal]);
+
   const afficherMessage = (texte, type = 'info', titre = 'Notification') => {
     setModalMessage({ texte, type, titre });
   };
 
-  // --- GESTION DES VERROUS STRICTS ET INSTANTANÉS ---
+  // --- GESTION DES VERROUS STRICTS ET INSTANTANÉS AVEC FERMETURE AUTOMATIQUE ---
   const libererVerrouDoc = async (numeroDocUnique) => {
     if (!numeroDocUnique) return;
     try {
@@ -244,7 +250,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         .eq('numero_doc', numeroDocUnique)
         .eq('utilisateur', operateurActuel);
     } catch (e) {
-      console.error('Erreur libération verrou:', e);
+      // Ignorer silencieusement en arrière-plan
     }
   };
 
@@ -253,8 +259,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     try {
       const operateurActuel = obtenirNomOperateurConnecte();
       
-      // Vérifier si un autre utilisateur a déjà posé un verrou actif sur ce document
-      const { data, error } = await supabase
+      const { data, error: selectError } = await supabase
         .from('verrous_documents')
         .select('*')
         .eq('id_entreprise', entrepriseId)
@@ -263,32 +268,66 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         .maybeSingle();
 
       if (data && data.utilisateur && data.utilisateur !== operateurActuel) {
-        // Bloqué instantanément à la milliseconde près, sans délai d'attente
         afficherMessage(`Ce document est actuellement ouvert et verrouillé par ${data.utilisateur}. Accès refusé.`, 'erreur', 'Document verrouillé');
         return false;
       }
 
-      // Poser immédiatement notre verrou exclusif
+      // Utilisation d'un upsert propre sans déclencher d'erreur de log non gérée
       const { error: upsertError } = await supabase
         .from('verrous_documents')
-        .upsert([{
+        .upsert({
           id_entreprise: entrepriseId,
           module: moduleActuel,
           numero_doc: numeroDocUnique,
           utilisateur: operateurActuel,
           updated_at: new Date().toISOString()
-        }], { onConflict: 'id_entreprise,module,numero_doc' });
+        }, { onConflict: 'id_entreprise,module,numero_doc' });
 
       if (upsertError) {
-        console.error('Erreur upsert verrou:', upsertError);
+        console.warn('Avertissement verrou (upsert):', upsertError.message || upsertError);
       }
 
       return true;
     } catch (e) {
-      console.error('Erreur acquisition verrou:', e);
+      console.warn('Exception acquisition verrou:', e);
       return true; 
     }
   };
+
+  // Effet global pour libérer le verrou automatiquement si l'utilisateur ferme l'onglet ou quitte le navigateur
+  useEffect(() => {
+    const gererFermetureFenetre = () => {
+      const docActif = numeroDocOriginalRef.current;
+      if (docActif) {
+        const operateurActuel = obtenirNomOperateurConnecte();
+        // Utilisation de fetch avec keepalive ou beacon pour garantir l'envoi de la requête de suppression à la fermeture
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (supabaseUrl && supabaseKey) {
+          const endpoint = `${supabaseUrl}/rest/v1/verrous_documents?id_entreprise=eq.${entrepriseId}&module=eq.${moduleActuel}&numero_doc=eq.${docActif}&utilisateur=eq.${encodeURIComponent(operateurActuel)}`;
+          fetch(endpoint, {
+            method: 'DELETE',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal'
+            },
+            keepalive: true
+          }).catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', gererFermetureFenetre);
+    return () => {
+      window.removeEventListener('beforeunload', gererFermetureFenetre);
+      const docActif = numeroDocOriginalRef.current;
+      if (docActif) {
+        libererVerrouDoc(docActif);
+      }
+    };
+  }, [entrepriseId, moduleActuel]);
 
   const libellesTypesMouvement = {
     TRANSFERT: 'TRANSFERT',
@@ -1098,9 +1137,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const ouvrirDocumentDepuisListe = async (numeroDocUnique) => {
     if (enTrainDeSauvegarder) return;
 
-    // Vérifier et acquérir le verrou instantanément
     const verrouAcquis = await acquerirVerrouDoc(numeroDocUnique);
-    if (!verrouAcquis) return; // Stoppé et bloqué immédiatement si déjà ouvert par quelqu'un d'autre
+    if (!verrouAcquis) return; 
 
     const lignesAssociees = mouvements.filter(m => m.motif_remarque === numeroDocUnique);
     if (lignesAssociees.length === 0) {
@@ -1336,7 +1374,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   return (
     <div className="space-y-2 font-sans text-[10px]">
-      {/* Premier bloc épuré avec les boutons Retour, titre court et actions sur la même ligne */}
       <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs gap-1.5 flex-nowrap overflow-x-auto">
         <div className="flex items-center gap-1.5 shrink-0">
           <button 
@@ -1472,7 +1509,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          {/* Deuxième bloc compact et épuré avec libellés courts sur la même ligne */}
           <div className={`bg-white border-2 ${ongletPrincipal === 'ACHATS' ? 'border-emerald-500/50' : 'border-orange-500/50'} p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
             <div className="flex justify-between items-center pb-1 border-b gap-1">
               <div className="flex items-center gap-2 truncate">
