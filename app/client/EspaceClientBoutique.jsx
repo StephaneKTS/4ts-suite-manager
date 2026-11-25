@@ -469,13 +469,13 @@ export default function EspaceClientBoutique() {
 
   if (!entrepriseId) {
     return (
-      <div className="p-8 text-center space-y-3 font-sans">
+      <div className="p-8 text-center space-y-3 font-sans w-full max-w-2xl mx-auto">
         <div className="text-red-500 text-3xl">⚠️</div>
         <h2 className="text-sm font-black uppercase text-slate-900">Restaurant non identifié</h2>
         <p className="text-xs text-slate-500">Veuillez scanner un QR code valide sur votre table.</p>
         
         {restaurantsRecents.length > 0 && (
-          <div className="mt-6 space-y-2 text-left max-w-xs mx-auto">
+          <div className="mt-6 space-y-2 text-left max-w-md mx-auto">
             <h3 className="font-black text-slate-700 text-[10px] uppercase">Mes restaurants récents :</h3>
             <div className="space-y-1.5">
               {restaurantsRecents.map((rest) => (
@@ -500,7 +500,7 @@ export default function EspaceClientBoutique() {
         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl shadow-xs">✅</div>
         <h2 className="text-base font-black uppercase text-slate-900">Commande validée avec succès !</h2>
         
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 w-full max-w-xs space-y-1 text-xs">
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 w-full max-w-md space-y-1 text-xs">
           <p className="text-slate-600 font-bold uppercase">Client : <strong className="text-slate-900">{client.nom}</strong></p>
           <p className="text-slate-600 font-bold uppercase">Table : <strong className="text-orange-600">{client.table || 'N/A'}</strong></p>
           <p className="text-slate-600 font-bold uppercase">N° de commande : <strong className="text-orange-600 font-mono text-sm block mt-0.5">{numeroCommande}</strong></p>
@@ -508,7 +508,7 @@ export default function EspaceClientBoutique() {
 
         <p className="text-xs text-slate-500">Merci pour votre commande. Elle est transmise pour un service sur place.</p>
         
-        <div className="w-full max-w-xs bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 space-y-2 shadow-sm">
+        <div className="w-full max-w-md bg-amber-50 border-2 border-amber-300 rounded-2xl p-3 space-y-2 shadow-sm">
           <p className="text-[11px] font-black text-amber-900 uppercase leading-snug">
             🚀 En attendant que votre commande soit servie, venez découvrir nos nouveautés, notre académie et nos services exclusifs !
           </p>
@@ -520,7 +520,7 @@ export default function EspaceClientBoutique() {
           </button>
         </div>
 
-        <div className="flex gap-2 w-full max-w-xs mt-2">
+        <div className="flex gap-2 w-full max-w-md mt-2">
           <button
             onClick={() => { 
               setValide(false); 
@@ -564,7 +564,7 @@ export default function EspaceClientBoutique() {
             </h1>
           </div>
 
-          <div className="max-w-md mx-auto w-full p-4 space-y-4">
+          <div className="max-w-2xl mx-auto w-full p-4 space-y-4">
             {panier.length === 0 ? (
               <div className="bg-white p-10 rounded-2xl text-center space-y-3 border border-slate-200 mt-10">
                 <div className="text-3xl">🛒</div>
@@ -879,7 +879,7 @@ export default function EspaceClientBoutique() {
   }
 
   return (
-    <div className="max-w-md mx-auto p-2.5 font-sans text-xs bg-slate-50 h-[100dvh] flex flex-col justify-between overflow-hidden">
+    <div className="w-full max-w-6xl mx-auto p-2.5 sm:p-4 font-sans text-xs bg-slate-50 h-[100dvh] flex flex-col justify-between overflow-hidden">
       
       {/* 1. EN-TÊTE FIXE */}
       <div className="bg-white p-2.5 rounded-2xl border shadow-2xs text-center z-30 space-y-1.5 shrink-0">
@@ -970,7 +970,7 @@ export default function EspaceClientBoutique() {
       <div className="flex-1 overflow-y-auto p-1 space-y-3 my-1.5 min-h-0">
         {ongletActif === 'SOUSCRIPTION' ? (
           <div className="space-y-4">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs text-center space-y-4">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs text-center space-y-4 max-w-xl mx-auto">
               <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
                 🚀
               </div>
@@ -1000,7 +1000,7 @@ export default function EspaceClientBoutique() {
         ) : ongletActif === 'EXPLORER' ? (
           <MenuExplorer entrepriseId={entrepriseId} />
         ) : ongletActif === 'RESTAURANTS' ? (
-          <div className="space-y-3">
+          <div className="space-y-3 max-w-2xl mx-auto">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
               <h2 className="font-black text-slate-900 uppercase text-xs">Mes restaurants visités</h2>
               <p className="text-[10px] text-slate-500">Retrouvez ci-dessous l'historique de tous les restaurants dont vous avez scanné le QR code.</p>
@@ -1043,7 +1043,7 @@ export default function EspaceClientBoutique() {
             </div>
           </div>
         ) : ongletActif === 'SUIVI' ? (
-          <div className="space-y-4">
+          <div className="space-y-4 max-w-2xl mx-auto w-full">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
               <h2 className="font-black text-slate-900 uppercase text-xs">Suivre mes commandes en temps réel</h2>
               <form onSubmit={rechercherMesCommandes} className="space-y-2">
@@ -1195,7 +1195,7 @@ export default function EspaceClientBoutique() {
               ) : articlesFiltres.length === 0 ? (
                 <p className="text-center text-slate-400 py-6 italic font-bold">Aucun article trouvé.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
                   {articlesFiltres.map((art) => {
                     const artId = art.id_article || art.id;
                     const designation = art.Designation || art.designation;
