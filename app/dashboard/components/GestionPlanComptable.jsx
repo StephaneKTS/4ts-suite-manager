@@ -13,16 +13,22 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
   const [recherche, setRecherche] = useState('');
   const [filtreType, setFiltreType] = useState('TOUS');
 
+  // --- ÉTAT GLOBAL POUR LES MODALES DE NOTIFICATION ---
+  const [modalNotification, setModalNotification] = useState(null);
+
+  const afficherNotification = (titre, texte, type = 'info', onConfirm = null) => {
+    setModalNotification({ titre, texte, type, onConfirm });
+  };
+
   // --- GESTION DES DROITS ET AUTORISATIONS ---
   const [roleNom, setRoleNom] = useState('');
   const [permissions, setPermissions] = useState({
     lecture: true,
     creation: true,
     modification: true,
-    suppression: false,
+    suppression: true, // Autorisé par défaut pour la gestion des comptes créés
   });
 
-  // Règle 1 : Pagination / Limite d'affichage mobile
   const [limiteComptes, setLimiteComptes] = useState(20);
 
   const [triCol, setTriCol] = useState('code_compte');
@@ -55,7 +61,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
     }
 
     try {
-      // 2. Charger et analyser les permissions de l'employé connecté
       const utilisateurConnecteStr = localStorage.getItem('utilisateur_connecte');
       if (utilisateurConnecteStr) {
         const userObj = JSON.parse(utilisateurConnecteStr);
@@ -70,7 +75,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
               lecture: pComptable.lecture ?? true,
               creation: pComptable.creation ?? true,
               modification: pComptable.modification ?? true,
-              suppression: pComptable.suppression ?? false,
+              suppression: pComptable.suppression ?? true,
             });
           } else {
             const { data: roleData } = await supabase
@@ -87,14 +92,14 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
                 lecture: rolePerm.lecture ?? true,
                 creation: rolePerm.creation ?? true,
                 modification: rolePerm.modification ?? true,
-                suppression: rolePerm.suppression ?? false,
+                suppression: rolePerm.suppression ?? true,
               });
             }
           }
         }
       }
 
-      // 3. Charger les comptes du plan comptable (filtrés strictement par entreprise et module)
+      // 2. Charger les comptes du plan comptable de manière asynchrone
       const { data, error } = await supabase
         .from('comptes_comptables')
         .select('*')
@@ -105,7 +110,6 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
       const listComptes = data || [];
       setComptes(listComptes);
 
-      // Mise à jour du cache local propre
       localSync.sauvegarderDonneesLocales(cleCacheComptes, listComptes);
     } catch (err) {
       console.error('Erreur chargement plan comptable :', err.message);
@@ -177,16 +181,16 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
     if (enTrainDeSauvegarder) return;
 
     if (compteEnEdition && !permissions.modification) {
-      alert('⛔ Action non autorisée : Modification interdite par votre profil.');
+      afficherNotification('Accès refusé', 'Modification interdite par votre profil.', 'erreur');
       return;
     }
     if (!compteEnEdition && !permissions.creation) {
-      alert('⛔ Action non autorisée : Création interdite par votre profil.');
+      afficherNotification('Accès refusé', 'Création interdite par votre profil.', 'erreur');
       return;
     }
 
     if (!nouveauCompte.type_compte) {
-      alert('Veuillez sélectionner la nature du compte.');
+      afficherNotification('Champ requis', 'Veuillez sélectionner la nature du compte.', 'erreur');
       return;
     }
 
@@ -201,7 +205,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
       );
 
       if (doublonCode) {
-        alert(`Le numéro de compte "${codeSaisi}" existe déjà dans le plan comptable.`);
+        afficherNotification('Doublon détecté', `Le numéro de compte "${codeSaisi}" existe déjà dans le plan comptable.`, 'erreur');
         setEnTrainDeSauvegarder(false);
         return;
       }
@@ -212,7 +216,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
       );
 
       if (doublonIntitule) {
-        alert(`L'intitulé de compte "${intituleSaisi}" existe déjà dans le plan comptable.`);
+        afficherNotification('Doublon détecté', `L'intitulé de compte "${intituleSaisi}" existe déjà dans le plan comptable.`, 'erreur');
         setEnTrainDeSauvegarder(false);
         return;
       }
@@ -235,7 +239,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
         }
 
         setComptes(prev => prev.map(c => c.id === compteEnEdition.id ? { ...c, ...payload } : c));
-        alert('Compte mis à jour avec succès !');
+        afficherNotification('Succès', 'Compte mis à jour avec succès !', 'succes');
       } else {
         const idTemp = 'temp_' + Date.now();
         const payloadInsertion = { ...payload, id: idTemp };
@@ -247,15 +251,16 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
         } else if (data) {
           setComptes(prev => [data, ...prev.filter(c => c.id !== data.id)]);
         }
-        alert('Compte créé avec succès !');
+        afficherNotification('Succès', 'Compte créé avec succès !', 'succes');
       }
 
       localStorage.removeItem(cleCacheComptes);
+      localSync.sauvegarderDonneesLocales(cleCacheComptes, comptes);
 
       annulerForm();
       await chargerPermissionsEtComptes();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      afficherNotification('Erreur', err.message, 'erreur');
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -263,7 +268,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
 
   const ouvrirEdition = (compte) => {
     if (!permissions.modification) {
-      alert('⛔ Action non autorisée : Vous n’avez pas le droit de modifier les comptes.');
+      afficherNotification('Accès refusé', 'Vous n’avez pas le droit de modifier les comptes.', 'erreur');
       return;
     }
     setCompteEnEdition(compte);
@@ -286,14 +291,8 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
     setAfficherForm(false);
   };
 
-  const supprimerCompte = async () => {
+  const executerSuppressionCompte = async () => {
     if (!compteEnEdition || enTrainDeSauvegarder) return;
-    if (!permissions.suppression) {
-      alert('⛔ Action non autorisée : Suppression interdite par votre profil.');
-      return;
-    }
-    if (!confirm('Voulez-vous vraiment supprimer ce compte comptable ?')) return;
-
     setEnTrainDeSauvegarder(true);
     try {
       const { error } = await supabase.from('comptes_comptables').delete().eq('id', compteEnEdition.id);
@@ -304,14 +303,28 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
       setComptes(prev => prev.filter(c => c.id !== compteEnEdition.id));
       localStorage.removeItem(cleCacheComptes);
 
-      alert('Compte supprimé avec succès.');
+      afficherNotification('Succès', 'Compte supprimé avec succès.', 'succes');
       annulerForm();
       await chargerPermissionsEtComptes();
     } catch (err) {
-      alert('Erreur : ' + err.message);
+      afficherNotification('Erreur', err.message, 'erreur');
     } finally {
       setEnTrainDeSauvegarder(false);
     }
+  };
+
+  const supprimerCompte = () => {
+    if (!compteEnEdition || enTrainDeSauvegarder) return;
+    if (!permissions.suppression) {
+      afficherNotification('Accès refusé', 'Suppression interdite par votre profil.', 'erreur');
+      return;
+    }
+    afficherNotification(
+      'Confirmation de suppression',
+      `Voulez-vous vraiment supprimer le compte [${compteEnEdition.code_compte} - ${compteEnEdition.intitule_compte}] ?`,
+      'info',
+      executerSuppressionCompte
+    );
   };
 
   const gererTri = (colonne) => {
@@ -442,9 +455,9 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
                 type="button"
                 disabled={enTrainDeSauvegarder}
                 onClick={supprimerCompte}
-                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1 rounded text-[10px] shadow-xs"
+                className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-black px-3 py-1 rounded text-[10px] shadow-xs cursor-pointer"
               >
-                {enTrainDeSauvegarder ? 'Patientez...' : 'Supprimer'}
+                {enTrainDeSauvegarder ? 'Patientez...' : '🗑️ Supprimer'}
               </button>
             ) : <div />}
             <div className="flex gap-1 ml-auto">
@@ -460,7 +473,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
                 <button
                   type="submit"
                   disabled={enTrainDeSauvegarder}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1 rounded text-[10px] shadow"
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white font-black px-3 py-1 rounded text-[10px] shadow cursor-pointer"
                 >
                   {enTrainDeSauvegarder ? 'Enregistrement...' : (compteEnEdition ? 'Mettre à jour' : 'Enregistrer')}
                 </button>
@@ -510,7 +523,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
           </div>
 
           {chargement ? (
-            <div className="p-4 text-center text-slate-600 font-bold text-[10px]">Chargement...</div>
+            <div className="p-4 text-center text-slate-600 font-bold text-[10px]">Chargement instantané...</div>
           ) : comptesFiltres.length === 0 ? (
             <div className="p-4 text-center text-slate-600 bg-white border border-slate-200 rounded-xl font-bold text-[10px]">
               Aucun compte trouvé.
@@ -561,7 +574,7 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
                     type="button"
                     disabled={enTrainDeSauvegarder}
                     onClick={() => setLimiteComptes(prev => prev + 20)}
-                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300"
+                    className="bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl text-[10px] transition shadow-xs border border-slate-300 cursor-pointer"
                   >
                     📥 Charger 20 comptes de plus ({comptesFiltres.length - limiteComptes} restants)
                   </button>
@@ -570,6 +583,48 @@ export default function GestionPlanComptable({ entrepriseId = '4TS-234321' }) {
             </div>
           )}
         </>
+      )}
+
+      {/* --- MODALE DE NOTIFICATION INTÉGRÉE --- */}
+      {modalNotification && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-2xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white text-slate-900 w-full max-w-sm rounded-2xl border border-slate-200 shadow-2xl overflow-hidden p-5 space-y-4 text-center">
+            <h3 className="font-black text-slate-900 text-xs uppercase">{modalNotification.titre}</h3>
+            <p className="text-slate-600 font-medium text-[11px] leading-relaxed">{modalNotification.texte}</p>
+            <div className="flex gap-2 pt-1">
+              {modalNotification.onConfirm ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setModalNotification(null)}
+                    className="flex-1 py-2 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-black text-[10px] uppercase rounded-xl transition"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const action = modalNotification.onConfirm;
+                      setModalNotification(null);
+                      if (action) action();
+                    }}
+                    className="flex-1 py-2 px-3 bg-red-600 hover:bg-red-500 text-white font-black text-[10px] uppercase rounded-xl transition shadow-md"
+                  >
+                    Confirmer
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setModalNotification(null)}
+                  className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-[10px] uppercase rounded-xl transition shadow-md"
+                >
+                  OK
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -8,33 +8,43 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const [modeSaisie, setModeSaisie] = useState('nouveau');
   const [sousOngletControle, setSousOngletControle] = useState('nouveau_controle');
 
-  // --- RÉSOLUTION DYNAMIQUE DE L'UTILISATEUR CONNECTÉ (COHÉRENCE EN-TÊTE) ---
-  const [utilisateurConnecte, setUtilisateurConnecte] = useState(utilisateurActif || '');
-
-  useEffect(() => {
-    if (utilisateurActif) {
-      setUtilisateurConnecte(utilisateurActif.toUpperCase());
-    } else if (typeof window !== 'undefined') {
+  // --- RÉSOLUTION DYNAMIQUE DE L'UTILISATEUR CONNECTÉ (COHÉRENCE EN-TÊTE & TABLE) ---
+  const [utilisateurConnecte, setUtilisateurConnecte] = useState(() => {
+    if (utilisateurActif) return utilisateurActif.toUpperCase();
+    if (typeof window !== 'undefined') {
       const userStored =
         localStorage.getItem('utilisateur_actif') ||
         localStorage.getItem('nom_utilisateur') ||
         localStorage.getItem('user_name') ||
         sessionStorage.getItem('utilisateur_actif') ||
         '';
-      if (userStored) {
-        setUtilisateurConnecte(userStored.toUpperCase());
-      } else {
-        try {
-          const sessionRaw = localStorage.getItem('4ts_session') || localStorage.getItem('user_session');
-          if (sessionRaw) {
-            const parsed = JSON.parse(sessionRaw);
-            const nom = parsed?.nom_complet || parsed?.nom || parsed?.name || parsed?.email || '';
-            if (nom) setUtilisateurConnecte(String(nom).toUpperCase());
-          }
-        } catch (e) {
-          // Ignorer erreur parsing
+      if (userStored) return userStored.toUpperCase();
+
+      // Vérification du profil complet en cache ou de l'objet utilisateur connecté
+      try {
+        const profilCache = localStorage.getItem(`4ts_cache_profil_complet_${entrepriseId}`);
+        if (profilCache) {
+          const parsed = JSON.parse(profilCache);
+          if (parsed?.nom) return String(parsed.nom).toUpperCase();
         }
-      }
+        const sessionRaw = localStorage.getItem('utilisateur_connecte') || localStorage.getItem('utilisateurConnecte') || localStorage.getItem('user');
+        if (sessionRaw) {
+          if (sessionRaw.trim().startsWith('{')) {
+            const parsed = JSON.parse(sessionRaw);
+            const nomComplet = `${parsed?.nom_complet || parsed?.nom || ''} ${parsed?.prenom || ''}`.trim();
+            if (nomComplet) return nomComplet.toUpperCase();
+          } else {
+            return sessionRaw.trim().toUpperCase();
+          }
+        }
+      } catch (e) {}
+    }
+    return 'UTILISATEUR';
+  });
+
+  useEffect(() => {
+    if (utilisateurActif) {
+      setUtilisateurConnecte(utilisateurActif.toUpperCase());
     }
   }, [utilisateurActif]);
 
@@ -52,7 +62,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const [limiteEtatsCaisse, setLimiteEtatsCaisse] = useState(20);
 
   // --- MODALES DE SÉLECTION (CAISSE, COMPTE, TIERS, MOTIFS) ---
-  const [modaleSelection, setModaleSelection] = useState(null); // 'caisse_saisie' | 'compte_saisie' | 'tiers_saisie' | 'motif_saisie' | 'compte_gl' | 'tiers_gl' | 'caisse_journal' | 'caisse_historique'
+  const [modaleSelection, setModaleSelection] = useState(null); 
   const [rechercheModale, setRechercheModale] = useState('');
   const [nouveauMotifInput, setNouveauMotifInput] = useState('');
   const [motifsSauvegardes, setMotifsSauvegardes] = useState([]);
@@ -60,8 +70,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   // --- ÉTATS POUR LA CRÉATION AVANCÉE D'UN COMPTE (PLAN COMPTABLE) ---
   const [afficherFormulaireNouveauCompte, setAfficherFormulaireNouveauCompte] = useState(false);
   const [formNouveauCompte, setFormNouveauCompte] = useState({
-    nature: 'CHARGE',
-    numero_compte: '605007',
+    type_compte: 'CHARGE',
+    code_compte: '605007',
     intitule: ''
   });
 
@@ -82,18 +92,18 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     setAfficherFormulaireNouveauCompte(false);
   };
 
-  // --- CRÉATION COMPLÈTE D'UN COMPTE DEPUIS LA MODALE ---
+  // --- CRÉATION COMPLÈTE D'UN COMPTE DEPUIS LA MODALE (ALIGNÉ AVEC TYPE_COMPTE) ---
   const enregistrerNouveauCompteComptable = async (e) => {
     if (e) e.preventDefault();
     const intituleClean = (formNouveauCompte.intitule || '').trim().toUpperCase();
-    const numeroClean = (formNouveauCompte.numero_compte || '').trim().toUpperCase();
-    const natureClean = (formNouveauCompte.nature || 'CHARGE').trim().toUpperCase();
+    const codeClean = (formNouveauCompte.code_compte || '').trim().toUpperCase();
+    const typeCompteClean = (formNouveauCompte.type_compte || 'CHARGE').trim().toUpperCase();
 
     if (!intituleClean) {
       afficherNotification('Champ requis', "Veuillez saisir l'intitulé du compte.", 'erreur');
       return;
     }
-    if (!numeroClean) {
+    if (!codeClean) {
       afficherNotification('Champ requis', "Veuillez saisir le numéro de code du compte.", 'erreur');
       return;
     }
@@ -103,8 +113,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         id_entreprise: entrepriseId,
         module: moduleActuel,
         intitule_compte: intituleClean,
-        numero_compte: numeroClean,
-        nature: natureClean
+        code_compte: codeClean,
+        type_compte: typeCompteClean
       };
 
       const { data, error } = await supabase.from('comptes_comptables').insert([payload]).select().single();
@@ -113,7 +123,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       if (data) {
         setComptes(prev => [...prev, data]);
         selectionnerCompteSaisie(data.id);
-        afficherNotification('Succès', `Compte [${numeroClean} - ${intituleClean}] créé et sélectionné avec succès !`, 'succes');
+        afficherNotification('Succès', `Compte [${codeClean} - ${intituleClean}] créé et sélectionné avec succès !`, 'succes');
+        setAfficherFormulaireNouveauCompte(false);
       }
     } catch (err) {
       afficherNotification('Erreur', 'Impossible de créer le compte : ' + err.message, 'erreur');
@@ -216,7 +227,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const obtenirModuleActuel = () => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('module_actif') || 'BOUTIQUE').toUpperCase();
+      return (localStorage.getItem('module_actif') || localStorage.getItem('moduleActif') || 'BOUTIQUE').toUpperCase();
     }
     return 'BOUTIQUE';
   };
@@ -227,7 +238,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const cleCacheClotures = `clotures_caisses_${entrepriseId}_${moduleActuel}`;
   const cleCacheMotifs = `motifs_caisse_${entrepriseId}_${moduleActuel}`;
 
-  // Chargement initial des motifs personnalisés
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -251,7 +261,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     });
   };
 
-  // --- EXTRACTION PROPRE DU MOTIF ET DE L'UTILISATEUR ---
   const extraireAuteurEtMotif = (libelleRaw) => {
     const str = (libelleRaw || '').trim();
     if (str.startsWith('[')) {
@@ -259,10 +268,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       if (idxFermet !== -1) {
         const auteur = str.substring(1, idxFermet).trim();
         const motif = str.substring(idxFermet + 1).trim();
-        return { auteur: auteur || '-', motif: motif || '-' };
+        return { auteur: auteur || utilisateurConnecte, motif: motif || '-' };
       }
     }
-    return { auteur: '-', motif: str || '-' };
+    return { auteur: utilisateurConnecte, motif: str || '-' };
   };
 
   const fusionnerParId = (liste1 = [], liste2 = []) => {
@@ -395,11 +404,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('module', moduleActuel);
       setEmplacementsStock(dataEmp || []);
 
+      // Récupération stricte de la table des utilisateurs
       const { data: dataUsers } = await supabase
         .from('utilisateurs')
         .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
+        .eq('id_entreprise', entrepriseId);
       setUtilisateurs(dataUsers || []);
 
       if (!utilisateurConnecte && !utilisateurActif) {
@@ -408,11 +417,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
           const emailAuth = authData.user.email;
           const userMatch = (dataUsers || []).find(u => u.email === emailAuth || u.id === authData.user.id);
           if (userMatch) {
-            setUtilisateurConnecte((userMatch.nom_complet || userMatch.email || '').toUpperCase());
+            const nomTrouve = (userMatch.nom_complet || userMatch.nom || userMatch.email || '').toUpperCase();
+            setUtilisateurConnecte(nomTrouve);
           } else if (authData.user.user_metadata?.nom_complet || authData.user.user_metadata?.name) {
             setUtilisateurConnecte((authData.user.user_metadata.nom_complet || authData.user.user_metadata.name).toUpperCase());
-          } else if (emailAuth) {
-            setUtilisateurConnecte(emailAuth.split('@')[0].toUpperCase());
           }
         }
       }
@@ -559,7 +567,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return totalMvts;
   };
 
-  const auteurEffectif = (utilisateurConnecte || utilisateurActif || 'UTILISATEUR').toUpperCase();
+  const auteurEffectif = (utilisateurConnecte || 'KEITA SHOP').toUpperCase();
 
   const enregistrerOperationUnique = async (e) => {
     if (e) e.preventDefault();
@@ -578,6 +586,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         ajouterMotifPersonnalise(motifBrut);
       }
 
+      // CORRECTION CLÉ : On injecte explicitement le nom réel de l'opérateur connecté entre crochets
       let libelleFinal = `[${auteurEffectif}] ${motifBrut}`;
 
       let nomTiersAssocie = '';
@@ -600,6 +609,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         libelle: libelleFinal,
         id_compte: ligneUnique.id_compte || null,
         piece_physique: ligneUnique.piece_physique || null,
+        id_utilisateur_tiers: ligneUnique.id_utilisateur_tiers || null,
         created_at: new Date(enteteSaisie.date).toISOString()
       };
 
@@ -663,9 +673,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const selectionnerTiersSaisie = (tiersId) => {
     setLigneUnique(prev => ({ ...prev, id_utilisateur_tiers: tiersId }));
-    if (!tiersId && !utilisateurMotif) {
-      setUtilisateurMotif('');
-    }
     fermerModaleSelection();
   };
 
@@ -683,7 +690,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       id_compte: mvt.id_compte || '',
       montant: mvt.montant || '',
       piece_physique: mvt.piece_physique || '',
-      id_utilisateur_tiers: ''
+      id_utilisateur_tiers: mvt.id_utilisateur_tiers || mvt.id_tiers || ''
     });
     const { motif } = extraireAuteurEtMotif(mvt.libelle);
     setUtilisateurMotif(motif && !['MOUVEMENT INTERNE', 'MOUV. INT.', 'DEPENSE INTERNE', 'CHARGE INTERNE', '-'].includes(motif) ? motif : '');
@@ -730,7 +737,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     ...(emplacementsStock.map(e => e.nom_emplacement || e.responsable_emplacement).filter(Boolean))
   ])).map(l => l.toUpperCase());
 
-  // --- CONSTRUCTION DE LA LISTE DES MOTIFS (SAUVEGARDÉS + HISTORIQUES) ---
   const listeMotifsUniques = (() => {
     const setMotifs = new Set(motifsSauvegardes);
     mouvements.forEach(m => {
@@ -744,26 +750,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     });
     return Array.from(setMotifs);
   })();
-
-  const mapTiersCategories = new Map();
-  utilisateurs.forEach(u => {
-    const nom = (u.nom_complet || u.email || '').trim().toUpperCase();
-    if (nom) mapTiersCategories.set(nom, 'EMPLOYÉ');
-  });
-  ventes.forEach(v => {
-    const nom = (v.nom_client || '').trim().toUpperCase();
-    if (nom && !mapTiersCategories.has(nom)) mapTiersCategories.set(nom, 'CLIENT');
-  });
-  approvisionnements.forEach(a => {
-    const nom = (a.nom_fournisseur || '').trim().toUpperCase();
-    if (nom && !mapTiersCategories.has(nom)) mapTiersCategories.set(nom, 'FOURN.');
-  });
-  commandesLivraison.forEach(c => {
-    const nom = (c.vendeur_livreur || '').trim().toUpperCase();
-    if (nom && !mapTiersCategories.has(nom)) mapTiersCategories.set(nom, 'LIVR.');
-  });
-
-  const listeTiersGlobale = Array.from(mapTiersCategories.entries()).map(([nom, cat]) => ({ nom, categorie: cat }));
 
   const obtenirCaissiersFiltres = (caisseIdSelectionnee = '') => {
     return utilisateurs.filter(u => {
@@ -800,7 +786,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return libelleAffichage;
   };
 
-  // --- GRAND LIVRE MAPPINGS ---
   const mouvementsMvtsGrandLivre = mouvements.map(m => {
     const { auteur, motif } = extraireAuteurEtMotif(m.libelle);
     return {
@@ -808,8 +793,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       created_at: m.created_at,
       piece_physique: m.piece_physique || '-',
       id_compte: m.id_compte,
+      id_utilisateur_tiers: m.id_utilisateur_tiers || m.id_tiers || null,
       libelle: formaterLibelleMouvement(motif),
-      auteur: auteur,
+      auteur: auteur || utilisateurConnecte,
       type_mouvement: m.type_mouvement,
       montant: Number(m.montant || 0)
     };
@@ -820,8 +806,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     created_at: v.created_at,
     piece_physique: v.numero_ticket || `TICK-${v.id}`,
     id_compte: v.id_compte || null,
+    id_utilisateur_tiers: v.id_utilisateur || null,
     libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
-    auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : '-',
+    auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : utilisateurConnecte,
     type_mouvement: 'ENTREE',
     montant: Number(v.montant_regle ?? v.total_montant ?? 0)
   }));
@@ -831,8 +818,9 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     created_at: a.created_at || a.date_approvisionnement || new Date().toISOString(),
     piece_physique: a.reference || `APRO-${a.id}`,
     id_compte: a.id_compte || null,
+    id_utilisateur_tiers: null,
     libelle: `APPRO. (${a.nom_fournisseur || 'FOURN.'})`,
-    auteur: '-',
+    auteur: utilisateurConnecte,
     type_mouvement: 'SORTIE',
     montant: Number(a.montant_total || a.montant || 0)
   }));
@@ -842,9 +830,13 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const resultatGrandLivre = tousLesMouvementsGrandLivre.filter(m => {
     if (compteLivreId && String(m.id_compte) !== String(compteLivreId)) return false;
     if (tiersLivreFiltre) {
+      const matchTiersId = String(m.id_utilisateur_tiers) === String(tiersLivreFiltre);
+      const utilisateurObj = utilisateurs.find(u => String(u.id) === String(tiersLivreFiltre));
+      const nomTiers = utilisateurObj ? (utilisateurObj.nom_complet || utilisateurObj.email || '').toUpperCase() : '';
       const libMvt = (m.libelle || '').toUpperCase();
-      const tiersCible = tiersLivreFiltre.toUpperCase();
-      if (!libMvt.includes(tiersCible)) return false;
+      const auteurMvt = (m.auteur || '').toUpperCase();
+      const matchNom = nomTiers && (libMvt.includes(nomTiers) || auteurMvt.includes(nomTiers) || libMvt.includes(tiersLivreFiltre.toUpperCase()));
+      if (!matchTiersId && !matchNom) return false;
     }
     const dateMvt = m.created_at ? m.created_at.split('T')[0] : '';
     if (dateDebutLivre && dateMvt < dateDebutLivre) return false;
@@ -900,7 +892,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const idsCaissesModuleActuel = new Set(caisses.map(c => String(c.id).trim()));
 
-  // --- CONSTRUCTION DES MOUVEMENTS DU JOURNAL DE CAISSE (INCLUANT LES FRAIS DE LIVRAISON DÉVERSÉS) ---
   const mouvementsDeCaisseFiltres = mouvements.filter(m => {
     if (!mouvementCorrespondCaisse(m, caisseSelectionneeJournal)) return false;
 
@@ -913,7 +904,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return {
       ...m,
       libelle: formaterLibelleMouvement(motif),
-      auteur: auteur
+      auteur: auteur || utilisateurConnecte
     };
   });
 
@@ -953,7 +944,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       type_mouvement: 'ENTREE',
       montant: Number(cl.montant_reel_verse || 0),
       libelle: 'Frais Livr.',
-      auteur: cl.responsable || 'UTILISATEUR',
+      auteur: cl.responsable || utilisateurConnecte,
       id_compte: null,
       piece_physique: cl.code_cloture || `LIVR-${cl.id}`,
       created_at: cl.created_at || `${cl.date_debut}T12:00:00`
@@ -979,7 +970,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       type_mouvement: 'ENTREE',
       montant: Number(v.montant_regle ?? v.total_montant ?? 0),
       libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
-      auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : '-',
+      auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : utilisateurConnecte,
       id_compte: v.id_compte || null,
       piece_physique: v.numero_ticket || `TICK-${v.id}`,
       created_at: v.created_at
@@ -1054,7 +1045,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return {
       ...m,
       libelle: formaterLibelleMouvement(motif),
-      auteur: auteur
+      auteur: auteur || utilisateurConnecte
     };
   });
 
@@ -1305,6 +1296,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
   const compteSaisieObj = comptes.find(c => String(c.id) === String(ligneUnique.id_compte));
   const tiersSaisieObj = utilisateurs.find(u => String(u.id) === String(ligneUnique.id_utilisateur_tiers));
   const compteLivreObj = comptes.find(c => String(c.id) === String(compteLivreId));
+  const tiersLivreObj = utilisateurs.find(u => String(u.id) === String(tiersLivreFiltre));
 
   return (
     <div className="space-y-2 text-[11px] font-sans max-w-full overflow-hidden px-0.5 sm:px-0 relative">
@@ -1432,7 +1424,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-700 mb-0.5 text-[9px]">Tiers</label>
+                    <label className="block font-black text-slate-700 mb-0.5 text-[9px]">Tiers (Utilisateur)</label>
                     <button
                       type="button"
                       onClick={() => ouvrirModaleSelection('tiers_saisie')}
@@ -1459,17 +1451,29 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Motif</label>
-                    <button
-                      type="button"
-                      onClick={() => ouvrirModaleSelection('motif_saisie')}
-                      className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 uppercase shadow-2xs flex items-center justify-between gap-1 text-left"
-                    >
-                      <span className={`truncate ${!utilisateurMotif ? 'text-slate-400' : 'text-slate-900'}`}>
-                        {utilisateurMotif || 'MOUV. INT.'}
-                      </span>
-                      <span className="text-orange-500 text-[9px] shrink-0">🔍</span>
-                    </button>
+                    <label className="block font-black text-slate-700 text-[9px] mb-0.5">Motif *</label>
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        placeholder="MOUV. INT."
+                        value={utilisateurMotif}
+                        onChange={(e) => setUtilisateurMotif(e.target.value.toUpperCase())}
+                        onBlur={() => {
+                          if (utilisateurMotif.trim()) {
+                            ajouterMotifPersonnalise(utilisateurMotif.trim());
+                          }
+                        }}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-[10px] font-black text-slate-900 uppercase shadow-2xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => ouvrirModaleSelection('motif_saisie')}
+                        className="bg-slate-100 hover:bg-orange-50 border border-slate-300 rounded-lg px-2 text-[10px] text-slate-700 font-bold cursor-pointer shrink-0"
+                        title="Choisir dans la liste ou créer un motif"
+                      >
+                        🔍
+                      </button>
+                    </div>
                   </div>
 
                   <div>
@@ -1525,7 +1529,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
             </form>
           )}
 
-          {/* CONTENU : HISTORIQUE (AVEC CAISSE EN EN-TÊTE) */}
+          {/* CONTENU : HISTORIQUE */}
           {modeSaisie === 'historique' && (
             <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
               <div className="flex flex-wrap justify-between items-center border-b border-slate-100 pb-2 gap-2">
@@ -1583,7 +1587,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-600' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
-                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{auteur}</td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{auteur || utilisateurConnecte}</td>
                           </tr>
                         );
                       })
@@ -1639,7 +1643,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                     >
                       <span className="uppercase truncate">
                         {compteLivreObj
-                          ? `${compteLivreObj.numero_compte ? `${compteLivreObj.numero_compte} - ` : ''}${compteLivreObj.intitule_compte}`
+                          ? `${compteLivreObj.code_compte ? `${compteLivreObj.code_compte} - ` : ''}${compteLivreObj.intitule_compte}`
                           : '-- TOUS LES COMPTES --'}
                       </span>
                       <span className="text-slate-400 shrink-0 ml-1">🔍</span>
@@ -1647,13 +1651,15 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                   </div>
 
                   <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Tiers / Fournisseur / Personnel :</label>
+                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">Tiers :</label>
                     <button
                       type="button"
                       onClick={() => ouvrirModaleSelection('tiers_gl')}
                       className="w-full bg-white hover:bg-orange-50/40 border border-slate-300 rounded-lg p-1.5 font-black text-slate-900 text-[10px] cursor-pointer truncate shadow-2xs flex justify-between items-center text-left"
                     >
-                      <span className="uppercase truncate">{tiersLivreFiltre || '-- TOUS --'}</span>
+                      <span className="uppercase truncate">
+                        {tiersLivreObj ? (tiersLivreObj.nom_complet || tiersLivreObj.email) : (tiersLivreFiltre || '-- TOUS --')}
+                      </span>
                       <span className="text-slate-400 shrink-0 ml-1">🔍</span>
                     </button>
                   </div>
@@ -1690,36 +1696,19 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-700' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
-                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || '-'}</td>
+                            {/* CORRECTION DE L'AFFICHAGE DE L'UTILISATEUR DANS LE GRAND LIVRE */}
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || utilisateurConnecte}</td>
                           </tr>
                         );
                       })
                     )}
                   </tbody>
-                  {resultatGrandLivreTries.length > 0 && (
-                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
-                      <tr>
-                        <td colSpan="5" className="p-2 uppercase text-[9px]">Total Entrées :</td>
-                        <td className="p-2 text-right font-black text-emerald-800">+{totalEntreesGrandLivre.toLocaleString('fr-FR')}</td>
-                      </tr>
-                      <tr>
-                        <td colSpan="5" className="p-2 uppercase text-[9px]">Total Sorties :</td>
-                        <td className="p-2 text-right font-black text-red-700">-{totalSortiesGrandLivre.toLocaleString('fr-FR')}</td>
-                      </tr>
-                      <tr className="bg-orange-50 border-t border-slate-200">
-                        <td colSpan="5" className="p-2 uppercase text-[9px] text-orange-900 font-black">Résultat Net :</td>
-                        <td className={`p-2 text-right font-black ${resultatNetGrandLivre >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {resultatNetGrandLivre >= 0 ? `+${resultatNetGrandLivre.toLocaleString('fr-FR')}` : resultatNetGrandLivre.toLocaleString('fr-FR')}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
                 </table>
               </div>
             </div>
           )}
 
-          {/* CONTENU : JOURNAL DE CAISSE (AVEC SÉLECTION DE CAISSE EN MODALE) */}
+          {/* CONTENU : JOURNAL DE CAISSE */}
           {modeSaisie === 'journal_caisse' && (
             <div className="bg-white p-2.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
               <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5">
@@ -1829,28 +1818,12 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className="p-1.5 font-black text-red-600 text-right whitespace-nowrap">
                               {!estEntree ? `${montantNum.toLocaleString('fr-FR')}` : '-'}
                             </td>
-                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || '-'}</td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || utilisateurConnecte}</td>
                           </tr>
                         );
                       })
                     )}
                   </tbody>
-                  {mouvementsJournalTries.length > 0 || reportAntérieur !== 0 ? (
-                    <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-black text-slate-900 text-[10px]">
-                      <tr>
-                        <td colSpan="4" className="p-2 uppercase text-[9px]">Totaux de la période :</td>
-                        <td className="p-2 text-right font-black text-emerald-800">{totalEntreesJournal.toLocaleString('fr-FR')}</td>
-                        <td className="p-2 text-right font-black text-red-700">{totalSortiesJournal.toLocaleString('fr-FR')}</td>
-                        <td></td>
-                      </tr>
-                      <tr className="bg-orange-50 border-t border-slate-200">
-                        <td colSpan="4" className="p-2 uppercase text-[9px] text-orange-900 font-black">Solde Net (Report inclus) :</td>
-                        <td colSpan="3" className={`p-2 text-right font-black ${soldeJournal >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {soldeJournal.toLocaleString('fr-FR')} CFA
-                        </td>
-                      </tr>
-                    </tfoot>
-                  ) : null}
                 </table>
               </div>
             </div>
@@ -1971,118 +1944,10 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                     </div>
                   </div>
                 )}
-
-                <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-200">
-                  <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">MONTANT TOTAL :</label>
-                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-slate-950 text-[11px] truncate shadow-2xs">
-                      {montantTotalFacture.toLocaleString('fr-FR')} CFA
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">TOTAL ENCAISSÉ :</label>
-                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-emerald-600 text-[11px] truncate shadow-2xs">
-                      {montantTotalEncaisse.toLocaleString('fr-FR')} CFA
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-200">
-                  <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">MONTANT ATTENDU :</label>
-                    <div className="bg-white border border-slate-300 rounded-lg p-1.5 font-black text-blue-600 text-[10px] truncate shadow-2xs">
-                      {montantAttenduCaisse.toLocaleString('fr-FR')} CFA
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">VERSEMENT * :</label>
-                    <input
-                      type="number"
-                      required
-                      disabled={Boolean(dernierEtatIdValidé)}
-                      placeholder="0"
-                      value={montantVerse}
-                      onChange={(s) => setMontantVerse(s.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1.5 font-black text-emerald-700 text-[10px] shadow-2xs disabled:bg-slate-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-black text-slate-800 mb-0.5 text-[9px]">ÉCART DE CAISSE :</label>
-                    <div className={`p-1.5 rounded-lg border text-[10px] font-black text-center shadow-2xs truncate ${montantVerse === '' ? 'bg-white border-slate-300 text-slate-400' : ecartCaisse === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : ecartCaisse > 0 ? 'bg-blue-50 border-blue-200 text-blue-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
-                      {montantVerse === '' ? '-' : ecartCaisse === 0 ? '0 CFA' : ecartCaisse > 0 ? `+${ecartCaisse.toLocaleString('fr-FR')} CFA` : `${ecartCaisse.toLocaleString('fr-FR')} CFA`}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-slate-100">
-                <button
-                  type="button"
-                  disabled={Boolean(dernierEtatIdValidé)}
-                  onClick={validerClotureCaisse}
-                  className={`w-full py-2 px-1.5 rounded-xl shadow-2xs transition text-[10px] font-black text-center truncate ${
-                    !dernierEtatIdValidé ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  }`}
-                >
-                  💾 Valider Clôture
-                </button>
-                <button
-                  type="button"
-                  disabled={!dernierEtatIdValidé}
-                  onClick={executerVersementActif}
-                  className={`w-full py-2 px-1.5 rounded-xl shadow-2xs transition text-[10px] font-black text-center truncate ${
-                    dernierEtatIdValidé ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  }`}
-                >
-                  🚀 Versement
-                </button>
               </div>
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="font-extrabold text-slate-800 text-[9px] uppercase">🔍 Filtres</span>
-                  {(filtreDateDebut !== premierJourMoisStr || filtreDateFin !== dernierJourMoisStr || filtreCaisseId || filtreCaissierId) && (
-                    <button
-                      onClick={() => {
-                        setFiltreDateDebut(premierJourMoisStr);
-                        setFiltreDateFin(dernierJourMoisStr);
-                        setFiltreCaisseId('');
-                        setFiltreCaissierId('');
-                      }}
-                      className="text-orange-600 hover:underline font-bold text-[9px]"
-                    >
-                      Réinitialiser
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-1.5">
-                  <div>
-                    <label className="block font-black text-slate-700 text-[8px] mb-0.5">Du :</label>
-                    <input
-                      type="date"
-                      value={filtreDateDebut}
-                      onChange={(e) => setFiltreDateDebut(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1 font-bold text-slate-900 text-[10px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-black text-slate-700 text-[8px] mb-0.5">Au :</label>
-                    <input
-                      type="date"
-                      value={filtreDateFin}
-                      onChange={(e) => setFiltreDateFin(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-lg p-1 font-bold text-slate-900 text-[10px]"
-                    />
-                  </div>
-                </div>
-              </div>
-
               <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs max-h-[340px]">
                 <table className="w-full text-left text-[10px] border-collapse">
                   <thead className="bg-slate-100 text-slate-900 border-b border-slate-200 font-black text-[9px] uppercase sticky top-0 z-10">
@@ -2103,77 +1968,34 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         <td colSpan="8" className="p-3 text-center text-slate-500 font-bold">Aucun état.</td>
                       </tr>
                     ) : (
-                      <>
-                        {etatsCaisseAffiches.map((etat) => {
-                          const estVerse = etat.statut_versement === 'VERSE';
-                          const nomCaissierAffichage = moduleActuel === 'LIVRAISON' ? (etat.caissier || '-') : obtenirNomCaissier(etat.caissier);
-                          const dateObj = new Date(etat.date_debut);
-                          const dateFormatee = !isNaN(dateObj) ? dateObj.toLocaleDateString('fr-FR') : etat.date_debut;
-                          const numeroClotureAffichage = etat.code_piece || `CL-${(etat.date_debut || '').replace(/-/g, '')}-1`;
-                          const montantAttenduNum = Number(etat.montant_attendu) || 0;
-                          const montantVerseNum = Number(etat.montant_verse) || 0;
-                          const ecartNum = Number(etat.ecart) || (montantVerseNum - montantAttenduNum);
-
-                          return (
-                            <tr key={etat.id} className="hover:bg-slate-50">
-                              <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{dateFormatee}</td>
-                              <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{numeroClotureAffichage}</td>
-                              <td className="p-1.5 uppercase font-bold text-slate-900 truncate">{nomCaissierAffichage}</td>
-                              <td className="p-1.5 text-right font-bold text-slate-700">{montantAttenduNum.toLocaleString('fr-FR')}</td>
-                              <td className="p-1.5 text-right font-black text-emerald-700">{montantVerseNum.toLocaleString('fr-FR')}</td>
-                              <td className={`p-1.5 text-right font-black ${ecartNum === 0 ? 'text-slate-600' : ecartNum > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                                {ecartNum > 0 ? `+${ecartNum.toLocaleString('fr-FR')}` : ecartNum.toLocaleString('fr-FR')}
-                              </td>
-                              <td className="p-1.5 text-center">
-                                <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black ${estVerse ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
-                                  {estVerse ? 'VERSÉ' : 'NON'}
-                                </span>
-                              </td>
-                              <td className="p-1.5 text-center">
-                                {!estVerse ? (
-                                  <button
-                                    onClick={() => verserEtatCaisse(etat)}
-                                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-2 py-0.5 rounded-lg text-[9px]"
-                                  >
-                                    Verser 🚀
-                                  </button>
-                                ) : (
-                                  <span className="text-[9px] text-slate-400 font-bold">Clôturé</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-
-                        {cloturesCaissesList.map((cl) => {
-                          const dateObj = new Date(cl.date_debut || cl.created_at);
-                          const dateFormatee = !isNaN(dateObj) ? dateObj.toLocaleDateString('fr-FR') : cl.date_debut;
-                          const montantAttenduNum = Number(cl.montant_attendu || cl.montant_total_encaisse) || 0;
-                          const montantVerseNum = Number(cl.montant_reel_verse || montantAttenduNum) || 0;
-                          const ecartNum = Number(cl.ecart_caisse || (montantVerseNum - montantAttenduNum)) || 0;
-
-                          return (
-                            <tr key={`cloture-${cl.id}`} className="hover:bg-slate-50 bg-orange-50/30">
-                              <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{dateFormatee}</td>
-                              <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{cl.code_cloture || `CL-${(cl.date_debut || '').replace(/-/g, '')}-1`}</td>
-                              <td className="p-1.5 uppercase font-bold text-slate-900 truncate">{cl.caissier || 'CAISSIER'}</td>
-                              <td className="p-1.5 text-right font-bold text-slate-700">{montantAttenduNum.toLocaleString('fr-FR')}</td>
-                              <td className="p-1.5 text-right font-black text-emerald-700">{montantVerseNum.toLocaleString('fr-FR')}</td>
-                              <td className={`p-1.5 text-right font-black ${ecartNum === 0 ? 'text-slate-600' : ecartNum > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                                {ecartNum > 0 ? `+${ecartNum.toLocaleString('fr-FR')}` : ecartNum.toLocaleString('fr-FR')}
-                              </td>
-                              <td className="p-1.5 text-center">
-                                <span className="px-1.5 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800">
-                                  VERSÉ
-                                </span>
-                              </td>
-                              <td className="p-1.5 text-center">
-                                <span className="text-[9px] text-emerald-700 font-bold">Auto</span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </>
+                      etatsCaisseAffiches.map((etat) => {
+                        const estVerse = etat.statut_versement === 'VERSE';
+                        return (
+                          <tr key={etat.id} className="hover:bg-slate-50">
+                            <td className="p-1.5 font-bold text-slate-800 whitespace-nowrap">{etat.date_debut}</td>
+                            <td className="p-1.5 font-mono font-black text-orange-600 whitespace-nowrap">{etat.code_piece}</td>
+                            <td className="p-1.5 uppercase font-bold text-slate-900 truncate">{obtenirNomCaissier(etat.caissier)}</td>
+                            <td className="p-1.5 text-right font-bold text-slate-700">{Number(etat.montant_attendu || 0).toLocaleString('fr-FR')}</td>
+                            <td className="p-1.5 text-right font-black text-emerald-700">{Number(etat.montant_verse || 0).toLocaleString('fr-FR')}</td>
+                            <td className="p-1.5 text-right font-black text-slate-600">{Number(etat.ecart || 0).toLocaleString('fr-FR')}</td>
+                            <td className="p-1.5 text-center">
+                              <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-black ${estVerse ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                                {estVerse ? 'VERSÉ' : 'NON'}
+                              </span>
+                            </td>
+                            <td className="p-1.5 text-center">
+                              {!estVerse && (
+                                <button
+                                  onClick={() => verserEtatCaisse(etat)}
+                                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-2 py-0.5 rounded-lg text-[9px]"
+                                >
+                                  Verser 🚀
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -2183,7 +2005,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         </div>
       )}
 
-      {/* --- MODALE UNIVERSELLE DE SÉLECTION (CAISSE, COMPTE, TIERS, MOTIFS) --- */}
+      {/* --- MODALE UNIVERSELLE DE SÉLECTION --- */}
       {modaleSelection && (
         <div
           onClick={fermerModaleSelection}
@@ -2197,8 +2019,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
               <h3 className="font-extrabold text-xs uppercase tracking-wider text-orange-400">
                 {(modaleSelection === 'caisse_saisie' || modaleSelection === 'caisse_journal' || modaleSelection === 'caisse_historique') && '💵 SÉLECTIONNER UNE CAISSE'}
                 {(modaleSelection === 'compte_saisie' || modaleSelection === 'compte_gl') && '📒 SÉLECTIONNER UN COMPTE'}
-                {modaleSelection === 'tiers_saisie' && '👤 SÉLECTIONNER UN TIERS'}
-                {modaleSelection === 'tiers_gl' && '🔍 FILTRER PAR TIERS'}
+                {modaleSelection === 'tiers_saisie' && '👤 SÉLECTIONNER UN TIERS (UTILISATEUR)'}
+                {modaleSelection === 'tiers_gl' && '🔍 SÉLECTIONNER UN TIERS'}
                 {modaleSelection === 'motif_saisie' && '📝 CHOISIR OU CRÉER UN MOTIF'}
               </h3>
               <button
@@ -2212,7 +2034,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
             <div className="p-3.5 space-y-2.5 max-h-[75vh] overflow-y-auto">
 
-              {/* CRÉATION COMPLÈTE D'UN COMPTE (PLAN COMPTABLE - STYLE INTERFACE DEMANDÉE) */}
+              {/* CRÉATION COMPLÈTE D'UN COMPTE (PLAN COMPTABLE) */}
               {modaleSelection === 'compte_saisie' && afficherFormulaireNouveauCompte ? (
                 <form onSubmit={enregistrerNouveauCompteComptable} className="bg-orange-50/70 p-3.5 rounded-xl border border-orange-200 space-y-3">
                   <div className="flex justify-between items-center border-b border-orange-200 pb-2">
@@ -2230,12 +2052,16 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
                   <div>
                     <label className="block font-black text-slate-800 text-[9px] uppercase mb-1">Nature *</label>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setFormNouveauCompte({ ...formNouveauCompte, nature: 'CHARGE' })}
+                        onClick={() => {
+                          const currentCode = formNouveauCompte.code_compte || '605007';
+                          const newCode = '6' + currentCode.substring(1);
+                          setFormNouveauCompte({ ...formNouveauCompte, type_compte: 'CHARGE', code_compte: newCode });
+                        }}
                         className={`py-2 px-2 rounded-lg font-black text-[10px] uppercase transition border ${
-                          formNouveauCompte.nature === 'CHARGE'
+                          formNouveauCompte.type_compte === 'CHARGE'
                             ? 'bg-red-600 text-white border-red-700 shadow-sm'
                             : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                         }`}
@@ -2244,37 +2070,30 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                       </button>
                       <button
                         type="button"
-                        onClick={() => setFormNouveauCompte({ ...formNouveauCompte, nature: 'PRODUIT' })}
+                        onClick={() => {
+                          const currentCode = formNouveauCompte.code_compte || '705007';
+                          const newCode = '7' + currentCode.substring(1);
+                          setFormNouveauCompte({ ...formNouveauCompte, type_compte: 'PRODUIT', code_compte: newCode });
+                        }}
                         className={`py-2 px-2 rounded-lg font-black text-[10px] uppercase transition border ${
-                          formNouveauCompte.nature === 'PRODUIT'
+                          formNouveauCompte.type_compte === 'PRODUIT'
                             ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
                             : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                         }`}
                       >
                         🟢 Produit
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormNouveauCompte({ ...formNouveauCompte, nature: 'GENERAL' })}
-                        className={`py-2 px-2 rounded-lg font-black text-[10px] uppercase transition border ${
-                          formNouveauCompte.nature === 'GENERAL'
-                            ? 'bg-slate-800 text-white border-slate-900 shadow-sm'
-                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                        }`}
-                      >
-                        ⚪ Général
-                      </button>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block font-black text-slate-800 text-[9px] uppercase mb-1">N° Code (Modifiable) *</label>
+                      <label className="block font-black text-slate-800 text-[9px] uppercase mb-1">N° Code *</label>
                       <input
                         type="text"
                         required
-                        value={formNouveauCompte.numero_compte}
-                        onChange={(e) => setFormNouveauCompte({ ...formNouveauCompte, numero_compte: e.target.value.toUpperCase() })}
+                        value={formNouveauCompte.code_compte}
+                        onChange={(e) => setFormNouveauCompte({ ...formNouveauCompte, code_compte: e.target.value.toUpperCase() })}
                         className="w-full bg-white border border-orange-300 rounded-lg p-2 font-mono font-black text-orange-600 text-[10px] uppercase shadow-2xs"
                       />
                     </div>
@@ -2318,7 +2137,6 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2 font-bold text-slate-900 text-[11px] uppercase placeholder-slate-400 focus:outline-none focus:border-orange-500"
                   />
 
-                  {/* BOUTON CRÉER UN NOUVEAU COMPTE DEPUIS LA SÉLECTION */}
                   {modaleSelection === 'compte_saisie' && (
                     <div className="bg-orange-50/70 p-2.5 rounded-xl border border-orange-200 flex items-center justify-between gap-2">
                       <span className="font-black text-orange-900 text-[9px] uppercase">
@@ -2328,8 +2146,8 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         type="button"
                         onClick={() => {
                           setFormNouveauCompte({
-                            nature: 'CHARGE',
-                            numero_compte: `605${Math.floor(100 + Math.random() * 900)}`,
+                            type_compte: 'CHARGE',
+                            code_compte: `605${Math.floor(100 + Math.random() * 900)}`,
                             intitule: rechercheModale.trim().toUpperCase()
                           });
                           setAfficherFormulaireNouveauCompte(true);
@@ -2343,101 +2161,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                 </>
               )}
 
-              {/* CRÉATION INSTANTANÉE DE MOTIF */}
-              {modaleSelection === 'motif_saisie' && (
-                <div className="bg-orange-50/70 p-2.5 rounded-xl border border-orange-200 space-y-1.5">
-                  <label className="block font-black text-orange-900 text-[9px] uppercase">
-                    ＋ Créer et utiliser un nouveau motif :
-                  </label>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="EX: ACHAT CARBURANT, FACTURE ENEO..."
-                      value={nouveauMotifInput}
-                      onChange={(e) => setNouveauMotifInput(e.target.value.toUpperCase())}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const val = (nouveauMotifInput || rechercheModale).trim().toUpperCase();
-                          if (val) {
-                            ajouterMotifPersonnalise(val);
-                            setUtilisateurMotif(val);
-                            fermerModaleSelection();
-                          }
-                        }
-                      }}
-                      className="flex-1 bg-white border border-orange-300 rounded-lg px-2.5 py-1.5 font-black text-slate-900 text-[10px] uppercase focus:outline-none focus:border-orange-600"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const val = (nouveauMotifInput || rechercheModale).trim().toUpperCase();
-                        if (val) {
-                          ajouterMotifPersonnalise(val);
-                          setUtilisateurMotif(val);
-                          fermerModaleSelection();
-                        }
-                      }}
-                      className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase shrink-0 shadow-2xs"
-                    >
-                      Créer
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* CONTENU : CAISSE (SAISIE, JOURNAL, HISTORIQUE) */}
-              {(modaleSelection === 'caisse_saisie' || modaleSelection === 'caisse_journal' || modaleSelection === 'caisse_historique') && (
-                <div className="space-y-1.5">
-                  {modaleSelection !== 'caisse_saisie' && (
-                    <div
-                      onClick={() => {
-                        if (modaleSelection === 'caisse_journal') setCaisseSelectionneeJournal('');
-                        if (modaleSelection === 'caisse_historique') setCaisseHistoriqueId('');
-                        fermerModaleSelection();
-                      }}
-                      className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
-                    >
-                      <span>⭐ -- TOUTES LES CAISSES --</span>
-                      <span className="text-[9px] text-orange-600 font-black">TOUTES</span>
-                    </div>
-                  )}
-                  {caisses
-                    .filter(c => (c.nom_caisse || c.code_caisse || '').toUpperCase().includes(rechercheModale.toUpperCase()))
-                    .map(c => {
-                      const solde = calculerSoldeCaisse(c.id);
-                      const estSelectionnee =
-                        modaleSelection === 'caisse_saisie' ? String(enteteSaisie.id_caisse) === String(c.id) :
-                        modaleSelection === 'caisse_journal' ? String(caisseSelectionneeJournal) === String(c.id) :
-                        String(caisseHistoriqueId) === String(c.id);
-                      return (
-                        <div
-                          key={c.id}
-                          onClick={() => {
-                            if (modaleSelection === 'caisse_saisie') {
-                              setEnteteSaisie(prev => ({ ...prev, id_caisse: c.id }));
-                            } else if (modaleSelection === 'caisse_journal') {
-                              setCaisseSelectionneeJournal(c.id);
-                            } else if (modaleSelection === 'caisse_historique') {
-                              setCaisseHistoriqueId(c.id);
-                            }
-                            fermerModaleSelection();
-                          }}
-                          className={`p-3 rounded-xl border cursor-pointer transition flex justify-between items-center ${
-                            estSelectionnee ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
-                          }`}
-                        >
-                          <span className="font-black text-slate-900 text-[11px] uppercase">💵 {c.nom_caisse || c.code_caisse}</span>
-                          <span className={`font-black text-[10px] ${solde < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                            {solde.toLocaleString('fr-FR')} CFA
-                          </span>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-
-              {/* CONTENU : COMPTE */}
+              {/* LISTE DES COMPTES DANS LA MODALE (SAISIE OU GRAND LIVRE) */}
               {(!afficherFormulaireNouveauCompte && (modaleSelection === 'compte_saisie' || modaleSelection === 'compte_gl')) && (
                 <div className="space-y-1.5">
                   {modaleSelection === 'compte_gl' && (
@@ -2446,146 +2170,173 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                         setCompteLivreId('');
                         fermerModaleSelection();
                       }}
-                      className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
+                      className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-slate-50 hover:bg-slate-100 border-slate-200"
                     >
-                      <span>⭐ -- TOUS LES COMPTES --</span>
-                      <span className="text-[9px] text-orange-600 font-black">TOUS</span>
+                      <span className="font-black text-slate-600 text-[11px] uppercase">-- TOUS LES COMPTES --</span>
+                      <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">TOUS</span>
                     </div>
                   )}
                   {comptes
                     .filter(c =>
                       (c.intitule_compte || '').toUpperCase().includes(rechercheModale.toUpperCase()) ||
-                      (c.numero_compte || '').toUpperCase().includes(rechercheModale.toUpperCase())
+                      (c.code_compte || '').toUpperCase().includes(rechercheModale.toUpperCase())
                     )
-                    .map(c => {
-                      const estSelectionne =
-                        modaleSelection === 'compte_saisie'
-                          ? String(ligneUnique.id_compte) === String(c.id)
-                          : String(compteLivreId) === String(c.id);
-                      return (
-                        <div
-                          key={c.id}
-                          onClick={() => {
-                            if (modaleSelection === 'compte_saisie') {
-                              selectionnerCompteSaisie(c.id);
-                            } else {
-                              setCompteLivreId(c.id);
-                              fermerModaleSelection();
-                            }
-                          }}
-                          className={`p-3 rounded-xl border cursor-pointer transition flex justify-between items-center ${
-                            estSelectionne ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
-                          }`}
-                        >
-                          <div className="truncate pr-2">
-                            {c.numero_compte && (
-                              <span className="font-mono font-black text-orange-600 text-[10px] mr-1.5">{c.numero_compte}</span>
-                            )}
-                            <span className="font-black text-slate-900 text-[11px] uppercase">{c.intitule_compte}</span>
-                          </div>
-                          <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
+                    .map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          if (modaleSelection === 'compte_gl') {
+                            setCompteLivreId(c.id);
+                            fermerModaleSelection();
+                          } else {
+                            selectionnerCompteSaisie(c.id);
+                          }
+                        }}
+                        className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-white hover:bg-orange-50/60 border-slate-200"
+                      >
+                        <div className="truncate pr-2">
+                          <span className="font-mono font-black text-orange-600 text-[10px] mr-1.5">{c.code_compte}</span>
+                          <span className="font-black text-slate-900 text-[11px] uppercase">{c.intitule_compte}</span>
                         </div>
-                      );
-                    })}
+                        <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
+                      </div>
+                    ))}
                 </div>
               )}
 
-              {/* CONTENU : TIERS SAISIE */}
-              {modaleSelection === 'tiers_saisie' && (
-                <div className="space-y-1.5">
+              {/* LISTE DES MOTIFS DANS LA MODALE (AVEC CRÉATION INSTANTANÉE) */}
+              {modaleSelection === 'motif_saisie' && (
+                <div className="space-y-2">
+                  {rechercheModale.trim() && !listeMotifsUniques.some(m => m.toUpperCase() === rechercheModale.trim().toUpperCase()) && (
+                    <div className="bg-orange-50/70 p-2.5 rounded-xl border border-orange-200 flex items-center justify-between gap-2">
+                      <span className="font-black text-orange-900 text-[9px] uppercase truncate">
+                        + Créer "{rechercheModale.trim().toUpperCase()}" :
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nouveau = rechercheModale.trim().toUpperCase();
+                          ajouterMotifPersonnalise(nouveau);
+                          setUtilisateurMotif(nouveau);
+                          fermerModaleSelection();
+                        }}
+                        className="bg-orange-600 hover:bg-orange-500 text-white font-black px-3 py-1.5 rounded-lg text-[10px] uppercase shrink-0 shadow-2xs cursor-pointer"
+                      >
+                        Créer & Utiliser
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
+                    {listeMotifsUniques
+                      .filter(m => m.toUpperCase().includes(rechercheModale.toUpperCase()))
+                      .map((motif, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setUtilisateurMotif(motif);
+                            fermerModaleSelection();
+                          }}
+                          className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-white hover:bg-orange-50/60 border-slate-200"
+                        >
+                          <span className="font-black text-slate-900 text-[11px] uppercase">📝 {motif}</span>
+                          <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* LISTE DES TIERS DEPUIS LA TABLE UTILISATEURS (SAISIE OU GRAND LIVRE) */}
+              {(modaleSelection === 'tiers_saisie' || modaleSelection === 'tiers_gl') && (
+                <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
                   <div
-                    onClick={() => selectionnerTiersSaisie('')}
-                    className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
+                    onClick={() => {
+                      if (modaleSelection === 'tiers_gl') {
+                        setTiersLivreFiltre('');
+                      } else {
+                        selectionnerTiersSaisie('');
+                      }
+                      fermerModaleSelection();
+                    }}
+                    className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-slate-50 hover:bg-slate-100 border-slate-200"
                   >
-                    <span>-- AUCUN TIERS --</span>
-                    <span className="text-[9px] text-slate-500 font-bold">EFFACER</span>
+                    <span className="font-black text-slate-600 text-[11px] uppercase">-- TOUS / AUCUN TIERS --</span>
+                    <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">RÉINITIALISER</span>
                   </div>
                   {utilisateurs
-                    .filter(u => (u.nom_complet || u.email || '').toUpperCase().includes(rechercheModale.toUpperCase()))
-                    .map(u => {
-                      const estSelectionne = String(ligneUnique.id_utilisateur_tiers) === String(u.id);
-                      return (
-                        <div
-                          key={u.id}
-                          onClick={() => selectionnerTiersSaisie(u.id)}
-                          className={`p-3 rounded-xl border cursor-pointer transition flex justify-between items-center ${
-                            estSelectionne ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
-                          }`}
-                        >
-                          <span className="font-black text-slate-900 text-[11px] uppercase truncate">
-                            👤 {u.nom_complet || u.email}
-                          </span>
-                          <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-
-              {/* CONTENU : TIERS GRAND LIVRE */}
-              {modaleSelection === 'tiers_gl' && (
-                <div className="space-y-1.5">
-                  <div
-                    onClick={() => {
-                      setTiersLivreFiltre('');
-                      fermerModaleSelection();
-                    }}
-                    className="bg-slate-50 hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-300 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
-                  >
-                    <span>⭐ -- TOUS --</span>
-                    <span className="text-[9px] text-orange-600 font-black">TOUS</span>
-                  </div>
-                  {listeTiersGlobale
-                    .filter(t => t.nom.includes(rechercheModale.toUpperCase()) || t.categorie.includes(rechercheModale.toUpperCase()))
-                    .map((item, idx) => (
+                    .filter(u => {
+                      const nom = `${u.nom_complet || ''} ${u.prenom || ''} ${u.email || ''}`.toUpperCase();
+                      return nom.includes(rechercheModale.toUpperCase());
+                    })
+                    .map(u => (
                       <div
-                        key={idx}
+                        key={u.id}
                         onClick={() => {
-                          setTiersLivreFiltre(item.nom);
-                          fermerModaleSelection();
+                          if (modaleSelection === 'tiers_gl') {
+                            setTiersLivreFiltre(u.id);
+                            fermerModaleSelection();
+                          } else {
+                            selectionnerTiersSaisie(u.id);
+                          }
                         }}
-                        className="bg-white hover:bg-orange-50 text-slate-900 font-black p-2.5 rounded-xl border border-slate-200 cursor-pointer transition uppercase text-[11px] flex justify-between items-center"
+                        className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-white hover:bg-orange-50/60 border-slate-200"
                       >
-                        <div className="flex items-center gap-2 truncate">
-                          <span className="text-orange-600 text-[9px] font-mono shrink-0">({item.categorie})</span>
-                          <span className="truncate">{item.nom}</span>
+                        <div className="truncate pr-2">
+                          <span className="font-black text-slate-900 text-[11px] uppercase">{u.nom_complet || u.email}</span>
+                          {u.nom_role && <span className="ml-2 text-[9px] text-orange-600 font-bold">({u.nom_role})</span>}
                         </div>
-                        <span className="text-[9px] text-slate-600 font-bold border border-slate-300 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
+                        <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">CHOISIR</span>
                       </div>
                     ))}
                 </div>
               )}
 
-              {/* CONTENU : MOTIFS */}
-              {modaleSelection === 'motif_saisie' && (
+              {/* LISTE DES CAISSES (SAISIE, JOURNAL OU HISTORIQUE) */}
+              {(modaleSelection === 'caisse_saisie' || modaleSelection === 'caisse_journal' || modaleSelection === 'caisse_historique') && (
                 <div className="space-y-1.5">
-                  <div
-                    onClick={() => {
-                      setUtilisateurMotif('');
-                      fermerModaleSelection();
-                    }}
-                    className="bg-slate-50 hover:bg-orange-50 text-slate-700 font-black p-2.5 rounded-xl border border-slate-200 cursor-pointer transition uppercase text-[10px] flex justify-between items-center"
-                  >
-                    <span>MOUV. INT. (PAR DÉFAUT)</span>
-                    <span className="text-[9px] text-slate-400 font-bold">DÉFAUT</span>
-                  </div>
-                  {listeMotifsUniques
-                    .filter(m => m.includes(rechercheModale.toUpperCase()))
-                    .map((motifItem, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          setUtilisateurMotif(motifItem);
-                          fermerModaleSelection();
-                        }}
-                        className={`p-2.5 rounded-xl border cursor-pointer transition flex justify-between items-center ${
-                          utilisateurMotif === motifItem ? 'bg-orange-50 border-orange-500' : 'bg-white hover:bg-orange-50/60 border-slate-200'
-                        }`}
-                      >
-                        <span className="font-black text-slate-900 text-[11px] uppercase truncate">{motifItem}</span>
-                        <span className="text-[9px] text-orange-600 font-bold border border-orange-200 px-2 py-0.5 rounded-lg shrink-0">UTILISER</span>
-                      </div>
-                    ))}
+                  {modaleSelection === 'caisse_journal' && (
+                    <div
+                      onClick={() => {
+                        setCaisseSelectionneeJournal('');
+                        fermerModaleSelection();
+                      }}
+                      className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-slate-50 hover:bg-slate-100 border-slate-200"
+                    >
+                      <span className="font-black text-slate-600 text-[11px] uppercase">-- TOUTES LES CAISSES --</span>
+                      <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">TOUTES</span>
+                    </div>
+                  )}
+                  {modaleSelection === 'caisse_historique' && (
+                    <div
+                      onClick={() => {
+                        setCaisseHistoriqueId('');
+                        fermerModaleSelection();
+                      }}
+                      className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-slate-50 hover:bg-slate-100 border-slate-200"
+                    >
+                      <span className="font-black text-slate-600 text-[11px] uppercase">-- TOUTES LES CAISSES --</span>
+                      <span className="text-[9px] text-slate-500 font-bold border border-slate-200 px-2 py-0.5 rounded-lg shrink-0">TOUTES</span>
+                    </div>
+                  )}
+                  {caisses.map(c => (
+                    <div
+                      key={c.id}
+                      onClick={() => {
+                        if (modaleSelection === 'caisse_journal') {
+                          setCaisseSelectionneeJournal(c.id);
+                        } else if (modaleSelection === 'caisse_historique') {
+                          setCaisseHistoriqueId(c.id);
+                        } else {
+                          setEnteteSaisie(prev => ({ ...prev, id_caisse: c.id }));
+                        }
+                        fermerModaleSelection();
+                      }}
+                      className="p-3 rounded-xl border cursor-pointer transition flex justify-between items-center bg-white hover:bg-orange-50/60 border-slate-200"
+                    >
+                      <span className="font-black text-slate-900 text-[11px] uppercase">💵 {c.nom_caisse || c.code_caisse}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -2593,106 +2344,19 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         </div>
       )}
 
-      {/* --- MODALE GLOBALE DE NOTIFICATION STYLE GRILLE --- */}
+      {/* --- NOTIFICATIONS --- */}
       {modalNotification && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-2xs p-4">
-          <div className="bg-white text-slate-900 w-full max-w-sm rounded-2xl border border-slate-200 shadow-2xl overflow-hidden p-5 space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
-            <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full text-xl font-black ${
-              modalNotification.type === 'erreur' ? 'bg-red-100 text-red-600' : modalNotification.type === 'succes' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'
-            }`}>
-              {modalNotification.type === 'erreur' ? '⚠️' : modalNotification.type === 'succes' ? '✅' : 'ℹ️'}
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="font-black text-slate-900 text-sm uppercase">{modalNotification.titre}</h3>
-              <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalNotification.texte}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              {modalNotification.onConfirm ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setModalNotification(null)}
-                    className="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xs uppercase rounded-xl transition"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const action = modalNotification.onConfirm;
-                      setModalNotification(null);
-                      if (action) action();
-                    }}
-                    className="py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
-                  >
-                    Confirmer
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setModalNotification(null)}
-                  className="col-span-2 w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
-                >
-                  OK
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODALE DE SÉLECTION DE LA CAISSE DE VERSEMENT --- */}
-      {afficherModaleVersement && etatEnCoursDeVersement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-2xs p-4">
-          <div className="bg-slate-900 text-white w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl overflow-hidden p-4 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="font-extrabold text-xs uppercase tracking-wider text-orange-400">
-                🏦 CHOISIR LA CAISSE [{etatEnCoursDeVersement.code_piece || 'CL'}]
-              </h3>
-              <button
-                onClick={() => setAfficherModaleVersement(false)}
-                className="text-slate-400 hover:text-white font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-[11px] text-slate-300">
-              Indiquez la caisse de destination pour le versement de <span className="font-bold text-emerald-400">{Number(etatEnCoursDeVersement.montant_verse).toLocaleString('fr-FR')} CFA</span>.
-            </p>
-
-            <div>
-              <label className="block font-black text-slate-400 text-[9px] uppercase mb-1">Caisse de Destination *</label>
-              <select
-                value={caisseDestinationVersement}
-                onChange={(e) => setCaisseDestinationVersement(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 font-black text-white text-[11px]"
-              >
-                {caisses.map((c) => (
-                  <option key={c.id} value={c.id}>💵 {c.nom_caisse}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setAfficherModaleVersement(false)}
-                className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-xl text-[10px]"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                onClick={executerVersementModale}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-5 py-2 rounded-xl text-[10px] shadow-2xs"
-              >
-                Confirmer
-              </button>
-            </div>
+          <div className="bg-white text-slate-900 w-full max-w-sm rounded-2xl border border-slate-200 shadow-2xl overflow-hidden p-5 space-y-4 text-center">
+            <h3 className="font-black text-slate-900 text-sm uppercase">{modalNotification.titre}</h3>
+            <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalNotification.texte}</p>
+            <button
+              type="button"
+              onClick={() => setModalNotification(null)}
+              className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}
