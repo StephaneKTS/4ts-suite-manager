@@ -261,17 +261,54 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     });
   };
 
+  // --- RÉSOLUTION ROBUSTE DU NOM DE L'UTILISATEUR DEPUIS LA TABLE UTILISATEURS ---
+  const obtenirNomAuteur = (auteurBrut) => {
+    if (!auteurBrut) {
+      if (utilisateurs.length > 0) {
+        return (utilisateurs[0].nom_complet || utilisateurs[0].email || 'UTILISATEUR').toUpperCase();
+      }
+      return 'UTILISATEUR';
+    }
+    const clean = String(auteurBrut).trim();
+    if (clean === '' || clean.toUpperCase() === 'UTILISATEUR') {
+      if (utilisateurConnecte && utilisateurConnecte !== 'UTILISATEUR') {
+        const matchConnecte = utilisateurs.find(u => 
+          String(u.id) === String(utilisateurConnecte) || 
+          (u.email && u.email.toUpperCase() === utilisateurConnecte) ||
+          (u.nom_complet && u.nom_complet.toUpperCase() === utilisateurConnecte)
+        );
+        if (matchConnecte) return (matchConnecte.nom_complet || matchConnecte.email).toUpperCase();
+        return utilisateurConnecte.toUpperCase();
+      }
+      if (utilisateurs.length > 0) {
+        return (utilisateurs[0].nom_complet || utilisateurs[0].email || 'UTILISATEUR').toUpperCase();
+      }
+      return 'UTILISATEUR';
+    }
+
+    const userMatch = utilisateurs.find(u => 
+      String(u.id) === String(clean) || 
+      (u.email && u.email.toUpperCase() === clean.toUpperCase()) ||
+      (u.nom_complet && u.nom_complet.toUpperCase() === clean.toUpperCase()) ||
+      (u.prenom && u.prenom.toUpperCase() === clean.toUpperCase())
+    );
+    if (userMatch) {
+      return (userMatch.nom_complet || userMatch.email || clean).toUpperCase();
+    }
+    return clean.toUpperCase();
+  };
+
   const extraireAuteurEtMotif = (libelleRaw) => {
     const str = (libelleRaw || '').trim();
     if (str.startsWith('[')) {
       const idxFermet = str.indexOf(']');
       if (idxFermet !== -1) {
-        const auteur = str.substring(1, idxFermet).trim();
+        const auteurBrut = str.substring(1, idxFermet).trim();
         const motif = str.substring(idxFermet + 1).trim();
-        return { auteur: auteur || utilisateurConnecte, motif: motif || '-' };
+        return { auteur: obtenirNomAuteur(auteurBrut), motif: motif || '-' };
       }
     }
-    return { auteur: utilisateurConnecte, motif: str || '-' };
+    return { auteur: obtenirNomAuteur('UTILISATEUR'), motif: str || '-' };
   };
 
   const fusionnerParId = (liste1 = [], liste2 = []) => {
@@ -323,6 +360,14 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     if (cloturesLocales.length > 0) setCloturesCaissesList(cloturesLocales);
 
     try {
+      // Récupération stricte de la table des utilisateurs en premier pour les associations
+      const { data: dataUsers } = await supabase
+        .from('utilisateurs')
+        .select('*')
+        .eq('id_entreprise', entrepriseId);
+      const listeUsersFinales = dataUsers || [];
+      setUtilisateurs(listeUsersFinales);
+
       const { data: dataCaisses } = await supabase
         .from('caisses')
         .select('*')
@@ -404,18 +449,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         .eq('module', moduleActuel);
       setEmplacementsStock(dataEmp || []);
 
-      // Récupération stricte de la table des utilisateurs
-      const { data: dataUsers } = await supabase
-        .from('utilisateurs')
-        .select('*')
-        .eq('id_entreprise', entrepriseId);
-      setUtilisateurs(dataUsers || []);
-
       if (!utilisateurConnecte && !utilisateurActif) {
         const { data: authData } = await supabase.auth.getUser();
         if (authData?.user) {
           const emailAuth = authData.user.email;
-          const userMatch = (dataUsers || []).find(u => u.email === emailAuth || u.id === authData.user.id);
+          const userMatch = listeUsersFinales.find(u => u.email === emailAuth || u.id === authData.user.id);
           if (userMatch) {
             const nomTrouve = (userMatch.nom_complet || userMatch.nom || userMatch.email || '').toUpperCase();
             setUtilisateurConnecte(nomTrouve);
@@ -567,7 +605,22 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return totalMvts;
   };
 
-  const auteurEffectif = (utilisateurConnecte || 'KEITA SHOP').toUpperCase();
+  // Résolution stricte et automatique du nom de l'auteur effectif basé sur les profils de la table utilisateurs
+  const auteurEffectif = (() => {
+    if (utilisateurConnecte && utilisateurConnecte !== 'UTILISATEUR') {
+      const match = utilisateurs.find(u => 
+        String(u.id) === String(utilisateurConnecte) || 
+        (u.email && u.email.toUpperCase() === utilisateurConnecte) ||
+        (u.nom_complet && u.nom_complet.toUpperCase() === utilisateurConnecte)
+      );
+      if (match) return (match.nom_complet || match.email).toUpperCase();
+      return utilisateurConnecte.toUpperCase();
+    }
+    if (utilisateurs.length > 0) {
+      return (utilisateurs[0].nom_complet || utilisateurs[0].email || 'UTILISATEUR').toUpperCase();
+    }
+    return 'UTILISATEUR';
+  })();
 
   const enregistrerOperationUnique = async (e) => {
     if (e) e.preventDefault();
@@ -586,7 +639,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
         ajouterMotifPersonnalise(motifBrut);
       }
 
-      // CORRECTION CLÉ : On injecte explicitement le nom réel de l'opérateur connecté entre crochets
+      // Enregistrement avec le nom complet réel de l'utilisateur effectif
       let libelleFinal = `[${auteurEffectif}] ${motifBrut}`;
 
       let nomTiersAssocie = '';
@@ -771,11 +824,11 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
 
   const obtenirNomCaissier = (idOuNom) => {
     if (!idOuNom) return '-';
-    const utilisateurTrouve = utilisateurs.find(u => String(u.id) === String(idOuNom) || String(u.email) === String(idOuNom));
+    const utilisateurTrouve = utilisateurs.find(u => String(u.id) === String(idOuNom) || String(u.email) === String(idOuNom) || String(u.nom_complet) === String(idOuNom));
     if (utilisateurTrouve) {
-      return utilisateurTrouve.nom_complet || utilisateurTrouve.email || idOuNom;
+      return (utilisateurTrouve.nom_complet || utilisateurTrouve.email || idOuNom).toUpperCase();
     }
-    return idOuNom;
+    return String(idOuNom).toUpperCase();
   };
 
   const formaterLibelleMouvement = (libelleRaw) => {
@@ -795,7 +848,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       id_compte: m.id_compte,
       id_utilisateur_tiers: m.id_utilisateur_tiers || m.id_tiers || null,
       libelle: formaterLibelleMouvement(motif),
-      auteur: auteur || utilisateurConnecte,
+      auteur: auteur || 'UTILISATEUR',
       type_mouvement: m.type_mouvement,
       montant: Number(m.montant || 0)
     };
@@ -808,7 +861,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     id_compte: v.id_compte || null,
     id_utilisateur_tiers: v.id_utilisateur || null,
     libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
-    auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : utilisateurConnecte,
+    auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : 'UTILISATEUR',
     type_mouvement: 'ENTREE',
     montant: Number(v.montant_regle ?? v.total_montant ?? 0)
   }));
@@ -820,7 +873,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     id_compte: a.id_compte || null,
     id_utilisateur_tiers: null,
     libelle: `APPRO. (${a.nom_fournisseur || 'FOURN.'})`,
-    auteur: utilisateurConnecte,
+    auteur: obtenirNomAuteur(a.responsable || a.id_utilisateur),
     type_mouvement: 'SORTIE',
     montant: Number(a.montant_total || a.montant || 0)
   }));
@@ -904,7 +957,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return {
       ...m,
       libelle: formaterLibelleMouvement(motif),
-      auteur: auteur || utilisateurConnecte
+      auteur: auteur || 'UTILISATEUR'
     };
   });
 
@@ -944,7 +997,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       type_mouvement: 'ENTREE',
       montant: Number(cl.montant_reel_verse || 0),
       libelle: 'Frais Livr.',
-      auteur: cl.responsable || utilisateurConnecte,
+      auteur: obtenirNomCaissier(cl.responsable),
       id_compte: null,
       piece_physique: cl.code_cloture || `LIVR-${cl.id}`,
       created_at: cl.created_at || `${cl.date_debut}T12:00:00`
@@ -970,7 +1023,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
       type_mouvement: 'ENTREE',
       montant: Number(v.montant_regle ?? v.total_montant ?? 0),
       libelle: `VT #${v.numero_ticket || '-'} (${v.nom_client || 'DIVERS'})`,
-      auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : utilisateurConnecte,
+      auteur: v.id_utilisateur ? obtenirNomCaissier(v.id_utilisateur) : obtenirNomAuteur('UTILISATEUR'),
       id_compte: v.id_compte || null,
       piece_physique: v.numero_ticket || `TICK-${v.id}`,
       created_at: v.created_at
@@ -1045,7 +1098,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
     return {
       ...m,
       libelle: formaterLibelleMouvement(motif),
-      auteur: auteur || utilisateurConnecte
+      auteur: auteur || 'UTILISATEUR'
     };
   });
 
@@ -1587,7 +1640,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-600' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
-                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{auteur || utilisateurConnecte}</td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{auteur}</td>
                           </tr>
                         );
                       })
@@ -1696,8 +1749,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className={`p-1.5 font-black text-right whitespace-nowrap ${estEntree ? 'text-emerald-700' : 'text-red-600'}`}>
                               {estEntree ? `+ ${Number(m.montant).toLocaleString('fr-FR')}` : `- ${Number(m.montant).toLocaleString('fr-FR')}`}
                             </td>
-                            {/* CORRECTION DE L'AFFICHAGE DE L'UTILISATEUR DANS LE GRAND LIVRE */}
-                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || utilisateurConnecte}</td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur}</td>
                           </tr>
                         );
                       })
@@ -1818,7 +1870,7 @@ export default function GestionJournalCaisse({ entrepriseId = '4TS-234321', vueI
                             <td className="p-1.5 font-black text-red-600 text-right whitespace-nowrap">
                               {!estEntree ? `${montantNum.toLocaleString('fr-FR')}` : '-'}
                             </td>
-                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur || utilisateurConnecte}</td>
+                            <td className="p-1.5 font-bold text-slate-600 uppercase whitespace-nowrap">{m.auteur}</td>
                           </tr>
                         );
                       })

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/usePermissions'; 
@@ -87,6 +87,205 @@ function DashboardContent() {
     }
     return true; 
   });
+
+  // --- ÉTATS & RÉFÉRENCES POUR LA SURVEILLANCE GLOBALE DES COMMANDES QR ---
+  const [audioActiveGlobal, setAudioActiveGlobal] = useState(true);
+  const fileDAbsolueAudio = useRef([]);
+  const enTrainDeJouerAudio = useRef(false);
+  const idsCommandesConnuesGlobal = useRef(new Set());
+
+  // Formateur élégant du numéro de commande
+  const formaterNumeroElegant = (numeroBrut) => {
+    if (!numeroBrut) return 'CMD-000';
+    const parts = numeroBrut.split('-');
+    if (parts.length > 1) {
+      const suffixe = parts[parts.length - 1];
+      const prefixeRef = parts[parts.length - 2] || '';
+      if (suffixe.length <= 4 && !isNaN(suffixe)) {
+        return `CMD-${suffixe}`;
+      }
+      return `${prefixeRef}-${suffixe}`.toUpperCase();
+    }
+    return numeroBrut;
+  };
+
+  // Gestion de la file d'attente audio globale
+  const traiterFileDAbsolueGlobal = async () => {
+    if (enTrainDeJouerAudio.current || fileDAbsolueAudio.current.length === 0 || !audioActiveGlobal) {
+      return;
+    }
+    enTrainDeJouerAudio.current = true;
+    const tacheCourante = fileDAbsolueAudio.current.shift();
+
+    try {
+      if (tacheCourante.type === 'ALERTE_ET_VOIX') {
+        await executerSonFortGlobal();
+        await executerVoixGlobal(tacheCourante.texte);
+      }
+    } catch (e) {
+      console.log("Erreur lecture audio globale :", e);
+    } finally {
+      enTrainDeJouerAudio.current = false;
+      if (fileDAbsolueAudio.current.length > 0) {
+        traiterFileDAbsolueGlobal();
+      }
+    }
+  };
+
+  const ajouterAlerteCompleteGlobal = (texte) => {
+    if (!audioActiveGlobal) return;
+    fileDAbsolueAudio.current.push({ type: 'ALERTE_ET_VOIX', texte });
+    traiterFileDAbsolueGlobal();
+  };
+
+  const executerSonFortGlobal = () => {
+    return new Promise(async (resolve) => {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+        const dureeBipMs = 250;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dureeBipMs / 1000);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + dureeBipMs / 1000);
+
+        setTimeout(resolve, dureeBipMs);
+      } catch (e) {
+        resolve();
+      }
+    });
+  };
+
+  const executerVoixGlobal = (texte) => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.resume();
+          const utterance = new SpeechSynthesisUtterance(texte);
+          utterance.lang = 'fr-FR';
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          utterance.onend = () => resolve();
+          utterance.onerror = () => resolve();
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          resolve();
+        }
+      } else {
+        resolve();
+      }
+    });
+  };
+
+  const declencherVibrationGlobal = () => {
+    if (!audioActiveGlobal) return;
+    if (typeof window !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([400, 100, 400]); } catch (e) {}
+    }
+  };
+
+  const notifierNouvelleCommandeGlobal = (cmd) => {
+    const nomClientPropre = (cmd.nom_client || 'Client').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, ' ');
+    const numeroElegant = formaterNumeroElegant(cmd.numero_commande);
+    const messageVocal = `Attention ! Nouvelle commande, ${numeroElegant}. Pour le client, ${nomClientPropre}. Table, ${cmd.numero_table || 'non spécifiée'}.`;
+    
+    if (audioActiveGlobal) {
+      declencherVibrationGlobal();
+      ajouterAlerteCompleteGlobal(messageVocal);
+    }
+  };
+
+  // --- EFFECT GLOBAL DE SURVEILLANCE DES COMMANDES QR SUR TOUTES LES PAGES ---
+  useEffect(() => {
+    if (!authentifie || !entrepriseId) return;
+
+    const preferenceAudio = localStorage.getItem('4ts_audio_active');
+    if (preferenceAudio !== null) {
+      setAudioActiveGlobal(preferenceAudio === 'true');
+    }
+
+    async function initialiserCommandesConnues() {
+      try {
+        const { data } = await supabase
+          .from('commandes_clients_qr')
+          .select('id')
+          .eq('id_entreprise', entrepriseId);
+        if (data) {
+          data.forEach(c => idsCommandesConnuesGlobal.current.add(c.id));
+        }
+      } catch (e) {}
+    }
+    initialiserCommandesConnues();
+
+    const nomCanalGlobal = `commandes-global-realtime-${entrepriseId}`;
+    supabase.getChannels().forEach((c) => {
+      if (c.topic.includes(nomCanalGlobal)) {
+        supabase.removeChannel(c);
+      }
+    });
+
+    const canalGlobal = supabase
+      .channel(nomCanalGlobal)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'commandes_clients_qr',
+          filter: `id_entreprise=eq.${entrepriseId}`
+        },
+        (payload) => {
+          const nouvelleCmd = payload.new;
+          if (nouvelleCmd && !idsCommandesConnuesGlobal.current.has(nouvelleCmd.id)) {
+            idsCommandesConnuesGlobal.current.add(nouvelleCmd.id);
+            notifierNouvelleCommandeGlobal(nouvelleCmd);
+          }
+        }
+      )
+      .subscribe();
+
+    const intervalSecoursGlobal = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('commandes_clients_qr')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (data) {
+          data.forEach(cmd => {
+            if (!idsCommandesConnuesGlobal.current.has(cmd.id)) {
+              const diffMs = new Date() - new Date(cmd.created_at);
+              if (diffMs < 120000) {
+                idsCommandesConnuesGlobal.current.add(cmd.id);
+                notifierNouvelleCommandeGlobal(cmd);
+              } else {
+                idsCommandesConnuesGlobal.current.add(cmd.id);
+              }
+            }
+          });
+        }
+      } catch (e) {}
+    }, 4000);
+
+    return () => {
+      supabase.removeChannel(canalGlobal);
+      clearInterval(intervalSecoursGlobal);
+    };
+  }, [authentifie, entrepriseId, audioActiveGlobal]);
 
   // 🔄 Synchronisation instantanée du module courant si modifié dans le localStorage
   useEffect(() => {
@@ -543,6 +742,15 @@ function DashboardContent() {
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Indicateur visuel permanent du radar QR Code actif */}
+          <div 
+            title="Radar de commandes QR actif en arrière-plan sur toutes les pages" 
+            className="hidden sm:flex items-center gap-1 bg-orange-500/10 border border-orange-500/30 px-2 py-1 rounded-lg text-[9px] font-black text-orange-400"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping"></span>
+            <span>Radar QR Actif</span>
+          </div>
+
           <WidgetNotificationsUtilisateur isDarkMode={isDarkMode} />
 
           <button
