@@ -19,6 +19,17 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     }
   }, [propEntrepriseId]);
 
+  // FONCTION DE GESTION DE LA DATE LOCALE EXACTE (Étape 2)
+  const obtenirDateLocaleStr = () => {
+    const d = new Date();
+    const annee = d.getFullYear();
+    const mois = String(d.getMonth() + 1).padStart(2, '0');
+    const jour = String(d.getDate()).padStart(2, '0');
+    return `${annee}-${mois}-${jour}`;
+  };
+
+  const dateDuJourStr = obtenirDateLocaleStr();
+
   const [commandes, setCommandes] = useState([]);
   const [lignesCommandesMap, setLignesCommandesMap] = useState({});
   const [partenaires, setPartenaires] = useState([]);
@@ -63,7 +74,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [documentEnLectureSeule, setDocumentEnLectureSeule] = useState(false);
 
   const [numeroCommande, setNumeroCommande] = useState('1');
-  const [dateCommande, setDateCommande] = useState(new Date().toISOString().split('T')[0]);
+  const [dateCommande, setDateCommande] = useState(dateDuJourStr);
   const [idPartenaire, setIdPartenaire] = useState('');
   const [depotId, setDepotId] = useState('AUCUN_DEPOT');
   const [montantSaisi, setMontantSaisi] = useState('');
@@ -103,8 +114,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [totalVerseFraisLivraison, setTotalVerseFraisLivraison] = useState('');
   const [modalCaisseClotureOuverte, setModalCaisseClotureOuverte] = useState(false);
   const [caisseSelectionneeCloture, setCaisseSelectionneeCloture] = useState('');
-
-  const dateDuJourStr = new Date().toISOString().split('T')[0];
 
   const obtenirPremierJourDuMois = () => {
     const d = new Date();
@@ -151,8 +160,8 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
   const [modalRapportPartenaireOuverte, setModalRapportPartenaireOuverte] = useState(false);
   const [rechercheRapportPartenaireInput, setRechercheRapportPartenaireInput] = useState('');
 
-  const [clotureDateDebut, setClotureDateDebut] = useState(new Date().toISOString().split('T')[0]);
-  const [clotureDateFin, setClotureDateFin] = useState(new Date().toISOString().split('T')[0]);
+  const [clotureDateDebut, setClotureDateDebut] = useState(dateDuJourStr);
+  const [clotureDateFin, setClotureDateFin] = useState(dateDuJourStr);
   const [clotureLivreur, setClotureLivreur] = useState('');
   const [modalClotureLivreurOuverte, setModalClotureLivreurOuverte] = useState(false);
   const [rechercheClotureLivreurInput, setRechercheClotureLivreurInput] = useState('');
@@ -292,7 +301,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
       const [resCmd, resLignesAll, resPart, resArt, resDep, resEmp, resUser, resRoles, resTarif, resMouv, resAppro, resCaisses, resClotures] = await Promise.all([
         supabase.from('commandes_livraison_en_tete').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }),
-        supabase.from('commandes_livraison_lignes').select('*'),
+        
+        // CORRECTION ÉTAPE 1 : Filtrage sécurisé des lignes par l'entreprise active pour éviter les pertes liées aux limites Supabase
+        supabase.from('commandes_livraison_lignes')
+          .select('*, commandes_livraison_en_tete!inner(id_entreprise)')
+          .eq('commandes_livraison_en_tete.id_entreprise', currentEntId),
+
         supabase.from('fournisseurs').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel),
         supabase.from('articles_stock').select('*').eq('id_entreprise', currentEntId).eq('module', moduleActuel).order('created_at', { ascending: false }),
         supabase.from('depots_stock').select('*').eq('id_entreprise', currentEntId),
@@ -706,7 +720,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               id_article: parseInt(item.id_article),
               quantite: item.quantite,
               motif_remarque: `RESTITUTION STOCK CHANGEMENT STATUT ${cmd.numero_commande}`,
-              created_at: `${cmd.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
+              created_at: `${cmd.date_commande || dateDuJourStr}T12:00:00`,
             };
             supabase.from('mouvements_stock').insert([payloadRestitution]).then(({ error: errRestit }) => {
               if (errRestit) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
@@ -735,7 +749,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
               id_article: parseInt(item.id_article),
               quantite: item.quantite,
               motif_remarque: `LIVRAISON EFFECTIVE ${cmd.numero_commande} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
-              created_at: `${cmd.date_commande || new Date().toISOString().split('T')[0]}T12:00:00`,
+              created_at: `${cmd.date_commande || dateDuJourStr}T12:00:00`,
             };
             supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
               if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
@@ -957,7 +971,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
   const napGlobal = parseFloat(montantSaisi) || 0;
 
-  // MODIFIÉ : Vérification rigoureuse des doublons avant l'ouverture du panier ou la validation
   const validerEnteteEtOuvrirPanier = async () => {
     if (documentEnLectureSeule || validationEnteteEnCours) return;
 
@@ -1007,7 +1020,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
 
     const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
-    // VÉRIFICATION STRICTE DES DOUBLONS (LOCAL + SUPABASE)
     if (!commandeEnEdition) {
       const doublonLocal = commandes.find(c => 
         (c.numero_commande || '').trim().toUpperCase() === numeroComplet &&
@@ -1020,7 +1032,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         return;
       }
 
-      // Vérification asynchrone supplémentaire directement dans Supabase pour contrer les doublons multi-utilisateurs
       try {
         const currentEntId = entrepriseId || propEntrepriseId || '4TS-234321';
         const { data: doublonCloud } = await supabase
@@ -1337,7 +1348,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
     try {
       const numeroComplet = `CMD-${numeroCommande.trim().toUpperCase()}`;
 
-      // DOUBLE VÉRIFICATION FINALE DES DOUBLONS AVANT INSERTION
       if (!commandeEnEdition) {
         const doublonTrouve = commandes.find(c => 
           (c.numero_commande || '').trim().toUpperCase() === numeroComplet &&
@@ -1350,33 +1360,15 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
           setSauvegardeEnCours(false);
           return;
         }
-
-        const { data: doublonCloud } = await supabase
-          .from('commandes_livraison_en_tete')
-          .select('id')
-          .eq('id_entreprise', currentEntId)
-          .eq('module', moduleActuel)
-          .eq('numero_commande', numeroComplet)
-          .eq('date_commande', dateNormalisee)
-          .eq('id_partenaire', idPartenaire)
-          .maybeSingle();
-
-        if (doublonCloud) {
-          setModalDoublonMessage(`DOUBLE SÉCURITÉ : La commande (${numeroComplet}) existe déjà en base de données.`);
-          setSauvegardeEnCours(false);
-          return;
-        }
       }
-
-      const estSuperviseurCmd = estUnSuperviseur(livreurAssigne);
-      const empIdTrouve = estSuperviseurCmd ? null : trouverIdEmplacementLivreur(livreurAssigne);
 
       const statutNormVerif = (statutCommandeSaisi || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const estLivreVerif = statutNormVerif === 'LIVRE' || statutNormVerif === 'LIVRÉ';
-
       const depotSourceMvt = depotSourceEffectif;
 
-      let payload = {
+      // Construction du payload pour l'en-tête
+      const payloadEnTete = {
+        id: commandeEnEdition ? commandeEnEdition.id : null,
         id_entreprise: currentEntId,
         module: moduleActuel,
         numero_commande: numeroComplet,
@@ -1397,165 +1389,28 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         utilisateur_saisie: nomUtilisateurConnecteReel
       };
 
-      let idCmdCourante = commandeEnEdition ? commandeEnEdition.id : null;
+      // Construction du payload pour les lignes
+      const payloadLignes = partenaireSansStockage ? [] : lignesSaisies.map(l => ({
+        id_article: l.id_article,
+        designation: l.designation,
+        quantite: l.quantite,
+        prix_unitaire: l.prix_unitaire
+      }));
 
-      if (commandeEnEdition) {
-        const statutPrecBrut = commandeEnEdition.statut || commandeEnEdition.statut_commande || 'LIVRÉ';
-        const statutPrecedentNorm = (statutPrecBrut || '').trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const etaitDejaLivre = statutPrecedentNorm === 'LIVRE' || statutPrecedentNorm === 'LIVRÉ';
+      // APPEL DE LA FONCTION RPC ATOMIQUE SUPABASE[cite: 12]
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('sauvegarder_commande_livraison_atomique', {
+        p_commande: payloadEnTete,
+        p_lignes: payloadLignes
+      });
 
-        const { error: errUp } = await supabase
-          .from('commandes_livraison_en_tete')
-          .update(payload)
-          .eq('id', commandeEnEdition.id);
-        if (errUp) throw errUp;
-
-        const { error: errDel } = await supabase
-          .from('commandes_livraison_lignes')
-          .delete()
-          .eq('id_commande', commandeEnEdition.id);
-        if (errDel) console.error(errDel);
-
-        if (!partenaireSansStockage && etaitDejaLivre && !estLivreVerif) {
-          const lignesCmdPrecedentes = lignesCommandesMap[commandeEnEdition.id] || [];
-          lignesCmdPrecedentes.forEach(item => {
-            const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
-            const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
-
-            if (estSuiviArticle !== false && estSuiviArticle !== 0) {
-              const payloadRestitution = {
-                id_entreprise: currentEntId,
-                module: moduleActuel,
-                type_mouvement: 'ENTREE',
-                id_depot_source: null,
-                id_emplacement_source: null,
-                id_depot_destination: depotSourceMvt,
-                id_emplacement_destination: empIdTrouve,
-                id_article: parseInt(item.id_article),
-                quantite: item.quantite,
-                motif_remarque: `RESTITUTION STOCK MODIFICATION ${numeroComplet}`,
-                created_at: `${dateNormalisee}T12:00:00`,
-              };
-              supabase.from('mouvements_stock').insert([payloadRestitution]).then(({ error: errRestit }) => {
-                if (errRestit) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadRestitution);
-              });
-            }
-          });
-        }
-
-        if (!partenaireSansStockage && estLivreVerif && !etaitDejaLivre) {
-          lignesSaisies.forEach(item => {
-            const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
-            const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
-
-            if (estSuiviArticle !== false && estSuiviArticle !== 0) {
-              const payloadMouvement = {
-                id_entreprise: currentEntId,
-                module: moduleActuel,
-                type_mouvement: 'SORTIE',
-                id_depot_source: depotSourceMvt,
-                id_emplacement_source: empIdTrouve,
-                id_depot_destination: null,
-                id_article: parseInt(item.id_article),
-                quantite: item.quantite,
-                motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
-                created_at: `${dateNormalisee}T12:00:00`,
-              };
-              supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
-                if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-              });
-            }
-          });
-        }
-
-      } else {
-        const { data: insertedCmd, error: errCmd } = await supabase
-          .from('commandes_livraison_en_tete')
-          .insert([payload])
-          .select()
-          .single();
-
-        if (errCmd) {
-          console.error('Erreur insertion en-tête :', errCmd);
-          if (typeof window !== 'undefined' && !navigator.onLine) {
-            const offlineId = crypto.randomUUID();
-            const offlineCmd = { ...payload, id: offlineId, created_at: new Date().toISOString() };
-            localSync.ajouterFileAttente('INSERT', 'commandes_livraison_en_tete', offlineCmd);
-            
-            const nouvelleListeCmd = [offlineCmd, ...commandes];
-            setCommandes(nouvelleListeCmd);
-            localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
-            idCmdCourante = offlineId;
-          } else {
-            throw new Error(errCmd.message);
-          }
-        } else {
-          idCmdCourante = insertedCmd.id;
-          const nouvelleListeCmd = [insertedCmd, ...commandes];
-          setCommandes(nouvelleListeCmd);
-          localSync.sauvegarderDonneesLocales(`commandes_livraison_${currentEntId}`, nouvelleListeCmd);
-        }
-
-        if (!partenaireSansStockage && estLivreVerif) {
-          lignesSaisies.forEach(item => {
-            const articleConcerne = articles.find(a => String(a.id_article) === String(item.id_article));
-            const estSuiviArticle = articleConcerne ? (articleConcerne.suivi_stock ?? articleConcerne.Suivi_Stock ?? true) : true;
-
-            if (estSuiviArticle !== false && estSuiviArticle !== 0) {
-              const payloadMouvement = {
-                id_entreprise: currentEntId,
-                module: moduleActuel,
-                type_mouvement: 'SORTIE',
-                id_depot_source: depotSourceMvt,
-                id_emplacement_source: empIdTrouve,
-                id_depot_destination: null,
-                id_article: parseInt(item.id_article),
-                quantite: item.quantite,
-                motif_remarque: `LIVRAISON EFFECTIVE ${numeroComplet} (${partObj ? (partObj.nom_fournisseur || partObj.nom) : ''})`,
-                created_at: `${dateNormalisee}T12:00:00`,
-              };
-              supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
-                if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-              });
-            }
-          });
-        }
-      }
-
-      if (!partenaireSansStockage && lignesSaisies.length > 0 && idCmdCourante) {
-        const payloadLignes = lignesSaisies.map(l => ({
-          id_commande: idCmdCourante,
-          id_article: l.id_article,
-          designation: l.designation,
-          quantite: l.quantite,
-          prix_unitaire: l.prix_unitaire,
-        }));
-
-        const { error: errLignes } = await supabase
-          .from('commandes_livraison_lignes')
-          .insert(payloadLignes);
-
-        if (errLignes) {
-          console.error('Erreur insertion lignes :', errLignes);
-          if (typeof window !== 'undefined' && !navigator.onLine) {
-            payloadLignes.forEach(pl => localSync.ajouterFileAttente('INSERT', 'commandes_livraison_lignes', pl));
-            const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
-            setLignesCommandesMap(mapLignesMaj);
-            localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignesMaj);
-          } else {
-            setModalDoublonMessage('Erreur enregistrement articles : ' + errLignes.message);
-          }
-        } else {
-          const mapLignesMaj = { ...lignesCommandesMap, [idCmdCourante]: lignesSaisies };
-          setLignesCommandesMap(mapLignesMaj);
-          localSync.sauvegarderDonneesLocales(`lignes_commandes_${currentEntId}`, mapLignesMaj);
-        }
+      if (rpcErr || (rpcRes && rpcRes.success === false)) {
+        throw new Error(rpcErr?.message || rpcRes?.error || 'Erreur lors de la sauvegarde atomique.');
       }
 
       setModalConfirmationOuverte(false);
       setModalPostSuccesOuverte(true);
       
-      chargerDonnees();
+      await chargerDonnees();
     } catch (err) {
       setModalDoublonMessage('Erreur technique : ' + (err.message || err));
     } finally {
@@ -2095,13 +1950,12 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                   <span className="font-black text-emerald-900 uppercase text-[8.5px] flex items-center gap-1">
                     🔐 CLÔTURE DE CAISSE DES LIVREURS
                   </span>
-                  {(clotureDateDebut !== new Date().toISOString().split('T')[0] || clotureDateFin !== new Date().toISOString().split('T')[0] || clotureLivreur) && (
+                  {(clotureDateDebut !== dateDuJourStr || clotureDateFin !== dateDuJourStr || clotureLivreur) && (
                     <button
                       type="button"
                       onClick={() => {
-                        const ajd = new Date().toISOString().split('T')[0];
-                        setClotureDateDebut(ajd);
-                        setClotureDateFin(ajd);
+                        setClotureDateDebut(dateDuJourStr);
+                        setClotureDateFin(dateDuJourStr);
                         setClotureLivreur('');
                       }}
                       className="text-emerald-600 hover:text-emerald-700 font-bold text-[8px] underline"
@@ -3431,7 +3285,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                         )}
                       </div>
 
-                      {/* MODIFIÉ : Le livreur a été retiré d'ici pour être placé en bas sous le lieu de livraison */}
                       <div className="text-right shrink-0 flex items-baseline gap-1">
                         {Number(cmd.frais_livraison || 0) > 0 && (
                           <span className="font-bold text-slate-400 text-[8px] font-mono">
@@ -3444,9 +3297,7 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       </div>
                     </div>
 
-                    {/* SECTION 1: NUMÉRO CLIENT & BOUTONS WHATSAPP / APPEL */}
                     <div className="flex justify-between items-center gap-1.5 pt-0.5 text-[8.5px]">
-                      {/* MODIFIÉ : Affichage du livreur en bas du lieu de livraison */}
                       <span className="font-extrabold text-blue-700 uppercase text-[8.5px]" title={cmd.vendeur_livreur || 'NON ASSIGNÉ'}>
                         🛵 {cmd.vendeur_livreur || 'NON ASSIGNÉ'}
                       </span>
@@ -3482,7 +3333,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
                       )}
                     </div>
 
-                    {/* SECTION 2: ARTICLES EN BAS DU NUMÉRO DU CLIENT */}
                     <div className="pt-0.5 text-[8.5px]">
                       {lignesCmd.length > 0 ? (
                         <div className="flex flex-col gap-0.5">
@@ -3521,7 +3371,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         </div>
       )}
 
-      {/* MODALE JOLIE POUR LE CHANGEMENT DE STATUT DES COMMANDES (LISTE) */}
       {commandeSelectionneeStatut && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xs overflow-hidden p-4 space-y-3">
@@ -3577,7 +3426,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         </div>
       )}
 
-      {/* MODALE POUR LE STATUT DU FORMULAIRE DE CRÉATION / MODIFICATION */}
       {modalStatutCreationOuverte && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xs overflow-hidden p-4 space-y-3">
@@ -3635,7 +3483,6 @@ export default function GestionCommandesLivraison({ entrepriseId: propEntreprise
         </div>
       )}
 
-      {/* MODALE PERSONNALISÉE POUR LES ALERTES / DOUBLONS */}
       {modalDoublonMessage && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden space-y-3 p-4 text-center">

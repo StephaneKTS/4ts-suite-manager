@@ -231,6 +231,65 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setModalMessage({ texte, type, titre });
   };
 
+  // --- GESTION DES VERROUS MULTI-UTILISATEURS ---
+  const libererVerrouDoc = async (numeroDocUnique) => {
+    if (!numeroDocUnique) return;
+    try {
+      const operateurActuel = obtenirNomOperateurConnecte();
+      await supabase
+        .from('verrous_documents')
+        .delete()
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .eq('numero_doc', numeroDocUnique)
+        .eq('utilisateur', operateurActuel);
+    } catch (e) {
+      console.error('Erreur libération verrou:', e);
+    }
+  };
+
+  const acquerirVerrouDoc = async (numeroDocUnique) => {
+    if (!numeroDocUnique) return true;
+    try {
+      const operateurActuel = obtenirNomOperateurConnecte();
+      
+      // Vérifier si un autre utilisateur a un verrou actif (moins de 15 minutes)
+      const { data, error } = await supabase
+        .from('verrous_documents')
+        .select('*')
+        .eq('id_entreprise', entrepriseId)
+        .eq('module', moduleActuel)
+        .eq('numero_doc', numeroDocUnique)
+        .maybeSingle();
+
+      if (data && data.utilisateur && data.utilisateur !== operateurActuel) {
+        const lockTime = new Date(data.updated_at).getTime();
+        const now = Date.now();
+        // Si le verrou date de moins de 15 minutes, on bloque l'accès
+        if (now - lockTime < 15 * 60 * 1000) {
+          afficherMessage(`Ce document est déjà ouvert et en cours de modification par ${data.utilisateur}. Accès refusé.`, 'erreur', 'Document verrouillé');
+          return false;
+        }
+      }
+
+      // Poser ou actualiser notre propre verrou
+      await supabase
+        .from('verrous_documents')
+        .upsert([{
+          id_entreprise: entrepriseId,
+          module: moduleActuel,
+          numero_doc: numeroDocUnique,
+          utilisateur: operateurActuel,
+          updated_at: new Date().toISOString()
+        }], { onConflict: 'id_entreprise,module,numero_doc' });
+
+      return true;
+    } catch (e) {
+      console.error('Erreur acquisition verrou:', e);
+      return true; // En cas de souci réseau, on laisse passer pour ne pas bloquer l'activité
+    }
+  };
+
   const libellesTypesMouvement = {
     TRANSFERT: 'TRANSFERT',
     ENTREE: 'ACHAT',
@@ -390,8 +449,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
-  const basculerVersAchats = () => {
+  const basculerVersAchats = async () => {
     if (enTrainDeSauvegarder) return;
+    if (numeroDocOriginal) await libererVerrouDoc(numeroDocOriginal);
     setOngletPrincipal('ACHATS');
     setTypeOperation('ENTREE');
     setModeAffichage('SAISIE');
@@ -415,8 +475,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }));
   };
 
-  const basculerVersMouvements = () => {
+  const basculerVersMouvements = async () => {
     if (enTrainDeSauvegarder) return;
+    if (numeroDocOriginal) await libererVerrouDoc(numeroDocOriginal);
     setOngletPrincipal('MOUVEMENTS');
     const typeParDefaut = typeOperation === 'ENTREE' ? 'TRANSFERT' : typeOperation;
     setTypeOperation(typeParDefaut);
@@ -858,6 +919,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         setEnTrainDeSauvegarder(true);
         try {
           if (motifSuppr) {
+            await libererVerrouDoc(motifSuppr);
             const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', motifSuppr);
             if (error) localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: motifSuppr });
 
@@ -997,6 +1059,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         }
       }
 
+      await libererVerrouDoc(motifDocumentFinal);
+
       const mouvementsFiltres = mouvements.filter(m => m.motif_remarque !== motifDocumentFinal && m.motif_remarque !== enTeteDoc.numeroDoc);
       const listeMaj = [...nouveauxMouvementsAjoutes, ...mouvementsFiltres];
       setMouvements(listeMaj);
@@ -1031,8 +1095,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
   };
 
-  const ouvrirDocumentDepuisListe = (numeroDocUnique) => {
+  const ouvrirDocumentDepuisListe = async (numeroDocUnique) => {
     if (enTrainDeSauvegarder) return;
+
+    // Vérifier et acquérir le verrou avant d'ouvrir
+    const verrouAcquis = await acquerirVerrouDoc(numeroDocUnique);
+    if (!verrouAcquis) return; // Stoppé si déjà ouvert par quelqu'un d'autre
 
     const lignesAssociees = mouvements.filter(m => m.motif_remarque === numeroDocUnique);
     if (lignesAssociees.length === 0) return;
@@ -1270,7 +1338,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         <div className="flex items-center gap-1.5 shrink-0">
           <button 
             type="button" 
-            onClick={() => setOngletPrincipal(null)} 
+            onClick={async () => {
+              if (numeroDocOriginal) await libererVerrouDoc(numeroDocOriginal);
+              setOngletPrincipal(null);
+            }} 
             className="p-1 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-[9px] transition cursor-pointer flex items-center gap-1 border border-slate-300"
             title="Retour"
           >
@@ -1285,8 +1356,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
-            onClick={() => { 
+            onClick={async () => { 
               if (enTrainDeSauvegarder) return;
+              if (numeroDocOriginal) await libererVerrouDoc(numeroDocOriginal);
               const typeCible = ongletPrincipal === 'ACHATS' ? 'ENTREE' : (typeOperation === 'ENTREE' ? 'TRANSFERT' : typeOperation);
               setTypeOperation(typeCible);
               setModeAffichage('SAISIE'); 
@@ -1310,7 +1382,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
-            onClick={() => { if (!enTrainDeSauvegarder) setModeAffichage('LISTE_DOCS'); }} 
+            onClick={async () => { 
+              if (!enTrainDeSauvegarder) {
+                if (numeroDocOriginal) await libererVerrouDoc(numeroDocOriginal);
+                setNumeroDocOriginal(null);
+                setMouvementEnEditionId(null);
+                setModeAffichage('LISTE_DOCS');
+              }
+            }} 
             className={`py-1 px-2.5 rounded-lg font-black transition text-center text-[9px] uppercase border whitespace-nowrap ${
               modeAffichage === 'LISTE_DOCS' 
                 ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
