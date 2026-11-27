@@ -11,6 +11,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport = {
+  themeColor: "#0f172a",
+};
+
 export const metadata = {
   title: "4TS Suite Manager",
   description: "Suite de gestion d'entreprise, logistique et commerciale",
@@ -28,14 +32,6 @@ export default function RootLayout({ children }) {
       lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <head>
-        {/* Script Google Maps Places Autocomplete */}
-        <script
-          src="https://maps.googleapis.com/maps/api/js?key=VOTRE_CLE_API_GOOGLE&libraries=places"
-          async
-          defer
-        ></script>
-      </head>
       <body className="min-h-full flex flex-col p-0 bg-slate-100 m-0">
         <main className="flex-1 w-full max-w-full flex flex-col">
           {children}

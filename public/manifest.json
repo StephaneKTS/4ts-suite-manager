@@ -1,11 +1,12 @@
 {
   "name": "4TS Suite Manager",
   "short_name": "4TS Suite",
-  "description": "Suite de gestion d'entreprise et logistique",
+  "description": "Gestion commerciale, stock et logistique",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/logo-4ts.png",
