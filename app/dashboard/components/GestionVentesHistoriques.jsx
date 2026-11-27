@@ -743,7 +743,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     ? Number(categorieClientAssociee.taux_tva_defaut || 19.25)
     : (appliquerTva === 'OUI' ? 19.25 : 0);
 
-  // Le net à payer reste inchangé (considéré comme montant TTC)
   const totalFinal = baseImposable;
 
   let montantHt = totalFinal;
@@ -764,7 +763,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     montantCreditRestant = Math.max(0, totalFinal - montantRegleEffectif);
   }
 
-  // --- FONCTION DE VALIDATION ULTRA RAPIDE ET NON BLOQUANTE ---
+  // --- FONCTION DE VALIDATION AVEC GESTION DE LA FILE D'ATTENTE LOCALE HORS LIGNE ---
   const validerEtEnregistrerVente = async () => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.creation) {
@@ -824,7 +823,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         created_at: dateJour ? `${dateJour}T${new Date().toTimeString().split(' ')[0]}` : new Date().toISOString()
       };
 
-      // Ajout des infos TVA et remise en local pour l'impression immédiate
       let ticketValideFinal = { 
         ...payloadVente, 
         id: idLocalTemp,
@@ -861,30 +859,31 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setTicketDernierValide(ticketValideFinal);
       setAfficherModalSuccesTicket(true);
 
-      supabase.from('ventes_historiques').insert([payloadVente]).select().single().then(({ error: errVente, data: dataVenteInsert }) => {
-        if (errVente) {
-          localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
-        } else if (dataVenteInsert) {
-          const mergedTicket = {
-            ...dataVenteInsert,
-            appliquer_tva: ticketValideFinal.appliquer_tva,
-            taux_tva: ticketValideFinal.taux_tva,
-            montant_ht: ticketValideFinal.montant_ht,
-            montant_tva: ticketValideFinal.montant_tva,
-            montant_remise: ticketValideFinal.montant_remise
-          };
-          setVentes(prev => fusionnerParId(prev, [mergedTicket]));
-        }
-      });
+      // Insertion sécurisée via Supabase ou File d'attente Outbox
+      const { error: errVente, data: dataVenteInsert } = await supabase.from('ventes_historiques').insert([payloadVente]).select().single();
+      if (errVente) {
+        localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
+      } else if (dataVenteInsert) {
+        const mergedTicket = {
+          ...dataVenteInsert,
+          appliquer_tva: ticketValideFinal.appliquer_tva,
+          taux_tva: ticketValideFinal.taux_tva,
+          montant_ht: ticketValideFinal.montant_ht,
+          montant_tva: ticketValideFinal.montant_tva,
+          montant_remise: ticketValideFinal.montant_remise
+        };
+        setVentes(prev => fusionnerParId(prev, [mergedTicket]));
+      }
 
       if (montantCreditRestant > 0 && clientIdFinal) {
         const clientRef = clientsList.find(c => String(c.id) === String(clientIdFinal));
         if (clientRef) {
           const creditActuel = Number(clientRef.solde_credit || clientRef.credit || 0);
           const nouveauCredit = creditActuel + montantCreditRestant;
-          supabase.from('clients').update({ solde_credit: nouveauCredit }).eq('id', clientIdFinal).then(({ error: errCli }) => {
-            if (errCli) localSync.ajouterFileAttente('UPDATE', 'clients', { id: clientIdFinal, solde_credit: nouveauCredit });
-          });
+          const { error: errCli } = await supabase.from('clients').update({ solde_credit: nouveauCredit }).eq('id', clientIdFinal);
+          if (errCli) {
+            localSync.ajouterFileAttente('UPDATE', 'clients', { id: clientIdFinal, solde_credit: nouveauCredit });
+          }
         }
       }
 
@@ -904,9 +903,10 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             motif_remarque: `VENTE TICKET ${numeroTicketSecurise} (${nomClientFacture}) - ${typeReglementVente}`
           };
 
-          supabase.from('mouvements_stock').insert([payloadMouvement]).then(({ error: errMvt }) => {
-            if (errMvt) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
-          });
+          const { error: errMvt } = await supabase.from('mouvements_stock').insert([payloadMouvement]);
+          if (errMvt) {
+            localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payloadMouvement);
+          }
         }
       }
 
@@ -1517,7 +1517,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           ) : (
             /* --- MODÈLE 2 : IMPRIMANTE A4 (HP LASER / JET D'ENCRE & MATRICIELLE) --- */
             <div style={{ width: '100%' }}>
-              {/* En-tête A4 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: '10px', marginBottom: '15px' }}>
                 <div>
                   <h1 style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 4px 0' }}>4TS : ISMA LOGISTIQUE</h1>
@@ -1533,7 +1532,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </div>
               </div>
 
-              {/* Bloc Client & Détails Vente */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', border: '1px solid #000', padding: '10px' }}>
                 <div>
                   <p style={{ margin: '0 0 4px 0', fontSize: '11px' }}><strong>CLIENT :</strong> {ticketImpressionActif.nom_client || 'CLIENTS DIVERS'}</p>
@@ -1545,7 +1543,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </div>
               </div>
 
-              {/* Tableau des articles A4 */}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
                 <thead>
                   <tr style={{ borderTop: '2px solid #000', borderBottom: '2px solid #000', backgroundColor: '#f3f4f6' }}>
@@ -1574,7 +1571,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </tbody>
               </table>
 
-              {/* Bloc Totaux A4 */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '25px' }}>
                 <div style={{ width: '50%', border: '1px solid #000', padding: '10px' }}>
                   {Number(ticketImpressionActif.montant_remise || 0) > 0 && (
@@ -1617,7 +1613,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </div>
               </div>
 
-              {/* Signatures A4 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '30px', padding: '0 20px', fontSize: '11px' }}>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontWeight: 'bold', textDecoration: 'underline', marginBottom: '35px' }}>Signature du Client</p>
@@ -3047,7 +3042,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE DÉTAIL D'UN TICKET HISTORIQUE AVEC SÉLECTEUR DE FORMAT D'IMPRESSION */}
       {ticketSelectionne && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -3120,7 +3114,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </span>
               </div>
 
-              {/* Sélecteur rapide d'imprimante dans la modale de réimpression */}
               <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-sans">
                 <span className="text-[9px] font-bold text-slate-600 uppercase">Format imprimante :</span>
                 <div className="flex gap-1">

@@ -48,6 +48,22 @@ function DashboardContent() {
   const [mounted, setMounted] = useState(false);
   const [authentifie, setAuthentifie] = useState(false);
 
+  // 🌐 ÉTAT DE SURVEILLANCE DU RÉSEAU EN TEMPS RÉEL (Étape 1)
+  const [isOnline, setIsOnline] = useState(() => (typeof window !== 'undefined' ? navigator.onLine : true));
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const entrepriseIdUrl = searchParams.get('entreprise') || 
     (typeof window !== 'undefined' ? localStorage.getItem('entrepriseId') : null);
 
@@ -760,6 +776,19 @@ function DashboardContent() {
   const contenuApp = (
     <div className={`h-full ${bgPrincipal} flex flex-col font-sans relative overflow-x-hidden w-full max-w-full text-xs`}>
       
+      {/* ⚠️ BANDEAU D'ALERTE HORS LIGNE (Étape 1) */}
+      {!isOnline && (
+        <div className="bg-red-600 text-white px-3 py-1.5 text-[10px] sm:text-xs font-black flex items-center justify-between shrink-0 shadow-lg z-30 animate-pulse">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm">📡</span>
+            <span>MODE HORS LIGNE : Connexion Internet perdue. Navigation locale active.</span>
+          </div>
+          <span className="bg-black/30 px-2 py-0.5 rounded text-[9px] uppercase tracking-wider">
+            Hors ligne
+          </span>
+        </div>
+      )}
+
       {/* 1. BARRE SUPÉRIEURE (HEADER) */}
       <div className={`top-0 z-20 ${bgHeaderNav} border-b px-3 py-2.5 shrink-0 flex items-center justify-between w-full`}>
         <div className="flex items-center space-x-2.5">
