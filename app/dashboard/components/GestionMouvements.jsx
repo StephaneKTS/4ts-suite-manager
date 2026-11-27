@@ -108,7 +108,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const [mouvements, setMouvements] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && localSync && typeof localSync.recupererDonneesLocales === 'function') {
       const data = localSync.recupererDonneesLocales(cleCacheMouvements);
       return Array.isArray(data) ? data : [];
     }
@@ -116,7 +116,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const [articles, setArticles] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && localSync && typeof localSync.recupererDonneesLocales === 'function') {
       const data = localSync.recupererDonneesLocales(cleCacheArticles);
       return Array.isArray(data) ? data : [];
     }
@@ -124,7 +124,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const [depots, setDepots] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && localSync && typeof localSync.recupererDonneesLocales === 'function') {
       const data = localSync.recupererDonneesLocales(cleCacheDepots);
       return Array.isArray(data) ? data : [];
     }
@@ -132,7 +132,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const [emplacements, setEmplacements] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && localSync && typeof localSync.recupererDonneesLocales === 'function') {
       const data = localSync.recupererDonneesLocales(cleCacheEmplacements);
       return Array.isArray(data) ? data : [];
     }
@@ -140,7 +140,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   });
 
   const [fournisseurs, setFournisseurs] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && localSync && typeof localSync.recupererDonneesLocales === 'function') {
       const data = localSync.recupererDonneesLocales(cleCacheFournisseurs);
       return Array.isArray(data) ? data : [];
     }
@@ -227,7 +227,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const inputPrixRef = useRef(null);
   const boutonSelectionArticleRef = useRef(null);
 
-  // Référence pour garder trace du document actif en cours d'édition pour le nettoyage automatique
   const numeroDocOriginalRef = useRef(numeroDocOriginal);
   useEffect(() => {
     numeroDocOriginalRef.current = numeroDocOriginal;
@@ -237,7 +236,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     setModalMessage({ texte, type, titre });
   };
 
-  // --- GESTION DES VERROUS STRICTS ET INSTANTANÉS AVEC FERMETURE AUTOMATIQUE ---
   const libererVerrouDoc = async (numeroDocUnique) => {
     if (!numeroDocUnique) return;
     try {
@@ -249,9 +247,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         .eq('module', moduleActuel)
         .eq('numero_doc', numeroDocUnique)
         .eq('utilisateur', operateurActuel);
-    } catch (e) {
-      // Ignorer silencieusement en arrière-plan
-    }
+    } catch (e) {}
   };
 
   const acquerirVerrouDoc = async (numeroDocUnique) => {
@@ -259,7 +255,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     try {
       const operateurActuel = obtenirNomOperateurConnecte();
       
-      const { data, error: selectError } = await supabase
+      const { data } = await supabase
         .from('verrous_documents')
         .select('*')
         .eq('id_entreprise', entrepriseId)
@@ -272,8 +268,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         return false;
       }
 
-      // Utilisation d'un upsert propre sans déclencher d'erreur de log non gérée
-      const { error: upsertError } = await supabase
+      await supabase
         .from('verrous_documents')
         .upsert({
           id_entreprise: entrepriseId,
@@ -283,24 +278,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           updated_at: new Date().toISOString()
         }, { onConflict: 'id_entreprise,module,numero_doc' });
 
-      if (upsertError) {
-        console.warn('Avertissement verrou (upsert):', upsertError.message || upsertError);
-      }
-
       return true;
     } catch (e) {
-      console.warn('Exception acquisition verrou:', e);
       return true; 
     }
   };
 
-  // Effet global pour libérer le verrou automatiquement si l'utilisateur ferme l'onglet ou quitte le navigateur
   useEffect(() => {
     const gererFermetureFenetre = () => {
       const docActif = numeroDocOriginalRef.current;
       if (docActif) {
         const operateurActuel = obtenirNomOperateurConnecte();
-        // Utilisation de fetch avec keepalive ou beacon pour garantir l'envoi de la requête de suppression à la fermeture
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
         if (supabaseUrl && supabaseKey) {
@@ -355,8 +343,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   };
 
   const montantTotalFacture = useMemo(() => {
+    if (!estModeBoutique && ongletPrincipal === 'ACHATS') return 0;
     return lignesPanier.reduce((acc, ligne) => acc + (Number(ligne.quantite || 0) * Number(ligne.prix_unitaire || 0)), 0);
-  }, [lignesPanier]);
+  }, [lignesPanier, estModeBoutique, ongletPrincipal]);
 
   useEffect(() => {
     if (statutReglement === 'SOLDE') {
@@ -369,7 +358,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const resteAVerserFacture = Math.max(0, montantTotalFacture - Number(montantPayeAchat || 0));
 
   const chargerDonnees = async (silencieux = false) => {
-    const mouvementsLocaux = localSync.recupererDonneesLocales(cleCacheMouvements);
+    const mouvementsLocaux = (localSync && typeof localSync.recupererDonneesLocales === 'function') 
+      ? localSync.recupererDonneesLocales(cleCacheMouvements) 
+      : [];
+    
     if (!silencieux && mouvementsLocaux && mouvementsLocaux.length > 0) {
       setMouvements(mouvementsLocaux);
       setChargement(false);
@@ -428,22 +420,30 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const { data: dataDepots } = await supabase.from('depots_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const depotsList = Array.isArray(dataDepots) ? dataDepots : [];
       setDepots(depotsList);
-      localSync.sauvegarderDonneesLocales(cleCacheDepots, depotsList);
+      if (localSync && typeof localSync.sauvegarderDonneesLocales === 'function') {
+        localSync.sauvegarderDonneesLocales(cleCacheDepots, depotsList);
+      }
 
       const { data: dataEmplacements } = await supabase.from('emplacements_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const emplacementsList = Array.isArray(dataEmplacements) ? dataEmplacements : [];
       setEmplacements(emplacementsList);
-      localSync.sauvegarderDonneesLocales(cleCacheEmplacements, emplacementsList);
+      if (localSync && typeof localSync.sauvegarderDonneesLocales === 'function') {
+        localSync.sauvegarderDonneesLocales(cleCacheEmplacements, emplacementsList);
+      }
 
       const { data: dataFournisseurs } = await supabase.from('fournisseurs').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       const fournisseursList = Array.isArray(dataFournisseurs) ? dataFournisseurs : [];
       setFournisseurs(fournisseursList);
-      localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, fournisseursList);
+      if (localSync && typeof localSync.sauvegarderDonneesLocales === 'function') {
+        localSync.sauvegarderDonneesLocales(cleCacheFournisseurs, fournisseursList);
+      }
 
       const { data: dataArticles } = await supabase.from('articles_stock').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
       if (Array.isArray(dataArticles)) {
         setArticles(dataArticles);
-        localSync.sauvegarderDonneesLocales(cleCacheArticles, dataArticles);
+        if (localSync && typeof localSync.sauvegarderDonneesLocales === 'function') {
+          localSync.sauvegarderDonneesLocales(cleCacheArticles, dataArticles);
+        }
       }
 
       const { data: dataFamilles } = await supabase.from('familles_articles').select('*').eq('id_entreprise', entrepriseId).eq('module', moduleActuel);
@@ -470,7 +470,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       }
 
       setMouvements(mouvementsList);
-      localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsList);
+      if (localSync && typeof localSync.sauvegarderDonneesLocales === 'function') {
+        localSync.sauvegarderDonneesLocales(cleCacheMouvements, mouvementsList);
+      }
 
       if (!mouvementEnEditionId) {
         setEnTeteDoc((prev) => ({ ...prev, numeroDoc: genererNumeroDocSecurise(typeOperation), operateur: nomConnecteEffectif }));
@@ -485,7 +487,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   useEffect(() => { 
     nettoyerFileAttenteSync();
     chargerDonnees(); 
-    localSync.synchroniserVersCloud(supabase);
+    if (localSync && typeof localSync.synchroniserVersCloud === 'function') {
+      localSync.synchroniserVersCloud(supabase);
+    }
   }, [entrepriseId, moduleActuel]);
 
   const basculerVersAchats = async () => {
@@ -798,7 +802,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     if (!verifierEnTeteAvantSaisie()) return;
     setArticleSelectionneTemp(art);
     
-    const puDefaut = Number(art.Prix_Achat || art.prix_achat || art.Prix_Vente || art.prix_vente || art.prix_unitaire || art.PU || 0);
+    const puDefaut = (estModeBoutique && ongletPrincipal === 'ACHATS') 
+      ? Number(art.Prix_Achat || art.prix_achat || art.Prix_Vente || art.prix_vente || art.prix_unitaire || art.PU || 0) 
+      : 0;
     setPrixUnitaireSaisi(puDefaut > 0 ? puDefaut : 0);
     setModalArticleOuvert(false);
     setRecherchePopup('');
@@ -833,10 +839,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }
     
     const qte = parseInt(quantiteSaisie);
-    const pu = ongletPrincipal === 'ACHATS' ? parseFloat(prixUnitaireSaisi) : 0;
+    const pu = (estModeBoutique && ongletPrincipal === 'ACHATS') ? parseFloat(prixUnitaireSaisi) : 0;
 
     if (isNaN(qte) || (typeOperation === 'INVENTAIRE' ? qte < 0 : qte <= 0)) { afficherMessage('Quantité invalide.', 'erreur', 'Erreur de saisie'); return; }
-    if (ongletPrincipal === 'ACHATS' && (isNaN(pu) || pu < 0)) { afficherMessage('Prix unitaire d\'achat invalide.', 'erreur', 'Erreur de saisie'); return; }
+    if (ongletPrincipal === 'ACHATS' && estModeBoutique && (isNaN(pu) || pu < 0)) { afficherMessage('Prix unitaire d\'achat invalide.', 'erreur', 'Erreur de saisie'); return; }
 
     setEnTrainDInsertion(true);
 
@@ -897,7 +903,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const gererKeyDownQuantite = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (ongletPrincipal === 'ACHATS' && inputPrixRef.current) {
+      if (ongletPrincipal === 'ACHATS' && estModeBoutique && inputPrixRef.current) {
         inputPrixRef.current.focus();
         inputPrixRef.current.select();
       } else {
@@ -960,11 +966,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           if (motifSuppr) {
             await libererVerrouDoc(motifSuppr);
             const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', motifSuppr);
-            if (error) localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: motifSuppr });
+            if (error && localSync && typeof localSync.ajouterFileAttente === 'function') {
+              localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: motifSuppr });
+            }
 
             const listeMaj = mouvements.filter(m => m.motif_remarque !== motifSuppr);
             setMouvements(listeMaj);
-            localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+            if (localSync && typeof localSync.sauvegarderDonneesLocales === 'function') {
+              localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+            }
             localStorage.removeItem(cleCacheMouvements);
           }
 
@@ -1046,7 +1056,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       for (const ligne of lignesPanier) {
         const artId = String(ligne.id_article);
         const qte = Number(ligne.quantite || 0);
-        const pu = Number(ligne.prix_unitaire || 0);
+        const pu = (estModeBoutique && ongletPrincipal === 'ACHATS') ? Number(ligne.prix_unitaire || 0) : 0;
         if (qte <= 0) continue;
         if (!lignesUniquesMap[artId]) lignesUniquesMap[artId] = { designation: ligne.designation, quantite: 0, prix_unitaire: pu };
         lignesUniquesMap[artId].quantite += qte;
@@ -1077,24 +1087,63 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         nouveauxMouvementsAjoutes.push(objetInsertion);
 
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
-        if (error) localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
+        if (error && localSync && typeof localSync.ajouterFileAttente === 'function') {
+          localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
+        }
       }
 
-      if (ongletPrincipal === 'ACHATS' && (enTeteDoc.id_fournisseur || enTeteDoc.id_depot_source)) {
-        const partenaireId = enTeteDoc.id_fournisseur || enTeteDoc.id_depot_source;
+      // Injection directe du reste à payer dans le compte du fournisseur / partenaire
+      if (ongletPrincipal === 'ACHATS' && estModeBoutique) {
         const creditRestant = resteAVerserFacture;
-        if (creditRestant > 0 && statutReglement !== 'SOLDE') {
-          const payloadFinancier = {
-            id_entreprise: entrepriseId,
-            module: moduleActuel,
-            id_partenaire: partenaireId,
-            type_operation: 'ACHAT_CREDIT',
-            montant: creditRestant,
-            reference_doc: motifDocumentFinal,
-            date_operation: dateMvtIso,
-            operateur: operateurActuel
-          };
-          await supabase.from('compte_partenaires').insert([payloadFinancier]).catch(() => {});
+        const fournisseurCibleId = enTeteDoc.id_fournisseur || enTeteDoc.id_depot_source;
+        const nomFournisseurCible = obtenirNomFournisseurParId(enTeteDoc.id_fournisseur) || obtenirNomDepotParId(enTeteDoc.id_depot_source);
+
+        if (creditRestant > 0 && statutReglement !== 'SOLDE' && fournisseurCibleId) {
+          try {
+            // 1. Enregistrement de l'opération de dette dans compte_partenaires / compte_fournisseurs
+            const payloadFinancier = {
+              id_entreprise: entrepriseId,
+              module: moduleActuel,
+              id_partenaire: String(fournisseurCibleId),
+              nom_partenaire: nomFournisseurCible !== '-' ? nomFournisseurCible : '',
+              type_operation: 'ACHAT_CREDIT',
+              montant: creditRestant,
+              montant_total: montantTotalFacture,
+              montant_paye: Number(montantPayeAchat || 0),
+              reste_a_payer: creditRestant,
+              reference_doc: motifDocumentFinal,
+              reference_facture: referenceSaisie,
+              date_operation: dateMvtIso,
+              operateur: operateurActuel
+            };
+            await supabase.from('compte_partenaires').insert([payloadFinancier]);
+          } catch (errCompte) {
+            console.warn('Insertion compte_partenaires ignorée:', errCompte);
+          }
+
+          try {
+            // 2. Mise à jour directe du solde / crédit sur la fiche du fournisseur
+            if (enTeteDoc.id_fournisseur) {
+              const fournObj = fournisseurs.find(f => String(f.id) === String(enTeteDoc.id_fournisseur));
+              if (fournObj) {
+                const ancienSolde = Number(fournObj.solde || fournObj.dette || fournObj.reste_a_payer || 0);
+                const nouveauSolde = ancienSolde + creditRestant;
+                const updateFields = {};
+                if ('solde' in fournObj) updateFields.solde = nouveauSolde;
+                if ('dette' in fournObj) updateFields.dette = nouveauSolde;
+                if ('reste_a_payer' in fournObj) updateFields.reste_a_payer = nouveauSolde;
+
+                if (Object.keys(updateFields).length > 0) {
+                  await supabase
+                    .from('fournisseurs')
+                    .update(updateFields)
+                    .eq('id', enTeteDoc.id_fournisseur);
+                }
+              }
+            }
+          } catch (errFourn) {
+            console.warn('Mise à jour solde fournisseur ignorée:', errFourn);
+          }
         }
       }
 
@@ -1103,7 +1152,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       const mouvementsFiltres = mouvements.filter(m => m.motif_remarque !== motifDocumentFinal && m.motif_remarque !== enTeteDoc.numeroDoc);
       const listeMaj = [...nouveauxMouvementsAjoutes, ...mouvementsFiltres];
       setMouvements(listeMaj);
-      localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+      if (localSync && typeof localSync.sauvegarderDonneesLocales === 'function') {
+        localSync.sauvegarderDonneesLocales(cleCacheMouvements, listeMaj);
+      }
       localStorage.removeItem(cleCacheMouvements);
 
       afficherMessage(`Document validé avec succès par ${operateurActuel} !`, 'succès', 'Validation réussie');
@@ -1128,7 +1179,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       await chargerDonnees(true);
       setModeAffichage('LISTE_DOCS');
     } catch (err) { 
-      afficherMessage('Erreur : ' + err.message, 'erreur', 'Erreur système'); 
+      afficherMessage('Erreur : ' + (err?.message || String(err)), 'erreur', 'Erreur système'); 
     } finally {
       setEnTrainDeSauvegarder(false);
     }
@@ -1181,17 +1232,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       operateur: operateurDoc
     };
 
+    // OPTIMISATION CRITIQUE : Suppression du calcul synchrone lourd de calculerStockPourDepotActuel
+    // qui parcourait l'intégralité de l'historique des mouvements pour chaque ligne au clic.
     const nouvellesLignes = lignesAssociees.map(mvt => {
       const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
       const qte = Number(mvt.quantite || 0);
-      const pu = estAchat ? Number(mvt.prix_unitaire || art?.Prix_Achat || art?.prix_achat || art?.Prix_Vente || art?.prix_vente || 0) : 0;
+      const pu = (estAchat && estModeBoutique) ? Number(mvt.prix_unitaire || art?.Prix_Achat || art?.prix_achat || art?.Prix_Vente || art?.prix_vente || 0) : 0;
       return { 
         id_article: String(mvt.id_article), 
         designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, 
         quantite: qte, 
         prix_unitaire: pu,
         montant_total: qte * pu,
-        stockActuel: calculerStockPourDepotActuel(mvt.id_article), 
+        stockActuel: 0, 
         stockReel: qte 
       };
     });
@@ -1792,7 +1845,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles [{moduleActuel}]</span>
             
             {!documentEnLectureSeule && (
-              ongletPrincipal === 'ACHATS' ? (
+              ongletPrincipal === 'ACHATS' && estModeBoutique ? (
                 <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
                   <div className="col-span-4">
                     <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
@@ -1922,7 +1975,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
             {lignesPanier.length === 0 ? (<p className="text-center text-slate-400 py-1.5 italic text-[9.5px]">Aucun article ajouté.</p>) : (
               <div className="overflow-x-auto border rounded-lg bg-white">
-                {ongletPrincipal === 'ACHATS' ? (
+                {ongletPrincipal === 'ACHATS' && estModeBoutique ? (
                   <table className="w-full text-left text-[9.5px] table-fixed">
                     <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
                       <tr>
@@ -1976,7 +2029,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               </div>
             )}
 
-            {ongletPrincipal === 'ACHATS' && lignesPanier.length > 0 && (
+            {ongletPrincipal === 'ACHATS' && estModeBoutique && lignesPanier.length > 0 && (
               <div className="bg-emerald-50/60 border border-emerald-200 p-2 rounded-xl space-y-1.5 text-[9.5px]">
                 <div className="flex justify-between items-center font-black text-emerald-900 text-[10px]">
                   <span>NET À PAYER :</span>
@@ -1990,7 +2043,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       type="button"
                       disabled={documentEnLectureSeule}
                       onClick={() => setModalReglementOuvert(true)}
-                      className="bg-white border border-emerald-400 px-2 py-1 rounded-lg font-black text-emerald-800 text-[9px] uppercase shadow-2xs flex items-center gap-1"
+                      className="bg-white border border-emerald-400 px-2 py-1 rounded-lg font-black text-emerald-800 text-[9px] uppercase shadow-2xs flex items-center gap-1 cursor-pointer"
                     >
                       <span>💳 {statutReglement === 'SOLDE' ? 'Soldé' : statutReglement === 'AVANCE' ? 'Avancé' : 'Non payé'}</span>
                       <span>▼</span>
@@ -2023,10 +2076,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           setStatutReglement(opt.id);
                           if (opt.id === 'SOLDE') setMontantPayeAchat(montantTotalFacture);
                           if (opt.id === 'NON_PAYE') setMontantPayeAchat(0);
-                          setModalReglementOuvert(false);
+                          if (opt.id !== 'AVANCE') {
+                            setModalReglementOuvert(false);
+                          }
                         }}
                         className={`p-3 rounded-xl border cursor-pointer font-black text-xs uppercase flex justify-between items-center ${
-                          statutReglement === opt.id ? 'bg-emerald-50 border-emerald-500 text-emerald-900' : 'bg-slate-50 border-slate-200'
+                          statutReglement === opt.id ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-black' : 'bg-slate-50 border-slate-200 text-slate-900 font-black hover:bg-slate-100'
                         }`}
                       >
                         <span>{opt.libelle}</span>
@@ -2044,11 +2099,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           value={montantPayeAchat}
                           onChange={(e) => setMontantPayeAchat(Math.min(montantTotalFacture, Number(e.target.value)))}
                           className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-emerald-700 text-center text-sm"
+                          autoFocus
                         />
                       </div>
                     )}
                   </div>
-                  <button type="button" onClick={() => setModalReglementOuvert(false)} className="w-full py-2 bg-emerald-600 text-white font-black text-xs uppercase rounded-xl">OK</button>
+                  <button type="button" onClick={() => setModalReglementOuvert(false)} className="w-full py-2 bg-emerald-600 text-white font-black text-xs uppercase rounded-xl cursor-pointer">OK</button>
                 </div>
               </div>
             )}

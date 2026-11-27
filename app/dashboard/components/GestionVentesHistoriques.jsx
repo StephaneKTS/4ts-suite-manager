@@ -31,6 +31,25 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     suppression: false,
   });
 
+  // --- PARAMÈTRE DU FORMAT D'IMPRESSION ('TICKET_80' ou 'A4') ---
+  const [formatImpression, setFormatImpression] = useState('TICKET_80');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedFormat = localStorage.getItem('4ts_format_impression');
+      if (savedFormat === 'A4' || savedFormat === 'TICKET_80') {
+        setFormatImpression(savedFormat);
+      }
+    }
+  }, []);
+
+  const changerFormatImpression = (nouveauFormat) => {
+    setFormatImpression(nouveauFormat);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('4ts_format_impression', nouveauFormat);
+    }
+  };
+
   const [afficherModalAuthSuppression, setAfficherModalAuthSuppression] = useState(false);
   const [adminEmailAuth, setAdminEmailAuth] = useState('');
   const [adminPasswordAuth, setAdminPasswordAuth] = useState('');
@@ -381,7 +400,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     localSync.synchroniserVersCloud(supabase);
   }, [entrepriseId, moduleActuel]);
 
-  // --- RÉINITIALISATION AUTOMATIQUE DES LIMITES LORS DES CHANGEMENTS DE FILTRES ---
   useEffect(() => {
     setLimiteVentes(20);
   }, [recherche, filtreModePaiement, filtreDateDebut, filtreDateFin]);
@@ -390,7 +408,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     setLimiteJournal(20);
   }, [journalDateDebut, journalDateFin, journalCaisseId, journalCaissierId]);
 
-  // --- CHARGEMENT PROGRESSIF PAR VAGUES DE 20 ÉLÉMENTS ---
   const chargerPlusVentes = () => {
     if (enTrainDeSauvegarder) return;
     setLimiteVentes(prev => prev + 20);
@@ -726,8 +743,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     ? Number(categorieClientAssociee.taux_tva_defaut || 19.25)
     : (appliquerTva === 'OUI' ? 19.25 : 0);
 
-  const montantTva = (baseImposable * tauxTvaClient) / 100;
-  const totalFinal = baseImposable + montantTva;
+  // Le net à payer reste inchangé (considéré comme montant TTC)
+  const totalFinal = baseImposable;
+
+  let montantHt = totalFinal;
+  let montantTva = 0;
+  if (appliquerTva === 'OUI' && tauxTvaClient > 0) {
+    montantHt = totalFinal / (1 + tauxTvaClient / 100);
+    montantTva = totalFinal - montantHt;
+  }
 
   let montantRegleEffectif = totalFinal;
   let montantCreditRestant = 0;
@@ -800,9 +824,17 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         created_at: dateJour ? `${dateJour}T${new Date().toTimeString().split(' ')[0]}` : new Date().toISOString()
       };
 
-      let ticketValideFinal = { ...payloadVente, id: idLocalTemp };
+      // Ajout des infos TVA et remise en local pour l'impression immédiate
+      let ticketValideFinal = { 
+        ...payloadVente, 
+        id: idLocalTemp,
+        appliquer_tva: appliquerTva,
+        taux_tva: tauxTvaClient,
+        montant_ht: montantHt,
+        montant_tva: montantTva,
+        montant_remise: montantRemise
+      };
 
-      // Enregistrement instantané local en premier (Zéro attente UI)
       setVentes(prev => {
         const listeMaj = fusionnerParId(prev, [ticketValideFinal]);
         sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
@@ -810,7 +842,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       });
       setVentesHistoriques(prev => fusionnerParId(prev, [ticketValideFinal]));
 
-      // Vidage instantané du panier pour enchaîner le client suivant sans délai
       setPanier([]);
       setNomClientLibre('');
       setValeurRemise(0);
@@ -830,12 +861,19 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setTicketDernierValide(ticketValideFinal);
       setAfficherModalSuccesTicket(true);
 
-      // Synchronisation Supabase en arrière-plan (Non bloquante)
       supabase.from('ventes_historiques').insert([payloadVente]).select().single().then(({ error: errVente, data: dataVenteInsert }) => {
         if (errVente) {
           localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
         } else if (dataVenteInsert) {
-          setVentes(prev => fusionnerParId(prev, [dataVenteInsert]));
+          const mergedTicket = {
+            ...dataVenteInsert,
+            appliquer_tva: ticketValideFinal.appliquer_tva,
+            taux_tva: ticketValideFinal.taux_tva,
+            montant_ht: ticketValideFinal.montant_ht,
+            montant_tva: ticketValideFinal.montant_tva,
+            montant_remise: ticketValideFinal.montant_remise
+          };
+          setVentes(prev => fusionnerParId(prev, [mergedTicket]));
         }
       });
 
@@ -1036,7 +1074,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return 0;
   });
 
-  // --- APPLICATION DE LA LIMITE SUR LES TICKETS ---
   const ventesAffichees = ventesFiltrees.slice(0, limiteVentes);
 
   const gererTriJournal = (colonne) => {
@@ -1139,7 +1176,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     return 0;
   });
 
-  // --- APPLICATION DE LA LIMITE SUR LE JOURNAL ---
   const lignesJournalAffichees = lignesJournalDetails.slice(0, limiteJournal);
 
   const ventesClotureFiltrees = ventesNonCloturees.filter((v) => {
@@ -1303,12 +1339,15 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   return (
     <div className="h-full max-h-[82vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
       
-      <style dangerouslySetInnerHTML={{ __html: `
+      {/* FEUILLE DE STYLE D'IMPRESSION ADAPTATIVE (TICKET CAISSE 80mm VS A4 HP/MATRICIELLE) */}
+      <style dangerouslySetInnerHTML={{ __html: formatImpression === 'TICKET_80' ? `
         @media print {
           html, body {
             height: auto !important;
             overflow: visible !important;
             background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           body * {
             visibility: hidden !important;
@@ -1321,23 +1360,20 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 76mm !important;
+            width: 74mm !important;
             height: auto !important;
             max-height: none !important;
             margin: 0 !important;
-            padding: 0 1mm 4mm 1mm !important;
+            padding: 4mm 1.5mm 6mm 1.5mm !important;
             background: #ffffff !important;
             color: #000000 !important;
             font-family: 'Courier New', Courier, monospace !important;
             font-size: 9px !important;
-            line-height: 1.15 !important;
+            line-height: 1.2 !important;
             overflow: visible !important;
             page-break-before: avoid !important;
             page-break-after: avoid !important;
             page-break-inside: avoid !important;
-            break-before: avoid !important;
-            break-after: avoid !important;
-            break-inside: avoid !important;
             z-index: 999999 !important;
           }
           @page {
@@ -1345,78 +1381,258 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             margin: 0mm;
           }
         }
+      ` : `
+        @media print {
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          .ticket-impression-container, .ticket-impression-container * {
+            visibility: visible !important;
+          }
+          .ticket-impression-container {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 190mm !important;
+            min-height: 270mm !important;
+            margin: 0 auto !important;
+            padding: 10mm !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: Arial, Helvetica, sans-serif !important;
+            font-size: 11px !important;
+            line-height: 1.35 !important;
+            overflow: visible !important;
+            z-index: 999999 !important;
+          }
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+        }
       ` }} />
 
+      {/* CONTENEUR D'IMPRESSION DYNAMIQUE SELON LE FORMAT CHOISI */}
       <div className="ticket-impression-container hidden">
         {ticketImpressionActif ? (
-          <div style={{ width: '100%' }}>
-            <div style={{ textAlign: 'center', marginBottom: '4px', borderBottom: '1px dashed #000', paddingBottom: '3px' }}>
-              <h2 style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 1px 0' }}>4TS : ISMA LOGISTIQUE</h2>
-              <p style={{ fontSize: '8px', margin: '0' }}>Tél : +237 600 000 000</p>
-            </div>
-
-            <div style={{ marginBottom: '4px', fontSize: '9px', borderBottom: '1px dashed #000', paddingBottom: '3px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
-                <span><strong>Ticket :</strong> {formaterNumeroTicket(ticketImpressionActif.numero_ticket)}</span>
-                <span><strong>Date :</strong> {ticketImpressionActif.created_at ? new Date(ticketImpressionActif.created_at).toLocaleDateString('fr-FR') : '-'}</span>
+          formatImpression === 'TICKET_80' ? (
+            /* --- MODÈLE 1 : IMPRIMANTE DE CAISSE (80mm) --- */
+            <div style={{ width: '100%' }}>
+              <div style={{ textAlign: 'center', marginBottom: '5px', borderBottom: '1px dashed #000', paddingBottom: '4px' }}>
+                <h2 style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 2px 0' }}>4TS : ISMA LOGISTIQUE</h2>
+                <p style={{ fontSize: '8.5px', margin: '0' }}>Tél : +237 600 000 000</p>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
-                <span><strong>Client :</strong> {ticketImpressionActif.nom_client || 'CLIENTS DIVERS'}</span>
-                <span><strong>Caissier :</strong> {ticketImpressionActif.caissier || caissierNomActuel}</span>
-              </div>
-              <div><strong>Règlement :</strong> {ticketImpressionActif.type_reglement || 'COMPTANT'}</div>
-            </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '4px', fontSize: '8.5px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #000' }}>
-                  <th style={{ textAlign: 'left', paddingBottom: '2px' }}>ART</th>
-                  <th style={{ textAlign: 'center', paddingBottom: '2px' }}>QTE</th>
-                  <th style={{ textAlign: 'right', paddingBottom: '2px' }}>P.U</th>
-                  <th style={{ textAlign: 'right', paddingBottom: '2px' }}>TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.isArray(ticketImpressionActif.details_articles) && ticketImpressionActif.details_articles.map((item, idx) => {
-                  const qte = Number(item.quantite || 1);
-                  const pv = Number(item.prix_unitaire || item.prix_vente || 0);
-                  const pt = qte * pv;
-                  return (
-                    <tr key={idx} style={{ borderBottom: '1px dotted #ccc' }}>
-                      <td style={{ padding: '1px 0', textTransform: 'uppercase', maxWidth: '26mm', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.designation}</td>
-                      <td style={{ padding: '1px 0', textAlign: 'center' }}>{qte}</td>
-                      <td style={{ padding: '1px 0', textAlign: 'right' }}>{pv.toLocaleString('fr-FR')}</td>
-                      <td style={{ padding: '1px 0', textAlign: 'right', fontWeight: 'bold' }}>{pt.toLocaleString('fr-FR')}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <div style={{ borderTop: '1px dashed #000', paddingTop: '3px', marginBottom: '4px', fontSize: '9.5px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                <span>TOTAL À PAYER :</span>
-                <span>{Number(ticketImpressionActif.total_montant || 0).toLocaleString('fr-FR')} CFA</span>
+              <div style={{ marginBottom: '5px', fontSize: '9px', borderBottom: '1px dashed #000', paddingBottom: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span><strong>Ticket :</strong> {formaterNumeroTicket(ticketImpressionActif.numero_ticket)}</span>
+                  <span><strong>Date :</strong> {ticketImpressionActif.created_at ? new Date(ticketImpressionActif.created_at).toLocaleDateString('fr-FR') : '-'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span><strong>Client :</strong> {ticketImpressionActif.nom_client || 'CLIENTS DIVERS'}</span>
+                  <span><strong>Caissier :</strong> {ticketImpressionActif.caissier || caissierNomActuel}</span>
+                </div>
+                <div><strong>Règlement :</strong> {ticketImpressionActif.type_reglement || 'COMPTANT'} ({ticketImpressionActif.mode_paiement || 'ESPECES'})</div>
               </div>
-              {Number(ticketImpressionActif.montant_regle) < Number(ticketImpressionActif.total_montant) && (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Montant versé :</span>
-                    <span>{Number(ticketImpressionActif.montant_regle || 0).toLocaleString('fr-FR')} CFA</span>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '5px', fontSize: '8.5px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #000' }}>
+                    <th style={{ textAlign: 'left', paddingBottom: '2px' }}>ART</th>
+                    <th style={{ textAlign: 'center', paddingBottom: '2px' }}>QTE</th>
+                    <th style={{ textAlign: 'right', paddingBottom: '2px' }}>P.U</th>
+                    <th style={{ textAlign: 'right', paddingBottom: '2px' }}>TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.isArray(ticketImpressionActif.details_articles) && ticketImpressionActif.details_articles.map((item, idx) => {
+                    const qte = Number(item.quantite || 1);
+                    const pv = Number(item.prix_unitaire || item.prix_vente || 0);
+                    const pt = qte * pv;
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px dotted #888' }}>
+                        <td style={{ padding: '2px 0', textTransform: 'uppercase', maxWidth: '25mm', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.designation}</td>
+                        <td style={{ padding: '2px 0', textAlign: 'center' }}>{qte}</td>
+                        <td style={{ padding: '2px 0', textAlign: 'right' }}>{pv.toLocaleString('fr-FR')}</td>
+                        <td style={{ padding: '2px 0', textAlign: 'right', fontWeight: 'bold' }}>{pt.toLocaleString('fr-FR')}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div style={{ borderTop: '1px dashed #000', paddingTop: '4px', marginBottom: '5px', fontSize: '9.5px' }}>
+                {Number(ticketImpressionActif.montant_remise || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8.5px', marginBottom: '2px' }}>
+                    <span>Remise accordée :</span>
+                    <span>-{Number(ticketImpressionActif.montant_remise).toLocaleString('fr-FR')} CFA</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'red' }}>
-                    <span>Reste dû :</span>
-                    <span>{Math.max(0, Number(ticketImpressionActif.total_montant || 0) - Number(ticketImpressionActif.montant_regle || 0)).toLocaleString('fr-FR')} CFA</span>
-                  </div>
-                </>
-              )}
-            </div>
+                )}
 
-            <div style={{ textAlign: 'center', fontSize: '8px', borderTop: '1px dashed #000', paddingTop: '3px' }}>
-              <p style={{ margin: '0 0 1px 0', fontWeight: 'bold' }}>MERCI POUR VOTRE ACHAT !</p>
-              <p style={{ margin: '0' }}>À bientôt chez ISMA LOGISTIQUE</p>
+                {ticketImpressionActif.appliquer_tva === 'OUI' && (
+                  <div style={{ borderBottom: '1px dotted #888', paddingBottom: '3px', marginBottom: '3px', fontSize: '8.5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Montant HT :</span>
+                      <span>{Math.round(Number(ticketImpressionActif.montant_ht || 0)).toLocaleString('fr-FR')} CFA</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>TVA ({ticketImpressionActif.taux_tva || 19.25}%) :</span>
+                      <span>{Math.round(Number(ticketImpressionActif.montant_tva || 0)).toLocaleString('fr-FR')} CFA</span>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '10px' }}>
+                  <span>{ticketImpressionActif.appliquer_tva === 'OUI' ? 'NET À PAYER (TTC) :' : 'TOTAL À PAYER :'}</span>
+                  <span>{Number(ticketImpressionActif.total_montant || 0).toLocaleString('fr-FR')} CFA</span>
+                </div>
+
+                {Number(ticketImpressionActif.montant_regle) < Number(ticketImpressionActif.total_montant) && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                      <span>Montant versé :</span>
+                      <span>{Number(ticketImpressionActif.montant_regle || 0).toLocaleString('fr-FR')} CFA</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                      <span>Reste dû :</span>
+                      <span>{Math.max(0, Number(ticketImpressionActif.total_montant || 0) - Number(ticketImpressionActif.montant_regle || 0)).toLocaleString('fr-FR')} CFA</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div style={{ textAlign: 'center', fontSize: '8.5px', borderTop: '1px dashed #000', paddingTop: '4px' }}>
+                <p style={{ margin: '0 0 2px 0', fontWeight: 'bold' }}>MERCI POUR VOTRE ACHAT !</p>
+                <p style={{ margin: '0' }}>À bientôt chez ISMA LOGISTIQUE</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* --- MODÈLE 2 : IMPRIMANTE A4 (HP LASER / JET D'ENCRE & MATRICIELLE) --- */
+            <div style={{ width: '100%' }}>
+              {/* En-tête A4 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: '10px', marginBottom: '15px' }}>
+                <div>
+                  <h1 style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 4px 0' }}>4TS : ISMA LOGISTIQUE</h1>
+                  <p style={{ fontSize: '11px', margin: '0 0 2px 0' }}>Yaoundé, Cameroun</p>
+                  <p style={{ fontSize: '11px', margin: '0' }}>Tél : +237 600 000 000</p>
+                </div>
+                <div style={{ textAlign: 'right', border: '1px solid #000', padding: '8px 12px' }}>
+                  <h2 style={{ fontSize: '14px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 4px 0' }}>
+                    {ticketImpressionActif.appliquer_tva === 'OUI' ? 'FACTURE / REÇU' : 'REÇU DE CAISSE'}
+                  </h2>
+                  <p style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 2px 0' }}>N° : {formaterNumeroTicket(ticketImpressionActif.numero_ticket)}</p>
+                  <p style={{ fontSize: '10px', margin: '0' }}>Date : {ticketImpressionActif.created_at ? new Date(ticketImpressionActif.created_at).toLocaleDateString('fr-FR') : '-'}</p>
+                </div>
+              </div>
+
+              {/* Bloc Client & Détails Vente */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', border: '1px solid #000', padding: '10px' }}>
+                <div>
+                  <p style={{ margin: '0 0 4px 0', fontSize: '11px' }}><strong>CLIENT :</strong> {ticketImpressionActif.nom_client || 'CLIENTS DIVERS'}</p>
+                  <p style={{ margin: '0', fontSize: '11px' }}><strong>CAISSIER :</strong> {ticketImpressionActif.caissier || caissierNomActuel}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ margin: '0 0 4px 0', fontSize: '11px' }}><strong>TYPE RÈGLEMENT :</strong> {ticketImpressionActif.type_reglement || 'COMPTANT'}</p>
+                  <p style={{ margin: '0', fontSize: '11px' }}><strong>MODE PAIEMENT :</strong> {ticketImpressionActif.mode_paiement || 'ESPECES'}</p>
+                </div>
+              </div>
+
+              {/* Tableau des articles A4 */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px', fontSize: '11px' }}>
+                <thead>
+                  <tr style={{ borderTop: '2px solid #000', borderBottom: '2px solid #000', backgroundColor: '#f3f4f6' }}>
+                    <th style={{ textAlign: 'left', padding: '6px', borderRight: '1px solid #ccc' }}>N°</th>
+                    <th style={{ textAlign: 'left', padding: '6px', borderRight: '1px solid #ccc' }}>DÉSIGNATION DE L'ARTICLE</th>
+                    <th style={{ textAlign: 'center', padding: '6px', borderRight: '1px solid #ccc' }}>QTÉ</th>
+                    <th style={{ textAlign: 'right', padding: '6px', borderRight: '1px solid #ccc' }}>PRIX UNITAIRE</th>
+                    <th style={{ textAlign: 'right', padding: '6px' }}>MONTANT TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.isArray(ticketImpressionActif.details_articles) && ticketImpressionActif.details_articles.map((item, idx) => {
+                    const qte = Number(item.quantite || 1);
+                    const pv = Number(item.prix_unitaire || item.prix_vente || 0);
+                    const pt = qte * pv;
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #ccc' }}>
+                        <td style={{ padding: '6px', borderRight: '1px solid #ccc' }}>{idx + 1}</td>
+                        <td style={{ padding: '6px', textTransform: 'uppercase', fontWeight: 'bold', borderRight: '1px solid #ccc' }}>{item.designation}</td>
+                        <td style={{ padding: '6px', textAlign: 'center', borderRight: '1px solid #ccc' }}>{qte}</td>
+                        <td style={{ padding: '6px', textAlign: 'right', borderRight: '1px solid #ccc' }}>{pv.toLocaleString('fr-FR')} CFA</td>
+                        <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>{pt.toLocaleString('fr-FR')} CFA</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Bloc Totaux A4 */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '25px' }}>
+                <div style={{ width: '50%', border: '1px solid #000', padding: '10px' }}>
+                  {Number(ticketImpressionActif.montant_remise || 0) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '11px' }}>
+                      <span>Remise accordée :</span>
+                      <span>-{Number(ticketImpressionActif.montant_remise).toLocaleString('fr-FR')} CFA</span>
+                    </div>
+                  )}
+
+                  {ticketImpressionActif.appliquer_tva === 'OUI' && (
+                    <div style={{ borderBottom: '1px solid #000', paddingBottom: '6px', marginBottom: '6px', fontSize: '11px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                        <span>Montant Hors Taxes (HT) :</span>
+                        <span>{Math.round(Number(ticketImpressionActif.montant_ht || 0)).toLocaleString('fr-FR')} CFA</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>TVA ({ticketImpressionActif.taux_tva || 19.25}%) :</span>
+                        <span>{Math.round(Number(ticketImpressionActif.montant_tva || 0)).toLocaleString('fr-FR')} CFA</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '13px', padding: '4px 0' }}>
+                    <span>{ticketImpressionActif.appliquer_tva === 'OUI' ? 'NET À PAYER (TTC) :' : 'TOTAL NET À PAYER :'}</span>
+                    <span>{Number(ticketImpressionActif.total_montant || 0).toLocaleString('fr-FR')} CFA</span>
+                  </div>
+
+                  {Number(ticketImpressionActif.montant_regle) < Number(ticketImpressionActif.total_montant) && (
+                    <div style={{ borderTop: '1px dashed #000', paddingTop: '5px', marginTop: '5px', fontSize: '11px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                        <span>Montant versé :</span>
+                        <span>{Number(ticketImpressionActif.montant_regle || 0).toLocaleString('fr-FR')} CFA</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                        <span>Reste à payer :</span>
+                        <span>{Math.max(0, Number(ticketImpressionActif.total_montant || 0) - Number(ticketImpressionActif.montant_regle || 0)).toLocaleString('fr-FR')} CFA</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Signatures A4 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '30px', padding: '0 20px', fontSize: '11px' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontWeight: 'bold', textDecoration: 'underline', marginBottom: '35px' }}>Signature du Client</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontWeight: 'bold', textDecoration: 'underline', marginBottom: '35px' }}>Cachet & Signature Caissier</p>
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'center', fontSize: '10px', borderTop: '1px solid #000', paddingTop: '8px', marginTop: '20px' }}>
+                <p style={{ margin: '0 0 2px 0', fontWeight: 'bold' }}>MERCI POUR VOTRE CONFIANCE !</p>
+                <p style={{ margin: '0' }}>4TS : ISMA LOGISTIQUE - À bientôt</p>
+              </div>
+            </div>
+          )
         ) : (
           <div style={{ textAlign: 'center', padding: '10px' }}>Aucun ticket à imprimer</div>
         )}
@@ -1665,16 +1881,18 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 items-center bg-slate-50 p-1 rounded-xl border border-slate-100">
               
-              <div className="flex items-center justify-between sm:justify-start sm:gap-2">
-                <span className="text-[7px] font-extrabold text-slate-400 uppercase tracking-tighter">
-                  {appliquerTva === 'OUI' ? 'NET (TTC)' : 'NET À PAYER'}
-                </span>
-                <span className="font-black text-emerald-700 font-mono text-[10.5px]">
-                  {totalFinal.toLocaleString('fr-FR')} F
-                </span>
+              <div className="flex flex-col justify-center">
+                <div className="flex items-center justify-between sm:justify-start sm:gap-2">
+                  <span className="text-[7px] font-extrabold text-slate-400 uppercase tracking-tighter">
+                    {appliquerTva === 'OUI' ? 'NET (TTC)' : 'NET À PAYER'}
+                  </span>
+                  <span className="font-black text-emerald-700 font-mono text-[10.5px]">
+                    {totalFinal.toLocaleString('fr-FR')} F
+                  </span>
+                </div>
                 {appliquerTva === 'OUI' && (
-                  <div className="text-[7px] text-slate-500 font-mono hidden">
-                    HT:{baseImposable.toLocaleString('fr-FR')}F | TVA:{montantTva.toLocaleString('fr-FR')}F
+                  <div className="text-[7.5px] text-slate-600 font-mono font-bold mt-0.5">
+                    HT: {Math.round(montantHt).toLocaleString('fr-FR')}F | TVA: {Math.round(montantTva).toLocaleString('fr-FR')}F
                   </div>
                 )}
               </div>
@@ -1851,7 +2069,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             
             <div className="p-4 space-y-3">
               <p className="text-[10px] text-slate-600 font-bold">
-                Le taux de TVA applicable dans ce module est de <strong className="text-slate-900 font-mono">19,25 %</strong>. Veuillez choisir si vous souhaitez l'appliquer ou non sur cette facture.
+                Le taux de TVA applicable dans ce module est de <strong className="text-slate-900 font-mono">19,25 %</strong>. Le montant net à payer reste inchangé (TTC).
               </p>
 
               <div className="space-y-2">
@@ -1863,7 +2081,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 >
                   <div>
                     <span className="font-black text-xs block">Appliquer la TVA (19.25%)</span>
-                    <span className="text-[9px] text-slate-500">Ajoute le calcul de la TVA sur le montant net hors-taxes.</span>
+                    <span className="text-[9px] text-slate-500">Affiche le détail du HT et de la TVA inclus dans le net à payer.</span>
                   </div>
                   {appliquerTva === 'OUI' && <span className="text-emerald-600 font-black text-sm">✓</span>}
                 </div>
@@ -1876,7 +2094,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 >
                   <div>
                     <span className="font-black text-xs block">Ne pas appliquer la TVA (0%)</span>
-                    <span className="text-[9px] text-slate-500">Facturation hors taxes simple sans taxe de valeur ajoutée.</span>
+                    <span className="text-[9px] text-slate-500">Facturation simple sans détail de taxe.</span>
                   </div>
                   {appliquerTva === 'NON' && <span className="text-orange-600 font-black text-sm">✓</span>}
                 </div>
@@ -2027,7 +2245,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 </table>
               </div>
 
-              {/* Bouton pour charger 20 tickets supplémentaires */}
               {limiteVentes < ventesFiltrees.length && (
                 <div className="text-center pt-1 pb-2">
                   <button
@@ -2150,7 +2367,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </table>
             </div>
 
-            {/* Bouton pour charger 20 lignes supplémentaires dans le journal */}
             {limiteJournal < lignesJournalDetails.length && (
               <div className="text-center pt-1 pb-1">
                 <button
@@ -2656,6 +2872,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
+      {/* MODALE SUCCÈS VALIDATION VENTE AVEC SÉLECTEUR D'IMPRIMANTE (TICKET 80MM OU A4) */}
       {afficherModalSuccesTicket && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
@@ -2668,11 +2885,33 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
             </div>
 
             <div className="p-4 space-y-3 text-center">
-              <p className="text-[11px] text-slate-700 font-bold">
-                Souhaitez-vous imprimer ce ticket maintenant ?
-              </p>
+              <div>
+                <span className="block text-[9px] font-black text-slate-500 uppercase mb-1.5">Choisir le format d'imprimante :</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => changerFormatImpression('TICKET_80')}
+                    className={`p-2 rounded-xl border text-[10px] font-black flex flex-col items-center justify-center gap-1 transition ${
+                      formatImpression === 'TICKET_80' ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="text-sm">🧾</span>
+                    <span>Ticket Caisse (80mm)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changerFormatImpression('A4')}
+                    className={`p-2 rounded-xl border text-[10px] font-black flex flex-col items-center justify-center gap-1 transition ${
+                      formatImpression === 'A4' ? 'bg-orange-50 border-orange-500 text-orange-700 shadow-2xs' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="text-sm">📄</span>
+                    <span>Format A4 (HP / Matricielle)</span>
+                  </button>
+                </div>
+              </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => {
@@ -2808,6 +3047,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
+      {/* MODALE DÉTAIL D'UN TICKET HISTORIQUE AVEC SÉLECTEUR DE FORMAT D'IMPRESSION */}
       {ticketSelectionne && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -2860,11 +3100,49 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                 )}
               </div>
 
+              {ticketSelectionne.appliquer_tva === 'OUI' && (
+                <div className="pt-1.5 border-t border-slate-200 space-y-0.5 text-[9.5px] text-slate-700">
+                  <div className="flex justify-between">
+                    <span>Montant HT :</span>
+                    <span>{Math.round(Number(ticketSelectionne.montant_ht || 0)).toLocaleString('fr-FR')} CFA</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>TVA ({ticketSelectionne.taux_tva || 19.25}%) :</span>
+                    <span>{Math.round(Number(ticketSelectionne.montant_tva || 0)).toLocaleString('fr-FR')} CFA</span>
+                  </div>
+                </div>
+              )}
+
               <div className="pt-2 border-t border-dashed border-slate-300 flex justify-between font-black text-[11px] text-slate-900">
-                <span>TOTAL :</span>
+                <span>{ticketSelectionne.appliquer_tva === 'OUI' ? 'TOTAL TTC :' : 'TOTAL :'}</span>
                 <span className="text-emerald-700 font-mono">
                   {Number(ticketSelectionne.total_montant || 0).toLocaleString('fr-FR')} CFA
                 </span>
+              </div>
+
+              {/* Sélecteur rapide d'imprimante dans la modale de réimpression */}
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-sans">
+                <span className="text-[9px] font-bold text-slate-600 uppercase">Format imprimante :</span>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => changerFormatImpression('TICKET_80')}
+                    className={`px-2 py-1 rounded-lg text-[9px] font-bold border transition ${
+                      formatImpression === 'TICKET_80' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    🧾 80mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changerFormatImpression('A4')}
+                    className={`px-2 py-1 rounded-lg text-[9px] font-bold border transition ${
+                      formatImpression === 'A4' ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    📄 A4
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2885,7 +3163,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
                   onClick={declencherImpressionSecurisee}
                   className="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3 py-1.5 rounded-xl text-[10px] transition text-center disabled:opacity-50"
                 >
-                  🖨️ Imprimer
+                  🖨️ Imprimer ({formatImpression === 'TICKET_80' ? '80mm' : 'A4'})
                 </button>
                 <button
                   disabled={enTrainDeSauvegarder}

@@ -52,14 +52,26 @@ function DashboardContent() {
     (typeof window !== 'undefined' ? localStorage.getItem('entrepriseId') : null);
 
   const [entrepriseId, setEntrepriseId] = useState(entrepriseIdUrl);
-  const [infosEntreprise, setInfosEntreprise] = useState({
-    nom_entreprise: 'CHARGEMENT...',
-    email: '',
-    telephone: '',
-    espaces_souscrits: [],
-    module_actif: 'BOUTIQUE',
-    logo: '',
-    mot_de_passe: ''
+
+  // 🚀 CHARGEMENT INSTANTANÉ DEPUIS LE CACHE LOCAL (Zéro attente réseau au démarrage)
+  const [infosEntreprise, setInfosEntreprise] = useState(() => {
+    if (typeof window !== 'undefined' && entrepriseIdUrl) {
+      const cacheVal = localStorage.getItem(`4ts_dashboard_cache_${entrepriseIdUrl}`);
+      if (cacheVal) {
+        try {
+          return JSON.parse(cacheVal);
+        } catch (e) {}
+      }
+    }
+    return {
+      nom_entreprise: '4TS SUITE MANAGER',
+      email: '',
+      telephone: '',
+      espaces_souscrits: [],
+      module_actif: 'BOUTIQUE',
+      logo: '',
+      mot_de_passe: ''
+    };
   });
 
   const [moduleActif, setModuleActif] = useState(null);
@@ -79,7 +91,7 @@ function DashboardContent() {
   
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('');
   const [emailConnecte, setEmailConnecte] = useState('');
-  const [logoEntreprise, setLogoEntreprise] = useState('');
+  const [logoEntreprise, setLogoEntreprise] = useState(() => infosEntreprise.logo || '');
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
