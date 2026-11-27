@@ -1,10 +1,10 @@
-﻿import withPWAInit from "@ducanh2912/next-pwa";
+import withPWAInit from "@ducanh2912/next-pwa";
 
 const withPWA = withPWAInit({
   dest: "public",
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
-  reloadOnOnline: true,
+  reloadOnOnline: false,
   swcMinify: true,
   cacheStartUrl: true,
   dynamicStartUrl: true,
@@ -13,11 +13,11 @@ const withPWA = withPWAInit({
     disableDevLogs: true,
     runtimeCaching: [
       {
+        // Affichage immédiat depuis le cache + mise à jour en arrière-plan
         urlPattern: ({ request }) => request.mode === "navigate",
-        handler: "NetworkFirst",
+        handler: "StaleWhileRevalidate",
         options: {
           cacheName: "pages-cache",
-          networkTimeoutSeconds: 3,
           expiration: {
             maxEntries: 50,
             maxAgeSeconds: 30 * 24 * 60 * 60,
@@ -29,11 +29,11 @@ const withPWA = withPWAInit({
       },
       {
         urlPattern: /\.(?:js|css|png|jpg|jpeg|svg|gif|webp|ico|woff2?)$/i,
-        handler: "StaleWhileRevalidate",
+        handler: "CacheFirst",
         options: {
           cacheName: "static-assets",
           expiration: {
-            maxEntries: 100,
+            maxEntries: 150,
             maxAgeSeconds: 30 * 24 * 60 * 60,
           },
         },
