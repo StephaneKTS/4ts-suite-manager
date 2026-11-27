@@ -1,4 +1,4 @@
-import withPWAInit from "@ducanh2912/next-pwa";
+﻿import withPWAInit from "@ducanh2912/next-pwa";
 
 const withPWA = withPWAInit({
   dest: "public",
@@ -46,14 +46,6 @@ const withPWA = withPWAInit({
 const nextConfig = {
   experimental: {
     agentFeedback: true,
-  },
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
   },
 };
 
