@@ -6,20 +6,21 @@ const withPWA = withPWAInit({
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
   swcMinify: true,
+  cacheStartUrl: true,
+  dynamicStartUrl: true,
   disable: process.env.NODE_ENV === "development",
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
       {
-        // Intercepte toutes les pages et navigations (/, /dashboard, /connexion, etc.)
         urlPattern: ({ request }) => request.mode === "navigate",
         handler: "NetworkFirst",
         options: {
           cacheName: "pages-cache",
-          networkTimeoutSeconds: 3, // Bascule sur le cache local après 3s sans réponse
+          networkTimeoutSeconds: 3,
           expiration: {
             maxEntries: 50,
-            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 jours
+            maxAgeSeconds: 30 * 24 * 60 * 60,
           },
           cacheableResponse: {
             statuses: [0, 200],
@@ -27,7 +28,6 @@ const withPWA = withPWAInit({
         },
       },
       {
-        // Met en cache les ressources statiques (JS, CSS, images, polices)
         urlPattern: /\.(?:js|css|png|jpg|jpeg|svg|gif|webp|ico|woff2?)$/i,
         handler: "StaleWhileRevalidate",
         options: {
