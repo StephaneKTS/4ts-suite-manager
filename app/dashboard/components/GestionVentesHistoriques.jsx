@@ -31,7 +31,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     suppression: false,
   });
 
-  // --- PARAMÈTRE DU FORMAT D'IMPRESSION ('TICKET_80' ou 'A4') ---
   const [formatImpression, setFormatImpression] = useState('TICKET_80');
 
   useEffect(() => {
@@ -76,7 +75,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
   const [ongletActif, setOngletActif] = useState('vente');
 
-  // --- CONFIGURATION DE LA PAGINATION (Vagues de 20) ---
   const [limiteVentes, setLimiteVentes] = useState(20);
   const [limiteJournal, setLimiteJournal] = useState(20);
   const [limiteArticlesModal, setLimiteArticlesModal] = useState(20);
@@ -153,14 +151,43 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   const moduleActuel = obtenirModuleActuel();
   const cacheKey = `4ts_cache_ventes_historiques_${entrepriseId}_${moduleActuel}`;
 
+  // --- CORRECTION ANTI-DUPLICATION : FUSION INTELLIGENTE PAR ID ET NUMÉRO DE TICKET ---
   const fusionnerParId = (liste1 = [], liste2 = []) => {
     const map = new Map();
+    // On combine les deux listes en donnant la priorité aux objets du cloud ou récents
     [...liste2, ...liste1].forEach(item => {
-      if (item && item.id) {
-        map.set(String(item.id), item);
+      if (item) {
+        // Clé unique composite pour éviter les doublons même si les ID diffèrent (ex: local vs cloud)
+        const cleUnique = item.id ? String(item.id) : `${item.numero_ticket}_${item.created_at?.split('T')[0]}_${item.id_caisse}`;
+        
+        // Si l'élément existe déjà, on privilégie celui qui n'a pas un ID temporaire 'local_'
+        if (map.has(cleUnique)) {
+          const existant = map.get(cleUnique);
+          if (String(existant.id).startsWith('local_') && !String(item.id).startsWith('local_')) {
+            map.set(cleUnique, item);
+          }
+        } else {
+          map.set(cleUnique, item);
+        }
       }
     });
-    return Array.from(map.values());
+    
+    // Deuxième passe de sécurité pour fusionner par numéro de ticket exact le même jour
+    const mapFinale = new Map();
+    Array.from(map.values()).forEach(item => {
+      const dateJourSimple = item.created_at ? item.created_at.split('T')[0] : '';
+      const cleTicketJour = `${item.numero_ticket}_${dateJourSimple}_${item.id_caisse}`;
+      if (mapFinale.has(cleTicketJour)) {
+        const existant = mapFinale.get(cleTicketJour);
+        if (String(existant.id).startsWith('local_') && !String(item.id).startsWith('local_')) {
+          mapFinale.set(cleTicketJour, item);
+        }
+      } else {
+        mapFinale.set(cleTicketJour, item);
+      }
+    });
+
+    return Array.from(mapFinale.values());
   };
 
   const genererNumeroTicket = (code, totalVentes) => {
@@ -763,7 +790,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
     montantCreditRestant = Math.max(0, totalFinal - montantRegleEffectif);
   }
 
-  // --- FONCTION DE VALIDATION AVEC GESTION DE LA FILE D'ATTENTE LOCALE HORS LIGNE ---
+  // --- FONCTION DE VALIDATION AVEC GESTION ANTIDUPLICATION ROBUSTE ---
   const validerEtEnregistrerVente = async () => {
     if (enTrainDeSauvegarder) return;
     if (!permissions.creation) {
@@ -803,7 +830,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
 
       let clientIdFinal = clientId ? parseInt(clientId) : null;
 
-      const idLocalTemp = `local_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      // ID unique basé sur le numéro de ticket, la date et la caisse pour éviter les doublons lors des synchronisations hors ligne
+      const dateHeureCreation = dateJour ? `${dateJour}T${new Date().toTimeString().split(' ')[0]}` : new Date().toISOString();
+      const idLocalTemp = `local_${numeroTicketSecurise}_${dateJour}_${caisseId}`;
       
       const payloadVente = {
         id_entreprise: entrepriseId,
@@ -820,7 +849,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         nom_client: nomClientFacture,
         id_client: clientIdFinal,
         caissier: caissierNomActuel,
-        created_at: dateJour ? `${dateJour}T${new Date().toTimeString().split(' ')[0]}` : new Date().toISOString()
+        created_at: dateHeureCreation
       };
 
       let ticketValideFinal = { 
@@ -833,6 +862,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         montant_remise: montantRemise
       };
 
+      // Mise à jour immédiate et propre de l'état local via fusion intelligente
       setVentes(prev => {
         const listeMaj = fusionnerParId(prev, [ticketValideFinal]);
         sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
@@ -859,7 +889,7 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
       setTicketDernierValide(ticketValideFinal);
       setAfficherModalSuccesTicket(true);
 
-      // Insertion sécurisée via Supabase ou File d'attente Outbox
+      // Insertion sécurisée Supabase (si hors ligne, inséré dans la file d'attente Outbox)
       const { error: errVente, data: dataVenteInsert } = await supabase.from('ventes_historiques').insert([payloadVente]).select().single();
       if (errVente) {
         localSync.ajouterFileAttente('INSERT', 'ventes_historiques', payloadVente);
@@ -872,7 +902,11 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
           montant_tva: ticketValideFinal.montant_tva,
           montant_remise: ticketValideFinal.montant_remise
         };
-        setVentes(prev => fusionnerParId(prev, [mergedTicket]));
+        setVentes(prev => {
+          const listeMaj = fusionnerParId(prev, [mergedTicket]);
+          sauvegarderCacheLocal({ ventes: listeMaj, articlesStock, famillesArticles, clientsList, categoriesList, caissesList, depotsList, mouvements, approvisionnements, utilisateursList, cloturesList });
+          return listeMaj;
+        });
       }
 
       if (montantCreditRestant > 0 && clientIdFinal) {
@@ -1339,7 +1373,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
   return (
     <div className="h-full max-h-[82vh] flex flex-col space-y-1 text-[10px] font-sans overflow-hidden">
       
-      {/* FEUILLE DE STYLE D'IMPRESSION ADAPTATIVE (TICKET CAISSE 80mm VS A4 HP/MATRICIELLE) */}
       <style dangerouslySetInnerHTML={{ __html: formatImpression === 'TICKET_80' ? `
         @media print {
           html, body {
@@ -1420,11 +1453,9 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         }
       ` }} />
 
-      {/* CONTENEUR D'IMPRESSION DYNAMIQUE SELON LE FORMAT CHOISI */}
       <div className="ticket-impression-container hidden">
         {ticketImpressionActif ? (
           formatImpression === 'TICKET_80' ? (
-            /* --- MODÈLE 1 : IMPRIMANTE DE CAISSE (80mm) --- */
             <div style={{ width: '100%' }}>
               <div style={{ textAlign: 'center', marginBottom: '5px', borderBottom: '1px dashed #000', paddingBottom: '4px' }}>
                 <h2 style={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', margin: '0 0 2px 0' }}>4TS : ISMA LOGISTIQUE</h2>
@@ -1515,7 +1546,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
               </div>
             </div>
           ) : (
-            /* --- MODÈLE 2 : IMPRIMANTE A4 (HP LASER / JET D'ENCRE & MATRICIELLE) --- */
             <div style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #000', paddingBottom: '10px', marginBottom: '15px' }}>
                 <div>
@@ -1633,7 +1663,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         )}
       </div>
 
-      {/* BARRE DE NAVIGATION PAR ONGLETS */}
       <div className="flex justify-between items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
         <div className="flex flex-1 gap-1">
           <button
@@ -2109,7 +2138,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* ONGLET 2 : TICKETS (Par vagues de 20) */}
       {ongletActif === 'tickets' && (
         <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
@@ -2257,7 +2285,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* ONGLET 3 : JOURNAL (Par vagues de 20) */}
       {ongletActif === 'journal' && (
         <div className="space-y-2 overflow-y-auto flex-1 pr-0.5">
           <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 shadow-2xs">
@@ -2867,7 +2894,6 @@ export default function GestionVentesHistoriques({ entrepriseId = '4TS-234321' }
         </div>
       )}
 
-      {/* MODALE SUCCÈS VALIDATION VENTE AVEC SÉLECTEUR D'IMPRIMANTE (TICKET 80MM OU A4) */}
       {afficherModalSuccesTicket && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3">
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in duration-200">
