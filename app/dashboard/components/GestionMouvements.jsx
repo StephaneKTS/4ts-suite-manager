@@ -1698,13 +1698,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               </span>
             </div>
 
-            {/* Structure spécifique selon le type d'opération */}
+            {/* Structure spécifique selon le type d'opération (Forcée sur une seule ligne) */}
             {(ongletPrincipal === 'MOUVEMENTS' && typeOperation === 'TRANSFERT') ? (
               <div className="space-y-2">
                 {estModeBoutique ? (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
+                    <div className="flex flex-row items-center gap-1.5">
+                      <div className="w-[32%] shrink-0">
                         <input 
                           type="date" 
                           disabled={documentEnLectureSeule} 
@@ -1713,37 +1713,37 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                         />
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <input 
                           type="text" 
                           disabled={documentEnLectureSeule} 
                           value={enTeteDoc.referenceDoc} 
                           placeholder="Motif / Référence..."
                           onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 truncate" 
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
+                    <div className="flex flex-row items-center gap-1.5">
+                      <div className="flex-1 min-w-0">
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                          className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
+                          className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                         >
-                          <span className="truncate">🏢 Dépôt Départ : {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Sélectionner *'}</span>
+                          <span className="truncate">🏢 Départ : {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Sélectionner *'}</span>
                           <span className="shrink-0 ml-1 text-orange-600">🔍</span>
                         </button>
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
-                          className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70"
+                          className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                         >
-                          <span className="truncate">🎯 Dépôt Arrivée : {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Sélectionner *'}</span>
+                          <span className="truncate">🎯 Arrivée : {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Sélectionner *'}</span>
                           <span className="shrink-0 ml-1 text-blue-600">🔍</span>
                         </button>
                       </div>
@@ -1751,8 +1751,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                   </>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
+                    <div className="flex flex-row items-center gap-1.5">
+                      <div className="w-[32%] shrink-0">
                         <input 
                           type="date" 
                           disabled={documentEnLectureSeule} 
@@ -1761,57 +1761,59 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                         />
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <input 
                           type="text" 
                           disabled={documentEnLectureSeule} 
                           value={enTeteDoc.referenceDoc} 
                           placeholder="Motif / Référence..."
                           onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 truncate" 
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                      <div>
+                    <div className="flex flex-row items-center gap-1.5">
+                      <div className="flex-1 min-w-0">
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                          className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
+                          className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                         >
-                          <span className="truncate">🏢 Départ : {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Partenaire *'}</span>
+                          <span className="truncate">🏢 Dépôt D.: {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Partenaire *'}</span>
                           <span className="shrink-0 ml-1 text-orange-600">🔍</span>
                         </button>
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70"
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70 truncate"
                         >
                           <span className="truncate">🛵 Livreur D.: {enTeteDoc.id_emplacement_source ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : 'Aucun'}</span>
                           <span className="shrink-0 ml-1 text-slate-600">🔍</span>
                         </button>
                       </div>
-                      <div>
+                    </div>
+                    <div className="flex flex-row items-center gap-1.5">
+                      <div className="flex-1 min-w-0">
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
-                          className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70"
+                          className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                         >
-                          <span className="truncate">🎯 Arrivée : {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Partenaire *'}</span>
+                          <span className="truncate">🎯 Dépôt A.: {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Partenaire *'}</span>
                           <span className="shrink-0 ml-1 text-blue-600">🔍</span>
                         </button>
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalLivreurDestOuvert(true); }}
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70"
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70 truncate"
                         >
                           <span className="truncate">🛵 Livreur A.: {enTeteDoc.id_emplacement_destination ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : 'Aucun'}</span>
                           <span className="shrink-0 ml-1 text-slate-600">🔍</span>
@@ -1824,89 +1826,89 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             ) : ongletPrincipal === 'ACHATS' ? (
               <div className="space-y-2">
                 {estModeBoutique ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
+                  /* MODULE BOUTIQUE ACHAT: DATE, FOURNISSEUR, DÉPÔT ET MOTIF SUR LA MÊME LIGNE */
+                  <div className="flex flex-row items-center gap-1">
+                    <div className="w-[24%] shrink-0">
                       <input 
                         type="date" 
                         disabled={documentEnLectureSeule} 
                         value={enTeteDoc.dateDoc} 
                         onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
-                        className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[11px] shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                       />
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <button 
                         type="button"
                         disabled={enTeteVerrouille}
                         onClick={() => { setRechercheModalPopup(''); setModalFournisseurOuvert(true); }}
-                        className="w-full bg-white border border-emerald-400 rounded-xl p-2 text-left font-extrabold text-emerald-800 text-xs flex justify-between items-center shadow-2xs hover:bg-emerald-50/50 transition cursor-pointer disabled:opacity-70"
+                        className="w-full bg-white border border-emerald-400 rounded-xl p-1.5 text-left font-extrabold text-emerald-800 text-[11px] flex justify-between items-center shadow-2xs hover:bg-emerald-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                       >
-                        <span className="truncate">🤝 {obtenirNomFournisseurParId(enTeteDoc.id_fournisseur) || 'FOURNISSEUR *'}</span>
-                        <span className="shrink-0 ml-1 text-emerald-600">🔍</span>
+                        <span className="truncate">🤝 {obtenirNomFournisseurParId(enTeteDoc.id_fournisseur) || 'FOURN.'}</span>
+                        <span className="shrink-0 ml-0.5 text-emerald-600 text-[10px]">▼</span>
                       </button>
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <button 
                         type="button"
                         disabled={enTeteVerrouille}
                         onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                        className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
+                        className="w-full bg-white border border-orange-400 rounded-xl p-1.5 text-left font-extrabold text-orange-600 text-[11px] flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                       >
-                        <span className="truncate">🏢 {obtenirNomDepotParId(enTeteDoc.id_depot_source) !== '-' ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'DÉPÔT *'}</span>
-                        <span className="shrink-0 ml-1 text-orange-600">🔍</span>
+                        <span className="truncate">🏢 {obtenirNomDepotParId(enTeteDoc.id_depot_source) !== '-' ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'DÉPÔT'}</span>
+                        <span className="shrink-0 ml-0.5 text-orange-600 text-[10px]">▼</span>
                       </button>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <input 
+                        type="text" 
+                        disabled={documentEnLectureSeule} 
+                        value={enTeteDoc.referenceDoc} 
+                        placeholder="MOTIF..."
+                        onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-extrabold uppercase text-slate-900 text-[11px] shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 truncate" 
+                      />
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
+                  /* MODE NON-BOUTIQUE ACHAT: DATE, PARTENAIRE ET MOTIF SUR LA MÊME LIGNE */
+                  <div className="flex flex-row items-center gap-1.5">
+                    <div className="w-[28%] shrink-0">
                       <input 
                         type="date" 
                         disabled={documentEnLectureSeule} 
                         value={enTeteDoc.dateDoc} 
                         onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
-                        className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-900 text-[11px] shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                       />
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <button 
                         type="button"
                         disabled={enTeteVerrouille}
                         onClick={() => { setRechercheModalPopup(''); setModalFournisseurOuvert(true); }}
-                        className="w-full bg-white border border-emerald-400 rounded-xl p-2 text-left font-extrabold text-emerald-800 text-xs flex justify-between items-center shadow-2xs hover:bg-emerald-50/50 transition cursor-pointer disabled:opacity-70"
+                        className="w-full bg-white border border-emerald-400 rounded-xl p-1.5 text-left font-extrabold text-emerald-800 text-[11px] flex justify-between items-center shadow-2xs hover:bg-emerald-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                       >
-                        <span className="truncate">🤝 {nomPartenaireSelectionne || 'PARTENAIRE *'}</span>
-                        <span className="shrink-0 ml-1 text-emerald-600">🔍</span>
+                        <span className="truncate">🤝 {nomPartenaireSelectionne || 'PARTENAIRE'}</span>
+                        <span className="shrink-0 ml-0.5 text-emerald-600 text-[10px]">▼</span>
                       </button>
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <input 
                         type="text" 
                         disabled={documentEnLectureSeule} 
                         value={enTeteDoc.referenceDoc} 
-                        placeholder="MOTIF / RÉFÉRENCE..."
+                        placeholder="MOTIF..."
                         onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                        className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
+                        className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-extrabold uppercase text-slate-900 text-[11px] shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 truncate" 
                       />
                     </div>
                   </div>
                 )}
-                {estModeBoutique && (
-                  <div>
-                    <input 
-                      type="text" 
-                      disabled={documentEnLectureSeule} 
-                      value={enTeteDoc.referenceDoc} 
-                      placeholder="Ex: FACT-2026-089 ou BL-004..."
-                      onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
-                    />
-                  </div>
-                )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
+              <div className="flex flex-row items-center gap-1.5">
+                <div className="w-[30%] shrink-0">
                   <input 
                     type="date" 
                     disabled={documentEnLectureSeule} 
@@ -1915,25 +1917,25 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                   />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <button 
                     type="button"
                     disabled={enTeteVerrouille}
                     onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                    className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
+                    className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                   >
                     <span className="truncate">🏢 {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : (estModeBoutique ? 'DÉPÔT *' : 'PARTENAIRE *')}</span>
                     <span className="shrink-0 ml-1 text-orange-600">🔍</span>
                   </button>
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <input 
                     type="text" 
                     disabled={documentEnLectureSeule} 
                     value={enTeteDoc.referenceDoc} 
                     placeholder="Motif / Référence..."
                     onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 truncate" 
                   />
                 </div>
               </div>
@@ -2071,7 +2073,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          {/* 3. CARTE D'AJOUT D'ARTICLE (Épurée et sur une seule ligne sans débordement) */}
+          {/* 3. CARTE D'AJOUT D'ARTICLE */}
           {!documentEnLectureSeule && (
             <div className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-sm">
               {ongletPrincipal === 'ACHATS' && estModeBoutique ? (
@@ -2420,20 +2422,20 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-1">Date début</label>
-                <input type="date" value={filtreDateDebut} onChange={(e) => setFiltreDateDebut(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs shadow-2xs" />
+            <div className="grid grid-cols-3 gap-1.5 items-end">
+              <div className="min-w-0">
+                <label className="block text-[9px] font-bold text-slate-600 mb-0.5 truncate">Début</label>
+                <input type="date" value={filtreDateDebut} onChange={(e) => setFiltreDateDebut(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-800 text-[11px] shadow-2xs truncate" />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-1">Date fin</label>
-                <input type="date" value={filtreDateFin} onChange={(e) => setFiltreDateFin(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs shadow-2xs" />
+              <div className="min-w-0">
+                <label className="block text-[9px] font-bold text-slate-600 mb-0.5 truncate">Fin</label>
+                <input type="date" value={filtreDateFin} onChange={(e) => setFiltreDateFin(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-800 text-[11px] shadow-2xs truncate" />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-1">{libelleTiers}</label>
-                <button type="button" onClick={() => { setRechercheFiltreModal(''); setModalFiltrePartenaireOuvert(true); }} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs text-left truncate flex justify-between items-center shadow-2xs cursor-pointer">
-                  <span className="truncate">{filtrePartenaire ? (depots.find(d => String(d.id) === String(filtrePartenaire))?.nom_depot || filtrePartenaire) : `Tous les ${libelleTiers.toLowerCase()}s`}</span>
-                  <span className="text-slate-400">🔍</span>
+              <div className="min-w-0">
+                <label className="block text-[9px] font-bold text-slate-600 mb-0.5 truncate">{libelleTiers}</label>
+                <button type="button" onClick={() => { setRechercheFiltreModal(''); setModalFiltrePartenaireOuvert(true); }} className="w-full bg-white border border-slate-300 rounded-xl p-1.5 font-bold text-slate-800 text-[11px] text-left truncate flex justify-between items-center shadow-2xs cursor-pointer">
+                  <span className="truncate">{filtrePartenaire ? (depots.find(d => String(d.id) === String(filtrePartenaire))?.nom_depot || filtrePartenaire) : 'Tous'}</span>
+                  <span className="text-slate-400 shrink-0 ml-0.5">🔍</span>
                 </button>
               </div>
             </div>
