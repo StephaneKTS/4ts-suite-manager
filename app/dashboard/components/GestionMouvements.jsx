@@ -1698,7 +1698,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               </span>
             </div>
 
-            {/* Structure spécifique selon le type d'opération (Forcée sur une seule ligne) */}
+            {/* Structure spécifique selon le type d'opération */}
             {(ongletPrincipal === 'MOUVEMENTS' && typeOperation === 'TRANSFERT') ? (
               <div className="space-y-2">
                 {estModeBoutique ? (
@@ -1772,6 +1772,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                         />
                       </div>
                     </div>
+                    {/* Ligne 1 : Dépôt de départ et Dépôt d'arrivée sur la même ligne */}
                     <div className="flex flex-row items-center gap-1.5">
                       <div className="flex-1 min-w-0">
                         <button 
@@ -1788,24 +1789,25 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
-                          onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
-                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70 truncate"
-                        >
-                          <span className="truncate">🛵 Livreur D.: {enTeteDoc.id_emplacement_source ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : 'Aucun'}</span>
-                          <span className="shrink-0 ml-1 text-slate-600">🔍</span>
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex flex-row items-center gap-1.5">
-                      <div className="flex-1 min-w-0">
-                        <button 
-                          type="button"
-                          disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
                           className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70 truncate"
                         >
                           <span className="truncate">🎯 Dépôt A.: {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Partenaire *'}</span>
                           <span className="shrink-0 ml-1 text-blue-600">🔍</span>
+                        </button>
+                      </div>
+                    </div>
+                    {/* Ligne 2 : Livreurs positionnés en bas des dépôts */}
+                    <div className="flex flex-row items-center gap-1.5">
+                      <div className="flex-1 min-w-0">
+                        <button 
+                          type="button"
+                          disabled={enTeteVerrouille}
+                          onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70 truncate"
+                        >
+                          <span className="truncate">🛵 Livreur D.: {enTeteDoc.id_emplacement_source ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : 'Aucun'}</span>
+                          <span className="shrink-0 ml-1 text-slate-600">🔍</span>
                         </button>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -1826,7 +1828,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             ) : ongletPrincipal === 'ACHATS' ? (
               <div className="space-y-2">
                 {estModeBoutique ? (
-                  /* MODULE BOUTIQUE ACHAT: DATE, FOURNISSEUR, DÉPÔT ET MOTIF SUR LA MÊME LIGNE */
                   <div className="flex flex-row items-center gap-1">
                     <div className="w-[24%] shrink-0">
                       <input 
@@ -1871,7 +1872,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     </div>
                   </div>
                 ) : (
-                  /* MODE NON-BOUTIQUE ACHAT: DATE, PARTENAIRE ET MOTIF SUR LA MÊME LIGNE */
                   <div className="flex flex-row items-center gap-1.5">
                     <div className="w-[28%] shrink-0">
                       <input 
