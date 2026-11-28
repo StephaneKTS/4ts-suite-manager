@@ -16,10 +16,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const estModeBoutique = moduleActuel === 'BOUTIQUE';
 
   const libelleLivreur = estModeBoutique ? 'Emplacement' : 'Livreur';
-  const libellePlaceholderSource = estModeBoutique ? '-- Emplacement --' : '-- Livreur --';
-  const libellePlaceholderDest = estModeBoutique ? '-- Emplacement (Optionnel) --' : '-- Livreur (Optionnel) --';
-  const libelleAucunLivreur = estModeBoutique ? '-- Aucun emplacement --' : '-- Aucun livreur --';
-  const libelleRechercheLivreur = estModeBoutique ? 'RECHERCHER UN EMPLACEMENT...' : 'RECHERCHER UN LIVREUR...';
   const libelleTiers = estModeBoutique ? 'Fournisseur' : 'Partenaire';
 
   const cleCacheMouvements = `mouvements_stock_${entrepriseId}_${moduleActuel}`;
@@ -74,7 +70,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return 'ZOA ABATE KATY';
   };
 
-  const nettoyerFileAttenteSync = () => {
+  const nettoyerFileAttenteSync = (motifASupprimer = null) => {
     if (typeof window === 'undefined') return;
     try {
       for (let i = 0; i < localStorage.length; i++) {
@@ -86,19 +82,29 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           const parsed = JSON.parse(brut);
           if (Array.isArray(parsed)) {
             let modifie = false;
-            const listeNettoyee = parsed.map((item) => {
-              if (item && item.table === 'mouvements_stock') {
+            const listeNettoyee = parsed
+              .filter((item) => {
+                if (!item || item.table !== 'mouvements_stock') return true;
                 const cible = item.data || item.payload || item.donnees;
-                if (cible && ('prix_unitaire' in cible || 'montant_total' in cible)) {
-                  const { prix_unitaire, montant_total, ...donneesValides } = cible;
+                if (motifASupprimer && cible && String(cible.motif_remarque) === String(motifASupprimer)) {
                   modifie = true;
-                  if (item.data) return { ...item, data: donneesValides };
-                  if (item.payload) return { ...item, payload: donneesValides };
-                  if (item.donnees) return { ...item, donnees: donneesValides };
+                  return false;
                 }
-              }
-              return item;
-            });
+                return true;
+              })
+              .map((item) => {
+                if (item && item.table === 'mouvements_stock') {
+                  const cible = item.data || item.payload || item.donnees;
+                  if (cible && ('prix_unitaire' in cible || 'montant_total' in cible)) {
+                    const { prix_unitaire, montant_total, ...donneesValides } = cible;
+                    modifie = true;
+                    if (item.data) return { ...item, data: donneesValides };
+                    if (item.payload) return { ...item, payload: donneesValides };
+                    if (item.donnees) return { ...item, donnees: donneesValides };
+                  }
+                }
+                return item;
+              });
             if (modifie) {
               localStorage.setItem(cle, JSON.stringify(listeNettoyee));
             }
@@ -182,7 +188,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   const [filtreLivreur, setFiltreLivreur] = useState('');
 
   const [modalFiltrePartenaireOuvert, setModalFiltrePartenaireOuvert] = useState(false);
-  const [modalFiltreLivreurOuvert, setModalFiltreLivreurOuvert] = useState(false);
   const [rechercheFiltreModal, setRechercheFiltreModal] = useState('');
 
   const [enTeteDoc, setEnTeteDoc] = useState({
@@ -552,9 +557,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     }));
   };
 
-  const emplacementsSourceFiltres = Array.isArray(emplacements) ? emplacements : [];
-  const emplacementsDestinationFiltres = Array.isArray(emplacements) ? emplacements : [];
-
   const correspondAuDepot = (valeurDepotFlux, depotCibleId) => {
     if (!valeurDepotFlux || !depotCibleId) return false;
     if (String(valeurDepotFlux) === String(depotCibleId)) return true;
@@ -585,11 +587,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return '-';
   };
 
-  const obtenirNomDestinationParMvt = (mvt) => {
+  const obtenirNomPartenairePourDoc = (mvt) => {
     if (!mvt) return '-';
-    if (mvt.id_emplacement_destination) return obtenirNomEmplacementParId(mvt.id_emplacement_destination);
-    if (mvt.id_depot_destination) return obtenirNomDepotParId(mvt.id_depot_destination);
-    if (mvt.id_emplacement_source) return obtenirNomEmplacementParId(mvt.id_emplacement_source);
+    if (mvt.id_fournisseur) {
+      const nomFourn = obtenirNomFournisseurParId(mvt.id_fournisseur);
+      if (nomFourn) return nomFourn;
+    }
+    if (mvt.id_depot_source) {
+      const nomDep = obtenirNomDepotParId(mvt.id_depot_source);
+      if (nomDep && nomDep !== '-') return nomDep;
+    }
     return '-';
   };
 
@@ -667,7 +674,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       if (typeMvt === 'ENTREE_STOCK' && matchDepotSource) { stockDepot += qte; return; }
       if (typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT' || typeMvt.includes('ACHAT') || typeMvt.includes('APPRO') || typeMvt.includes('FACTURE')) {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
-      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES') {
+      } else if (typeMvt === 'SORTIE' || typeMvt === 'AVARIES' || typeMvt === 'VENTE') {
         if (matchDepotSource) stockDepot -= qte;
       } else {
         if (matchDepotSource || matchDepotDest) stockDepot += qte;
@@ -686,8 +693,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           const estSystemeAuto = (motif.includes('CMD-') || motif.includes('LIVRAISON') || motif.includes('RESTITUTION') || motif.includes('VENTE') || motif.includes('VENTE TICKET'));
           if (estSystemeAuto) return false;
 
-          if (ongletPrincipal === 'ACHATS') return typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT';
-          return typeMvt !== 'ENTREE' && typeMvt !== 'APPROVISIONNEMENT';
+          const estAchatOuAppro = typeMvt === 'ENTREE' || typeMvt === 'APPROVISIONNEMENT';
+          if (ongletPrincipal === 'ACHATS') return estAchatOuAppro;
+          return !estAchatOuAppro;
         })
         .reduce((acc, mvt) => {
           const numDocBrut = mvt.motif_remarque || 'SANS-REF';
@@ -698,23 +706,24 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               ? String(operateurEnBase).trim().toUpperCase() 
               : obtenirNomOperateurConnecte();
 
-            const refDocAssociee = mvt.reference || '';
+            const motifSaisiManuel = mvt.reference || mvt.motif_remarque || '';
 
             acc[numDocBrut] = { 
               numeroDocBrut: numDocBrut,
-              referenceDoc: refDocAssociee,
+              motifSaisi: motifSaisiManuel,
               date: mvt.created_at || '', 
               type: (mvt.type_mouvement || 'TRANSFERT').toUpperCase(), 
-              depotNom: obtenirNomDepotParId(mvt.id_depot_source), 
-              depotDestNom: obtenirNomDestinationParMvt(mvt),
+              partenaireNom: obtenirNomPartenairePourDoc(mvt),
+              id_depot_source: mvt.id_depot_source,
+              id_fournisseur: mvt.id_fournisseur,
               id_emplacement_source: mvt.id_emplacement_source,
               id_emplacement_destination: mvt.id_emplacement_destination,
               operateur: operateurAffiche, 
               lignesCount: 0 
             }; 
           }
-          if (!acc[numDocBrut].referenceDoc && mvt.reference) {
-            acc[numDocBrut].referenceDoc = mvt.reference;
+          if (!acc[numDocBrut].motifSaisi && mvt.reference) {
+            acc[numDocBrut].motifSaisi = mvt.reference;
           }
           acc[numDocBrut].lignesCount += 1;
           return acc;
@@ -818,8 +827,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         }
       }
     } else if (typeOperation === 'TRANSFERT' && ongletPrincipal === 'MOUVEMENTS') {
-      if (!enTeteDoc.id_depot_source) { afficherMessage(`Sélectionnez le ${estModeBoutique ? 'dépôt' : 'partenaire'} source (départ).`, 'erreur', 'Source manquante'); return false; }
-      if (!enTeteDoc.id_depot_destination) { afficherMessage(`Sélectionnez le ${estModeBoutique ? 'dépôt' : 'partenaire'} destination.`, 'erreur', 'Destination manquante'); return false; }
+      if (!enTeteDoc.id_depot_source) { afficherMessage('Sélectionnez le dépôt départ.', 'erreur', 'Source manquante'); return false; }
+      if (!enTeteDoc.id_depot_destination) { afficherMessage('Sélectionnez le dépôt destination (arrivée).', 'erreur', 'Destination manquante'); return false; }
     } else {
       if (!enTeteDoc.id_depot_source) { afficherMessage(`Sélectionnez le ${estModeBoutique ? 'dépôt' : 'partenaire'}.`, 'erreur', `${estModeBoutique ? 'Dépôt' : 'Partenaire'} manquant`); return false; }
     }
@@ -994,7 +1003,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         try {
           if (motifSuppr) {
             libererVerrouDoc(motifSuppr);
-            const { error } = await supabase.from('mouvements_stock').delete().eq('motif_remarque', motifSuppr);
+            nettoyerFileAttenteSync(motifSuppr);
+            const { error } = await supabase
+              .from('mouvements_stock')
+              .delete()
+              .eq('id_entreprise', entrepriseId)
+              .eq('module', moduleActuel)
+              .eq('motif_remarque', motifSuppr);
+
             if (error && localSync && typeof localSync.ajouterFileAttente === 'function') {
               localSync.ajouterFileAttente('DELETE', 'mouvements_stock', { motif_remarque: motifSuppr });
             }
@@ -1041,33 +1057,46 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     });
   };
 
-  const validerDocumentMouvement = async () => {
-    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+  const executerValidationDocument = async () => {
+    if (documentEnLectureSeule) return;
 
     const dateDuJour = new Date().toISOString().split('T')[0];
     if (enTeteDoc.dateDoc < dateDuJour) {
       afficherMessage(`Modification interdite : impossible d'enregistrer sur la date du ${enTeteDoc.dateDoc} car cette journée est clôturée.`, 'erreur', 'Journée clôturée');
+      setEnTrainDeSauvegarder(false);
       return;
     }
 
-    if (mouvementEnEditionId && !permissions.peut_modifier) { afficherMessage('Action non autorisée : Modification refusée.', 'erreur', 'Permission refusée'); return; }
-    if (!mouvementEnEditionId && !permissions.peut_creer) { afficherMessage('Action non autorisée : Création refusée.', 'erreur', 'Permission refusée'); return; }
-    if (!permissions.peut_valider) { afficherMessage('Action non autorisée : Validation refusée.', 'erreur', 'Permission refusée'); return; }
+    if (mouvementEnEditionId && !permissions.peut_modifier) { afficherMessage('Action non autorisée : Modification refusée.', 'erreur', 'Permission refusée'); setEnTrainDeSauvegarder(false); return; }
+    if (!mouvementEnEditionId && !permissions.peut_creer) { afficherMessage('Action non autorisée : Création refusée.', 'erreur', 'Permission refusée'); setEnTrainDeSauvegarder(false); return; }
+    if (!permissions.peut_valider) { afficherMessage('Action non autorisée : Validation refusée.', 'erreur', 'Permission refusée'); setEnTrainDeSauvegarder(false); return; }
 
     if (!verifierEnTeteAvantSaisie() || lignesPanier.length === 0) { 
       if (lignesPanier.length === 0) afficherMessage('Ajoutez des articles.', 'erreur', 'Panier vide'); 
+      setEnTrainDeSauvegarder(false);
       return; 
     }
 
-    setEnTrainDeSauvegarder(true);
     try {
       const motifDocumentFinal = (mouvementEnEditionId && numeroDocOriginal) ? numeroDocOriginal : enTeteDoc.numeroDoc;
 
       if (motifDocumentFinal) {
-        await supabase.from('mouvements_stock').delete().eq('motif_remarque', motifDocumentFinal);
+        nettoyerFileAttenteSync(motifDocumentFinal);
+        await supabase
+          .from('mouvements_stock')
+          .delete()
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .eq('motif_remarque', motifDocumentFinal);
       }
-      if (mouvementEnEditionId && enTeteDoc.numeroDoc && enTeteDoc.numeroDoc !== motifDocumentFinal) {
-        await supabase.from('mouvements_stock').delete().eq('motif_remarque', enTeteDoc.numeroDoc);
+      if (enTeteDoc.numeroDoc && enTeteDoc.numeroDoc !== motifDocumentFinal) {
+        nettoyerFileAttenteSync(enTeteDoc.numeroDoc);
+        await supabase
+          .from('mouvements_stock')
+          .delete()
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .eq('motif_remarque', enTeteDoc.numeroDoc);
       }
       
       const operateurActuel = obtenirNomOperateurConnecte();
@@ -1095,6 +1124,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
       const estTransfertMouvement = ongletPrincipal === 'MOUVEMENTS' && typeOperation === 'TRANSFERT';
 
+      const nettoyerId = (val) => {
+        if (!val || val === '' || val === '-' || val === 'null' || val === 'undefined') return null;
+        return isNaN(val) ? val : parseInt(val, 10);
+      };
+
       let nouveauxMouvementsAjoutes = [];
       for (const [artId, dataLigne] of Object.entries(lignesUniquesMap)) {
         const typeMvEff = ongletPrincipal === 'ACHATS' ? 'ENTREE' : typeOperation;
@@ -1103,12 +1137,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           id_entreprise: entrepriseId,
           module: moduleActuel,
           type_mouvement: typeMvEff,
-          id_depot_source: enTeteDoc.id_depot_source || null,
-          id_emplacement_source: estTransfertMouvement ? (enTeteDoc.id_emplacement_source || null) : null,
-          id_depot_destination: estTransfertMouvement ? (enTeteDoc.id_depot_destination || null) : null,
-          id_emplacement_destination: estTransfertMouvement ? (enTeteDoc.id_emplacement_destination || null) : null,
-          id_article: parseInt(artId),
-          quantite: dataLigne.quantite,
+          id_depot_source: nettoyerId(enTeteDoc.id_depot_source),
+          id_emplacement_source: (estTransfertMouvement && !estModeBoutique) ? nettoyerId(enTeteDoc.id_emplacement_source) : null,
+          id_depot_destination: estTransfertMouvement ? nettoyerId(enTeteDoc.id_depot_destination) : null,
+          id_emplacement_destination: (estTransfertMouvement && !estModeBoutique) ? nettoyerId(enTeteDoc.id_emplacement_destination) : null,
+          id_article: nettoyerId(artId),
+          quantite: Number(dataLigne.quantite || 0),
           motif_remarque: motifDocumentFinal,
           reference: referenceSaisie,
           operateur: operateurActuel,
@@ -1120,8 +1154,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
         nouveauxMouvementsAjoutes.push(objetInsertion);
 
         const { error } = await supabase.from('mouvements_stock').insert([payload]);
-        if (error && localSync && typeof localSync.ajouterFileAttente === 'function') {
-          localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
+        if (error) {
+          if (localSync && typeof localSync.ajouterFileAttente === 'function') {
+            localSync.ajouterFileAttente('INSERT', 'mouvements_stock', payload);
+          } else {
+            console.error("Erreur détaillée Supabase mouvements_stock:", error);
+            afficherMessage(`Erreur enregistrement : ${error.message || JSON.stringify(error)}`, 'erreur', 'Erreur base de données');
+            setEnTrainDeSauvegarder(false);
+            return;
+          }
         }
       }
 
@@ -1187,7 +1228,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       }
       localStorage.removeItem(cleCacheMouvements);
 
-      afficherMessage(`Document validé avec succès par ${operateurActuel} !`, 'succès', 'Validation réussie');
+      afficherMessage(`Document enregistré avec succès par ${operateurActuel} !`, 'succès', 'Succès');
       setLignesPanier([]);
       setMouvementEnEditionId(null);
       setNumeroDocOriginal(null);
@@ -1215,6 +1256,23 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     } finally {
       setEnTrainDeSauvegarder(false);
     }
+  };
+
+  const validerDocumentMouvement = () => {
+    if (enTrainDeSauvegarder || documentEnLectureSeule) return;
+    setEnTrainDeSauvegarder(true);
+    setModalConfirmation({
+      titre: 'Confirmation de validation',
+      texte: `Voulez-vous valider et enregistrer ce document (${enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}) ?`,
+      onConfirm: async () => {
+        setModalConfirmation(null);
+        await executerValidationDocument();
+      },
+      onCancel: () => {
+        setModalConfirmation(null);
+        setEnTrainDeSauvegarder(false);
+      }
+    });
   };
 
   const ouvrirDocumentDepuisListe = (numeroDocUnique) => {
@@ -1248,9 +1306,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     const refEnregistree = premier.reference || premier.motif || '';
 
     const depotSourceDoc = premier.id_depot_source || '';
+    const fournisseurDoc = premier.id_fournisseur || '';
     const nomDepotDoc = obtenirNomDepotParId(depotSourceDoc).trim().toUpperCase();
     const tiersAssocie = fournisseurs.find(
-      f => String(f.id_depot) === String(depotSourceDoc) || (f.nom_fournisseur || f.nom || '').trim().toUpperCase() === nomDepotDoc
+      f => String(f.id) === String(fournisseurDoc) || String(f.id_depot) === String(depotSourceDoc) || (f.nom_fournisseur || f.nom || '').trim().toUpperCase() === nomDepotDoc
     );
 
     const nouvelEnTete = { 
@@ -1262,25 +1321,35 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       id_emplacement_source: premier.id_emplacement_source || '',
       id_depot_destination: premier.id_depot_destination || '', 
       id_emplacement_destination: premier.id_emplacement_destination || '',
-      id_fournisseur: tiersAssocie ? tiersAssocie.id : '',
+      id_fournisseur: fournisseurDoc || (tiersAssocie ? tiersAssocie.id : ''),
       referenceDoc: refEnregistree,
       operateur: operateurDoc
     };
 
-    const nouvellesLignes = lignesAssociees.map(mvt => {
-      const art = articles.find((a) => String(a.id_article || a.id) === String(mvt.id_article));
+    const mapArticlesAgreges = {};
+    lignesAssociees.forEach(mvt => {
+      const artId = String(mvt.id_article);
+      const art = articles.find((a) => String(a.id_article || a.id) === artId);
       const qte = Number(mvt.quantite || 0);
       const pu = (estAchat && estModeBoutique) ? Number(mvt.prix_unitaire || art?.Prix_Achat || art?.prix_achat || art?.Prix_Vente || art?.prix_vente || 0) : 0;
-      return { 
-        id_article: String(mvt.id_article), 
-        designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`, 
-        quantite: qte, 
-        prix_unitaire: pu,
-        montant_total: qte * pu,
-        stockActuel: 0, 
-        stockReel: qte 
-      };
+      
+      if (!mapArticlesAgreges[artId]) {
+        mapArticlesAgreges[artId] = {
+          id_article: artId,
+          designation: art ? (art.Designation || art.designation) : `Article #${mvt.id_article}`,
+          quantite: 0,
+          prix_unitaire: pu,
+          montant_total: 0,
+          stockActuel: 0,
+          stockReel: 0
+        };
+      }
+      mapArticlesAgreges[artId].quantite += qte;
+      mapArticlesAgreges[artId].montant_total = mapArticlesAgreges[artId].quantite * mapArticlesAgreges[artId].prix_unitaire;
+      mapArticlesAgreges[artId].stockReel = mapArticlesAgreges[artId].quantite;
     });
+
+    const nouvellesLignes = Object.values(mapArticlesAgreges);
 
     setNumeroDocOriginal(numeroDocUnique);
     setEnTeteDoc(nouvelEnTete);
@@ -1344,20 +1413,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       if (filtreDateFin && dateDocStr > filtreDateFin) return false;
     }
     if (filtrePartenaire) {
-      const depotNomDoc = (doc.depotNom || '').toUpperCase();
+      const partenaireNomDoc = (doc.partenaireNom || '').toUpperCase();
       const depotCibleObj = depots.find(d => String(d.id) === String(filtrePartenaire));
       const depotCibleNom = depotCibleObj ? (depotCibleObj.nom_depot || depotCibleObj.nom || '').toUpperCase() : filtrePartenaire.toUpperCase();
-      if (!depotNomDoc.includes(depotCibleNom)) return false;
-    }
-    if (filtreLivreur) {
-      const empCibleObj = emplacements.find(e => String(e.id) === String(filtreLivreur));
-      const empCibleNom = empCibleObj ? (empCibleObj.nom_emplacement || empCibleObj.code_emplacement || '').toUpperCase() : filtreLivreur.toUpperCase();
-
-      const matchSource = String(doc.id_emplacement_source) === String(filtreLivreur);
-      const matchDest = String(doc.id_emplacement_destination) === String(filtreLivreur);
-      const depotDestNom = (doc.depotDestNom || '').toUpperCase();
-
-      if (!matchSource && !matchDest && !depotDestNom.includes(empCibleNom)) return false;
+      if (!partenaireNomDoc.includes(depotCibleNom)) return false;
     }
     return true;
   });
@@ -1384,35 +1443,35 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
   if (ongletPrincipal === null) {
     return (
-      <div className="space-y-4 font-sans text-[10px] p-2 max-w-2xl mx-auto">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-center space-y-1">
-          <h2 className="text-xs font-black uppercase text-slate-900 tracking-wider">
+      <div className="space-y-4 font-sans text-xs p-3 max-w-2xl mx-auto">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-center space-y-1.5">
+          <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">
             📦 GESTION DU STOCK
           </h2>
-          <p className="text-[10px] text-slate-500 font-bold">
+          <p className="text-xs text-slate-500 font-bold">
             Sélectionnez l'opération que vous souhaitez effectuer :
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div 
             onClick={basculerVersAchats}
-            className="bg-white p-4 rounded-2xl border-2 border-emerald-500/40 hover:border-emerald-500 hover:bg-emerald-50/20 transition cursor-pointer shadow-sm flex flex-col justify-between space-y-3 group"
+            className="bg-white p-5 rounded-2xl border-2 border-emerald-500/40 hover:border-emerald-500 hover:bg-emerald-50/20 transition cursor-pointer shadow-sm flex flex-col justify-between space-y-4 group"
           >
-            <div className="space-y-2">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg font-black group-hover:scale-105 transition">
+            <div className="space-y-2.5">
+              <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl font-black group-hover:scale-105 transition">
                 🛒
               </div>
-              <h3 className="font-black text-xs uppercase text-emerald-900">
+              <h3 className="font-black text-sm uppercase text-emerald-900">
                 Achat
               </h3>
-              <p className="text-[9.5px] font-semibold text-slate-600 leading-relaxed">
+              <p className="text-xs font-medium text-slate-600 leading-relaxed">
                 {estModeBoutique
                   ? "Permet d'enregistrer les entrées de stock issues des fournisseurs vers un dépôt."
                   : "Permet d'enregistrer les entrées de stock directement dans le dépôt du partenaire."}
               </p>
             </div>
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-emerald-700 font-black text-[9.5px]">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-emerald-700 font-black text-xs">
               <span>Ouvrir</span>
               <span>→</span>
             </div>
@@ -1420,20 +1479,20 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
           <div 
             onClick={basculerVersMouvements}
-            className="bg-white p-4 rounded-2xl border-2 border-orange-500/40 hover:border-orange-500 hover:bg-orange-50/20 transition cursor-pointer shadow-sm flex flex-col justify-between space-y-3 group"
+            className="bg-white p-5 rounded-2xl border-2 border-orange-500/40 hover:border-orange-500 hover:bg-orange-50/20 transition cursor-pointer shadow-sm flex flex-col justify-between space-y-4 group"
           >
-            <div className="space-y-2">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center text-lg font-black group-hover:scale-105 transition">
+            <div className="space-y-2.5">
+              <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center text-xl font-black group-hover:scale-105 transition">
                 🔀
               </div>
-              <h3 className="font-black text-xs uppercase text-orange-900">
-                Mouvement
+              <h3 className="font-black text-sm uppercase text-orange-900">
+                Gestion des Mouvements
               </h3>
-              <p className="text-[9.5px] font-semibold text-slate-600 leading-relaxed">
+              <p className="text-xs font-medium text-slate-600 leading-relaxed">
                 Permet d'effectuer des transferts, des sorties, des avaries ou des inventaires.
               </p>
             </div>
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-orange-700 font-black text-[9.5px]">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-orange-700 font-black text-xs">
               <span>Ouvrir</span>
               <span>→</span>
             </div>
@@ -1442,7 +1501,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
         {modalMessage && (
           <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-6 space-y-4 text-center">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 text-orange-600 text-xl font-black">
                 {modalMessage.type === 'erreur' ? '⚠️' : 'ℹ️'}
               </div>
@@ -1453,7 +1512,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               <button
                 type="button"
                 onClick={() => setModalMessage(null)}
-                className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
+                className="w-full py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md"
               >
                 OK
               </button>
@@ -1465,9 +1524,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   }
 
   return (
-    <div className="space-y-2 font-sans text-[10px]">
-      <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-2xs gap-1.5 flex-nowrap overflow-x-auto">
-        <div className="flex items-center gap-1.5 shrink-0">
+    <div className="space-y-2 font-sans text-xs max-w-5xl mx-auto p-1">
+      
+      {/* 1. BARRE DE NAVIGATION SUPÉRIEURE */}
+      <div className="bg-slate-900 text-white px-3 py-2 rounded-xl shadow-md flex flex-nowrap justify-between items-center gap-2 overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center gap-2 shrink-0">
           <button 
             type="button" 
             onClick={() => {
@@ -1476,17 +1537,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               }
               setOngletPrincipal(null);
             }} 
-            className="p-1 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-[9px] transition cursor-pointer flex items-center gap-1 border border-slate-300"
-            title="Retour"
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-xs transition cursor-pointer flex items-center gap-1 border border-slate-700"
           >
-            <span>←</span> Retour
+            <span>←</span> Accueil
           </button>
-          <span className="font-black uppercase text-slate-900 text-[10px]">
-            {ongletPrincipal === 'ACHATS' ? '🛒 ACHAT' : '🔀 MOUVEMENT'}
+          
+          <span className={`px-2 py-1 rounded-lg font-black text-xs uppercase ${ongletPrincipal === 'ACHATS' ? 'bg-emerald-600 text-white' : 'bg-orange-600 text-white'}`}>
+            {ongletPrincipal === 'ACHATS' ? 'ACHAT' : 'MOUVEMENT'}
           </span>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
@@ -1507,14 +1568,15 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               setMontantPayeAchat(0);
               setEnTeteDoc(prev => ({ ...prev, id_depot_source: '', id_emplacement_source: '', id_depot_destination: '', id_emplacement_destination: '', id_fournisseur: '', referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeCible), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
             }} 
-            className={`py-1 px-2.5 rounded-lg font-black transition text-center text-[9px] uppercase border whitespace-nowrap ${
+            className={`py-1 px-3 rounded-lg font-black transition text-xs uppercase cursor-pointer flex items-center gap-1 ${
               modeAffichage === 'SAISIE' 
-                ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md' 
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
             }`}
           >
-            ✍️ {mouvementEnEditionId ? 'Modifier' : 'Créer'}
+            <span>✏️</span> Saisie
           </button>
+
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
@@ -1528,48 +1590,33 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 setModeAffichage('LISTE_DOCS');
               }
             }} 
-            className={`py-1 px-2.5 rounded-lg font-black transition text-center text-[9px] uppercase border whitespace-nowrap ${
+            className={`py-1 px-3 rounded-lg font-black transition text-xs uppercase cursor-pointer flex items-center gap-1 ${
               modeAffichage === 'LISTE_DOCS' 
-                ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md' 
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
             }`}
           >
-            📋 Liste ({documentsFiltresParCriteres.length})
+            <span>📜</span> Liste ({documentsFiltresParCriteres.length})
           </button>
         </div>
       </div>
 
       {modeAffichage === 'SAISIE' && (
-        <>
+        <div className="space-y-2">
           {documentEnLectureSeule && (
-            <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-[10px] uppercase shadow-xs flex items-center justify-center gap-2">
-              <span>🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée)</span>
-            </div>
-          )}
-
-          {ongletPrincipal === 'MOUVEMENTS' && (
-            <div className="bg-white border border-slate-200 p-2 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
-              <span className="font-extrabold text-[9px] text-slate-700 uppercase shrink-0">Type</span>
-              <button
-                type="button"
-                disabled={enTeteVerrouille || !!mouvementEnEditionId}
-                onClick={() => setModalTypeMouvementOuvert(true)}
-                className="bg-slate-50 border rounded px-2.5 py-1 font-extrabold text-orange-600 text-[9px] truncate w-full flex justify-between items-center disabled:opacity-70"
-              >
-                <span className="truncate">{libellesTypesMouvement[typeOperation]}</span>
-                <span>🔍</span>
-              </button>
+            <div className="bg-amber-50 border-2 border-amber-300 text-amber-900 p-2 rounded-xl text-center font-black text-xs uppercase shadow-xs">
+              🔒 DOCUMENT EN CONSULTATION SEULE (Journée clôturée)
             </div>
           )}
 
           {modalTypeMouvementOuvert && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5">
-                    <span>🔀</span> TYPE DE MOUVEMENT
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2">
+                    <span>🔀</span> SÉLECTIONNER LE TYPE DE MOUVEMENT
                   </h4>
-                  <button type="button" onClick={() => setModalTypeMouvementOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm px-1.5 py-0.5 rounded-md hover:bg-slate-100 transition">✕</button>
+                  <button type="button" onClick={() => setModalTypeMouvementOuvert(false)} className="text-slate-400 hover:text-slate-700 font-black text-sm p-1">✕</button>
                 </div>
                 
                 <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
@@ -1598,18 +1645,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                         }));
                         setModalTypeMouvementOuvert(false);
                       }} 
-                      className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between shadow-2xs ${
+                      className={`p-3.5 rounded-xl border transition cursor-pointer flex items-center justify-between shadow-2xs ${
                         typeOperation === item.id ? 'bg-orange-50 border-orange-500 text-orange-900' : 'bg-white border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 text-slate-900'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{item.icone}</span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-base">{item.icone}</span>
                         <div>
                           <span className="font-black text-xs uppercase block">{item.libelle}</span>
-                          <span className="text-[8.5px] text-slate-500 font-bold">{descriptionsTypesMouvement[item.id]}</span>
+                          <span className="text-[10px] text-slate-500 font-medium">{descriptionsTypesMouvement[item.id]}</span>
                         </div>
                       </div>
-                      {typeOperation === item.id && <span className="text-orange-600 font-bold text-xs">✓</span>}
+                      {typeOperation === item.id && <span className="text-orange-600 font-black text-sm">✓</span>}
                     </div>
                   ))}
                 </div>
@@ -1617,225 +1664,297 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          <div className={`bg-white border-2 ${ongletPrincipal === 'ACHATS' ? 'border-emerald-500/50' : 'border-orange-500/50'} p-2 rounded-xl shadow-2xs space-y-1.5 ${enTeteVerrouille ? 'bg-slate-50/80' : ''}`}>
-            <div className="flex justify-between items-center pb-1 border-b gap-1">
-              <div className="flex items-center gap-2 truncate">
-                <span className={`font-black text-[9.5px] uppercase truncate ${ongletPrincipal === 'ACHATS' ? 'text-emerald-700' : 'text-orange-600'}`}>
-                  {ongletPrincipal === 'ACHATS' ? 'ACHAT' : (typeOperation === 'TRANSFERT' ? 'TRANSFERT' : libellesTypesMouvement[typeOperation])} {enTeteVerrouille && '🔒'}
-                </span>
-                <span className="text-[8px] text-slate-500 font-bold uppercase whitespace-nowrap">
-                  USER : <strong className="text-slate-800">{mouvementEnEditionId ? enTeteDoc.operateur : obtenirNomOperateurConnecte()}</strong>
+          {/* 2. CARTE D'EN-TÊTE DOCUMENT AVEC TITRE MODIFIÉ EN "ACHAT" */}
+          <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm space-y-2">
+            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                {ongletPrincipal === 'MOUVEMENTS' ? (
+                  <button
+                    type="button"
+                    disabled={enTeteVerrouille || !!mouvementEnEditionId}
+                    onClick={() => setModalTypeMouvementOuvert(true)}
+                    className="bg-orange-50 hover:bg-orange-100 border border-orange-300 text-orange-800 px-2.5 py-1 rounded-lg font-black text-xs uppercase flex items-center gap-1.5 cursor-pointer disabled:opacity-70 transition shadow-2xs"
+                  >
+                    <span>🔀 {libellesTypesMouvement[typeOperation]}</span>
+                    <span>▼</span>
+                  </button>
+                ) : (
+                  <h4 className="font-black text-xs uppercase text-slate-900 flex items-center gap-1.5">
+                    <span>ACHAT</span>
+                  </h4>
+                )}
+
+                {/* USER INSÉRÉ JUSTE APRÈS ACHAT / TYPE */}
+                <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-lg font-black text-[11px] uppercase shadow-2xs flex items-center gap-1" title="Opérateur connecté">
+                  <span>👤</span> {enTeteDoc.operateur || obtenirNomOperateurConnecte()}
                 </span>
               </div>
-              <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-1.5 py-0.5 rounded font-mono font-black text-[9px] shrink-0`}>
-                {enTeteDoc.numeroAffichage || enTeteDoc.numeroDoc}
+
+              <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-0.5 rounded-lg font-mono font-black text-xs shadow-2xs" title={enTeteDoc.numeroDoc}>
+                {enTeteDoc.numeroAffichage || (documentsGroupes.find(d => String(d.numeroDocBrut) === String(enTeteDoc.numeroDoc))?.numeroDoc) || `${ongletPrincipal === 'ACHATS' ? 'APP' : (typeOperation === 'ENTREE_STOCK' ? 'ES' : typeOperation === 'SORTIE' ? 'MS' : typeOperation === 'AVARIES' ? 'AV' : typeOperation === 'INVENTAIRE' ? 'INV' : 'TR')}-01`}
               </span>
             </div>
-            
-            <div className="space-y-1.5 text-[9.5px]">
-              {ongletPrincipal === 'ACHATS' ? (
-                estModeBoutique ? (
+
+            {/* Structure spécifique selon s'il s'agit d'un Transfert, d'un Achat ou d'un autre mouvement */}
+            {(ongletPrincipal === 'MOUVEMENTS' && typeOperation === 'TRANSFERT') ? (
+              <div className="space-y-2">
+                {estModeBoutique ? (
+                  /* Transfert en mode Boutique : Date, Dépôt départ, Dépôt arrivée, Motif (pas de partenaire, pas de livreur) */
                   <>
-                    <div className="grid grid-cols-12 gap-1.5 items-center">
-                      <div className="col-span-5 sm:col-span-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
                         <input 
                           type="date" 
                           disabled={documentEnLectureSeule} 
                           value={enTeteDoc.dateDoc} 
                           onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
-                          className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900 disabled:opacity-70 text-[9px]" 
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                         />
                       </div>
-                      <div className="col-span-7 sm:col-span-8">
+                      <div>
                         <input 
                           type="text" 
                           disabled={documentEnLectureSeule} 
                           value={enTeteDoc.referenceDoc} 
-                          placeholder="N° Facture / Motif *"
+                          placeholder="Motif / Référence..."
                           onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                          className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900 disabled:opacity-70 text-[9px]" 
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
                         />
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-                      <div className="bg-emerald-50/50 p-1 rounded-lg border border-emerald-300">
-                        <button 
-                          type="button"
-                          disabled={enTeteVerrouille}
-                          onClick={() => { setRechercheModalPopup(''); setModalFournisseurOuvert(true); }}
-                          className="w-full bg-white border rounded p-1 text-left font-extrabold text-emerald-700 text-[9px] flex justify-between items-center disabled:opacity-70"
-                        >
-                          <span className="truncate">🤝 {obtenirNomFournisseurParId(enTeteDoc.id_fournisseur) || 'Fournisseur *'}</span>
-                          <span className="shrink-0 ml-1">🔍</span>
-                        </button>
-                      </div>
-
-                      <div className="bg-orange-50/40 p-1 rounded-lg border border-orange-300">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
                         <button 
                           type="button"
                           disabled={enTeteVerrouille}
                           onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                          className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-600 text-[9px] flex justify-between items-center disabled:opacity-70"
+                          className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
                         >
-                          <span className="truncate">🏢 {obtenirNomDepotParId(enTeteDoc.id_depot_source) !== '-' ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : '-- Dépôt * --'}</span>
-                          <span className="shrink-0 ml-1">🔍</span>
+                          <span className="truncate">🏢 Dépôt Départ : {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Sélectionner *'}</span>
+                          <span className="shrink-0 ml-1 text-orange-600">🔍</span>
+                        </button>
+                      </div>
+                      <div>
+                        <button 
+                          type="button"
+                          disabled={enTeteVerrouille}
+                          onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
+                          className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70"
+                        >
+                          <span className="truncate">🎯 Dépôt Arrivée : {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Sélectionner *'}</span>
+                          <span className="shrink-0 ml-1 text-blue-600">🔍</span>
                         </button>
                       </div>
                     </div>
                   </>
                 ) : (
-                  <div className="grid grid-cols-12 gap-1 items-center">
-                    <div className="col-span-4">
+                  /* Transfert en mode Livraison (Complet avec partenaires/livreurs) */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <input 
+                          type="date" 
+                          disabled={documentEnLectureSeule} 
+                          value={enTeteDoc.dateDoc} 
+                          onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
+                        />
+                      </div>
+                      <div>
+                        <input 
+                          type="text" 
+                          disabled={documentEnLectureSeule} 
+                          value={enTeteDoc.referenceDoc} 
+                          placeholder="Motif / Référence..."
+                          onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <button 
+                          type="button"
+                          disabled={enTeteVerrouille}
+                          onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
+                          className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
+                        >
+                          <span className="truncate">🏢 Départ Partenaire : {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Sélectionner *'}</span>
+                          <span className="shrink-0 ml-1 text-orange-600">🔍</span>
+                        </button>
+                      </div>
+                      <div>
+                        <button 
+                          type="button"
+                          disabled={enTeteVerrouille}
+                          onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70"
+                        >
+                          <span className="truncate">🛵 Départ Livreur : {enTeteDoc.id_emplacement_source ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : 'Aucun (Optionnel)'}</span>
+                          <span className="shrink-0 ml-1 text-slate-600">🔍</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <button 
+                          type="button"
+                          disabled={enTeteVerrouille}
+                          onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
+                          className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70"
+                        >
+                          <span className="truncate">🎯 Arrivée Partenaire : {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Sélectionner *'}</span>
+                          <span className="shrink-0 ml-1 text-blue-600">🔍</span>
+                        </button>
+                      </div>
+                      <div>
+                        <button 
+                          type="button"
+                          disabled={enTeteVerrouille}
+                          onClick={() => { setRechercheModalPopup(''); setModalLivreurDestOuvert(true); }}
+                          className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70"
+                        >
+                          <span className="truncate">🛵 Arrivée Livreur : {enTeteDoc.id_emplacement_destination ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : 'Aucun (Optionnel)'}</span>
+                          <span className="shrink-0 ml-1 text-slate-600">🔍</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : ongletPrincipal === 'ACHATS' ? (
+              <div className="space-y-2">
+                {estModeBoutique ? (
+                  /* Module Boutique : Date, Fournisseur et Dépôt sur la même ligne */
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
                       <input 
                         type="date" 
                         disabled={documentEnLectureSeule} 
                         value={enTeteDoc.dateDoc} 
                         onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
-                        className="w-full bg-slate-50 border rounded px-1 py-1 font-bold text-slate-900 disabled:opacity-70 text-[8.5px]" 
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                       />
                     </div>
-                    <div className="col-span-4">
+                    <div>
                       <button 
                         type="button"
                         disabled={enTeteVerrouille}
                         onClick={() => { setRechercheModalPopup(''); setModalFournisseurOuvert(true); }}
-                        className="w-full bg-emerald-50/60 border border-emerald-400 rounded px-1.5 py-1 text-left font-extrabold text-emerald-800 text-[8.5px] flex justify-between items-center disabled:opacity-70"
+                        className="w-full bg-white border border-emerald-400 rounded-xl p-2 text-left font-extrabold text-emerald-800 text-xs flex justify-between items-center shadow-2xs hover:bg-emerald-50/50 transition cursor-pointer disabled:opacity-70"
                       >
-                        <span className="truncate">🤝 {nomPartenaireSelectionne || 'Partenaire *'}</span>
-                        <span className="shrink-0 ml-0.5">🔍</span>
+                        <span className="truncate">🤝 {obtenirNomFournisseurParId(enTeteDoc.id_fournisseur) || 'FOURNISSEUR *'}</span>
+                        <span className="shrink-0 ml-1 text-emerald-600">🔍</span>
                       </button>
                     </div>
-                    <div className="col-span-4">
-                      <input 
-                        type="text" 
-                        disabled={documentEnLectureSeule} 
-                        value={enTeteDoc.referenceDoc} 
-                        placeholder="Facture / Motif *"
-                        onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                        className="w-full bg-slate-50 border rounded px-1.5 py-1 font-extrabold uppercase text-slate-900 disabled:opacity-70 text-[8.5px]" 
-                      />
+                    <div>
+                      <button 
+                        type="button"
+                        disabled={enTeteVerrouille}
+                        onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
+                        className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
+                      >
+                        <span className="truncate">🏢 {obtenirNomDepotParId(enTeteDoc.id_depot_source) !== '-' ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'DÉPÔT *'}</span>
+                        <span className="shrink-0 ml-1 text-orange-600">🔍</span>
+                      </button>
                     </div>
                   </div>
-                )
-              ) : typeOperation === 'TRANSFERT' ? (
-                <>
-                  <div className="grid grid-cols-12 gap-1.5 items-center">
-                    <div className="col-span-5 sm:col-span-4">
+                ) : (
+                  /* Module Livraison : Date, Partenaire et Motif sur la même ligne (Pas de dépôt) */
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
                       <input 
                         type="date" 
                         disabled={documentEnLectureSeule} 
                         value={enTeteDoc.dateDoc} 
                         onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
-                        className="w-full bg-slate-50 border rounded p-1 font-bold text-slate-900 disabled:opacity-70 text-[9px]" 
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
                       />
                     </div>
-                    <div className="col-span-7 sm:col-span-8">
+                    <div>
+                      <button 
+                        type="button"
+                        disabled={enTeteVerrouille}
+                        onClick={() => { setRechercheModalPopup(''); setModalFournisseurOuvert(true); }}
+                        className="w-full bg-white border border-emerald-400 rounded-xl p-2 text-left font-extrabold text-emerald-800 text-xs flex justify-between items-center shadow-2xs hover:bg-emerald-50/50 transition cursor-pointer disabled:opacity-70"
+                      >
+                        <span className="truncate">🤝 {nomPartenaireSelectionne || 'PARTENAIRE *'}</span>
+                        <span className="shrink-0 ml-1 text-emerald-600">🔍</span>
+                      </button>
+                    </div>
+                    <div>
                       <input 
                         type="text" 
                         disabled={documentEnLectureSeule} 
                         value={enTeteDoc.referenceDoc} 
-                        placeholder="Motif *"
+                        placeholder="MOTIF / RÉFÉRENCE..."
                         onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                        className="w-full bg-slate-50 border rounded p-1 font-extrabold uppercase text-slate-900 disabled:opacity-70 text-[9px]" 
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
                       />
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-1.5 pt-0.5">
-                    <div className="space-y-1 bg-orange-50/40 p-1.5 rounded-lg border border-orange-200">
-                      <button 
-                        type="button"
-                        disabled={enTeteVerrouille}
-                        onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                        className="w-full bg-white border rounded p-1 text-left font-extrabold text-orange-700 text-[9px] flex justify-between items-center disabled:opacity-70"
-                      >
-                        <span className="truncate">{estModeBoutique ? '🏢' : '🤝'} {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : (estModeBoutique ? '-- Départ --' : '-- Partenaire --')}</span>
-                        <span className="shrink-0 ml-1">🔍</span>
-                      </button>
-                      <button 
-                        type="button"
-                        disabled={enTeteVerrouille}
-                        onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
-                        className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1 disabled:opacity-70"
-                      >
-                        <span className="truncate">📍 {obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : libellePlaceholderSource}</span>
-                        <span className="shrink-0 ml-1">🔍</span>
-                      </button>
-                    </div>
-
-                    <div className="space-y-1 bg-blue-50/40 p-1.5 rounded-lg border border-blue-200">
-                      <button 
-                        type="button"
-                        disabled={enTeteVerrouille}
-                        onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
-                        className="w-full bg-white border rounded p-1 text-left font-extrabold text-blue-700 text-[9px] flex justify-between items-center disabled:opacity-70"
-                      >
-                        <span className="truncate">🎯 {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : (estModeBoutique ? '-- Destination --' : '-- Partenaire Dest. --')}</span>
-                        <span className="shrink-0 ml-1">🔍</span>
-                      </button>
-                      <button 
-                        type="button"
-                        disabled={enTeteVerrouille}
-                        onClick={() => { setRechercheModalPopup(''); setModalLivreurDestOuvert(true); }}
-                        className="w-full bg-white border rounded p-1 text-left font-bold text-slate-800 text-[9px] flex justify-between items-center mt-1 disabled:opacity-70"
-                      >
-                        <span className="truncate">📍 {obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) !== '-' ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : libellePlaceholderDest}</span>
-                        <span className="shrink-0 ml-1">🔍</span>
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="grid grid-cols-12 gap-1 items-center">
-                  <div className="col-span-4">
-                    <input 
-                      type="date" 
-                      disabled={documentEnLectureSeule} 
-                      value={enTeteDoc.dateDoc} 
-                      onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
-                      className="w-full bg-slate-50 border rounded px-1 py-1 font-bold text-slate-900 disabled:opacity-70 text-[8.5px]" 
-                    />
-                  </div>
-                  <div className="col-span-4">
-                    <button 
-                      type="button"
-                      disabled={enTeteVerrouille}
-                      onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
-                      className="w-full bg-orange-50/50 border border-orange-300 rounded px-1.5 py-1 text-left font-extrabold text-orange-700 text-[8.5px] flex justify-between items-center disabled:opacity-70"
-                    >
-                      <span className="truncate">
-                        {estModeBoutique ? '🏢' : '🤝'} {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : (estModeBoutique ? 'Dépôt *' : 'Partenaire *')}
-                      </span>
-                      <span className="shrink-0 ml-0.5">🔍</span>
-                    </button>
-                  </div>
-                  <div className="col-span-4">
+                )}
+                {estModeBoutique && (
+                  <div>
                     <input 
                       type="text" 
                       disabled={documentEnLectureSeule} 
                       value={enTeteDoc.referenceDoc} 
-                      placeholder="Motif *"
+                      placeholder="Ex: FACT-2026-089 ou BL-004..."
                       onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
-                      className="w-full bg-slate-50 border rounded px-1.5 py-1 font-extrabold uppercase text-slate-900 disabled:opacity-70 text-[8.5px]" 
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
                     />
                   </div>
+                )}
+              </div>
+            ) : (
+              /* Pour Entrée en stock, Sortie, Avaries et Inventaire : Date, Dépôt et Motif sur la même ligne */
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <input 
+                    type="date" 
+                    disabled={documentEnLectureSeule} 
+                    value={enTeteDoc.dateDoc} 
+                    onChange={(e) => setEnTeteDoc({ ...enTeteDoc, dateDoc: e.target.value })} 
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70 cursor-pointer" 
+                  />
                 </div>
-              )}
-            </div>
+                <div>
+                  <button 
+                    type="button"
+                    disabled={enTeteVerrouille}
+                    onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
+                    className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
+                  >
+                    <span className="truncate">🏢 {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : (estModeBoutique ? 'DÉPÔT *' : 'PARTENAIRE *')}</span>
+                    <span className="shrink-0 ml-1 text-orange-600">🔍</span>
+                  </button>
+                </div>
+                <div>
+                  <input 
+                    type="text" 
+                    disabled={documentEnLectureSeule} 
+                    value={enTeteDoc.referenceDoc} 
+                    placeholder="Motif / Référence..."
+                    onChange={(e) => setEnTeteDoc({ ...enTeteDoc, referenceDoc: e.target.value })} 
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-extrabold uppercase text-slate-900 text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none disabled:opacity-70" 
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {modalFournisseurOuvert && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🤝</span> {libelleTiers.toUpperCase()}</h4>
-                  <button type="button" onClick={() => setModalFournisseurOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2"><span>🤝</span> SÉLECTIONNER LE {libelleTiers.toUpperCase()}</h4>
+                  <button type="button" onClick={() => setModalFournisseurOuvert(false)} className="text-slate-400 font-black text-sm p-1">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-slate-900 uppercase text-xs" />
                 </div>
-                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
                   {fournisseurs.filter(f => (f.nom_fournisseur || f.nom || '').toUpperCase().includes(rechercheModalPopup)).length === 0 ? (
                     <div className="col-span-2 py-4 text-center text-slate-400 font-bold text-xs">
                       Aucun {libelleTiers.toLowerCase()} trouvé.
@@ -1849,16 +1968,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           setEnTeteDoc(prev => ({ 
                             ...prev, 
                             id_fournisseur: f.id,
-                            id_depot_source: depotAssocie ? depotAssocie.id : (!estModeBoutique ? '' : prev.id_depot_source)
+                            id_depot_source: depotAssocie ? depotAssocie.id : (!estModeBoutique ? (depotAssocie?.id || prev.id_depot_source) : prev.id_depot_source)
                           })); 
                           setModalFournisseurOuvert(false); 
-                        }} className="p-3 rounded-xl border border-slate-200 hover:bg-emerald-50 cursor-pointer flex flex-col justify-between shadow-2xs">
+                        }} className="p-3.5 rounded-xl border border-slate-200 hover:bg-emerald-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                           <span className="font-black text-xs text-slate-900 uppercase truncate">{f.nom_fournisseur || f.nom}</span>
-                          {!estModeBoutique && (
-                            <span className="text-[8.5px] font-bold text-slate-500 truncate mt-0.5">
-                              {depotAssocie ? `🏢 Dépôt : ${depotAssocie.nom_depot}` : '⚠️ Aucun dépôt rattaché'}
-                            </span>
-                          )}
                         </div>
                       );
                     })
@@ -1869,16 +1983,16 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           )}
 
           {modalDepotSourceOuvert && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> {estModeBoutique ? 'DÉPÔT' : 'PARTENAIRE'}</h4>
-                  <button type="button" onClick={() => setModalDepotSourceOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2"><span>🏢</span> SÉLECTIONNER LE DÉPÔT / PARTENAIRE</h4>
+                  <button type="button" onClick={() => setModalDepotSourceOuvert(false)} className="text-slate-400 font-black text-sm p-1">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-slate-900 uppercase text-xs" />
                 </div>
-                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
                   {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
                     <div key={dep.id} onClick={() => { 
                       setEnTeteDoc(prev => ({ 
@@ -1887,7 +2001,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                         id_depot_destination: (typeOperation === 'TRANSFERT' && (!prev.id_depot_destination || prev.id_depot_destination === prev.id_depot_source)) ? dep.id : prev.id_depot_destination
                       })); 
                       setModalDepotSourceOuvert(false); 
-                    }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
+                    }} className="p-3.5 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                       <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
                     </div>
                   ))}
@@ -1897,18 +2011,18 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           )}
 
           {modalDepotDestOuvert && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> {estModeBoutique ? 'DÉPÔT DESTINATION' : 'PARTENAIRE DESTINATION'}</h4>
-                  <button type="button" onClick={() => setModalDepotDestOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2"><span>🎯</span> SÉLECTIONNER LA DESTINATION</h4>
+                  <button type="button" onClick={() => setModalDepotDestOuvert(false)} className="text-slate-400 font-black text-sm p-1">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-slate-900 uppercase text-xs" />
                 </div>
-                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
                   {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheModalPopup)).map((dep) => (
-                    <div key={dep.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_depot_destination: dep.id })); setModalDepotDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
+                    <div key={dep.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_depot_destination: dep.id })); setModalDepotDestOuvert(false); }} className="p-3.5 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                       <span className="font-black text-xs text-slate-900 uppercase truncate">{dep.nom_depot}</span>
                     </div>
                   ))}
@@ -1918,21 +2032,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           )}
 
           {modalLivreurSourceOuvert && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> {libelleLivreur.toUpperCase()}</h4>
-                  <button type="button" onClick={() => setModalLivreurSourceOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2"><span>🛵</span> SÉLECTIONNER LE {libelleLivreur.toUpperCase()} DÉPART</h4>
+                  <button type="button" onClick={() => setModalLivreurSourceOuvert(false)} className="text-slate-400 font-black text-sm p-1">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-slate-900 uppercase text-xs" />
                 </div>
-                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: '' })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
-                    <span className="font-black text-xs text-slate-500 uppercase truncate">{libelleAucunLivreur}</span>
-                  </div>
-                  {emplacementsSourceFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
-                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: emp.id })); setModalLivreurSourceOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: '' })); setModalLivreurSourceOuvert(false); }} className="col-span-2 p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer font-bold text-slate-500 text-xs text-center">Aucun (Optionnel)</div>
+                  {emplacements.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
+                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_source: emp.id })); setModalLivreurSourceOuvert(false); }} className="p-3.5 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                       <span className="font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</span>
                     </div>
                   ))}
@@ -1942,21 +2054,19 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           )}
 
           {modalLivreurDestOuvert && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> {libelleLivreur.toUpperCase()} DESTINATION</h4>
-                  <button type="button" onClick={() => setModalLivreurDestOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2"><span>🛵</span> SÉLECTIONNER LE {libelleLivreur.toUpperCase()} ARRIVÉE</h4>
+                  <button type="button" onClick={() => setModalLivreurDestOuvert(false)} className="text-slate-400 font-black text-sm p-1">✕</button>
                 </div>
                 <div>
-                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder={libelleRechercheLivreur} autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
+                  <input type="text" value={rechercheModalPopup} onChange={(e) => setRechercheModalPopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-slate-900 uppercase text-xs" />
                 </div>
-                <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: '' })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs bg-slate-50">
-                    <span className="font-black text-xs text-slate-500 uppercase truncate">{libelleAucunLivreur}</span>
-                  </div>
-                  {emplacementsDestinationFiltres.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
-                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: emp.id })); setModalLivreurDestOuvert(false); }} className="p-3 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
+                  <div onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: '' })); setModalLivreurDestOuvert(false); }} className="col-span-2 p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer font-bold text-slate-500 text-xs text-center">Aucun (Optionnel)</div>
+                  {emplacements.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheModalPopup)).map((emp) => (
+                    <div key={emp.id} onClick={() => { setEnTeteDoc(prev => ({ ...prev, id_emplacement_destination: emp.id })); setModalLivreurDestOuvert(false); }} className="p-3.5 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer flex flex-col justify-between shadow-2xs">
                       <span className="font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</span>
                     </div>
                   ))}
@@ -1965,22 +2075,21 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          <div className="bg-white border p-2 rounded-xl shadow-2xs space-y-1.5">
-            <span className="font-extrabold text-slate-800 uppercase text-[8.5px]">Articles [{moduleActuel}]</span>
-            
-            {!documentEnLectureSeule && (
-              ongletPrincipal === 'ACHATS' && estModeBoutique ? (
-                <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
-                  <div className="col-span-4">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
-                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
-                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
-                      <span className="text-emerald-600 shrink-0 ml-1">🔍</span>
+          {/* 3. CARTE D'AJOUT D'ARTICLE */}
+          {!documentEnLectureSeule && (
+            <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
+              {ongletPrincipal === 'ACHATS' && estModeBoutique ? (
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-12 sm:col-span-5">
+                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">ARTICLE À AJOUTER*</label>
+                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/35 transition cursor-pointer">
+                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '🔍 CHOISIR UN ARTICLE...'}</span>
+                      <span className="shrink-0 ml-1">▼</span>
                     </button>
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
+                  <div className="col-span-4 sm:col-span-2">
+                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">QTÉ*</label>
                     <input 
                       ref={inputQuantiteRef} 
                       type="number" 
@@ -1990,12 +2099,12 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       onFocus={(e) => e.target.select()} 
                       onChange={(e) => setQuantiteSaisie(e.target.value)} 
                       onKeyDown={gererKeyDownQuantite}
-                      className="w-full bg-white border rounded p-1 font-black text-emerald-600 text-center" 
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-center text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none" 
                     />
                   </div>
 
-                  <div className="col-span-3">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">PU *</label>
+                  <div className="col-span-4 sm:col-span-2">
+                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">P.U.*</label>
                     <input 
                       ref={inputPrixRef}
                       type="number" 
@@ -2005,40 +2114,33 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       onFocus={(e) => e.target.select()} 
                       onChange={(e) => setPrixUnitaireSaisi(e.target.value)} 
                       onKeyDown={gererKeyDownPrix}
-                      className="w-full bg-white border rounded p-1 font-black text-slate-900 text-center" 
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-center text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none" 
                     />
                   </div>
 
-                  <div className="col-span-2">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Total</label>
-                    <div className="w-full bg-slate-100 border rounded p-1 font-black text-slate-800 text-right truncate">
-                      {(Number(quantiteSaisie || 0) * Number(prixUnitaireSaisi || 0)).toLocaleString()}
-                    </div>
-                  </div>
-
-                  <div className="col-span-1">
+                  <div className="col-span-4 sm:col-span-3">
                     <button 
                       type="button" 
                       disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
                       onClick={ajouterArticleAuPanier} 
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black p-1 rounded text-center text-[9px]"
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black p-2 rounded-xl text-center text-xs uppercase shadow-md transition cursor-pointer"
                     >
-                      {enTrainDInsertion ? '...' : 'OK'}
+                      {enTrainDInsertion ? '...' : '+ AJOUTER'}
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-12 gap-1 items-end bg-slate-50 p-1.5 rounded-lg border text-[9.5px]">
-                  <div className="col-span-8">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Article *</label>
-                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border rounded p-1 text-left font-extrabold text-slate-900 flex justify-between items-center truncate">
-                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '-- Sélectionner --'}</span>
-                      <span className="text-orange-600 shrink-0 ml-1">🔍</span>
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-12 sm:col-span-7">
+                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">ARTICLE À AJOUTER*</label>
+                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/35 transition cursor-pointer">
+                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '🔍 CHOISIR UN ARTICLE...'}</span>
+                      <span className="shrink-0 ml-1">▼</span>
                     </button>
                   </div>
                   
-                  <div className="col-span-3">
-                    <label className="block font-bold text-[7.5px] text-slate-600 mb-0.5">Qte *</label>
+                  <div className="col-span-6 sm:col-span-2">
+                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">QTÉ*</label>
                     <input 
                       ref={inputQuantiteRef} 
                       type="number" 
@@ -2048,133 +2150,154 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                       onFocus={(e) => e.target.select()} 
                       onChange={(e) => setQuantiteSaisie(e.target.value)} 
                       onKeyDown={gererKeyDownQuantite}
-                      className="w-full bg-white border rounded p-1 font-black text-emerald-600 text-center" 
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2 font-black text-slate-900 text-center text-xs shadow-2xs focus:ring-2 focus:ring-orange-500 focus:outline-none" 
                     />
                   </div>
 
-                  <div className="col-span-1">
+                  <div className="col-span-6 sm:col-span-3">
                     <button 
                       type="button" 
                       disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
                       onClick={ajouterArticleAuPanier} 
-                      className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black p-1 rounded text-center text-[9px]"
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black p-2 rounded-xl text-center text-xs uppercase shadow-md transition cursor-pointer"
                     >
-                      {enTrainDInsertion ? '...' : 'OK'}
+                      {enTrainDInsertion ? '...' : '+ AJOUTER'}
                     </button>
                   </div>
                 </div>
-              )
-            )}
+              )}
+            </div>
+          )}
 
-            {modalArticleOuvert && (
-              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                    <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-1.5"><span>🔍</span> ARTICLE</h4>
-                    <button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
-                  </div>
-                  <div>
-                    <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-slate-900 uppercase text-xs" />
-                  </div>
-                  <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2 pr-1">
-                    {articlesPopupFiltres.length === 0 ? (
-                      <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
-                    ) : (
-                      articlesPopupFiltres.map((art) => {
-                        const artId = art.id_article || art.id;
-                        const stockActuel = calculerStockPourDepotActuel(artId);
-                        const estEpuise = stockActuel <= 0 && ongletPrincipal !== 'ACHATS';
-                        return (
-                          <div key={artId} onClick={() => !enTrainDeSauvegarder && selectionnerArticleEtFocusQte(art)} className={`p-3 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${estEpuise ? 'bg-slate-100 opacity-60' : 'bg-white hover:border-orange-500'}`}>
-                            <span className="font-black text-xs text-slate-900 uppercase truncate">{art.Designation || art.designation}</span>
-                            <span className="font-black text-[10px] mt-1 text-slate-700">Stock : <strong className={stockActuel <= 0 ? 'text-rose-600' : 'text-emerald-700'}>{stockActuel}</strong></span>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+          {modalArticleOuvert && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h4 className="font-black text-slate-900 uppercase text-xs flex items-center gap-2"><span>🔍</span> SÉLECTIONNER UN ARTICLE</h4>
+                  <button type="button" onClick={() => setModalArticleOuvert(false)} className="text-slate-400 font-black text-sm p-1">✕</button>
+                </div>
+                <div>
+                  <input type="text" value={recherchePopup} onChange={(e) => setRecherchePopup(e.target.value.toUpperCase())} placeholder="RECHERCHER UN ARTICLE..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-slate-900 uppercase text-xs" />
+                </div>
+                <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2 pr-1">
+                  {articlesPopupFiltres.length === 0 ? (
+                    <div className="col-span-2 py-6 text-center text-slate-400 font-bold italic text-xs">Aucun article trouvé.</div>
+                  ) : (
+                    articlesPopupFiltres.map((art) => {
+                      const artId = art.id_article || art.id;
+                      const stockActuel = calculerStockPourDepotActuel(artId);
+                      const estEpuise = stockActuel <= 0 && ongletPrincipal !== 'ACHATS';
+                      return (
+                        <div key={artId} onClick={() => !enTrainDeSauvegarder && selectionnerArticleEtFocusQte(art)} className={`p-3.5 rounded-xl border transition cursor-pointer flex flex-col justify-between shadow-2xs ${estEpuise ? 'bg-slate-100 opacity-60' : 'bg-white hover:border-orange-500'}`}>
+                          <span className="font-black text-xs text-slate-900 uppercase truncate">{art.Designation || art.designation}</span>
+                          <span className="font-black text-xs mt-1 text-slate-700">Stock : <strong className={stockActuel <= 0 ? 'text-rose-600' : 'text-emerald-700'}>{stockActuel}</strong></span>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {lignesPanier.length === 0 ? (<p className="text-center text-slate-400 py-1.5 italic text-[9.5px]">Aucun article ajouté.</p>) : (
-              <div className="overflow-x-auto border rounded-lg bg-white">
-                {ongletPrincipal === 'ACHATS' && estModeBoutique ? (
-                  <table className="w-full text-left text-[9.5px] table-fixed">
-                    <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
+          {/* 4. CARTE TABLEAU & TOTAUX */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm space-y-2.5 p-3">
+            <div className="overflow-x-auto border border-slate-800 rounded-xl">
+              {ongletPrincipal === 'ACHATS' && estModeBoutique ? (
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900 text-white uppercase text-[10px] font-black tracking-wider">
+                    <tr>
+                      <th className="p-2.5 w-[8%] text-center">#</th>
+                      <th className="p-2.5 w-[42%]">DÉSIGNATION</th>
+                      <th className="p-2.5 w-[15%] text-center">QTÉ</th>
+                      <th className="p-2.5 w-[15%] text-right">P.U.</th>
+                      <th className="p-2.5 w-[20%] text-right">TOTAL</th>
+                      {!documentEnLectureSeule && <th className="p-2.5 w-[10%] text-center">ACT</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-900">
+                    {lignesPanier.length === 0 ? (
                       <tr>
-                        <th className="p-1 w-[42%]">ARTICLE</th>
-                        <th className="p-1 w-[13%] text-center">QTE</th>
-                        <th className="p-1 w-[17%] text-center">PU</th>
-                        <th className="p-1 w-[18%] text-right">TOTAL</th>
-                        {!documentEnLectureSeule && <th className="p-1 w-[10%] text-center">⚙️</th>}
+                        <td colSpan={documentEnLectureSeule ? 5 : 6} className="p-6 text-center text-slate-400 font-medium italic">
+                          Aucun article ajouté.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y text-[9px]">
-                      {lignesPanier.map((ligne, index) => (
-                        <tr key={index} onClick={() => !documentEnLectureSeule && !enTrainDeSauvegarder && modifierLignePanier(ligne)} className={!documentEnLectureSeule ? "hover:bg-emerald-50/70 cursor-pointer transition" : "transition"}>
-                          <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
-                          <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
-                          <td className="p-1.5 text-center font-bold text-slate-700">{Number(ligne.prix_unitaire).toLocaleString()}</td>
-                          <td className="p-1.5 text-right font-black text-slate-900">{Number(ligne.montant_total).toLocaleString()}</td>
-                          {!documentEnLectureSeule && (
-                            <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]">🗑️</button>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <table className="w-full text-left text-[9.5px] table-fixed">
-                    <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
-                      <tr>
-                        <th className="p-1 w-[72%]">ARTICLE</th>
-                        <th className="p-1 w-[18%] text-center">QTE</th>
-                        {!documentEnLectureSeule && <th className="p-1 w-[10%] text-center">⚙️</th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y text-[9px]">
-                      {lignesPanier.map((ligne, index) => (
+                    ) : (
+                      lignesPanier.map((ligne, index) => (
                         <tr key={index} onClick={() => !documentEnLectureSeule && !enTrainDeSauvegarder && modifierLignePanier(ligne)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition" : "transition"}>
-                          <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate">{ligne.designation}</td>
-                          <td className="p-1.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
+                          <td className="p-2.5 text-center text-slate-500">{index + 1}</td>
+                          <td className="p-2.5 font-black uppercase text-slate-900 truncate">{ligne.designation}</td>
+                          <td className="p-2.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-slate-700">{Number(ligne.prix_unitaire).toLocaleString()}</td>
+                          <td className="p-2.5 text-right font-mono font-black text-slate-900">{Number(ligne.montant_total).toLocaleString()}</td>
                           {!documentEnLectureSeule && (
-                            <td className="p-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-0.5 bg-slate-100 hover:bg-red-100 rounded text-[9px]">🗑️</button>
+                            <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-1 bg-slate-100 hover:bg-rose-100 rounded-lg text-xs cursor-pointer">🗑️</button>
                             </td>
                           )}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900 text-white uppercase text-[10px] font-black tracking-wider">
+                    <tr>
+                      <th className="p-2.5 w-[10%] text-center">#</th>
+                      <th className="p-2.5 w-[60%]">DÉSIGNATION</th>
+                      <th className="p-2.5 w-[20%] text-center">QTÉ</th>
+                      {!documentEnLectureSeule && <th className="p-2.5 w-[10%] text-center">ACT</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-900">
+                    {lignesPanier.length === 0 ? (
+                      <tr>
+                        <td colSpan={documentEnLectureSeule ? 3 : 4} className="p-6 text-center text-slate-400 font-medium italic">
+                          Aucun article ajouté.
+                        </td>
+                      </tr>
+                    ) : (
+                      lignesPanier.map((ligne, index) => (
+                        <tr key={index} onClick={() => !documentEnLectureSeule && !enTrainDeSauvegarder && modifierLignePanier(ligne)} className={!documentEnLectureSeule ? "hover:bg-orange-50/70 cursor-pointer transition" : "transition"}>
+                          <td className="p-2.5 text-center text-slate-500">{index + 1}</td>
+                          <td className="p-2.5 font-black uppercase text-slate-900 truncate">{ligne.designation}</td>
+                          <td className="p-2.5 text-center font-black text-emerald-600">{ligne.quantite}</td>
+                          {!documentEnLectureSeule && (
+                            <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLignesPanier(lignesPanier.filter((_, i) => i !== index))} className="p-1 bg-slate-100 hover:bg-rose-100 rounded-lg text-xs cursor-pointer">🗑️</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
 
             {ongletPrincipal === 'ACHATS' && estModeBoutique && lignesPanier.length > 0 && (
-              <div className="bg-emerald-50/60 border border-emerald-200 p-2 rounded-xl space-y-1.5 text-[9.5px]">
-                <div className="flex justify-between items-center font-black text-emerald-900 text-[10px]">
-                  <span>NET À PAYER :</span>
-                  <span className="font-mono text-emerald-700">{montantTotalFacture.toLocaleString()} FCFA</span>
+              <div className="bg-emerald-50/60 border border-emerald-200 p-2.5 rounded-xl flex flex-wrap justify-between items-center gap-2 text-xs">
+                <div className="font-black text-emerald-900 flex items-center gap-1.5">
+                  <span>NET :</span>
+                  <span className="font-mono text-emerald-700 text-xs">{montantTotalFacture.toLocaleString()} FCFA</span>
                 </div>
 
-                <div className="flex justify-between items-center pt-1 border-t border-emerald-200">
+                <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1">
                     <span className="font-extrabold text-slate-700">Règlement :</span>
                     <button
                       type="button"
                       disabled={documentEnLectureSeule}
                       onClick={() => setModalReglementOuvert(true)}
-                      className="bg-white border border-emerald-400 px-2 py-1 rounded-lg font-black text-emerald-800 text-[9px] uppercase shadow-2xs flex items-center gap-1 cursor-pointer"
+                      className="bg-white border border-emerald-400 px-2.5 py-1 rounded-lg font-black text-emerald-800 text-xs uppercase shadow-2xs flex items-center gap-1 cursor-pointer"
                     >
                       <span>💳 {statutReglement === 'SOLDE' ? 'Soldé' : statutReglement === 'AVANCE' ? 'Avancé' : 'Non payé'}</span>
                       <span>▼</span>
                     </button>
                   </div>
                   
-                  <div className="text-right font-bold text-slate-700">
+                  <div className="text-right font-bold text-slate-700 text-[11px]">
                     Payé : <strong className="text-emerald-700">{Number(montantPayeAchat).toLocaleString()}</strong> | Reste : <strong className="text-rose-600">{resteAVerserFacture.toLocaleString()}</strong>
                   </div>
                 </div>
@@ -2183,9 +2306,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
             {modalReglementOuvert && (
               <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-4 space-y-3">
-                  <div className="flex justify-between items-center border-b pb-2">
-                    <h4 className="font-black text-slate-900 uppercase text-xs">RÈGLEMENT</h4>
+                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <h4 className="font-black text-slate-900 uppercase text-xs">STATUT DU RÈGLEMENT</h4>
                     <button type="button" onClick={() => setModalReglementOuvert(false)} className="text-slate-400 font-bold text-sm">✕</button>
                   </div>
                   <div className="space-y-2">
@@ -2204,8 +2327,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                             setModalReglementOuvert(false);
                           }
                         }}
-                        className={`p-3 rounded-xl border cursor-pointer font-black text-xs uppercase flex justify-between items-center ${
-                          statutReglement === opt.id ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-black' : 'bg-slate-50 border-slate-200 text-slate-900 font-black hover:bg-slate-100'
+                        className={`p-3 rounded-xl border cursor-pointer font-black text-xs uppercase flex justify-between items-center shadow-2xs ${
+                          statutReglement === opt.id ? 'bg-emerald-50 border-emerald-500 text-emerald-900' : 'bg-slate-50 border-slate-200 text-slate-900 hover:bg-slate-100'
                         }`}
                       >
                         <span>{opt.libelle}</span>
@@ -2215,126 +2338,131 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
                     {statutReglement === 'AVANCE' && (
                       <div className="pt-2 space-y-1">
-                        <label className="block font-extrabold text-[8.5px] text-slate-700 uppercase">Montant payé *</label>
+                        <label className="block font-extrabold text-[10px] text-slate-700 uppercase">Montant payé *</label>
                         <input
                           type="number"
                           min="0"
                           max={montantTotalFacture}
                           value={montantPayeAchat}
                           onChange={(e) => setMontantPayeAchat(Math.min(montantTotalFacture, Number(e.target.value)))}
-                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-black text-emerald-700 text-center text-sm"
+                          className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-emerald-700 text-center text-sm"
                           autoFocus
                         />
                       </div>
                     )}
                   </div>
-                  <button type="button" onClick={() => setModalReglementOuvert(false)} className="w-full py-2 bg-emerald-600 text-white font-black text-xs uppercase rounded-xl cursor-pointer">OK</button>
+                  <button type="button" onClick={() => setModalReglementOuvert(false)} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-xl cursor-pointer">OK</button>
                 </div>
               </div>
             )}
 
-            <div className="pt-1.5 flex items-center justify-between gap-1 flex-nowrap overflow-x-auto">
+            {/* BAS DU TABLEAU */}
+            <div className="flex flex-nowrap justify-between items-center pt-1.5 gap-1.5 overflow-x-auto whitespace-nowrap text-[11px]">
+              <div className="flex items-center gap-2 font-extrabold text-slate-700 shrink-0">
+                <span>Lignes: <strong className="text-slate-900">{lignesPanier.length}</strong></span>
+                <span>Pièces: <strong className="text-slate-900">{lignesPanier.reduce((acc, l) => acc + Number(l.quantite || 0), 0)}</strong></span>
+              </div>
+
               <div className="flex items-center gap-1 shrink-0">
                 {!documentEnLectureSeule && verifierDroitSuppressionEffectif() && (
-                  <button type="button" disabled={enTrainDeSauvegarder} onClick={supprimerDocumentActuel} className="bg-red-600 hover:bg-red-700 text-white font-bold px-1.5 py-1 rounded text-[8px]" title="Supprimer">
-                    🗑️ Suppr.
+                  <button 
+                    type="button" 
+                    disabled={enTrainDeSauvegarder} 
+                    onClick={supprimerDocumentActuel} 
+                    className="bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 font-black px-2.5 py-1.5 rounded-lg text-[11px] uppercase transition shadow-2xs cursor-pointer"
+                  >
+                    Réinit.
                   </button>
                 )}
-              </div>
-              
-              <div className="flex items-center gap-1 shrink-0">
-                <button type="button" disabled={enTrainDeSauvegarder} onClick={() => window.print()} className="bg-slate-800 text-white font-bold px-1.5 py-1 rounded text-[8px]">🖨️ Imp.</button>
+
+                <button 
+                  type="button" 
+                  disabled={enTrainDeSauvegarder} 
+                  onClick={() => window.print()} 
+                  className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-black px-2 py-1.5 rounded-lg text-[11px] uppercase transition shadow-2xs cursor-pointer"
+                >
+                  🖨️
+                </button>
                 
                 {!documentEnLectureSeule && ((mouvementEnEditionId && permissions.peut_modifier) || (!mouvementEnEditionId && permissions.peut_creer)) && permissions.peut_valider && (
                   <button 
                     type="button" 
                     onClick={validerDocumentMouvement} 
                     disabled={lignesPanier.length === 0 || enTrainDeSauvegarder || (mouvementEnEditionId && !documentModifie)} 
-                    className={`font-bold px-2 py-1 rounded text-[8px] whitespace-nowrap ${
+                    className={`font-black px-3 py-1.5 rounded-lg text-[11px] uppercase transition shadow-md cursor-pointer ${
                       lignesPanier.length > 0 && !enTrainDeSauvegarder && (!mouvementEnEditionId || documentModifie) 
-                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-900 border border-slate-300' 
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                     }`}
                   >
-                    {enTrainDeSauvegarder ? 'Valid...' : (mouvementEnEditionId ? (documentModifie ? 'Mettre à jour' : '🔒 Aucun changement') : '✅ Valider')}
+                    {enTrainDeSauvegarder ? 'Enreg...' : (mouvementEnEditionId ? (documentModifie ? '✅ Mettre à jour' : '🔒 Inchangé') : '✅ Valider')}
                   </button>
                 )}
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {modeAffichage === 'LISTE_DOCS' && (
-        <div className="bg-white border rounded-xl overflow-hidden shadow-2xs space-y-2">
-          <div className="p-2 bg-slate-50 border-b flex justify-between items-center text-[9.5px]">
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm space-y-2.5 p-3">
+          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
             <span className="font-extrabold uppercase text-slate-800">
               {ongletPrincipal === 'ACHATS' ? 'Achats Enregistrés' : 'Mouvements Enregistrés'} [{moduleActuel}] ({documentsAffiches.length} / {documentsTries.length})
             </span>
-            <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-1.5 py-0.5 rounded font-bold`}>{documentsTries.length}</span>
+            <span className={`${ongletPrincipal === 'ACHATS' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'} px-2 py-0.5 rounded-lg font-black`}>{documentsTries.length}</span>
           </div>
 
-          <div className="px-2 pt-1">
-            <div className="bg-slate-50/80 p-2 rounded-xl border border-slate-200 space-y-1.5">
-              <div className="flex justify-between items-center">
-                <span className="font-black text-[8.5px] text-slate-700 uppercase">🔍 FILTRES</span>
-                {(filtreDateDebut || filtreDateFin || filtrePartenaire || filtreLivreur) && (
-                  <button type="button" onClick={() => { setFiltreDateDebut(''); setFiltreDateFin(''); setFiltrePartenaire(''); setFiltreLivreur(''); }} className="text-[8px] text-orange-600 font-bold underline">
-                    Réinitialiser
-                  </button>
-                )}
+          <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200 space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="font-black text-xs text-slate-700 uppercase">🔍 FILTRER LES DOCUMENTS</span>
+              {(filtreDateDebut || filtreDateFin || filtrePartenaire) && (
+                <button type="button" onClick={() => { setFiltreDateDebut(''); setFiltreDateFin(''); setFiltrePartenaire(''); }} className="text-xs text-orange-600 font-bold underline cursor-pointer">
+                  Réinitialiser les filtres
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-1">Date début</label>
+                <input type="date" value={filtreDateDebut} onChange={(e) => setFiltreDateDebut(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs shadow-2xs" />
               </div>
-              <div className="grid grid-cols-4 gap-1.5 items-end">
-                <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Début</label>
-                  <input type="date" value={filtreDateDebut} onChange={(e) => setFiltreDateDebut(e.target.value)} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" />
-                </div>
-                <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">Fin</label>
-                  <input type="date" value={filtreDateFin} onChange={(e) => setFiltreDateFin(e.target.value)} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px]" />
-                </div>
-                <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">{libelleTiers}</label>
-                  <button type="button" onClick={() => { setRechercheFiltreModal(''); setModalFiltrePartenaireOuvert(true); }} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] text-left truncate flex justify-between items-center">
-                    <span className="truncate">{filtrePartenaire ? (depots.find(d => String(d.id) === String(filtrePartenaire))?.nom_depot || filtrePartenaire) : 'Tous'}</span>
-                    <span className="text-slate-400 text-[7px]">🔍</span>
-                  </button>
-                </div>
-                <div>
-                  <label className="block text-[7.5px] font-bold text-slate-600 mb-0.5">{libelleLivreur}</label>
-                  <button type="button" onClick={() => { setRechercheFiltreModal(''); setModalFiltreLivreurOuvert(true); }} className="w-full bg-white border rounded p-1 font-bold text-slate-800 text-[8.5px] uppercase text-left truncate flex justify-between items-center">
-                    <span className="truncate">{filtreLivreur ? (emplacements.find(e => String(e.id) === String(filtreLivreur))?.nom_emplacement || filtreLivreur) : 'Tous'}</span>
-                    <span className="text-slate-400 text-[7px]">🔍</span>
-                  </button>
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-1">Date fin</label>
+                <input type="date" value={filtreDateFin} onChange={(e) => setFiltreDateFin(e.target.value)} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs shadow-2xs" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-1">{libelleTiers}</label>
+                <button type="button" onClick={() => { setRechercheFiltreModal(''); setModalFiltrePartenaireOuvert(true); }} className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold text-slate-800 text-xs text-left truncate flex justify-between items-center shadow-2xs cursor-pointer">
+                  <span className="truncate">{filtrePartenaire ? (depots.find(d => String(d.id) === String(filtrePartenaire))?.nom_depot || filtrePartenaire) : `Tous les ${libelleTiers.toLowerCase()}s`}</span>
+                  <span className="text-slate-400">🔍</span>
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[9.5px]">
-              <thead className="bg-slate-50 text-slate-700 uppercase text-[7.5px] font-extrabold border-b">
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-900 text-white uppercase text-[10px] font-black tracking-wider">
                 <tr>
-                  <th onClick={() => gererTri('date')} className="p-1.5 cursor-pointer">Date</th>
-                  <th onClick={() => gererTri('numeroDoc')} className="p-1.5 cursor-pointer">N° DOC</th>
-                  <th onClick={() => gererTri('referenceDoc')} className="p-1.5 cursor-pointer">MOTIF</th>
-                  <th onClick={() => gererTri('depotNom')} className="p-1.5 cursor-pointer">{estModeBoutique ? 'DÉPÔT' : 'PARTENAIRE'}</th>
-                  <th onClick={() => gererTri('depotDestNom')} className="p-1.5 cursor-pointer">DEST</th>
-                  <th onClick={() => gererTri('operateur')} className="p-1.5 cursor-pointer">USER</th>
+                  <th onClick={() => gererTri('date')} className="p-2.5 cursor-pointer hover:bg-slate-800 transition">Date</th>
+                  <th onClick={() => gererTri('numeroDoc')} className="p-2.5 cursor-pointer hover:bg-slate-800 transition">N° DOC</th>
+                  <th onClick={() => gererTri('motifSaisi')} className="p-2.5 cursor-pointer hover:bg-slate-800 transition">MOTIF / RÉFÉRENCE</th>
+                  <th onClick={() => gererTri('partenaireNom')} className="p-2.5 cursor-pointer hover:bg-slate-800 transition">{libelleTiers.toUpperCase()}</th>
+                  <th onClick={() => gererTri('operateur')} className="p-2.5 cursor-pointer hover:bg-slate-800 transition">OPÉRATEUR</th>
                 </tr>
               </thead>
-              <tbody className="divide-y text-[9.5px]">
+              <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-900">
                 {documentsAffiches.length === 0 ? (
-                  <tr><td colSpan="6" className="p-4 text-center text-slate-400 font-bold">Aucun document trouvé.</td></tr>
+                  <tr><td colSpan="5" className="p-6 text-center text-slate-400 font-medium">Aucun document trouvé.</td></tr>
                 ) : (
                   documentsAffiches.map((doc, idx) => (
-                    <tr key={idx} onClick={() => ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer">
-                      <td className="p-1.5 font-mono font-bold text-slate-800 text-[9px] whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
-                      <td className={`p-1.5 font-mono font-black whitespace-nowrap ${ongletPrincipal === 'ACHATS' ? 'text-emerald-700' : 'text-orange-600'}`}>{doc.numeroDoc}</td>
-                      <td className="p-1.5 font-bold text-slate-700 uppercase truncate max-w-[90px]" title={doc.referenceDoc}>{doc.referenceDoc || '-'}</td>
-                      <td className="p-1.5 font-bold text-slate-700 truncate max-w-[90px]" title={doc.depotNom}>{doc.depotNom}</td>
-                      <td className="p-1.5 font-bold text-blue-700 truncate max-w-[90px]" title={doc.depotDestNom}>{doc.depotDestNom}</td>
-                      <td className="p-1.5 font-extrabold uppercase text-slate-900 truncate max-w-[100px]" title={doc.operateur}>{doc.operateur}</td>
+                    <tr key={idx} onClick={() => ouvrirDocumentDepuisListe(doc.numeroDocBrut)} className="hover:bg-orange-50/70 cursor-pointer transition">
+                      <td className="p-2.5 font-mono font-bold text-slate-800 whitespace-nowrap">{new Date(doc.date).toLocaleDateString('fr-FR')}</td>
+                      <td className={`p-2.5 font-mono font-black whitespace-nowrap ${ongletPrincipal === 'ACHATS' ? 'text-emerald-700' : 'text-orange-600'}`}>{doc.numeroDoc}</td>
+                      <td className="p-2.5 font-bold text-slate-700 uppercase truncate max-w-[200px]" title={doc.motifSaisi}>{doc.motifSaisi || '-'}</td>
+                      <td className="p-2.5 font-bold text-slate-700 truncate max-w-[150px]" title={doc.partenaireNom}>{doc.partenaireNom}</td>
+                      <td className="p-2.5 font-extrabold uppercase text-slate-900 truncate max-w-[120px]" title={doc.operateur}>{doc.operateur}</td>
                     </tr>
                   ))
                 )}
@@ -2343,9 +2471,9 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
           </div>
 
           {limiteDocuments < documentsTries.length && (
-            <div className="text-center pt-2 pb-3 px-2">
-              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLimiteDocuments(prev => prev + 20)} className="bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold px-4 py-2 rounded-xl text-[10px] w-full">
-                📥 Charger plus ({documentsTries.length - limiteDocuments} restants)
+            <div className="text-center pt-1.5">
+              <button type="button" disabled={enTrainDeSauvegarder} onClick={() => setLimiteDocuments(prev => prev + 20)} className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold px-3 py-2 rounded-xl text-xs w-full transition cursor-pointer">
+                📥 Charger plus de documents ({documentsTries.length - limiteDocuments} restants)
               </button>
             </div>
           )}
@@ -2353,35 +2481,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
       )}
 
       {modalFiltrePartenaireOuvert && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h4 className="font-black text-slate-900 uppercase text-xs">{libelleTiers.toUpperCase()}</h4>
-              <button type="button" onClick={() => setModalFiltrePartenaireOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-5">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h4 className="font-black text-slate-900 uppercase text-xs">FILTRER PAR {libelleTiers.toUpperCase()}</h4>
+              <button type="button" onClick={() => setModalFiltrePartenaireOuvert(false)} className="text-slate-400 font-black text-sm p-1">✕</button>
             </div>
-            <input type="text" value={rechercheFiltreModal} onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border rounded-xl p-2 font-black text-xs" />
-            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2">
-              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuvert(false); }} className="col-span-2 p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
+            <input type="text" value={rechercheFiltreModal} onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-black text-xs" />
+            <div className="max-h-[350px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div onClick={() => { setFiltrePartenaire(''); setModalFiltrePartenaireOuvert(false); }} className="col-span-2 p-3.5 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous les {libelleTiers.toLowerCase()}s</div>
               {depots.filter(d => (d.nom_depot || '').toUpperCase().includes(rechercheFiltreModal)).map(d => (
-                <div key={d.id} onClick={() => { setFiltrePartenaire(d.id); setModalFiltrePartenaireOuvert(false); }} className="p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{d.nom_depot || d.nom}</div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modalFiltreLivreurOuvert && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h4 className="font-black text-slate-900 uppercase text-xs">{libelleLivreur.toUpperCase()}</h4>
-              <button type="button" onClick={() => setModalFiltreLivreurOuvert(false)} className="text-slate-400 font-black text-sm">✕</button>
-            </div>
-            <input type="text" value={rechercheFiltreModal} onChange={(e) => setRechercheFiltreModal(e.target.value.toUpperCase())} placeholder="RECHERCHER..." autoFocus className="w-full bg-slate-50 border rounded-xl p-2 font-black text-xs" />
-            <div className="max-h-[350px] overflow-y-auto grid grid-cols-2 gap-2">
-              <div onClick={() => { setFiltreLivreur(''); setModalFiltreLivreurOuvert(false); }} className="col-span-2 p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-bold text-slate-500 text-xs text-center">Tous</div>
-              {emplacements.filter(e => (e.nom_emplacement || e.code_emplacement || '').toUpperCase().includes(rechercheFiltreModal)).map((emp) => (
-                <div key={emp.id} onClick={() => { setFiltreLivreur(emp.id); setModalFiltreLivreurOuvert(false); }} className="p-3 rounded-xl border hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{emp.nom_emplacement || emp.code_emplacement}</div>
+                <div key={d.id} onClick={() => { setFiltrePartenaire(d.id); setModalFiltrePartenaireOuvert(false); }} className="p-3.5 rounded-xl border border-slate-200 hover:bg-orange-50 cursor-pointer font-black text-xs text-slate-900 uppercase truncate">{d.nom_depot || d.nom}</div>
               ))}
             </div>
           </div>
@@ -2390,28 +2500,28 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
 
       {modalMessage && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-6 space-y-4 text-center">
             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 text-orange-600 text-xl font-black">ℹ️</div>
             <div className="space-y-1">
               <h3 className="font-black text-slate-900 text-sm uppercase">{modalMessage.titre}</h3>
               <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalMessage.texte}</p>
             </div>
-            <button type="button" onClick={() => setModalMessage(null)} className="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl">OK</button>
+            <button type="button" onClick={() => setModalMessage(null)} className="w-full py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md cursor-pointer">OK</button>
           </div>
         </div>
       )}
 
       {modalConfirmation && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-5 space-y-4 text-center">
-            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 text-red-600 text-xl font-black">❓</div>
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden p-6 space-y-4 text-center">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-orange-100 text-orange-600 text-xl font-black">❓</div>
             <div className="space-y-1">
               <h3 className="font-black text-slate-900 text-sm uppercase">{modalConfirmation.titre}</h3>
               <p className="text-slate-600 font-medium text-xs leading-relaxed">{modalConfirmation.texte}</p>
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button type="button" onClick={() => setModalConfirmation(null)} className="py-2.5 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xs uppercase rounded-xl">Annuler</button>
-              <button type="button" onClick={modalConfirmation.onConfirm} className="py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase rounded-xl">Confirmer</button>
+            <div className="grid grid-cols-2 gap-2.5 pt-2">
+              <button type="button" onClick={modalConfirmation.onCancel} className="py-3 px-4 bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xs uppercase rounded-xl transition cursor-pointer">Annuler</button>
+              <button type="button" onClick={modalConfirmation.onConfirm} className="py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase rounded-xl transition shadow-md cursor-pointer">Confirmer</button>
             </div>
           </div>
         </div>

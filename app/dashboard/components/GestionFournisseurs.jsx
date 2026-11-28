@@ -47,7 +47,7 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   // 🎯 États pour les jolies modales interactives
   const [modalConfirmationOuverte, setModalConfirmationOuverte] = useState(false);
   const [modalSuppressionOuverte, setModalSuppressionOuverte] = useState(false);
-  const [modalSuccesMessage, setModalSuccesMessage] = useState(null); // Modale pour les messages de succès
+  const [modalSuccesMessage, setModalSuccesMessage] = useState(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -91,8 +91,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
   });
 
   const [taxesDisponibles, setTaxesDisponibles] = useState([]);
-  const [approvisionnements, setApprovisionnements] = useState([]);
-  const [bonsCommandes, setBonsCommandes] = useState([]);
   const [chargement, setChargement] = useState(false);
   
   const [ongletActif, setOngletActif] = useState('repertoire');
@@ -207,24 +205,16 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
       if (!navigator.onLine) {
         listPartenaires = donneesLocales || [];
       } else {
-        const { data: partenairesRpc, error: rpcError } = await supabase.rpc('recuperer_fournisseurs', {
-          p_entreprise_id: entrepriseId,
-          p_module: moduleActuel
-        });
+        // 🛡️ Correction robuste : Interrogation directe de la table `fournisseurs` (évite l'erreur 404 RPC)
+        const { data: dataPartenaires, error: errPartenaires } = await supabase
+          .from('fournisseurs')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .order('created_at', { ascending: false });
 
-        if (rpcError) {
-          const { data: dataPartenaires, error: errPartenaires } = await supabase
-            .from('fournisseurs')
-            .select('*')
-            .eq('id_entreprise', entrepriseId)
-            .eq('module', moduleActuel)
-            .order('created_at', { ascending: false });
-
-          if (errPartenaires) throw errPartenaires;
-          listPartenaires = dataPartenaires || [];
-        } else {
-          listPartenaires = partenairesRpc || [];
-        }
+        if (errPartenaires) throw errPartenaires;
+        listPartenaires = dataPartenaires || [];
       }
 
       setPartenaires(listPartenaires);
@@ -241,23 +231,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
 
         setTaxesDisponibles(dataTaxes || []);
       }
-
-      if (navigator.onLine) {
-        const { data: dataAppro } = await supabase
-          .from('approvisionnements')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', moduleActuel);
-        setApprovisionnements(dataAppro || []);
-
-        const { data: dataBC } = await supabase
-          .from('bons_commande_fournisseurs')
-          .select('*')
-          .eq('id_entreprise', entrepriseId)
-          .eq('module', moduleActuel);
-        setBonsCommandes(dataBC || []);
-      }
-
     } catch (err) {
       console.error('Erreur chargement données Supabase :', err.message);
     } finally {
@@ -285,7 +258,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // 1️⃣ Soumission du formulaire -> Déclenche la modale de confirmation d'enregistrement
   const gererSoumissionFormulaire = (e) => {
     e.preventDefault();
     if (enTrainDeSauvegarder) return;
@@ -310,7 +282,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     setModalConfirmationOuverte(true);
   };
 
-  // 2️⃣ Exécution effective de l'enregistrement après confirmation dans la modale
   const confirmerEnregistrement = async () => {
     setModalConfirmationOuverte(false);
     if (enTrainDeSauvegarder) return;
@@ -485,7 +456,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     setAfficherForm(false);
   };
 
-  // 1️⃣ Clic sur Supprimer -> Vérifications et ouverture de la modale de suppression
   const verifierAvantSuppression = async () => {
     if (enTrainDeSauvegarder || !partenaireEnEdition) return;
     if (!permissions.suppression) {
@@ -539,7 +509,6 @@ export default function GestionFournisseurs({ entrepriseId = '4TS-TEST' }) {
     }
   };
 
-  // 2️⃣ Exécution effective de la suppression après validation dans la modale
   const confirmerSuppression = async () => {
     setModalSuppressionOuverte(false);
     if (enTrainDeSauvegarder || !partenaireEnEdition) return;

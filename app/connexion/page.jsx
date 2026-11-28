@@ -94,124 +94,124 @@ export default function ConnexionEntreprise() {
       const isStrictEntrepriseId = /^4TS-/i.test(cleanIdentifiant);
 
       // 1. RECHERCHE PRIORITAIRE DANS LA TABLE DES UTILISATEURS (Collaborateurs, Caissiers, Livreurs)
-      // On ignore cette étape uniquement si l'utilisateur saisit explicitement un ID Entreprise (ex: 4TS-704882)
       if (!isStrictEntrepriseId) {
-        let conditionsUser = [
-          `email.ilike.${lowerEmail}`,
-          `nom_complet.ilike.${upperId}`
-        ];
+        let conditionsUser = [];
+        if (lowerEmail) conditionsUser.push(`email.ilike.${lowerEmail}`);
+        if (upperId) conditionsUser.push(`nom_complet.ilike.${upperId}`);
 
         if (digitsOnly.length >= 7) {
           const telVariantes = construireFiltreTelephone(digitsOnly);
-          telVariantes.forEach(tel => conditionsUser.push(`telephone.eq.${tel}`));
+          telVariantes.forEach(tel => {
+            if (tel) conditionsUser.push(`telephone.eq.${tel}`);
+          });
         }
 
-        const { data: utilisateurRows, error: errUser } = await supabase
-          .from('utilisateurs')
-          .select('*')
-          .or(conditionsUser.join(','));
+        if (conditionsUser.length > 0) {
+          const { data: utilisateurRows, error: errUser } = await supabase
+            .from('utilisateurs')
+            .select('*')
+            .or(conditionsUser.join(','));
 
-        if (!errUser && utilisateurRows && utilisateurRows.length > 0) {
-          // Vérifier si au moins une fiche du collaborateur est autorisée à se connecter
-          const fichesActives = utilisateurRows.filter(u => u.acces_application !== false);
-          if (fichesActives.length === 0) {
-            throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion.");
-          }
-
-          // Chercher la fiche qui correspond au mot de passe saisi (gère les multi-lignes par module)
-          const utilisateurTrouve = fichesActives.find(
-            u => String(u.mot_de_passe || '').trim() === cleanPin
-          );
-
-          if (!utilisateurTrouve) {
-            throw new Error("Mot de passe ou code PIN incorrect.");
-          }
-
-          entrepriseIdCible = utilisateurTrouve.id_entreprise;
-          nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
-
-          // Extraction et fusion de tous les modules autorisés sur l'ensemble des fiches du collaborateur
-          let modulesAutorises = [];
-          fichesActives.forEach(row => {
-            if (Array.isArray(row.modules_cibles) && row.modules_cibles.length > 0) {
-              row.modules_cibles.forEach(m => modulesAutorises.push(String(m).trim().toUpperCase()));
+          if (!errUser && utilisateurRows && utilisateurRows.length > 0) {
+            const fichesActives = utilisateurRows.filter(u => u.acces_application !== false);
+            if (fichesActives.length === 0) {
+              throw new Error("Accès refusé : Ce compte personnel ne possède pas les droits de connexion.");
             }
-            if (row.module) {
-              modulesAutorises.push(String(row.module).trim().toUpperCase());
+
+            const utilisateurTrouve = fichesActives.find(
+              u => String(u.mot_de_passe || '').trim() === cleanPin
+            );
+
+            if (!utilisateurTrouve) {
+              throw new Error("Mot de passe ou code PIN incorrect.");
             }
-          });
-          modulesAutorises = [...new Set(modulesAutorises)];
 
-          // Résolution des permissions
-          if (utilisateurTrouve.permissions && Object.keys(utilisateurTrouve.permissions).length > 0) {
-            matrixPermissions = utilisateurTrouve.permissions;
-          } else if (utilisateurTrouve.id_role) {
-            const { data: roleData, error: errRole } = await supabase
-              .from('roles')
-              .select('permissions, nom_role')
-              .eq('id', utilisateurTrouve.id_role)
-              .maybeSingle();
+            entrepriseIdCible = utilisateurTrouve.id_entreprise;
+            nomUtilisateurConnecte = `${utilisateurTrouve.nom_complet || ''} ${utilisateurTrouve.prenom || ''}`.trim() || cleanIdentifiant;
 
-            if (!errRole && roleData) {
-              const nomRoleUpper = (roleData.nom_role || '').trim().toUpperCase();
-              if (nomRoleUpper === 'ADMINISTRATEUR') {
-                matrixPermissions = { _plein_acces: true };
-              } else if (roleData.permissions) {
-                matrixPermissions = roleData.permissions;
-              } else {
-                matrixPermissions = { _aucun_acces: true };
+            let modulesAutorises = [];
+            fichesActives.forEach(row => {
+              if (Array.isArray(row.modules_cibles) && row.modules_cibles.length > 0) {
+                row.modules_cibles.forEach(m => modulesAutorises.push(String(m).trim().toUpperCase()));
               }
+              if (row.module) {
+                modulesAutorises.push(String(row.module).trim().toUpperCase());
+              }
+            });
+            modulesAutorises = [...new Set(modulesAutorises)];
+
+            if (utilisateurTrouve.permissions && Object.keys(utilisateurTrouve.permissions).length > 0) {
+              matrixPermissions = utilisateurTrouve.permissions;
+            } else if (utilisateurTrouve.id_role) {
+              const { data: roleData, error: errRole } = await supabase
+                .from('roles')
+                .select('permissions, nom_role')
+                .eq('id', utilisateurTrouve.id_role)
+                .maybeSingle();
+
+              if (!errRole && roleData) {
+                const nomRoleUpper = (roleData.nom_role || '').trim().toUpperCase();
+                if (nomRoleUpper === 'ADMINISTRATEUR') {
+                  matrixPermissions = { _plein_acces: true };
+                } else if (roleData.permissions) {
+                  matrixPermissions = roleData.permissions;
+                } else {
+                  matrixPermissions = { _aucun_acces: true };
+                }
+              }
+            } else {
+              matrixPermissions = { _aucun_acces: true };
             }
-          } else {
-            matrixPermissions = { _aucun_acces: true };
-          }
 
-          // Sélection du module de démarrage
-          if (modulesAutorises.includes('LIVRAISON')) {
-            moduleActifEntreprise = 'LIVRAISON';
-          } else if (modulesAutorises.length > 0) {
-            moduleActifEntreprise = modulesAutorises[0];
-          } else {
-            moduleActifEntreprise = 'BOUTIQUE';
-          }
+            if (modulesAutorises.includes('LIVRAISON')) {
+              moduleActifEntreprise = 'LIVRAISON';
+            } else if (modulesAutorises.length > 0) {
+              moduleActifEntreprise = modulesAutorises[0];
+            } else {
+              moduleActifEntreprise = 'BOUTIQUE';
+            }
 
-          authenticated = true;
+            authenticated = true;
+          }
         }
       }
 
       // 2. RECHERCHE DANS LA TABLE DES ENTREPRISES (Administrateur / Propriétaire)
       if (!authenticated) {
-        let conditionsEnt = [
-          `id_entreprise.ilike.${upperId}`,
-          `email.ilike.${lowerEmail}`
-        ];
+        let conditionsEnt = [];
+        if (upperId) conditionsEnt.push(`id_entreprise.ilike.${upperId}`);
+        if (lowerEmail) conditionsEnt.push(`email.ilike.${lowerEmail}`);
 
         if (digitsOnly.length >= 7) {
           const telVariantes = construireFiltreTelephone(digitsOnly);
-          telVariantes.forEach(tel => conditionsEnt.push(`telephone.eq.${tel}`));
+          telVariantes.forEach(tel => {
+            if (tel) conditionsEnt.push(`telephone.eq.${tel}`);
+          });
         }
 
-        const { data: entRows, error: errEnt } = await supabase
-          .from('entreprises')
-          .select('*')
-          .or(conditionsEnt.join(','));
+        if (conditionsEnt.length > 0) {
+          const { data: entRows, error: errEnt } = await supabase
+            .from('entreprises')
+            .select('*')
+            .or(conditionsEnt.join(','));
 
-        if (!errEnt && entRows && entRows.length > 0) {
-          const entrepriseTrouvee = entRows.find(ent => {
-            const mdpBase = String(ent.mot_de_passe || ent.code_pin_activation || '').trim();
-            return mdpBase && mdpBase === cleanPin;
-          });
+          if (!errEnt && entRows && entRows.length > 0) {
+            const entrepriseTrouvee = entRows.find(ent => {
+              const mdpBase = String(ent.mot_de_passe || ent.code_pin_activation || '').trim();
+              return mdpBase && mdpBase === cleanPin;
+            });
 
-          if (!entrepriseTrouvee) {
-            throw new Error("Mot de passe ou code PIN incorrect.");
+            if (!entrepriseTrouvee) {
+              throw new Error("Mot de passe ou code PIN incorrect.");
+            }
+
+            entrepriseIdCible = entrepriseTrouvee.id_entreprise;
+            nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
+            moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'BOUTIQUE').trim().toUpperCase();
+
+            matrixPermissions = { _plein_acces: true };
+            authenticated = true;
           }
-
-          entrepriseIdCible = entrepriseTrouvee.id_entreprise;
-          nomUtilisateurConnecte = entrepriseTrouvee.nom_entreprise || 'Administrateur';
-          moduleActifEntreprise = (entrepriseTrouvee.module_actif || 'BOUTIQUE').trim().toUpperCase();
-
-          matrixPermissions = { _plein_acces: true };
-          authenticated = true;
         }
       }
 
@@ -219,7 +219,6 @@ export default function ConnexionEntreprise() {
         throw new Error("Identifiant ou mot de passe incorrect. Accès non autorisé.");
       }
 
-      // Enregistrement unifié des clés de stockage
       localStorage.setItem('utilisateurConnecte', nomUtilisateurConnecte);
       localStorage.setItem('emailConnecte', cleanIdentifiant);
       localStorage.setItem('entrepriseId', entrepriseIdCible);

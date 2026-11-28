@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { usePermissions } from '@/lib/usePermissions';
 import { localSync } from '../../lib/localSync';
 
 export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMode = false }) {
   const [articles, setArticles] = useState([]);
-  const [depots, setDepots] = useState([]); 
+  const [depots, setDepots] = useState([]);
   const [emplacements, setEmplacements] = useState([]);
   const [familles, setFamilles] = useState([]);
   const [mouvements, setMouvements] = useState([]);
@@ -19,7 +19,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   const [utilisateurConnecte, setUtilisateurConnecte] = useState('Stephane KTS');
   const [emailConnecte, setEmailConnecte] = useState('');
 
-  // 🔔 État pour la modale unifiée de confirmation et de succès
+  // 🔔 État pour la modale unifiée de confirmation, succès et erreur
   const [etatModale, setEtatModale] = useState({
     ouverte: false,
     titre: '',
@@ -35,7 +35,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   const [nomFichierImport, setNomFichierImport] = useState('');
   const importInputRef = useRef(null);
 
-  // État pour la modale de sélection du Partenaire dans le rapport
+  // État pour la modale de sélection du Partenaire/Dépôt dans le rapport
   const [afficherModalSelectionDepotRapport, setAfficherModalSelectionDepotRapport] = useState(false);
   const [rechercheModalDepotRapport, setRechercheModalDepotRapport] = useState('');
 
@@ -92,10 +92,10 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
   const [modeVue, setModeVue] = useState('catalogue');
   const [articleSelectionneStatId, setArticleSelectionneStatId] = useState('');
-  
+
   const [depotStatFiltre, setDepotStatFiltre] = useState('TOUS');
   const [emplacementStatFiltre, setEmplacementStatFiltre] = useState('TOUS');
-  
+
   const [afficherModalSelectionArticle, setAfficherModalSelectionArticle] = useState(false);
   const [rechercheModalArticle, setRechercheModalArticle] = useState('');
 
@@ -142,7 +142,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   const [chargement, setChargement] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [enTrainDeSauvegarder, setEnTrainDeSauvegarder] = useState(false);
-  
+
   const [afficherModalForm, setAfficherModalForm] = useState(false);
   const [articleEnEdition, setArticleEnEdition] = useState(null);
 
@@ -169,7 +169,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     suivi_stock: true,
   });
 
-  // Nettoyage des éléments obsolètes dans la file d'attente locale (colonnes supprimées du schéma)
+  // Nettoyage des éléments obsolètes dans la file d'attente locale
   const nettoyerFileAttenteSync = () => {
     if (typeof window === 'undefined') return;
     try {
@@ -189,14 +189,36 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
           localStorage.setItem(cle, JSON.stringify(listeNettoyee));
         }
       }
-    } catch (e) {
+    } catch {
       // Ignorer silencieusement les erreurs de parsing
     }
   };
 
-  const toutesLesSuggestionsArticles = Array.from(
-    new Set(articles.map(art => (art.Designation || art.designation || '').trim().toUpperCase()))
-  ).sort();
+  // Pré-parsing mémoïsé des détails JSON d'approvisionnements pour accélérer les calculs
+  const approvisionnementsParsed = useMemo(() => {
+    return approvisionnements.map((app) => {
+      let listArt = [];
+      if (typeof app.details_articles === 'string') {
+        try {
+          listArt = JSON.parse(app.details_articles);
+        } catch {
+          listArt = [];
+        }
+      } else if (Array.isArray(app.details_articles)) {
+        listArt = app.details_articles;
+      }
+      return {
+        ...app,
+        _parsedArticles: Array.isArray(listArt) ? listArt : []
+      };
+    });
+  }, [approvisionnements]);
+
+  const toutesLesSuggestionsArticles = useMemo(() => {
+    return Array.from(
+      new Set(articles.map(art => (art.Designation || art.designation || '').trim().toUpperCase()))
+    ).sort();
+  }, [articles]);
 
   const obtenirNomEmplacementParId = (empId) => {
     if (!empId || empId === 'TOUS') return moduleActuel === 'LIVRAISON' ? 'Tous les livreurs' : 'Tous les emplacements';
@@ -235,6 +257,53 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     return '-';
   };
 
+  // 🛡️ Requête sécurisée sur la table `entreprises` (résout définitivement l'erreur 400 UUID vs Texte)[cite: 28, 29]
+  const recupererInfosEntrepriseSecurise = async (idCible) => {
+    if (!idCible) return null;
+    const estUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(idCible).trim());
+
+    try {
+      if (estUuid) {
+        const { data, error } = await supabase
+          .from('entreprises')
+          .select('*')
+          .eq('id', idCible)
+          .maybeSingle();
+        if (!error && data) return data;
+      } else {
+        // Test de la colonne id_entreprise en priorité pour les codes textuels (ex: 4TS-704882)[cite: 28, 29]
+        const { data: dataCodeEntreprise, error: errCodeEntreprise } = await supabase
+          .from('entreprises')
+          .select('*')
+          .eq('id_entreprise', idCible)
+          .maybeSingle();
+
+        if (!errCodeEntreprise && dataCodeEntreprise) return dataCodeEntreprise;
+
+        // Fallback sur code_entreprise (si applicable selon la structure de table)
+        const { data: dataCode, error: errCode } = await supabase
+          .from('entreprises')
+          .select('*')
+          .eq('code_entreprise', idCible)
+          .maybeSingle();
+
+        if (!errCode && dataCode) return dataCode;
+
+        // Dernier repli si l'ID est testé en tant que texte
+        const { data: dataIdText, error: errIdText } = await supabase
+          .from('entreprises')
+          .select('*')
+          .eq('id', idCible)
+          .maybeSingle();
+
+        if (!errIdText && dataIdText) return dataIdText;
+      }
+    } catch {
+      // Tolérance silencieuse : ne bloque jamais le chargement de la page
+    }
+    return null;
+  };
+
   const chargerDonneesReference = async () => {
     const familleLocale = localSync.recupererDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`);
     const depotsLocaux = localSync.recupererDonneesLocales(`depots_stock_${entrepriseId}_${moduleActuel}`);
@@ -245,15 +314,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
     if (familleLocale && familleLocale.length > 0) {
       setFamilles(familleLocale);
-      setNouveauArticle(prev => ({ 
-        ...prev, 
+      setNouveauArticle(prev => ({
+        ...prev,
         Famille: prev.Famille || familleLocale[0].id,
-        suivi_stock: prev.Famille ? prev.suivi_stock : (familleLocale[0].suivi_stock ?? true) 
+        suivi_stock: prev.Famille ? prev.suivi_stock : (familleLocale[0].suivi_stock ?? true)
       }));
     }
-    if (depotsLocaux && depotsLocaux.length > 0) {
-      setDepots(depotsLocaux);
-    }
+    if (depotsLocaux && depotsLocaux.length > 0) setDepots(depotsLocaux);
     if (emplacementsLocaux) setEmplacements(emplacementsLocaux);
     if (mouvementsLocaux) setMouvements(mouvementsLocaux);
     if (approvisionnementsLocaux) setApprovisionnements(approvisionnementsLocaux);
@@ -264,72 +331,86 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     }
 
     try {
-      const { data: dataEnt } = await supabase
-        .from('entreprises')
-        .select('*')
-        .or(`id.eq.${entrepriseId},id_entreprise.eq.${entrepriseId},code_entreprise.eq.${entrepriseId}`)
-        .single();
-      
+      // ⚡ Exécution parallèle de toutes les requêtes pour des performances optimales
+      const [
+        dataEnt,
+        resFam,
+        resDep,
+        resEmp,
+        resMouv,
+        resAppro
+      ] = await Promise.all([
+        recupererInfosEntrepriseSecurise(entrepriseId),
+        supabase
+          .from('familles_articles')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('depots_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel),
+        supabase
+          .from('emplacements_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel),
+        supabase
+          .from('mouvements_stock')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel),
+        supabase
+          .from('approvisionnements')
+          .select('*')
+          .eq('id_entreprise', entrepriseId)
+          .eq('module', moduleActuel)
+      ]);
+
       if (dataEnt) {
         setInfosEntreprise(dataEnt);
         localSync.sauvegarderDonneesLocales(`entreprise_info_${entrepriseId}`, dataEnt);
       }
 
-      const { data: dataFam } = await supabase
-        .from('familles_articles')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel)
-        .order('created_at', { ascending: true });
-      
-      const listeFam = dataFam || [];
-      setFamilles(listeFam);
-      localSync.sauvegarderDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`, listeFam);
+      if (!resFam.error) {
+        const listeFam = resFam.data || [];
+        setFamilles(listeFam);
+        localSync.sauvegarderDonneesLocales(`familles_articles_${entrepriseId}_${moduleActuel}`, listeFam);
 
-      if (listeFam.length > 0) {
-        setNouveauArticle(prev => ({ 
-          ...prev, 
-          Famille: prev.Famille || listeFam[0].id,
-          suivi_stock: prev.Famille ? prev.suivi_stock : (listeFam[0].suivi_stock ?? true) 
-        }));
+        if (listeFam.length > 0) {
+          setNouveauArticle(prev => ({
+            ...prev,
+            Famille: prev.Famille || listeFam[0].id,
+            suivi_stock: prev.Famille ? prev.suivi_stock : (listeFam[0].suivi_stock ?? true)
+          }));
+        }
       }
 
-      const { data: dataDep } = await supabase
-        .from('depots_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      const listeDepots = dataDep || [];
-      setDepots(listeDepots);
-      localSync.sauvegarderDonneesLocales(`depots_stock_${entrepriseId}_${moduleActuel}`, listeDepots);
+      if (!resDep.error) {
+        const listeDepots = resDep.data || [];
+        setDepots(listeDepots);
+        localSync.sauvegarderDonneesLocales(`depots_stock_${entrepriseId}_${moduleActuel}`, listeDepots);
+      }
 
-      const { data: dataEmp } = await supabase
-        .from('emplacements_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      const listeEmp = dataEmp || [];
-      setEmplacements(listeEmp);
-      localSync.sauvegarderDonneesLocales(`emplacements_stock_${entrepriseId}_${moduleActuel}`, listeEmp);
+      if (!resEmp.error) {
+        const listeEmp = resEmp.data || [];
+        setEmplacements(listeEmp);
+        localSync.sauvegarderDonneesLocales(`emplacements_stock_${entrepriseId}_${moduleActuel}`, listeEmp);
+      }
 
-      const { data: dataMouv } = await supabase
-        .from('mouvements_stock')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      const listeMouv = dataMouv || [];
-      setMouvements(listeMouv);
-      localSync.sauvegarderDonneesLocales(`mouvements_stock_${entrepriseId}_${moduleActuel}`, listeMouv);
+      if (!resMouv.error) {
+        const listeMouv = resMouv.data || [];
+        setMouvements(listeMouv);
+        localSync.sauvegarderDonneesLocales(`mouvements_stock_${entrepriseId}_${moduleActuel}`, listeMouv);
+      }
 
-      const { data: dataAppro } = await supabase
-        .from('approvisionnements')
-        .select('*')
-        .eq('id_entreprise', entrepriseId)
-        .eq('module', moduleActuel);
-      const listeAppro = dataAppro || [];
-      setApprovisionnements(listeAppro);
-      localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}_${moduleActuel}`, listeAppro);
-
+      if (!resAppro.error) {
+        const listeAppro = resAppro.data || [];
+        setApprovisionnements(listeAppro);
+        localSync.sauvegarderDonneesLocales(`approvisionnements_${entrepriseId}_${moduleActuel}`, listeAppro);
+      }
     } catch (err) {
       console.warn('Mode hors-ligne ou échec réseau sur les références :', err.message);
     }
@@ -343,7 +424,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     }
 
     try {
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('articles_stock')
         .select('*')
         .eq('id_entreprise', entrepriseId)
@@ -352,7 +433,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       if (error) throw error;
       const liste = data || [];
-      
+
       setArticles(liste);
       localSync.sauvegarderDonneesLocales(cleCacheArticles, liste);
     } catch (err) {
@@ -372,13 +453,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   }, [entrepriseId, moduleActuel]);
 
   const telechargerModeleExcel = () => {
-    let enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
-    
+    const enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
+
     let lignesExemples = "";
     if (familles.length > 0) {
       const prem = familles[0];
       const sec = familles.length > 1 ? familles[1] : prem;
-      
+
       const id1 = prem.id ? `ID-${prem.id}` : '';
       const nom1 = prem.nom_famille || prem.Nom_Famille || 'BOISSONS';
       const id2 = sec.id ? `ID-${sec.id}` : '';
@@ -394,7 +475,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     const contenuCsv = "\ufeff" + enTetes + lignesExemples;
     const blob = new Blob([contenuCsv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
+
     const lien = document.createElement('a');
     lien.href = url;
     lien.setAttribute('download', `Modele_Import_Articles_${moduleActuel}.csv`);
@@ -405,7 +486,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   };
 
   const exporterCatalogueExcel = () => {
-    let enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
+    const enTetes = "Designation;ID_Famille;Famille;Prix_Vente;Prix_Achat;Seuil_Alerte;Code_Barre;Suivi_Stock\n";
     let lignesCatalogue = "";
 
     articles.forEach(art => {
@@ -425,7 +506,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     const contenuCsv = "\ufeff" + enTetes + lignesCatalogue;
     const blob = new Blob([contenuCsv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
+
     const lien = document.createElement('a');
     lien.href = url;
     lien.setAttribute('download', `Catalogue_Articles_${moduleActuel}_${new Date().toISOString().split('T')[0]}.csv`);
@@ -478,7 +559,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
           const saisieIdFamilleBrut = (colonnes[1] || '').trim().replace(/^['"]+|['"]+$/g, '');
           const saisieIdFamille = saisieIdFamilleBrut.replace(/^ID-/i, '');
           const saisieNomFamille = (colonnes[2] || '').trim().replace(/^['"]+|['"]+$/g, '').toUpperCase();
-          
+
           const prixVenteBrut = (colonnes[3] || '0').trim().replace(/\s+/g, '').replace(',', '.');
           const prixAchatBrut = (colonnes[4] || '0').trim().replace(/\s+/g, '').replace(',', '.');
           const seuilBrut = (colonnes[5] || '5').trim().replace(/\s+/g, '');
@@ -487,7 +568,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
           const prixVente = parseFloat(prixVenteBrut) || 0;
           const prixAchat = moduleActuel !== 'LIVRAISON' ? (parseFloat(prixAchatBrut) || 0) : 0;
-          const seuilAlerte = seuilBrut !== '' && !isNaN(parseInt(seuilBrut)) ? parseInt(seuilBrut) : 5;
+          const seuilAlerte = seuilBrut !== '' && !isNaN(parseInt(seuilBrut, 10)) ? parseInt(seuilBrut, 10) : 5;
           const suiviStock = !(suiviStockTexte === 'NON' || suiviStockTexte === 'FAUX' || suiviStockTexte === 'FALSE' || suiviStockTexte === '0');
 
           let familleId = familles.length > 0 ? familles[0].id : null;
@@ -637,18 +718,10 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
     if (aMouvement) return true;
 
-    const aAppro = approvisionnements.some(app => {
+    const aAppro = approvisionnementsParsed.some(app => {
       const depApp = String(app.id_depot_destination || app.id_depot || '');
       if (depApp !== String(depotId)) return false;
-
-      let listArt = [];
-      if (typeof app.details_articles === 'string') {
-        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-      } else if (Array.isArray(app.details_articles)) {
-        listArt = app.details_articles;
-      }
-
-      return listArt.some(item => String(item.id_article || item.article_id) === String(articleId));
+      return app._parsedArticles.some(item => String(item.id_article || item.article_id) === String(articleId));
     });
 
     return aAppro;
@@ -661,7 +734,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
-      const qte = parseInt(m.quantite || 0);
+      const qte = parseInt(m.quantite || 0, 10);
       const typeMvt = (m.type_mouvement || '').toUpperCase();
 
       const estSource = String(m.id_depot_source || '') === String(dCible);
@@ -690,29 +763,19 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       }
     });
 
-    approvisionnements.forEach(app => {
+    approvisionnementsParsed.forEach(app => {
       const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot || '') === String(dCible);
       if (!matchDepot) return;
 
-      let listArt = [];
-      if (typeof app.details_articles === 'string') {
-        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-      } else if (Array.isArray(app.details_articles)) {
-        listArt = app.details_articles;
-      }
-
-      listArt.forEach(item => {
+      app._parsedArticles.forEach(item => {
         if (String(item.id_article || item.article_id) !== String(articleId)) return;
-        const qte = parseInt(item.quantite || 0);
-        entrees += qte;
+        entrees += parseInt(item.quantite || 0, 10);
       });
     });
 
     stockInitial = Math.max(0, stockInitial);
     const stockTotal = stockInitial + entrees;
-    const stockReel = Math.max(0, stockTotal - sorties);
-
-    return stockReel;
+    return Math.max(0, stockTotal - sorties);
   };
 
   const calculerStockReelDirect = (articleId, depotCible = 'TOUS', emplacementCible = 'TOUS') => {
@@ -720,16 +783,16 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       let stockEmp = 0;
       mouvements.forEach(m => {
         if (String(m.id_article) !== String(articleId)) return;
-        
+
         if (depotCible !== 'TOUS') {
           const matchDepSource = String(m.id_depot_source || '') === String(depotCible);
           const matchDepDest = String(m.id_depot_destination || '') === String(depotCible);
           if (!matchDepSource && !matchDepDest) return;
         }
 
-        const qte = parseInt(m.quantite || 0);
+        const qte = parseInt(m.quantite || 0, 10);
         const typeMvt = (m.type_mouvement || '').toUpperCase();
-        
+
         const empSource = String(m.id_emplacement_source || '');
         const empDest = String(m.id_emplacement_destination || '');
 
@@ -754,28 +817,24 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     return calculerLigneRapportStockPourDepot(articleId, depotCible);
   };
 
-  const obtenirNumeroDocVisuelPourMouvement = (mvtCible) => {
-    if (!mvtCible) return 'MVT';
-    const motifMvt = (mvtCible.motif_remarque || '').trim().toUpperCase();
-    
+  // Map mémoïsée des numéros séquentiels de documents pour éviter de recalculer sur chaque ligne
+  const mapNumerosDocsMouvements = useMemo(() => {
+    const mapResult = {};
     const documentsBruts = Object.values(
       mouvements
         .filter((mvt) => {
           const motif = (mvt.motif_remarque || '').trim().toUpperCase();
-          
           const estSystemeAuto = (
-            motif.includes('CMD-') || 
-            motif.includes('LIVRAISON') || 
+            motif.includes('CMD-') ||
+            motif.includes('LIVRAISON') ||
             motif.includes('RESTITUTION') ||
             motif.includes('VENTE') ||
             motif.includes('VENTE TICKET')
           );
-          if (estSystemeAuto) return false;
-
-          return true;
+          return !estSystemeAuto;
         })
         .reduce((acc, mvt) => {
-          const numDocBrut = mvt.motif_remarque || 'SANS-REF';
+          const numDocBrut = (mvt.motif_remarque || 'SANS-REF').trim().toUpperCase();
           if (!acc[numDocBrut]) {
             acc[numDocBrut] = {
               numeroDocBrut: numDocBrut,
@@ -790,22 +849,23 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     documentsBruts.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     const compteursParType = {};
+    const prefixes = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
+
     for (const doc of documentsBruts) {
-      const typeMvt = doc.type;
-      const prefixes = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
-      const prefix = prefixes[typeMvt] || 'TR';
-
-      if (!compteursParType[prefix]) {
-        compteursParType[prefix] = 0;
-      }
-      compteursParType[prefix] += 1;
-      const numeroSequentiel = `${prefix}-${String(compteursParType[prefix]).padStart(2, '0')}`;
-
-      if (doc.numeroDocBrut === motifMvt) {
-        return numeroSequentiel;
-      }
+      const prefix = prefixes[doc.type] || 'TR';
+      compteursParType[prefix] = (compteursParType[prefix] || 0) + 1;
+      mapResult[doc.numeroDocBrut] = `${prefix}-${String(compteursParType[prefix]).padStart(2, '0')}`;
     }
 
+    return mapResult;
+  }, [mouvements]);
+
+  const obtenirNumeroDocVisuelPourMouvement = (mvtCible) => {
+    if (!mvtCible) return 'MVT';
+    const motifMvt = (mvtCible.motif_remarque || '').trim().toUpperCase();
+    if (motifMvt && mapNumerosDocsMouvements[motifMvt]) {
+      return mapNumerosDocsMouvements[motifMvt];
+    }
     const typeMvtFallback = (mvtCible.type_mouvement || '').toUpperCase();
     const prefixesFallback = { ENTREE: 'APP', ENTREE_STOCK: 'ES', SORTIE: 'MS', AVARIES: 'AV', TRANSFERT: 'TR', INVENTAIRE: 'INV' };
     return prefixesFallback[typeMvtFallback] || 'TR';
@@ -814,35 +874,29 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
   const obtenirHistoriqueChronologiqueStat = (articleId) => {
     if (!articleId) return { lignes: [], stockFinal: 0 };
 
-    let evenements = [];
+    const evenements = [];
     const dCible = depotStatFiltre;
     const eCible = emplacementStatFiltre;
 
     if (eCible === 'TOUS') {
-      approvisionnements.forEach(app => {
+      approvisionnementsParsed.forEach(app => {
         const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
         if (!matchDepot) return;
 
-        let listArt = [];
-        if (typeof app.details_articles === 'string') {
-          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-        } else if (Array.isArray(app.details_articles)) {
-          listArt = app.details_articles;
-        }
-
-        listArt.forEach(item => {
+        app._parsedArticles.forEach(item => {
           if (String(item.id_article || item.article_id) === String(articleId)) {
             const motifRef = (app.reference || app.motif || app.motif_remarque || '').trim();
             const estLivraison = (app.type_mouvement || '').toUpperCase() === 'LIVRAISON' || motifRef.toUpperCase().includes('LIVRAISON');
             const motifAffichage = estLivraison ? 'LIVRAISON' : (motifRef !== '' ? motifRef : 'APPROVISIONNEMENT');
+            const qteItem = parseInt(item.quantite || 0, 10);
 
             evenements.push({
               date: app.created_at || '',
               typeAbr: 'APP',
               motifLigne: motifAffichage,
               emplacementDest: obtenirNomDestinationParMvt(app),
-              quantiteMouvementee: parseInt(item.quantite || 0),
-              impactStock: parseInt(item.quantite || 0),
+              quantiteMouvementee: qteItem,
+              impactStock: qteItem,
               prioriteOrdre: 0,
               estTypeInventaire: false,
               valeurInventaire: 0
@@ -853,8 +907,8 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       mouvements.forEach(m => {
         if (String(m.id_article) !== String(articleId)) return;
-        
-        const qte = parseInt(m.quantite || 0);
+
+        const qte = parseInt(m.quantite || 0, 10);
         const typeMvt = (m.type_mouvement || '').toUpperCase();
         const estSource = String(m.id_depot_source) === String(dCible);
         const estDestination = String(m.id_depot_destination) === String(dCible);
@@ -866,7 +920,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
         const motifRemarque = (m.motif_remarque || '').trim();
         const referenceMvt = (m.reference || '').trim();
-        
+
         const estLivraison = typeMvt === 'LIVRAISON' || motifRemarque.toUpperCase().includes('LIVRAISON') || referenceMvt.toUpperCase().includes('LIVRAISON');
         const motifAffichage = estLivraison ? 'LIVRAISON' : (referenceMvt !== '' ? referenceMvt : (motifRemarque !== '' ? motifRemarque : typeMvt));
 
@@ -886,22 +940,17 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
           prioriteOrdre = 2;
         } else if (typeMvt === 'TRANSFERT' || typeMvt === 'TR') {
           const memeDepot = m.id_depot_source && m.id_depot_destination && String(m.id_depot_source) === String(m.id_depot_destination);
-          if (memeDepot) {
+          if (memeDepot || dCible === 'TOUS') {
             impact = 0;
             prioriteOrdre = 1;
           } else {
-            if (dCible === 'TOUS') {
-              impact = 0;
-              prioriteOrdre = 1;
-            } else {
-              if (estSource) {
-                impact = -qte;
-                prioriteOrdre = 2;
-              }
-              if (estDestination) {
-                impact = qte;
-                prioriteOrdre = 0;
-              }
+            if (estSource) {
+              impact = -qte;
+              prioriteOrdre = 2;
+            }
+            if (estDestination) {
+              impact = qte;
+              prioriteOrdre = 0;
             }
           }
         } else {
@@ -911,45 +960,39 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
         evenements.push({
           date: m.created_at || '',
-          typeAbr: typeAbr,
+          typeAbr,
           motifLigne: motifAffichage,
           emplacementDest: emplacementDestNom,
           quantiteMouvementee: qte,
           impactStock: impact,
-          prioriteOrdre: prioriteOrdre,
-          estTypeInventaire: estTypeInventaire,
+          prioriteOrdre,
+          estTypeInventaire,
           valeurInventaire: qte
         });
       });
 
     } else {
-      approvisionnements.forEach(app => {
+      approvisionnementsParsed.forEach(app => {
         const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot) === String(dCible);
         if (!matchDepot) return;
 
         const matchEmpApp = String(app.id_emplacement_destination || app.id_emplacement || '') === String(eCible);
         if (!matchEmpApp) return;
 
-        let listArt = [];
-        if (typeof app.details_articles === 'string') {
-          try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-        } else if (Array.isArray(app.details_articles)) {
-          listArt = app.details_articles;
-        }
-
-        listArt.forEach(item => {
+        app._parsedArticles.forEach(item => {
           if (String(item.id_article || item.article_id) === String(articleId)) {
             const motifRef = (app.reference || app.motif || app.motif_remarque || '').trim();
             const estLivraison = (app.type_mouvement || '').toUpperCase() === 'LIVRAISON' || motifRef.toUpperCase().includes('LIVRAISON');
             const motifAffichage = estLivraison ? 'LIVRAISON' : (motifRef !== '' ? motifRef : 'APPROVISIONNEMENT');
+            const qteItem = parseInt(item.quantite || 0, 10);
 
             evenements.push({
               date: app.created_at || '',
               typeAbr: 'APP',
               motifLigne: motifAffichage,
               emplacementDest: obtenirNomDestinationParMvt(app),
-              quantiteMouvementee: parseInt(item.quantite || 0),
-              impactStock: parseInt(item.quantite || 0),
+              quantiteMouvementee: qteItem,
+              impactStock: qteItem,
               prioriteOrdre: 0,
               estTypeInventaire: false,
               valeurInventaire: 0
@@ -967,9 +1010,9 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
           if (!matchDepSource && !matchDepDest) return;
         }
 
-        const qte = parseInt(m.quantite || 0);
+        const qte = parseInt(m.quantite || 0, 10);
         const typeMvt = (m.type_mouvement || '').toUpperCase();
-        
+
         const empSource = String(m.id_emplacement_source || '');
         const empDest = String(m.id_emplacement_destination || '');
 
@@ -983,7 +1026,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
         const motifRemarque = (m.motif_remarque || '').trim();
         const referenceMvt = (m.reference || '').trim();
-        
+
         const estLivraison = typeMvt === 'LIVRAISON' || motifRemarque.toUpperCase().includes('LIVRAISON') || referenceMvt.toUpperCase().includes('LIVRAISON');
         const motifAffichage = estLivraison ? 'LIVRAISON' : (referenceMvt !== '' ? referenceMvt : (motifRemarque !== '' ? motifRemarque : typeMvt));
 
@@ -995,11 +1038,11 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
           estTypeInventaire = true;
           prioriteOrdre = 0;
         } else if (matchDest && !matchSource) {
-          impact = qte; 
-          prioriteOrdre = 0; 
+          impact = qte;
+          prioriteOrdre = 0;
         } else if (matchSource && !matchDest) {
-          impact = -qte; 
-          prioriteOrdre = 2; 
+          impact = -qte;
+          prioriteOrdre = 2;
         } else if (matchSource && matchDest) {
           impact = 0;
           prioriteOrdre = 1;
@@ -1007,13 +1050,13 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
         evenements.push({
           date: m.created_at || '',
-          typeAbr: typeAbr,
+          typeAbr,
           motifLigne: motifAffichage,
           emplacementDest: emplacementDestNom,
           quantiteMouvementee: qte,
           impactStock: impact,
-          prioriteOrdre: prioriteOrdre,
-          estTypeInventaire: estTypeInventaire,
+          prioriteOrdre,
+          estTypeInventaire,
           valeurInventaire: qte
         });
       });
@@ -1025,16 +1068,14 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       const jourA = (a.date || '').split('T')[0];
       const jourB = (b.date || '').split('T')[0];
 
-      if (jourA === jourB) {
-        if (a.prioriteOrdre !== b.prioriteOrdre) {
-          return a.prioriteOrdre - b.prioriteOrdre;
-        }
+      if (jourA === jourB && a.prioriteOrdre !== b.prioriteOrdre) {
+        return a.prioriteOrdre - b.prioriteOrdre;
       }
       return dateA - dateB;
     });
 
     let stockCourant = 0;
-    let lignesResultat = [];
+    const lignesResultat = [];
 
     evenements.forEach(ev => {
       const dateEv = (ev.date || '').split('T')[0];
@@ -1042,20 +1083,15 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       if (ev.estTypeInventaire) {
         stockCourant = ev.valeurInventaire;
-        if (!estAvantPeriode && ((!dateDebutStat || !dateEv || dateEv >= dateDebutStat) && (!dateFinStat || !dateEv || dateEv <= dateFinStat))) {
-          lignesResultat.push({
-            ...ev,
-            stockProgressif: Math.max(0, stockCourant)
-          });
-        }
       } else {
         stockCourant += ev.impactStock;
-        if (!estAvantPeriode && ((!dateDebutStat || !dateEv || dateEv >= dateDebutStat) && (!dateFinStat || !dateEv || dateEv <= dateFinStat))) {
-          lignesResultat.push({
-            ...ev,
-            stockProgressif: Math.max(0, stockCourant)
-          });
-        }
+      }
+
+      if (!estAvantPeriode && ((!dateDebutStat || !dateEv || dateEv >= dateDebutStat) && (!dateFinStat || !dateEv || dateEv <= dateFinStat))) {
+        lignesResultat.push({
+          ...ev,
+          stockProgressif: Math.max(0, stockCourant)
+        });
       }
     });
 
@@ -1185,7 +1221,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         Famille: familleIdFinale,
         Prix_Achat: moduleActuel !== 'LIVRAISON' ? (parseFloat(nouveauArticle.Prix_Achat) || 0) : 0,
         Prix_Vente: parseFloat(nouveauArticle.Prix_Vente) || 0,
-        Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte) || 5,
+        Seuil_Alerte: parseInt(nouveauArticle.Seuil_Alerte, 10) || 5,
         Photo: nouveauArticle.Photo,
         Disponible_Menu_QR: nouveauArticle.Disponible_Menu_QR,
         date_peremption: isGestionPerissablesActive() && nouveauArticle.date_peremption ? nouveauArticle.date_peremption : null,
@@ -1349,33 +1385,37 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     });
   };
 
-  const articlesFiltres = articles.filter((art) => {
-    const artId = art.id_article || art.id;
+  // ⚡ Filtrage et tri mémoïsés pour une réactivité immédiate
+  const articlesFiltres = useMemo(() => {
+    const rechercheNorm = rechercheArticleInput.trim().toLowerCase();
+    return articles.filter((art) => {
+      const artId = art.id_article || art.id;
 
-    const designationArt = (art.Designation || art.designation || '').toLowerCase();
-    if (rechercheArticleInput.trim() !== '' && !designationArt.includes(rechercheArticleInput.trim().toLowerCase())) {
-      return false;
-    }
+      if (rechercheNorm !== '') {
+        const designationArt = (art.Designation || art.designation || '').toLowerCase();
+        if (!designationArt.includes(rechercheNorm)) return false;
+      }
 
-    const matchFamille = familleFiltre === 'TOUTES' || !familleFiltre || String(art.Famille || art.famille) === String(familleFiltre);
-    if (!matchFamille) return false;
+      const matchFamille = familleFiltre === 'TOUTES' || !familleFiltre || String(art.Famille || art.famille) === String(familleFiltre);
+      if (!matchFamille) return false;
 
-    const matchDepotMouvement = articleAeuMouvementChezPartenaire(artId, depotFiltre);
-    if (!matchDepotMouvement) return false;
+      return articleAeuMouvementChezPartenaire(artId, depotFiltre);
+    });
+  }, [articles, rechercheArticleInput, familleFiltre, depotFiltre, mouvements, approvisionnementsParsed]);
 
-    return true;
-  });
+  const articlesRapportFiltres = useMemo(() => {
+    const rechercheNorm = rechercheRapportInput.trim().toLowerCase();
+    return articles.filter((art) => {
+      const artId = art.id_article || art.id;
 
-  const articlesRapportFiltres = articles.filter((art) => {
-    const artId = art.id_article || art.id;
+      if (rechercheNorm !== '') {
+        const designationArt = (art.Designation || art.designation || '').toLowerCase();
+        if (!designationArt.includes(rechercheNorm)) return false;
+      }
 
-    const designationArt = (art.Designation || art.designation || '').toLowerCase();
-    if (rechercheRapportInput.trim() !== '' && !designationArt.includes(rechercheRapportInput.trim().toLowerCase())) {
-      return false;
-    }
-
-    return articleAeuMouvementChezPartenaire(artId, depotRapportFiltre);
-  });
+      return articleAeuMouvementChezPartenaire(artId, depotRapportFiltre);
+    });
+  }, [articles, rechercheRapportInput, depotRapportFiltre, mouvements, approvisionnementsParsed]);
 
   const gererTri = (colonne) => {
     if (enTrainDeSauvegarder) return;
@@ -1397,59 +1437,65 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     }
   };
 
-  const articlesTries = [...articlesFiltres].sort((a, b) => {
-    let valA, valB;
+  const articlesTries = useMemo(() => {
+    return [...articlesFiltres].sort((a, b) => {
+      let valA, valB;
 
-    if (colonneTri === 'Designation') {
-      valA = String(a.Designation || a.designation || '').toLowerCase();
-      valB = String(b.Designation || b.designation || '').toLowerCase();
-    } else if (colonneTri === 'Prix_Achat') {
-      valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
-      valB = parseFloat(b.Prix_Achat || b.prix_vente || 0);
-    } else if (colonneTri === 'Prix_Vente') {
-      valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
-      valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
-    }
+      if (colonneTri === 'Designation') {
+        valA = String(a.Designation || a.designation || '').toLowerCase();
+        valB = String(b.Designation || b.designation || '').toLowerCase();
+      } else if (colonneTri === 'Prix_Achat') {
+        valA = parseFloat(a.Prix_Achat || a.prix_achat || 0);
+        valB = parseFloat(b.Prix_Achat || b.prix_achat || 0);
+      } else if (colonneTri === 'Prix_Vente') {
+        valA = parseFloat(a.Prix_Vente || a.prix_vente || 0);
+        valB = parseFloat(b.Prix_Vente || b.prix_vente || 0);
+      }
 
-    if (valA < valB) return ordreTri === 'asc' ? -1 : 1;
-    if (valA > valB) return ordreTri === 'asc' ? 1 : -1;
-    return 0;
-  });
+      if (valA < valB) return ordreTri === 'asc' ? -1 : 1;
+      if (valA > valB) return ordreTri === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [articlesFiltres, colonneTri, ordreTri]);
 
-  const articlesRapportTries = [...articlesRapportFiltres].sort((a, b) => {
-    let valA, valB;
-    if (colonneTriRapport === 'Designation') {
-      valA = String(a.Designation || a.designation || '').toLowerCase();
-      valB = String(b.Designation || b.designation || '').toLowerCase();
-    }
-    if (valA < valB) return ordreTriRapport === 'asc' ? -1 : 1;
-    if (valA > valB) return ordreTriRapport === 'asc' ? 1 : -1;
-    return 0;
-  });
+  const articlesRapportTries = useMemo(() => {
+    return [...articlesRapportFiltres].sort((a, b) => {
+      let valA, valB;
+      if (colonneTriRapport === 'Designation') {
+        valA = String(a.Designation || a.designation || '').toLowerCase();
+        valB = String(b.Designation || b.designation || '').toLowerCase();
+      }
+      if (valA < valB) return ordreTriRapport === 'asc' ? -1 : 1;
+      if (valA > valB) return ordreTriRapport === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [articlesRapportFiltres, colonneTriRapport, ordreTriRapport]);
 
   const articlesAffiches = articlesTries.slice(0, limiteArticles);
 
-  const emplacementsStatDisponibles = depotStatFiltre === 'TOUS'
-    ? emplacements
-    : emplacements.filter(emp => {
-        const empId = String(emp.id || '');
-        return mouvements.some(m => {
-          const matchDepot = String(m.id_depot_source || '') === String(depotStatFiltre) || String(m.id_depot_destination || '') === String(depotStatFiltre);
-          const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
-          return matchDepot && matchEmplacement;
-        });
+  const emplacementsStatDisponibles = useMemo(() => {
+    if (depotStatFiltre === 'TOUS') return emplacements;
+    return emplacements.filter(emp => {
+      const empId = String(emp.id || '');
+      return mouvements.some(m => {
+        const matchDepot = String(m.id_depot_source || '') === String(depotStatFiltre) || String(m.id_depot_destination || '') === String(depotStatFiltre);
+        const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
+        return matchDepot && matchEmplacement;
       });
+    });
+  }, [depotStatFiltre, emplacements, mouvements]);
 
-  const emplacementsCatDisponibles = depotFiltre === 'TOUS'
-    ? emplacements
-    : emplacements.filter(emp => {
-        const empId = String(emp.id || '');
-        return mouvements.some(m => {
-          const matchDepot = String(m.id_depot_source || '') === String(depotFiltre) || String(m.id_depot_destination || '') === String(depotFiltre);
-          const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
-          return matchDepot && matchEmplacement;
-        });
+  const emplacementsCatDisponibles = useMemo(() => {
+    if (depotFiltre === 'TOUS') return emplacements;
+    return emplacements.filter(emp => {
+      const empId = String(emp.id || '');
+      return mouvements.some(m => {
+        const matchDepot = String(m.id_depot_source || '') === String(depotFiltre) || String(m.id_depot_destination || '') === String(depotFiltre);
+        const matchEmplacement = String(m.id_emplacement_source || '') === empId || String(m.id_emplacement_destination || '') === empId;
+        return matchDepot && matchEmplacement;
       });
+    });
+  }, [depotFiltre, emplacements, mouvements]);
 
   const emplacementsTableau = emplacementFiltre !== 'TOUS'
     ? emplacements.filter(emp => String(emp.id || emp.id_emplacement || '') === String(emplacementFiltre))
@@ -1496,7 +1542,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
   const calculerLigneRapportStock = (articleId) => {
     const dCible = depotRapportFiltre;
-    
+
     let stockInitial = 0;
     let entrees = 0;
     let sorties = 0;
@@ -1504,7 +1550,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     mouvements.forEach(m => {
       if (String(m.id_article) !== String(articleId)) return;
       const dateMvt = (m.created_at || '').split('T')[0];
-      const qte = parseInt(m.quantite || 0);
+      const qte = parseInt(m.quantite || 0, 10);
       const typeMvt = (m.type_mouvement || '').toUpperCase();
 
       const estSource = String(m.id_depot_source || '') === String(dCible);
@@ -1544,21 +1590,14 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       }
     });
 
-    approvisionnements.forEach(app => {
+    approvisionnementsParsed.forEach(app => {
       const dateApp = (app.created_at || '').split('T')[0];
       const matchDepot = dCible === 'TOUS' || String(app.id_depot_destination || app.id_depot || '') === String(dCible);
       if (!matchDepot) return;
 
-      let listArt = [];
-      if (typeof app.details_articles === 'string') {
-        try { listArt = JSON.parse(app.details_articles); } catch (e) {}
-      } else if (Array.isArray(app.details_articles)) {
-        listArt = app.details_articles;
-      }
-
-      listArt.forEach(item => {
+      app._parsedArticles.forEach(item => {
         if (String(item.id_article || item.article_id) !== String(articleId)) return;
-        const qte = parseInt(item.quantite || 0);
+        const qte = parseInt(item.quantite || 0, 10);
 
         if (dateDebutRapport && dateApp && dateApp < dateDebutRapport) {
           stockInitial += qte;
@@ -1584,7 +1623,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
     const nomEntreprise = entrepriseInfo?.nom_entreprise || entrepriseInfo?.nom || '4TS Suite manager';
     const dateImpression = new Date().toLocaleDateString('fr-FR');
-    
+
     const formatIsoDateFr = (isoStr) => {
       if (!isoStr) return '';
       const parts = isoStr.split('-');
@@ -1599,7 +1638,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       const famObj = familles.find(f => String(f.id) === String(familleFiltre));
       const depObj = depots.find(d => String(d.id) === String(depotFiltre));
       const empObj = emplacements.find(e => String(e.id) === String(emplacementFiltre));
-      
+
       const nomDepotPartenaire = depObj ? (depObj.nom_depot || depObj.Nom_Depot) : 'Tous';
 
       infosFiltresHtml = `
@@ -1614,7 +1653,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
       const empObj = emplacements.find(e => String(e.id) === String(emplacementStatFiltre));
       const nomDepotPartenaire = depObj ? (depObj.nom_depot || depObj.Nom_Depot) : (moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts');
       const nomLivreurEmplacement = empObj ? empObj.nom_emplacement : 'Tous';
-      
+
       const periodeTexte = (dateDebutStat && dateFinStat)
         ? `Du ${formatIsoDateFr(dateDebutStat)} au ${formatIsoDateFr(dateFinStat)}`
         : 'Période globale';
@@ -1629,7 +1668,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
     } else if (modeVue === 'rapport') {
       const depObj = depots.find(d => String(d.id) === String(depotRapportFiltre));
       const nomDepotPartenaire = depObj ? (depObj.nom_depot || depObj.Nom_Depot) : (moduleActuel === 'LIVRAISON' ? 'Tous les partenaires' : 'Tous les dépôts');
-      
+
       const periodeTexte = (dateDebutRapport && dateFinRapport)
         ? `Du ${formatIsoDateFr(dateDebutRapport)} au ${formatIsoDateFr(dateFinRapport)}`
         : 'Période globale';
@@ -1863,7 +1902,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   }}
                   className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase text-orange-600">Partenaire: {obtenirNomDepotParId(depotFiltre)}</span>
+                  <span className="truncate uppercase text-orange-600">{libelleDepotPartenaire}: {obtenirNomDepotParId(depotFiltre)}</span>
                   <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                 </div>
               </div>
@@ -1877,7 +1916,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   }}
                   className={selectTriggerStyle}
                 >
-                  <span className="truncate uppercase text-slate-800">Livreur: {obtenirNomEmplacementParId(emplacementFiltre)}</span>
+                  <span className="truncate uppercase text-slate-800">{libelleLivreurOuEmplacement}: {obtenirNomEmplacementParId(emplacementFiltre)}</span>
                   <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                 </div>
               </div>
@@ -2085,7 +2124,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     }}
                     className={selectTriggerStyle}
                   >
-                    <span className="truncate uppercase text-orange-600">Partenaire: {nomDepotActuel}</span>
+                    <span className="truncate uppercase text-orange-600">{libelleDepotPartenaire}: {nomDepotActuel}</span>
                     <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                   </div>
                 </div>
@@ -2099,7 +2138,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                     }}
                     className={selectTriggerStyle}
                   >
-                    <span className="truncate uppercase text-slate-800">Livreur: {nomEmpActuel}</span>
+                    <span className="truncate uppercase text-slate-800">{libelleLivreurOuEmplacement}: {nomEmpActuel}</span>
                     <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                   </div>
                 </div>
@@ -2145,7 +2184,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                         <th className="p-2">Date</th>
                         <th className="p-2">Motif</th>
                         <th className="p-2 text-center">Type Mvt</th>
-                        <th className="p-2 text-center">Livreur</th>
+                        <th className="p-2 text-center">{libelleLivreurOuEmplacement}</th>
                         <th className="p-2 text-center">Quantité</th>
                         <th className="p-2 text-center">Cumul</th>
                       </tr>
@@ -2198,7 +2237,6 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
 
       {modeVue === 'rapport' && (
         <div className="space-y-1.5">
-          {/* Bloc Rapport mis à jour avec le titre RAPPORT, les zones de dates réduites et le bouton Partenaire ouvrant une modale */}
           <div className={`p-2 space-y-1.5 border-2 border-orange-500/40 ${cardStyle}`}>
             <div className="flex justify-between items-center gap-1 pb-1 border-b border-slate-100">
               <span className="font-extrabold text-[8.5px] uppercase text-orange-600 shrink-0">
@@ -2240,7 +2278,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
                   className={selectTriggerStyle}
                 >
                   <span className="truncate uppercase text-orange-600">
-                    Partenaire: {obtenirNomDepotParId(depotRapportFiltre)}
+                    {libelleDepotPartenaire}: {obtenirNomDepotParId(depotRapportFiltre)}
                   </span>
                   <span className="text-[8px] text-slate-400 shrink-0 ml-0.5">🔍</span>
                 </div>
@@ -2954,7 +2992,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE DÉPÔT */}
+      {/* MODALE DE SÉLECTION DE DÉPÔT / PARTENAIRE (STAT) */}
       {afficherModalSelectionDepot && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -3005,7 +3043,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE PARTENAIRE (RAPPORT) */}
+      {/* MODALE DE SÉLECTION DE PARTENAIRE / DÉPÔT (RAPPORT) */}
       {afficherModalSelectionDepotRapport && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -3055,7 +3093,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION D'EMPLACEMENT */}
+      {/* MODALE DE SÉLECTION D'EMPLACEMENT / LIVREUR (STAT) */}
       {afficherModalSelectionEmp && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -3155,7 +3193,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION DE DÉPÔT (CATALOGUE) */}
+      {/* MODALE DE SÉLECTION DE DÉPÔT / PARTENAIRE (CATALOGUE) */}
       {afficherModalDepotCat && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">
@@ -3206,7 +3244,7 @@ export default function GestionArticles({ entrepriseId = '4TS-234321', isDarkMod
         </div>
       )}
 
-      {/* MODALE DE SÉLECTION D'EMPLACEMENT (CATALOGUE) */}
+      {/* MODALE DE SÉLECTION D'EMPLACEMENT / LIVREUR (CATALOGUE) */}
       {afficherModalEmpCat && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-start justify-center pt-6 z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden space-y-3 p-4">

@@ -25,19 +25,19 @@ export const localSync = {
     }
   },
 
-  // 3. Ajouter une file d'attente pour les actions faites hors-ligne (pour les envoyer plus tard à Supabase)
+  // 3. Ajouter une file d'attente pour les actions faites hors-ligne (avec suivi des tentatives)
   ajouterFileAttente: (action, table, payload) => {
     if (typeof window === 'undefined') return;
     try {
       const queue = JSON.parse(localStorage.getItem('4ts_offline_queue') || '[]');
-      queue.push({ action, table, payload, timestamp: Date.now() });
+      queue.push({ action, table, payload, timestamp: Date.now(), retries: 0 });
       localStorage.setItem('4ts_offline_queue', JSON.stringify(queue));
     } catch (e) {
       console.error('Erreur file d\'attente hors-ligne', e);
     }
   },
 
-  // 4. Synchroniser la file d'attente avec Supabase quand Internet revient
+  // 4. Synchroniser la file d'attente avec Supabase avec protection contre les boucles de timeout
   synchroniserVersCloud: async (supabaseClient) => {
     if (typeof window === 'undefined' || !navigator.onLine) return;
     try {
@@ -50,6 +50,7 @@ export const localSync = {
 
       for (const item of queue) {
         const { table, action, payload } = item;
+        const currentRetries = (item.retries || 0) + 1;
         
         let error = null;
 
@@ -96,29 +97,36 @@ export const localSync = {
         }
 
         if (error) {
+          const errMessage = error.message || '';
+
           // Vérification si l'erreur provient du verrouillage de date de la base de données
-          const estErreurVerrouillage = error.message && (
-            error.message.includes('VERROUILLAGE ACTIF') || 
-            error.message.includes('Modification interdite') || 
-            error.message.includes('Action interdite')
-          );
+          const estErreurVerrouillage = errMessage.includes('VERROUILLAGE ACTIF') || 
+            errMessage.includes('Modification interdite') || 
+            errMessage.includes('Action interdite');
 
           // Vérification si l'erreur est liée à une colonne absente du cache de schéma (ex: schema cache)
-          const estErreurSchema = error.message && (
-            error.message.includes('schema cache') || 
-            error.code === 'PGRST204'
-          );
+          const estErreurSchema = errMessage.includes('schema cache') || 
+            error.code === 'PGRST204';
+
+          // Détection des erreurs de type Timeout ou Internal Server Error (500)
+          const estErreurTimeout = errMessage.includes('timeout') || 
+            errMessage.includes('canceling statement') || 
+            error.code === '57014' || 
+            error.code === '500';
 
           if (estErreurVerrouillage) {
-            // Transforme l'erreur rouge en simple avertissement propre pour éviter de saturer la console
-            console.warn(`⚠️ Synchronisation rejetée (journée clôturée et verrouillée) sur la table ${table} :`, error.message);
+            console.warn(`⚠️ Synchronisation rejetée (journée clôturée et verrouillée) sur la table ${table} :`, errMessage);
           } else if (estErreurSchema) {
-            // Ignore et élimine de la queue les éléments obsolètes touchant une colonne inexistante
-            console.warn(`⚠️ Élément de synchronisation ignoré (colonne obsolète absente du schéma) sur ${table} :`, error.message);
+            console.warn(`⚠️ Élément de synchronisation ignoré (colonne obsolète absente du schéma) sur ${table} :`, errMessage);
+          } else if (estErreurTimeout && currentRetries >= 3) {
+            console.error(`❌ Abandon de l'élément en échec (timeout persistant) sur ${table} après ${currentRetries} tentatives :`, errMessage);
+            // On l'abandonne volontairement pour débloquer la file d'attente et stopper la boucle de charge
           } else {
-            // Pour les autres types d'erreurs (réseau, etc.), on garde l'affichage en erreur
-            console.error(`Erreur sync table ${table}:`, error.message);
-            nouvelleQueue.push(item);
+            console.error(`Erreur sync table ${table} (tentative ${currentRetries}):`, errMessage);
+            // On le remet en file d'attente uniquement si le quota de tentatives de timeout n'est pas atteint
+            if (!estErreurTimeout || currentRetries < 3) {
+              nouvelleQueue.push({ ...item, retries: currentRetries });
+            }
           }
         }
       }
