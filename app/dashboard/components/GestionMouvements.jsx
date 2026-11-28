@@ -1445,8 +1445,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
     return (
       <div className="space-y-4 font-sans text-xs p-3 max-w-2xl mx-auto">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm text-center space-y-1.5">
-          <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">
-            📦 GESTION DU STOCK
+          <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider flex items-center justify-center gap-2">
+            <span>📦</span> GESTION DU STOCK
           </h2>
           <p className="text-xs text-slate-500 font-bold">
             Sélectionnez l'opération que vous souhaitez effectuer :
@@ -1459,12 +1459,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             className="bg-white p-5 rounded-2xl border-2 border-emerald-500/40 hover:border-emerald-500 hover:bg-emerald-50/20 transition cursor-pointer shadow-sm flex flex-col justify-between space-y-4 group"
           >
             <div className="space-y-2.5">
-              <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-xl font-black group-hover:scale-105 transition">
-                🛒
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-lg font-black group-hover:scale-105 transition shrink-0">
+                  🛒
+                </div>
+                <h3 className="font-black text-sm uppercase text-emerald-900">
+                  ACHAT
+                </h3>
               </div>
-              <h3 className="font-black text-sm uppercase text-emerald-900">
-                Achat
-              </h3>
               <p className="text-xs font-medium text-slate-600 leading-relaxed">
                 {estModeBoutique
                   ? "Permet d'enregistrer les entrées de stock issues des fournisseurs vers un dépôt."
@@ -1482,12 +1484,14 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             className="bg-white p-5 rounded-2xl border-2 border-orange-500/40 hover:border-orange-500 hover:bg-orange-50/20 transition cursor-pointer shadow-sm flex flex-col justify-between space-y-4 group"
           >
             <div className="space-y-2.5">
-              <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center text-xl font-black group-hover:scale-105 transition">
-                🔀
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center text-lg font-black group-hover:scale-105 transition shrink-0">
+                  🔀
+                </div>
+                <h3 className="font-black text-sm uppercase text-orange-900">
+                  GESTION DES MOUVEMENTS
+                </h3>
               </div>
-              <h3 className="font-black text-sm uppercase text-orange-900">
-                Gestion des Mouvements
-              </h3>
               <p className="text-xs font-medium text-slate-600 leading-relaxed">
                 Permet d'effectuer des transferts, des sorties, des avaries ou des inventaires.
               </p>
@@ -1524,11 +1528,11 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
   }
 
   return (
-    <div className="space-y-2 font-sans text-xs max-w-5xl mx-auto p-1">
+    <div className="space-y-2 font-sans text-xs max-w-5xl mx-auto p-1 overflow-x-hidden">
       
-      {/* 1. BARRE DE NAVIGATION SUPÉRIEURE */}
-      <div className="bg-slate-900 text-white px-3 py-2 rounded-xl shadow-md flex flex-nowrap justify-between items-center gap-2 overflow-x-auto whitespace-nowrap">
-        <div className="flex items-center gap-2 shrink-0">
+      {/* 1. BARRE DE NAVIGATION SUPÉRIEURE ÉPURÉE */}
+      <div className="bg-slate-900 text-white px-2.5 py-1.5 rounded-xl shadow-md flex flex-nowrap justify-between items-center gap-1 text-xs overflow-hidden">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button 
             type="button" 
             onClick={() => {
@@ -1537,17 +1541,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               }
               setOngletPrincipal(null);
             }} 
-            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-xs transition cursor-pointer flex items-center gap-1 border border-slate-700"
+            className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-black text-[11px] transition cursor-pointer flex items-center gap-1 border border-slate-700 shrink-0"
           >
             <span>←</span> Accueil
           </button>
           
-          <span className={`px-2 py-1 rounded-lg font-black text-xs uppercase ${ongletPrincipal === 'ACHATS' ? 'bg-emerald-600 text-white' : 'bg-orange-600 text-white'}`}>
-            {ongletPrincipal === 'ACHATS' ? 'ACHAT' : 'MOUVEMENT'}
+          <span className={`px-2 py-1 rounded-lg font-black text-[11px] uppercase shrink-0 ${ongletPrincipal === 'ACHATS' ? 'bg-emerald-600 text-white' : 'bg-orange-600 text-white'}`}>
+            {ongletPrincipal === 'ACHATS' ? 'ACHAT' : 'MOUV.'}
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <button 
             type="button" 
             disabled={enTrainDeSauvegarder} 
@@ -1568,7 +1572,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
               setMontantPayeAchat(0);
               setEnTeteDoc(prev => ({ ...prev, id_depot_source: '', id_emplacement_source: '', id_depot_destination: '', id_emplacement_destination: '', id_fournisseur: '', referenceDoc: '', numeroDoc: genererNumeroDocSecurise(typeCible), numeroAffichage: '', operateur: obtenirNomOperateurConnecte() })); 
             }} 
-            className={`py-1 px-3 rounded-lg font-black transition text-xs uppercase cursor-pointer flex items-center gap-1 ${
+            className={`py-1 px-2.5 rounded-lg font-black transition text-[11px] uppercase cursor-pointer flex items-center gap-1 shrink-0 ${
               modeAffichage === 'SAISIE' 
                 ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md' 
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
@@ -1590,7 +1594,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 setModeAffichage('LISTE_DOCS');
               }
             }} 
-            className={`py-1 px-3 rounded-lg font-black transition text-xs uppercase cursor-pointer flex items-center gap-1 ${
+            className={`py-1 px-2.5 rounded-lg font-black transition text-[11px] uppercase cursor-pointer flex items-center gap-1 shrink-0 ${
               modeAffichage === 'LISTE_DOCS' 
                 ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-md' 
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
@@ -1664,42 +1668,40 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          {/* 2. CARTE D'EN-TÊTE DOCUMENT AVEC TITRE MODIFIÉ EN "ACHAT" */}
+          {/* 2. CARTE D'EN-TÊTE DOCUMENT */}
           <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm space-y-2">
-            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
-              <div className="flex items-center gap-2">
+            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100 gap-2">
+              <div className="flex items-center gap-2 truncate">
                 {ongletPrincipal === 'MOUVEMENTS' ? (
                   <button
                     type="button"
                     disabled={enTeteVerrouille || !!mouvementEnEditionId}
                     onClick={() => setModalTypeMouvementOuvert(true)}
-                    className="bg-orange-50 hover:bg-orange-100 border border-orange-300 text-orange-800 px-2.5 py-1 rounded-lg font-black text-xs uppercase flex items-center gap-1.5 cursor-pointer disabled:opacity-70 transition shadow-2xs"
+                    className="bg-orange-50 hover:bg-orange-100 border border-orange-300 text-orange-800 px-2.5 py-1 rounded-lg font-black text-xs uppercase flex items-center gap-1.5 cursor-pointer disabled:opacity-70 transition shadow-2xs shrink-0"
                   >
                     <span>🔀 {libellesTypesMouvement[typeOperation]}</span>
                     <span>▼</span>
                   </button>
                 ) : (
-                  <h4 className="font-black text-xs uppercase text-slate-900 flex items-center gap-1.5">
+                  <h4 className="font-black text-xs uppercase text-slate-900 flex items-center gap-1.5 shrink-0">
                     <span>ACHAT</span>
                   </h4>
                 )}
 
-                {/* USER INSÉRÉ JUSTE APRÈS ACHAT / TYPE */}
-                <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-0.5 rounded-lg font-black text-[11px] uppercase shadow-2xs flex items-center gap-1" title="Opérateur connecté">
+                <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-lg font-black text-[10px] uppercase shadow-2xs truncate" title="Opérateur connecté">
                   <span>👤</span> {enTeteDoc.operateur || obtenirNomOperateurConnecte()}
                 </span>
               </div>
 
-              <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2.5 py-0.5 rounded-lg font-mono font-black text-xs shadow-2xs" title={enTeteDoc.numeroDoc}>
+              <span className="bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-lg font-mono font-black text-xs shadow-2xs whitespace-nowrap shrink-0" title={enTeteDoc.numeroDoc}>
                 {enTeteDoc.numeroAffichage || (documentsGroupes.find(d => String(d.numeroDocBrut) === String(enTeteDoc.numeroDoc))?.numeroDoc) || `${ongletPrincipal === 'ACHATS' ? 'APP' : (typeOperation === 'ENTREE_STOCK' ? 'ES' : typeOperation === 'SORTIE' ? 'MS' : typeOperation === 'AVARIES' ? 'AV' : typeOperation === 'INVENTAIRE' ? 'INV' : 'TR')}-01`}
               </span>
             </div>
 
-            {/* Structure spécifique selon s'il s'agit d'un Transfert, d'un Achat ou d'un autre mouvement */}
+            {/* Structure spécifique selon le type d'opération */}
             {(ongletPrincipal === 'MOUVEMENTS' && typeOperation === 'TRANSFERT') ? (
               <div className="space-y-2">
                 {estModeBoutique ? (
-                  /* Transfert en mode Boutique : Date, Dépôt départ, Dépôt arrivée, Motif (pas de partenaire, pas de livreur) */
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
@@ -1748,8 +1750,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     </div>
                   </>
                 ) : (
-                  /* Transfert en mode Livraison (Complet avec partenaires/livreurs) */
-                  <div className="space-y-2">
+                  <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <input 
@@ -1771,7 +1772,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       <div>
                         <button 
                           type="button"
@@ -1779,7 +1780,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           onClick={() => { setRechercheModalPopup(''); setModalDepotSourceOuvert(true); }}
                           className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-700 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/50 transition cursor-pointer disabled:opacity-70"
                         >
-                          <span className="truncate">🏢 Départ Partenaire : {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Sélectionner *'}</span>
+                          <span className="truncate">🏢 Départ : {enTeteDoc.id_depot_source ? obtenirNomDepotParId(enTeteDoc.id_depot_source) : 'Partenaire *'}</span>
                           <span className="shrink-0 ml-1 text-orange-600">🔍</span>
                         </button>
                       </div>
@@ -1790,12 +1791,10 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           onClick={() => { setRechercheModalPopup(''); setModalLivreurSourceOuvert(true); }}
                           className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70"
                         >
-                          <span className="truncate">🛵 Départ Livreur : {enTeteDoc.id_emplacement_source ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : 'Aucun (Optionnel)'}</span>
+                          <span className="truncate">🛵 Livreur D.: {enTeteDoc.id_emplacement_source ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_source) : 'Aucun'}</span>
                           <span className="shrink-0 ml-1 text-slate-600">🔍</span>
                         </button>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <button 
                           type="button"
@@ -1803,7 +1802,7 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           onClick={() => { setRechercheModalPopup(''); setModalDepotDestOuvert(true); }}
                           className="w-full bg-white border border-blue-400 rounded-xl p-2 text-left font-extrabold text-blue-700 text-xs flex justify-between items-center shadow-2xs hover:bg-blue-50/50 transition cursor-pointer disabled:opacity-70"
                         >
-                          <span className="truncate">🎯 Arrivée Partenaire : {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Sélectionner *'}</span>
+                          <span className="truncate">🎯 Arrivée : {enTeteDoc.id_depot_destination ? obtenirNomDepotParId(enTeteDoc.id_depot_destination) : 'Partenaire *'}</span>
                           <span className="shrink-0 ml-1 text-blue-600">🔍</span>
                         </button>
                       </div>
@@ -1814,18 +1813,17 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                           onClick={() => { setRechercheModalPopup(''); setModalLivreurDestOuvert(true); }}
                           className="w-full bg-white border border-slate-300 rounded-xl p-2 text-left font-extrabold text-slate-800 text-xs flex justify-between items-center shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-70"
                         >
-                          <span className="truncate">🛵 Arrivée Livreur : {enTeteDoc.id_emplacement_destination ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : 'Aucun (Optionnel)'}</span>
+                          <span className="truncate">🛵 Livreur A.: {enTeteDoc.id_emplacement_destination ? obtenirNomEmplacementParId(enTeteDoc.id_emplacement_destination) : 'Aucun'}</span>
                           <span className="shrink-0 ml-1 text-slate-600">🔍</span>
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             ) : ongletPrincipal === 'ACHATS' ? (
               <div className="space-y-2">
                 {estModeBoutique ? (
-                  /* Module Boutique : Date, Fournisseur et Dépôt sur la même ligne */
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
                       <input 
@@ -1860,7 +1858,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     </div>
                   </div>
                 ) : (
-                  /* Module Livraison : Date, Partenaire et Motif sur la même ligne (Pas de dépôt) */
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
                       <input 
@@ -1908,7 +1905,6 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                 )}
               </div>
             ) : (
-              /* Pour Entrée en stock, Sortie, Avaries et Inventaire : Date, Dépôt et Motif sur la même ligne */
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <input 
@@ -2075,21 +2071,21 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
             </div>
           )}
 
-          {/* 3. CARTE D'AJOUT D'ARTICLE */}
+          {/* 3. CARTE D'AJOUT D'ARTICLE (Épurée et sur une seule ligne sans débordement) */}
           {!documentEnLectureSeule && (
-            <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
+            <div className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-sm">
               {ongletPrincipal === 'ACHATS' && estModeBoutique ? (
-                <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-12 sm:col-span-5">
-                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">ARTICLE À AJOUTER*</label>
-                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/35 transition cursor-pointer">
-                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '🔍 CHOISIR UN ARTICLE...'}</span>
-                      <span className="shrink-0 ml-1">▼</span>
+                <div className="flex flex-row items-end gap-1.5 w-full">
+                  <div className="flex-1 min-w-0">
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">ARTICLE*</label>
+                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/35 transition cursor-pointer truncate">
+                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : 'CHOISIR...'}</span>
+                      <span className="shrink-0 ml-0.5">▼</span>
                     </button>
                   </div>
 
-                  <div className="col-span-4 sm:col-span-2">
-                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">QTÉ*</label>
+                  <div className="w-16 shrink-0">
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">QTÉ*</label>
                     <input 
                       ref={inputQuantiteRef} 
                       type="number" 
@@ -2103,8 +2099,8 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     />
                   </div>
 
-                  <div className="col-span-4 sm:col-span-2">
-                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">P.U.*</label>
+                  <div className="w-20 shrink-0">
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">P.U.*</label>
                     <input 
                       ref={inputPrixRef}
                       type="number" 
@@ -2118,29 +2114,30 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     />
                   </div>
 
-                  <div className="col-span-4 sm:col-span-3">
+                  <div className="w-24 shrink-0">
+                    <label className="block font-black text-[9px] text-transparent uppercase mb-0.5">&nbsp;</label>
                     <button 
                       type="button" 
                       disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
                       onClick={ajouterArticleAuPanier} 
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black p-2 rounded-xl text-center text-xs uppercase shadow-md transition cursor-pointer"
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2 px-2 rounded-xl text-center text-[11px] uppercase shadow-md transition cursor-pointer truncate"
                     >
                       {enTrainDInsertion ? '...' : '+ AJOUTER'}
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-12 sm:col-span-7">
-                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">ARTICLE À AJOUTER*</label>
-                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/35 transition cursor-pointer">
-                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : '🔍 CHOISIR UN ARTICLE...'}</span>
-                      <span className="shrink-0 ml-1">▼</span>
+                <div className="flex flex-row items-end gap-1.5 w-full">
+                  <div className="flex-1 min-w-0">
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">ARTICLE*</label>
+                    <button ref={boutonSelectionArticleRef} type="button" disabled={enTrainDeSauvegarder} onClick={() => { if (enTrainDeSauvegarder) return; if (!verifierEnTeteAvantSaisie()) return; setModalArticleOuvert(true); }} className="w-full bg-white border border-orange-400 rounded-xl p-2 text-left font-extrabold text-orange-600 text-xs flex justify-between items-center shadow-2xs hover:bg-orange-50/35 transition cursor-pointer truncate">
+                      <span className="truncate">{articleSelectionneTemp ? `${articleSelectionneTemp.Designation || articleSelectionneTemp.designation}` : 'CHOISIR UN ARTICLE...'}</span>
+                      <span className="shrink-0 ml-0.5">▼</span>
                     </button>
                   </div>
                   
-                  <div className="col-span-6 sm:col-span-2">
-                    <label className="block font-black text-[10px] text-slate-700 uppercase mb-1">QTÉ*</label>
+                  <div className="w-16 shrink-0">
+                    <label className="block font-black text-[9px] text-slate-700 uppercase mb-0.5 truncate">QTÉ*</label>
                     <input 
                       ref={inputQuantiteRef} 
                       type="number" 
@@ -2154,12 +2151,13 @@ export default function GestionMouvements({ entrepriseId = '4TS-290136' }) {
                     />
                   </div>
 
-                  <div className="col-span-6 sm:col-span-3">
+                  <div className="w-24 shrink-0">
+                    <label className="block font-black text-[9px] text-transparent uppercase mb-0.5">&nbsp;</label>
                     <button 
                       type="button" 
                       disabled={enTrainDeSauvegarder || enTrainDInsertion || (!permissions.peut_creer && !mouvementEnEditionId)} 
                       onClick={ajouterArticleAuPanier} 
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black p-2 rounded-xl text-center text-xs uppercase shadow-md transition cursor-pointer"
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-2 px-2 rounded-xl text-center text-[11px] uppercase shadow-md transition cursor-pointer truncate"
                     >
                       {enTrainDInsertion ? '...' : '+ AJOUTER'}
                     </button>
